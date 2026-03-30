@@ -1,6 +1,10 @@
 import env from '#start/env'
 import { defineConfig } from '@adonisjs/lucid'
 
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] database')
+}
+
 const dbConfig = defineConfig({
   connection: 'mysql',
   connections: {

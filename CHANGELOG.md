@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.30.5 - 2026-03-30
+
+### Native macOS and setup
+
+- Raised the native runtime startup window so the macOS app no longer gives up during legitimate cold boots of the local backend.
+- Verified the bundled setup backend boots correctly from the packaged `RoachNet Setup.app` outside the development repository.
+- Rebuilt the native macOS app and setup installer so the shipped bundle matches the latest runtime and command-grid surfaces.
+
+### Runtime and downloads
+
+- Raised the compiled-runtime startup timeout in `run-roachnet.mjs` so packaged launches no longer fall back prematurely.
+- Kept the packaged admin runtime aligned with the now-working compiled backend path and current frontend assets.
+- Verified a fresh ZIM content download can be queued, written to disk, and cleaned up successfully through the RoachNet download API.
+
+### Website and release
+
+- Refreshed the public installer payload served from `roachnet.org/downloads/RoachNet-Setup-macOS.dmg`.
+- Kept the footer updates in place, including the Netlify hosting badge and contact email.
+- Prepared the repository for a new GitHub release with matching version metadata and release notes.
+
 ## v1.30.4 - 2026-03-29
 
 ### Native macOS

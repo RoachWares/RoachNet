@@ -1,5 +1,9 @@
 import { defineConfig } from '@adonisjs/cors'
 
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] cors')
+}
+
 /**
  * Configuration options to tweak the CORS policy. The following
  * options are documented on the official documentation website.

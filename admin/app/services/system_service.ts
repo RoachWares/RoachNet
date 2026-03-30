@@ -174,17 +174,18 @@ export class SystemService {
 
     for (const service of services) {
       const status = statuses.find((s) => s.service_name === service.service_name)
+      const branded = this.getBrandedServiceMetadata(service.service_name)
       toReturn.push({
         id: service.id,
         service_name: service.service_name,
-        friendly_name: service.friendly_name,
-        description: service.description,
+        friendly_name: branded.friendly_name ?? service.friendly_name,
+        description: branded.description ?? service.description,
         icon: service.icon,
         installed: service.installed,
         installation_status: service.installation_status,
         status: status ? status.status : 'unknown',
         ui_location: service.ui_location || '',
-        powered_by: service.powered_by,
+        powered_by: branded.powered_by ?? service.powered_by,
         display_order: service.display_order,
         container_image: service.container_image,
         available_update_version: service.available_update_version,
@@ -192,6 +193,48 @@ export class SystemService {
     }
 
     return toReturn
+  }
+
+  private getBrandedServiceMetadata(serviceName: string): Partial<ServiceSlim> {
+    switch (serviceName) {
+      case SERVICE_NAMES.KIWIX:
+        return {
+          friendly_name: 'RoachNet Library',
+          description:
+            'Offline encyclopedias, field manuals, and reference archives staged inside RoachNet.',
+          powered_by: 'Kiwix',
+        }
+      case SERVICE_NAMES.OLLAMA:
+        return {
+          friendly_name: 'RoachNet Chat',
+          description:
+            'Local AI chat and model tooling managed from the RoachNet command grid.',
+          powered_by: 'Ollama',
+        }
+      case SERVICE_NAMES.CYBERCHEF:
+        return {
+          friendly_name: 'RoachNet Data Lab',
+          description:
+            'Encoding, decoding, and analysis tools adapted for RoachNet field workflows.',
+          powered_by: 'CyberChef',
+        }
+      case SERVICE_NAMES.FLATNOTES:
+        return {
+          friendly_name: 'RoachNet Notes',
+          description:
+            'Fast local notes for fragments, checklists, and working references on the same machine.',
+          powered_by: 'FlatNotes',
+        }
+      case SERVICE_NAMES.KOLIBRI:
+        return {
+          friendly_name: 'RoachNet Academy',
+          description:
+            'Structured offline education content and coursework surfaced through RoachNet.',
+          powered_by: 'Kolibri',
+        }
+      default:
+        return {}
+    }
   }
 
   static getAppVersion(): string {

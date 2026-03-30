@@ -1,7 +1,9 @@
-import KVStore from '#models/kv_store'
-import { SystemService } from '#services/system_service'
 import { defineConfig } from '@adonisjs/inertia'
 import type { InferSharedProps } from '@adonisjs/inertia/types'
+
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] inertia')
+}
 
 const inertiaConfig = defineConfig({
   /**
@@ -13,9 +15,13 @@ const inertiaConfig = defineConfig({
    * Data that should be shared with all rendered pages
    */
   sharedData: {
-    appVersion: () => SystemService.getAppVersion(),
+    appVersion: async () => {
+      const { SystemService } = await import('#services/system_service')
+      return SystemService.getAppVersion()
+    },
     environment: process.env.NODE_ENV || 'production',
     aiAssistantName: async () => {
+      const { default: KVStore } = await import('#models/kv_store')
       const customName = await KVStore.getValue('ai.assistantCustomName')
       return (customName && customName.trim()) ? customName : 'AI Assistant'
     },

@@ -1,5 +1,9 @@
 import { defineConfig } from '@adonisjs/vite'
 
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] vite')
+}
+
 const viteBackendConfig = defineConfig({
   /**
    * The output of vite will be written inside this

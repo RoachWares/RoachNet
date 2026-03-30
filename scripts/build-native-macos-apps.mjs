@@ -47,6 +47,30 @@ function run(command, args, options = {}) {
   })
 }
 
+function getPreferredNodeBinary() {
+  const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/node'
+  return existsSync(macHomebrewNode22) ? macHomebrewNode22 : process.execPath
+}
+
+async function prepareBundledAdminRuntime() {
+  const adminPath = path.join(repoRoot, 'admin')
+  const nodeBinary = getPreferredNodeBinary()
+
+  await run(nodeBinary, [path.join(repoRoot, 'scripts', 'build-admin-runtime.mjs')], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      PATH: `${path.dirname(nodeBinary)}:${process.env.PATH || ''}`,
+    },
+  })
+
+  const buildPath = path.join(adminPath, 'build')
+  await cp(path.join(adminPath, 'node_modules'), path.join(buildPath, 'node_modules'), {
+    recursive: true,
+    force: true,
+  })
+}
+
 async function buildSwiftPackage() {
   const env = {
     ...process.env,
@@ -139,10 +163,8 @@ function shouldIncludeBundledSourcePath(relativePath) {
   if (
     normalizedPath === 'admin/node_modules' ||
     normalizedPath === 'admin/storage' ||
-    normalizedPath === 'admin/build' ||
     normalizedPath.startsWith('admin/node_modules/') ||
     normalizedPath.startsWith('admin/storage/') ||
-    normalizedPath.startsWith('admin/build/') ||
     normalizedPath.startsWith('installer/node_modules/') ||
     normalizedPath.includes('/node_modules_node') ||
     normalizedPath.includes('/storage/logs/') ||
@@ -185,6 +207,39 @@ async function copyBundledSourceTree(destinationPath) {
       recursive: true,
       force: true,
     })
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true })
+  }
+}
+
+async function createSetupDmg(setupAppBundlePath) {
+  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-dmg-staging-'))
+  const dmgPath = path.join(distPath, 'RoachNet-Setup-macOS.dmg')
+
+  try {
+    await cp(setupAppBundlePath, path.join(stagingRoot, path.basename(setupAppBundlePath)), {
+      recursive: true,
+      force: true,
+    })
+
+    rmSync(dmgPath, { force: true })
+    await run(
+      'hdiutil',
+      [
+        'create',
+        '-volname',
+        'RoachNet Setup',
+        '-srcfolder',
+        stagingRoot,
+        '-ov',
+        '-format',
+        'UDZO',
+        dmgPath,
+      ],
+      { stdio: 'pipe' }
+    )
+
+    return dmgPath
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true })
   }
@@ -252,6 +307,7 @@ async function bundleApp({ name, executable, identifier, iconPath, prepareResour
 
 async function main() {
   mkdirSync(distPath, { recursive: true })
+  await prepareBundledAdminRuntime()
   const binPath = await buildSwiftPackage()
   const iconPath = await buildIcns()
   const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
@@ -293,6 +349,11 @@ async function main() {
   const builtBundles = []
   for (const app of apps) {
     builtBundles.push(await bundleApp({ ...app, iconPath }))
+  }
+
+  const setupAppBundlePath = builtBundles.find((bundlePath) => bundlePath.endsWith('RoachNet Setup.app'))
+  if (setupAppBundlePath) {
+    builtBundles.push(await createSetupDmg(setupAppBundlePath))
   }
 
   for (const bundle of builtBundles) {

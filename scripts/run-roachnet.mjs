@@ -29,8 +29,8 @@ const serverLogPath = path.join(storageLogsDir, 'roachnet-server.log')
 const runtimeCacheRoot = path.join(tmpdir(), 'roachnet-runtime-cache')
 const managementComposePath = path.join(repoRoot, 'ops', 'roachnet-management.compose.yml')
 
-const SERVER_BOOT_TIMEOUT_MS = 180_000
-const BUILD_BOOT_TIMEOUT_MS = 60_000
+const SERVER_BOOT_TIMEOUT_MS = 300_000
+const BUILD_BOOT_TIMEOUT_MS = 300_000
 const HEALTH_POLL_INTERVAL_MS = 1_500
 const HEALTH_REQUEST_TIMEOUT_MS = 3_000
 const BUILD_RUNTIME_METADATA_FILENAME = '.roachnet-runtime.json'
@@ -221,7 +221,8 @@ function getServerRuntimeTarget() {
   if (process.env.ROACHNET_USE_SOURCE === '1') {
     return {
       cwd: adminDir,
-      entrypoint: 'bin/server.js',
+      entrypoint: 'ace.js',
+      args: ['serve', '--assets=false'],
       kind: 'source',
     }
   }
@@ -236,7 +237,8 @@ function getServerRuntimeTarget() {
 
   return {
     cwd: adminDir,
-    entrypoint: 'bin/server.js',
+    entrypoint: 'ace.js',
+    args: ['serve', '--assets=false'],
     kind: 'source',
   }
 }
@@ -365,14 +367,21 @@ async function prepareBuildRuntimeTarget(envValues) {
     runtimeNodeModulesPath,
     BUILD_RUNTIME_DEPENDENCY_STAMP_FILENAME
   )
+  const buildNodeModulesPath = path.join(buildDir, 'node_modules')
+  const buildHasEmbeddedDependencies = existsSync(path.join(buildNodeModulesPath, '@adonisjs', 'core'))
   const existingSignature = existsSync(runtimeMetadataPath)
     ? JSON.parse(readFileSync(runtimeMetadataPath, 'utf8')).signature
     : null
   const hasStagedEntrypoint = existsSync(path.join(runtimeDir, 'bin', 'server.js'))
+  const hasStagedDependencies = existsSync(path.join(runtimeNodeModulesPath, '@adonisjs', 'core'))
 
   mkdirSync(runtimeCacheRoot, { recursive: true })
 
-  if (!hasStagedEntrypoint || existingSignature !== fingerprint.signature) {
+  if (
+    !hasStagedEntrypoint ||
+    existingSignature !== fingerprint.signature ||
+    (buildHasEmbeddedDependencies && !hasStagedDependencies)
+  ) {
     console.log('Staging the compiled RoachNet runtime outside the workspace...')
     rmSync(runtimeDir, { recursive: true, force: true })
 
@@ -380,9 +389,6 @@ async function prepareBuildRuntimeTarget(envValues) {
       recursive: true,
       force: true,
       dereference: false,
-      filter(source) {
-        return path.basename(source) !== 'node_modules'
-      },
     })
 
     writeFileSync(
@@ -390,6 +396,10 @@ async function prepareBuildRuntimeTarget(envValues) {
       JSON.stringify({ signature: fingerprint.signature }, null, 2) + '\n',
       'utf8'
     )
+
+    if (existsSync(path.join(runtimeNodeModulesPath, '@adonisjs', 'core'))) {
+      writeFileSync(runtimeDependencyStampPath, `${fingerprint.dependencyHash}\n`, 'utf8')
+    }
   }
 
   writeFileSync(
@@ -442,6 +452,49 @@ function terminateDetachedChild(child) {
     }
   } catch {
     // The process may have already exited.
+  }
+}
+
+function spawnDetachedNodeProcess({
+  nodeBinary,
+  runtimeKind,
+  entrypoint,
+  args = [],
+  cwd,
+  env,
+  logFd,
+}) {
+  const shouldUseTypeScriptLoader = runtimeKind === 'source' && path.extname(entrypoint) === '.ts'
+  const child = spawn(
+    nodeBinary,
+    shouldUseTypeScriptLoader
+      ? [
+          '--import=ts-node-maintained/register/esm',
+          '--enable-source-maps',
+          '--disable-warning=ExperimentalWarning',
+          entrypoint,
+          ...args,
+        ]
+      : [entrypoint, ...args],
+    {
+      cwd,
+      detached: true,
+      env,
+      stdio: ['ignore', logFd, logFd],
+    }
+  )
+
+  let exited = false
+  child.on('exit', () => {
+    exited = true
+  })
+  child.unref()
+
+  return {
+    child,
+    hasExited() {
+      return exited
+    },
   }
 }
 
@@ -499,52 +552,67 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
     }
   }
 
-  const child = spawn(
-    nodeBinary,
-    resolvedTarget.kind === 'source'
-      ? [
-          '--import=ts-node-maintained/register/esm',
-          '--enable-source-maps',
-          '--disable-warning=ExperimentalWarning',
-          resolvedTarget.entrypoint,
-        ]
-      : [resolvedTarget.entrypoint],
-    {
-      cwd: resolvedTarget.cwd,
-      detached: true,
-      env: {
-        ...process.env,
-        ...runtimeEnvValues,
-        NODE_ENV: resolvedTarget.kind === 'build' ? 'production' : envValues.NODE_ENV || 'development',
-        ROACHNET_REPO_ROOT: repoRoot,
-      },
-      stdio: ['ignore', serverLogFd, serverLogFd],
-    }
-  )
+  const childEnv = {
+    ...process.env,
+    ...runtimeEnvValues,
+    NODE_ENV: resolvedTarget.kind === 'build' ? 'production' : envValues.NODE_ENV || 'development',
+    ROACHNET_REPO_ROOT: repoRoot,
+  }
 
-  let childExited = false
-  child.on('exit', () => {
-    childExited = true
+  const serverHandle = spawnDetachedNodeProcess({
+    nodeBinary,
+    runtimeKind: resolvedTarget.kind,
+    entrypoint: resolvedTarget.entrypoint,
+    args: resolvedTarget.args ?? [],
+    cwd: resolvedTarget.cwd,
+    env: childEnv,
+    logFd: serverLogFd,
   })
-  child.unref()
+
+  const runtimeRoot =
+    resolvedTarget.kind === 'build'
+      ? path.dirname(path.dirname(resolvedTarget.entrypoint))
+      : resolvedTarget.cwd
+  const workerEntrypoint =
+    resolvedTarget.kind === 'build'
+      ? path.join(runtimeRoot, 'bin', 'worker.js')
+      : path.join(runtimeRoot, 'bin', 'worker.entry.js')
+  let workerHandle = null
+
+  if (existsSync(workerEntrypoint)) {
+    workerHandle = spawnDetachedNodeProcess({
+      nodeBinary,
+      runtimeKind: resolvedTarget.kind,
+      entrypoint: workerEntrypoint,
+      cwd: resolvedTarget.cwd,
+      env: childEnv,
+      logFd: serverLogFd,
+    })
+  }
 
   const healthyUrl = await waitForHealth(healthUrls, timeoutMs)
   if (healthyUrl) {
     return {
-      child,
-      childExited,
+      child: serverHandle.child,
+      childExited: serverHandle.hasExited(),
+      worker: workerHandle?.child ?? null,
       healthyUrl,
       target: resolvedTarget,
     }
   }
 
-  if (!childExited) {
-    terminateDetachedChild(child)
+  if (!serverHandle.hasExited()) {
+    terminateDetachedChild(serverHandle.child)
+  }
+
+  if (workerHandle && !workerHandle.hasExited()) {
+    terminateDetachedChild(workerHandle.child)
   }
 
   return {
-    child,
-    childExited,
+    child: serverHandle.child,
+    childExited: serverHandle.hasExited(),
+    worker: workerHandle?.child ?? null,
     healthyUrl: null,
     target: resolvedTarget,
   }
@@ -608,7 +676,8 @@ async function main() {
     launchResult = await launchServer(
       {
         cwd: adminDir,
-        entrypoint: 'bin/server.js',
+        entrypoint: 'ace.js',
+        args: ['serve', '--assets=false'],
         kind: 'source',
       },
       envValues,

@@ -91,9 +91,9 @@ export default function SettingsPage(props: { system: { services: ServiceSlim[] 
         icon={<IconDownload className="h-12 w-12 text-desert-green" />}
       >
         <p className="text-text-primary">
-          Are you sure you want to install {service.friendly_name || service.service_name}? This
-          will start the service and make it available in your RoachNet install. It may
-          take some time to complete.
+          Stage {service.friendly_name || service.service_name} into this RoachNet install? This
+          will pull the module, start its runtime, and make it available in both the command grid
+          and the native shell. It may take some time to complete.
         </p>
       </StyledModal>,
       'install-service-modal'
@@ -215,7 +215,7 @@ export default function SettingsPage(props: { system: { services: ServiceSlim[] 
               cancelText="Cancel"
             >
               <p className="text-text-primary">
-                Are you sure you want to force reinstall {record.service_name}? This will{' '}
+                Are you sure you want to force reinstall {record.friendly_name || record.service_name}? This will{' '}
                 <strong>WIPE ALL DATA</strong> for this service and cannot be undone. You should
                 only do this if the service is malfunctioning and other troubleshooting steps have
                 failed.
@@ -287,7 +287,7 @@ export default function SettingsPage(props: { system: { services: ServiceSlim[] 
                   >
                     <p className="text-text-primary">
                       Are you sure you want to {record.status === 'running' ? 'stop' : 'start'}{' '}
-                      {record.service_name}?
+                      {record.friendly_name || record.service_name}?
                     </p>
                   </StyledModal>,
                   `${record.service_name}-affect-modal`
@@ -339,9 +339,8 @@ export default function SettingsPage(props: { system: { services: ServiceSlim[] 
             <div>
               <h1 className="text-4xl font-semibold">Apps</h1>
               <p className="text-text-muted mt-1">
-                Manage the applications that are available in your RoachNet install. Nightly
-                update checks will automatically detect when new versions of these apps are
-                available.
+                Manage the RoachNet modules and adapted upstream tools available in this install.
+                Nightly update checks will automatically detect when refreshed builds are ready.
               </p>
             </div>
             <StyledButton
@@ -366,6 +365,11 @@ export default function SettingsPage(props: { system: { services: ServiceSlim[] 
                     return (
                       <div className="flex flex-col">
                         <p>{record.friendly_name || record.service_name}</p>
+                        {record.powered_by && (
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">
+                            Powered by {record.powered_by}
+                          </p>
+                        )}
                         <p className="text-sm text-text-muted">{record.description}</p>
                       </div>
                     )

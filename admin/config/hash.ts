@@ -1,5 +1,9 @@
 import { defineConfig, drivers } from '@adonisjs/core/hash'
 
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] hash')
+}
+
 const hashConfig = defineConfig({
   default: 'scrypt',
 

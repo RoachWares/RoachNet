@@ -1,6 +1,16 @@
 import env from '#start/env'
-import app from '@adonisjs/core/services/app'
 import { defineConfig, targets } from '@adonisjs/core/logger'
+import { join } from 'path'
+import { fileURLToPath } from 'node:url'
+
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] logger')
+}
+
+const isProduction = env.get('NODE_ENV') === 'production'
+const defaultStorageRoot = fileURLToPath(new URL('../storage', import.meta.url))
+const storageRoot = env.get('NOMAD_STORAGE_PATH')?.trim() || defaultStorageRoot
+const logDestination = join(storageRoot, 'logs', 'admin.log')
 
 const loggerConfig = defineConfig({
   default: 'app',
@@ -11,14 +21,14 @@ const loggerConfig = defineConfig({
    */
   loggers: {
     app: {
-            enabled: true,
-            name: env.get('APP_NAME'),
-            level: env.get('NODE_ENV') === 'production' ? env.get('LOG_LEVEL') : 'debug', // default to 'debug' in non-production envs
-            transport: {
+      enabled: true,
+      name: env.get('APP_NAME'),
+      level: isProduction ? env.get('LOG_LEVEL') : 'debug',
+      transport: {
         targets:
           targets()
-            .pushIf(!app.inProduction, targets.pretty())
-            .pushIf(app.inProduction, targets.file({ destination: app.makePath('storage', 'logs', 'admin.log'), mkdir: true }))
+            .pushIf(!isProduction, targets.pretty())
+            .pushIf(isProduction, targets.file({ destination: logDestination, mkdir: true }))
             .toArray(),
       },
     },

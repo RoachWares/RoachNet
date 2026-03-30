@@ -3,6 +3,8 @@ import { readFileSync, existsSync } from 'fs'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import KVStore from '#models/kv_store'
+import env from '#start/env'
+import app from '@adonisjs/core/services/app'
 
 interface UpdateStatus {
   stage: 'idle' | 'starting' | 'pulling' | 'pulled' | 'recreating' | 'complete' | 'error'
@@ -12,7 +14,10 @@ interface UpdateStatus {
 }
 
 export class SystemUpdateService {
-  private static SHARED_DIR = '/app/update-shared'
+  private static SHARED_DIR =
+    env.get('NOMAD_STORAGE_PATH')?.trim()
+      ? join(env.get('NOMAD_STORAGE_PATH')!, 'update-shared')
+      : app.makePath('storage', 'update-shared')
   private static REQUEST_FILE = join(SystemUpdateService.SHARED_DIR, 'update-request')
   private static STATUS_FILE = join(SystemUpdateService.SHARED_DIR, 'update-status')
   private static LOG_FILE = join(SystemUpdateService.SHARED_DIR, 'update-log')

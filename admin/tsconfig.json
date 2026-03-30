@@ -4,5 +4,12 @@
     "rootDir": "./",
     "outDir": "./build"
   },
-  "exclude": ["./inertia/**/*", "node_modules", "node_modules_node25_partial_20260327", "build"]
+  "exclude": [
+    "./inertia/**/*",
+    "./public/**/*",
+    "./storage/**/*",
+    "node_modules",
+    "node_modules_node25_partial_20260327",
+    "build"
+  ]
 }

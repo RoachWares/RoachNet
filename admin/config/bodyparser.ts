@@ -1,5 +1,9 @@
 import { defineConfig } from '@adonisjs/core/bodyparser'
 
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] bodyparser')
+}
+
 const bodyParserConfig = defineConfig({
   /**
    * The bodyparser middleware will parse the request body

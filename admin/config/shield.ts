@@ -1,5 +1,9 @@
 import { defineConfig } from '@adonisjs/shield'
 
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] shield')
+}
+
 const shieldConfig = defineConfig({
   /**
    * Configure CSP policies for your app. Refer documentation

@@ -1,5 +1,9 @@
 import { defineConfig } from '@adonisjs/static'
 
+if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+  console.log('[roachnet:config] static')
+}
+
 /**
  * Configuration options to tweak the static files middleware.
  * The complete set of options are documented on the

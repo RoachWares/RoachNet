@@ -1,5 +1,13 @@
 import { defineConfig } from '@adonisjs/core/app'
 
+function debugImport(filePath: string) {
+  if (process.env.ROACHNET_DEBUG_BOOT === '1') {
+    console.log(`[roachnet:provider] ${filePath}`)
+  }
+
+  return import(filePath)
+}
+
 export default defineConfig({
   /*
   |--------------------------------------------------------------------------
@@ -37,23 +45,23 @@ export default defineConfig({
   |
   */
   providers: [
-    () => import('@adonisjs/core/providers/app_provider'),
-    () => import('@adonisjs/core/providers/hash_provider'),
+    () => debugImport('@adonisjs/core/providers/app_provider'),
+    () => debugImport('@adonisjs/core/providers/hash_provider'),
     {
-      file: () => import('@adonisjs/core/providers/repl_provider'),
+      file: () => debugImport('@adonisjs/core/providers/repl_provider'),
       environment: ['repl', 'test'],
     },
-    () => import('@adonisjs/core/providers/vinejs_provider'),
-    () => import('@adonisjs/core/providers/edge_provider'),
-    () => import('@adonisjs/session/session_provider'),
-    () => import('@adonisjs/vite/vite_provider'),
-    () => import('@adonisjs/shield/shield_provider'),
-    () => import('@adonisjs/static/static_provider'),
-    () => import('@adonisjs/cors/cors_provider'),
-    () => import('@adonisjs/lucid/database_provider'),
-    () => import('@adonisjs/inertia/inertia_provider'),
-    () => import('@adonisjs/transmit/transmit_provider'),
-    () => import('#providers/map_static_provider')
+    () => debugImport('@adonisjs/core/providers/vinejs_provider'),
+    () => debugImport('@adonisjs/core/providers/edge_provider'),
+    () => debugImport('@adonisjs/session/session_provider'),
+    () => debugImport('@adonisjs/vite/vite_provider'),
+    () => debugImport('@adonisjs/shield/shield_provider'),
+    () => debugImport('@adonisjs/static/static_provider'),
+    () => debugImport('@adonisjs/cors/cors_provider'),
+    () => debugImport('@adonisjs/lucid/database_provider'),
+    () => debugImport('@adonisjs/inertia/inertia_provider'),
+    () => debugImport('@adonisjs/transmit/transmit_provider'),
+    () => debugImport('#providers/map_static_provider')
   ],
 
   /*
@@ -64,7 +72,10 @@ export default defineConfig({
   | List of modules to import before starting the application.
   |
   */
-  preloads: [() => import('#start/routes'), () => import('#start/kernel')],
+  preloads: [
+    () => debugImport('#start/routes'),
+    () => debugImport('#start/kernel'),
+  ],
 
   /*
   |--------------------------------------------------------------------------

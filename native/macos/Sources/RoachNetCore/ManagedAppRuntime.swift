@@ -21,6 +21,33 @@ public struct AIRuntimeProvidersResponse: Decodable, Sendable {
     public let providers: [String: AIRuntimeStatusResponse]
 }
 
+public struct ManagedSystemService: Decodable, Identifiable, Sendable {
+    public let service_name: String
+    public let friendly_name: String?
+    public let description: String?
+    public let icon: String?
+    public let installed: Bool?
+    public let installation_status: String?
+    public let status: String?
+    public let ui_location: String?
+    public let powered_by: String?
+    public let display_order: Int?
+
+    public var id: String { service_name }
+}
+
+public struct ManagedDownloadJob: Decodable, Identifiable, Sendable {
+    public let jobId: String
+    public let url: String
+    public let progress: Int
+    public let filepath: String
+    public let filetype: String
+    public let status: String?
+    public let failedReason: String?
+
+    public var id: String { jobId }
+}
+
 public struct RoachClawStatusResponse: Decodable, Sendable {
     public struct CLIStatus: Decodable, Sendable {
         public let openclawAvailable: Bool
@@ -117,8 +144,10 @@ public struct WikipediaStateResponse: Decodable, Sendable {
     }
 
     public struct Selection: Decodable, Sendable {
-        public let id: String?
-        public let name: String?
+        public let optionId: String?
+        public let status: String?
+        public let filename: String?
+        public let url: String?
     }
 
     public let options: [Option]
@@ -190,7 +219,10 @@ public struct ManagedAppServerInfo: Decodable, Sendable {
 
 public struct ManagedAppSnapshot: Sendable {
     public let serverInfo: ManagedAppServerInfo
+    public let internetConnected: Bool
     public let systemInfo: SystemInfoResponse
+    public let services: [ManagedSystemService]
+    public let downloads: [ManagedDownloadJob]
     public let providers: AIRuntimeProvidersResponse
     public let roachClaw: RoachClawStatusResponse
     public let installedModels: [OllamaInstalledModel]
@@ -208,6 +240,7 @@ public actor ManagedAppRuntimeBridge {
     private var process: Process?
     private var serverInfoURL: URL?
     private var cachedServerInfo: ManagedAppServerInfo?
+    private let nativeStartupTimeoutSeconds: TimeInterval = 300
 
     public init() {}
 
@@ -252,7 +285,7 @@ public actor ManagedAppRuntimeBridge {
         try process.run()
         self.process = process
 
-        let deadline = Date().addingTimeInterval(45)
+        let deadline = Date().addingTimeInterval(nativeStartupTimeoutSeconds)
         while Date() < deadline {
             if
                 let data = try? Data(contentsOf: infoURL),
@@ -281,7 +314,8 @@ public actor ManagedAppRuntimeBridge {
         }
 
         throw NSError(domain: "RoachNetRuntime", code: 21, userInfo: [
-            NSLocalizedDescriptionKey: "RoachNet did not become healthy before the native timeout."
+            NSLocalizedDescriptionKey:
+                "RoachNet did not become healthy before the native timeout (\(Int(nativeStartupTimeoutSeconds)) seconds)."
         ])
     }
 
@@ -296,10 +330,25 @@ public actor ManagedAppRuntimeBridge {
             defaultModel: config.roachClawDefaultModel
         )
 
+        async let internetConnected = fetchOrFallback(
+            "/api/system/internet-status",
+            baseURL: baseURL,
+            fallback: false
+        )
         async let systemInfo = fetchOrFallback(
             "/api/system/info",
             baseURL: baseURL,
             fallback: fallbackSystemInfo
+        )
+        async let services = fetchOrFallback(
+            "/api/system/services",
+            baseURL: baseURL,
+            fallback: [ManagedSystemService]()
+        )
+        async let downloads = fetchOrFallback(
+            "/api/downloads/jobs",
+            baseURL: baseURL,
+            fallback: [ManagedDownloadJob]()
         )
         async let providers = fetchOrFallback(
             "/api/system/ai/providers",
@@ -349,7 +398,10 @@ public actor ManagedAppRuntimeBridge {
 
         return ManagedAppSnapshot(
             serverInfo: serverInfo,
+            internetConnected: await internetConnected,
             systemInfo: await systemInfo,
+            services: await services,
+            downloads: await downloads,
             providers: await providers,
             roachClaw: await roachClaw,
             installedModels: await models,
@@ -377,6 +429,94 @@ public actor ManagedAppRuntimeBridge {
 
         let payload = Payload(model: model, workspacePath: workspacePath)
         let _: EmptyOKResponse = try await post("/api/roachclaw/apply", baseURL: baseURL, body: payload)
+    }
+
+    public func downloadBaseMapAssets(using config: RoachNetInstallerConfig) async throws -> String {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+        let response: ActionResponse = try await post(
+            "/api/maps/download-base-assets",
+            baseURL: baseURL,
+            body: EmptyRequest()
+        )
+        return response.message ?? "Base map assets queued."
+    }
+
+    public func downloadMapCollection(using config: RoachNetInstallerConfig, slug: String) async throws -> String {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+
+        struct Payload: Encodable {
+            let slug: String
+        }
+
+        let response: ActionResponse = try await post(
+            "/api/maps/download-collection",
+            baseURL: baseURL,
+            body: Payload(slug: slug)
+        )
+        return response.message ?? "Map collection queued."
+    }
+
+    public func downloadEducationTier(
+        using config: RoachNetInstallerConfig,
+        categorySlug: String,
+        tierSlug: String
+    ) async throws -> String {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+
+        struct Payload: Encodable {
+            let categorySlug: String
+            let tierSlug: String
+        }
+
+        let response: ActionResponse = try await post(
+            "/api/zim/download-category-tier",
+            baseURL: baseURL,
+            body: Payload(categorySlug: categorySlug, tierSlug: tierSlug)
+        )
+        return response.message ?? "Education content queued."
+    }
+
+    public func selectWikipedia(
+        using config: RoachNetInstallerConfig,
+        optionId: String
+    ) async throws -> String {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+
+        struct Payload: Encodable {
+            let optionId: String
+        }
+
+        let response: ActionResponse = try await post(
+            "/api/zim/wikipedia/select",
+            baseURL: baseURL,
+            body: Payload(optionId: optionId)
+        )
+        return response.message ?? "Wikipedia selection updated."
+    }
+
+    public func resolveRouteURL(using config: RoachNetInstallerConfig, path: String) async throws -> URL {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURLString = serverInfo.webUrl ?? serverInfo.healthUrl
+
+        guard let baseURL = URL(string: baseURLString) else {
+            throw NSError(domain: "RoachNetRuntime", code: 25, userInfo: [
+                NSLocalizedDescriptionKey: "Invalid RoachNet web URL."
+            ])
+        }
+
+        let root = URL(string: "/", relativeTo: baseURL)?.absoluteURL ?? baseURL
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        guard let resolved = URL(string: normalizedPath, relativeTo: root)?.absoluteURL else {
+            throw NSError(domain: "RoachNetRuntime", code: 26, userInfo: [
+                NSLocalizedDescriptionKey: "Failed to resolve RoachNet route \(path)."
+            ])
+        }
+
+        return resolved
     }
 
     public func sendChat(
@@ -592,6 +732,14 @@ private struct EmptyOKResponse: Decodable {
     let ok: Bool?
     let message: String?
 }
+
+private struct ActionResponse: Decodable {
+    let success: Bool?
+    let ok: Bool?
+    let message: String?
+}
+
+private struct EmptyRequest: Encodable {}
 
 private struct AnyEncodable: Encodable {
     private let encodeImpl: (Encoder) throws -> Void
