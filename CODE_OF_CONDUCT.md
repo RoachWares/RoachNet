@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project maintainer at
-[github.com/AHGRoach](https://github.com/AHGRoach). For general project
+[contact@ahgrecords.com](mailto:contact@ahgrecords.com). For general project
 coordination, contributors can also use
 [github.com/AHGRoach/RoachNet/issues](https://github.com/AHGRoach/RoachNet/issues)
 or
