@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.30.6 - 2026-03-30
+
+### Native macOS and onboarding
+
+- Fixed the native macOS packager so it always produces validly signed app bundles, includes the first-launch guide video in `RoachNet.app`, and rebuilds the setup DMG without hanging on unused runtime staging work.
+- Extended the guided setup flow from basic service install into shared AI provider onboarding, including Ollama and OpenClaw endpoint staging, workspace control, and a clearer review step for RoachClaw defaults.
+- Kept the guided tour assets aligned between the website and the native app so the shipped onboarding flow now has a real packaged video resource to play on first launch.
+
+### Shared AI runtime control
+
+- Moved more of the OpenClaw/Ollama setup path into the shared AI runtime surface instead of provider-specific assumptions.
+- Fixed offline provider reporting so configured-but-unreachable runtimes still show the configured source and URL rather than collapsing into a generic `none` state.
+- Kept RoachClaw status, workspace control, and ClawHub skill management aligned with the shared runtime layer and the updated `/easy-setup` flow.
+
+### CI, packaging, and website
+
+- Fixed the `Validate Collection URLs` workflow so large-file URLs no longer fail the job due to curl exit handling on ranged requests.
+- Reworked the `Native Packages` workflow around the real macOS build path, removed the stale Linux/Windows matrix, and documented the Apple signing/notarization secrets needed for Gatekeeper-safe release artifacts.
+- Refreshed the `roachnet.org` screen section to use current RoachNet views and kept the Netlify footer badge/contact footer in place for the public site.
+
 ## v1.30.5 - 2026-03-30
 
 ### Native macOS and setup

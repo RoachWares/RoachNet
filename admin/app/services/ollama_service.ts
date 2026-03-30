@@ -163,7 +163,8 @@ export class OllamaService {
   }
 
   public async getRuntimeStatus(): Promise<AIRuntimeStatus> {
-    let lastError: string | null = null
+    let lastRuntimeStatus: AIRuntimeStatus | null = null
+    let preferredOfflineStatus: AIRuntimeStatus | null = null
 
     const primaryCandidates = await this.getPrimaryRuntimeCandidates()
 
@@ -173,7 +174,10 @@ export class OllamaService {
         return runtimeStatus
       }
 
-      lastError = runtimeStatus.error || lastError
+      if (!preferredOfflineStatus && candidate.source === 'configured') {
+        preferredOfflineStatus = runtimeStatus
+      }
+      lastRuntimeStatus = runtimeStatus
     }
 
     const dockerCandidate = await this.getDockerRuntimeCandidate()
@@ -186,7 +190,15 @@ export class OllamaService {
         return dockerRuntimeStatus
       }
 
-      lastError = dockerRuntimeStatus.error || lastError
+      lastRuntimeStatus = dockerRuntimeStatus
+    }
+
+    if (preferredOfflineStatus) {
+      return preferredOfflineStatus
+    }
+
+    if (lastRuntimeStatus) {
+      return lastRuntimeStatus
     }
 
     return {
@@ -194,7 +206,7 @@ export class OllamaService {
       available: false,
       source: 'none',
       baseUrl: null,
-      error: lastError || 'Ollama runtime is not available.',
+      error: 'Ollama runtime is not available.',
     }
   }
 

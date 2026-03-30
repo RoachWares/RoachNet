@@ -2,11 +2,13 @@ name: Validate Collection URLs
 
 on:
   push:
+    branches:
+      - main
     paths:
-      - 'collections/**.json'
+      - 'collections/**/*.json'
   pull_request:
     paths:
-      - 'collections/**.json'
+      - 'collections/**/*.json'
 
 jobs:
   validate-urls:
@@ -16,27 +18,34 @@ jobs:
 
       - name: Extract and validate URLs
         run: |
+          set -euo pipefail
           FAILED=0
           CHECKED=0
           FAILED_URLS=""
 
           # Recursively extract all non-null string URLs from every JSON file in collections/
-          URLS=$(jq -r '.. | .url? | select(type == "string")' collections/*.json | sort -u)
+          URLS=$(find collections -type f -name '*.json' -print0 | xargs -0 jq -r '.. | .url? | select(type == "string")' | sort -u)
 
           while IFS= read -r url; do
             [ -z "$url" ] && continue
             CHECKED=$((CHECKED + 1))
             printf "Checking: %s ... " "$url"
 
-            # Use Range: bytes=0-0 to avoid downloading the full file.
-            # --max-filesize 1 aborts early if the server ignores the Range header
-            # and returns 200 with the full body. The HTTP status is still captured.
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              --range 0-0 \
-              --max-filesize 1 \
+            # Prefer HEAD requests first because they avoid downloading body data.
+            # Fall back to a 1-byte ranged GET for servers that reject HEAD.
+            HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+              --head \
               --max-time 30 \
               --location \
-              "$url")
+              "$url" || true)
+
+            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "206" ]; then
+              HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+                --range 0-0 \
+                --max-time 30 \
+                --location \
+                "$url" || true)
+            fi
 
             if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "206" ]; then
               echo "OK ($HTTP_CODE)"

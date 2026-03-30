@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { cp, mkdtemp } from 'node:fs/promises'
+import { cp, mkdtemp, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -14,7 +14,19 @@ const repoRoot = path.resolve(__dirname, '..')
 const packagePath = path.join(repoRoot, 'native', 'macos')
 const distPath = path.join(packagePath, 'dist')
 const iconSource = path.join(repoRoot, 'branding', 'RoachNet_Icon-ResizedREAL.png')
+const launchGuideVideoPath = path.join(
+  repoRoot,
+  'native',
+  'macos',
+  'Sources',
+  'RoachNetApp',
+  'Resources',
+  'roachnet-launch-guide.mp4'
+)
 const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.30.4'
+const codesignIdentity = process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || ''
+const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
+const notaryKeychain = process.env.ROACHNET_NOTARY_KEYCHAIN?.trim() || ''
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -52,22 +64,28 @@ function getPreferredNodeBinary() {
   return existsSync(macHomebrewNode22) ? macHomebrewNode22 : process.execPath
 }
 
-async function prepareBundledAdminRuntime() {
-  const adminPath = path.join(repoRoot, 'admin')
-  const nodeBinary = getPreferredNodeBinary()
+async function signAppBundle(bundlePath) {
+  const args = ['--force', '--deep', '--sign', codesignIdentity || '-', bundlePath]
 
-  await run(nodeBinary, [path.join(repoRoot, 'scripts', 'build-admin-runtime.mjs')], {
+  if (codesignIdentity) {
+    args.splice(2, 0, '--options', 'runtime', '--timestamp')
+  }
+
+  await run('codesign', args, { stdio: 'pipe' })
+}
+
+async function ensureLaunchGuideVideo() {
+  if (existsSync(launchGuideVideoPath) && process.env.ROACHNET_REBUILD_LAUNCH_GUIDE !== '1') {
+    return
+  }
+
+  const nodeBinary = getPreferredNodeBinary()
+  await run(nodeBinary, [path.join(repoRoot, 'scripts', 'build-launch-guide-video.mjs')], {
     cwd: repoRoot,
     env: {
       ...process.env,
       PATH: `${path.dirname(nodeBinary)}:${process.env.PATH || ''}`,
     },
-  })
-
-  const buildPath = path.join(adminPath, 'build')
-  await cp(path.join(adminPath, 'node_modules'), path.join(buildPath, 'node_modules'), {
-    recursive: true,
-    force: true,
   })
 }
 
@@ -124,68 +142,49 @@ async function buildIcns() {
   return icnsPath
 }
 
-function shouldIncludeBundledSourcePath(relativePath) {
-  if (!relativePath || relativePath === '') {
-    return true
-  }
+const bundledSourceExcludes = [
+  '.git/',
+  '.netlify/',
+  '.native/',
+  '.next/',
+  '.turbo/',
+  'dist/',
+  'release/',
+  'desktop-dist/',
+  'setup-dist/',
+  'node_modules/',
+  'native/macos/.build/',
+  'native/macos/dist/',
+  'native/linux/target/',
+  'native/windows/bin/',
+  'native/windows/obj/',
+  'admin/node_modules/',
+  'admin/build/',
+  'admin/storage/',
+  'installer/node_modules/',
+  'admin/.env',
+  '*.DS_Store',
+  '*.dmg',
+  '*.zip',
+  '*.pkg',
+  '*.zim',
+  '*node_modules_node*',
+  '*/storage/logs/',
+  '*/storage/tmp/',
+]
 
-  const normalizedPath = relativePath.split(path.sep).join('/')
-  const segments = normalizedPath.split('/')
-  const topLevel = segments[0]
+async function syncTree(sourcePath, destinationPath, excludePatterns = bundledSourceExcludes) {
+  mkdirSync(destinationPath, { recursive: true })
 
-  if (
-    [
-      '.git',
-      '.netlify',
-      '.native',
-      '.next',
-      '.turbo',
-      'dist',
-      'release',
-      'desktop-dist',
-      'setup-dist',
-      'node_modules',
-    ].includes(topLevel)
-  ) {
-    return false
-  }
+  const args = [
+    '-a',
+    '--delete',
+    ...excludePatterns.flatMap((pattern) => ['--exclude', pattern]),
+    `${sourcePath}/`,
+    `${destinationPath}/`,
+  ]
 
-  if (
-    normalizedPath.startsWith('native/macos/.build/') ||
-    normalizedPath.startsWith('native/macos/dist/') ||
-    normalizedPath.startsWith('native/linux/target/') ||
-    normalizedPath.startsWith('native/windows/bin/') ||
-    normalizedPath.startsWith('native/windows/obj/')
-  ) {
-    return false
-  }
-
-  if (
-    normalizedPath === 'admin/node_modules' ||
-    normalizedPath === 'admin/storage' ||
-    normalizedPath.startsWith('admin/node_modules/') ||
-    normalizedPath.startsWith('admin/storage/') ||
-    normalizedPath.startsWith('installer/node_modules/') ||
-    normalizedPath.includes('/node_modules_node') ||
-    normalizedPath.includes('/storage/logs/') ||
-    normalizedPath.includes('/storage/tmp/')
-  ) {
-    return false
-  }
-
-  if (
-    normalizedPath === 'admin/.env' ||
-    normalizedPath === '.DS_Store' ||
-    normalizedPath.endsWith('/.DS_Store') ||
-    normalizedPath.endsWith('.dmg') ||
-    normalizedPath.endsWith('.zip') ||
-    normalizedPath.endsWith('.pkg') ||
-    normalizedPath.endsWith('.zim')
-  ) {
-    return false
-  }
-
-  return true
+  await run('rsync', args, { stdio: 'pipe' })
 }
 
 async function copyBundledSourceTree(destinationPath) {
@@ -194,54 +193,58 @@ async function copyBundledSourceTree(destinationPath) {
 
   rmSync(destinationPath, { recursive: true, force: true })
   try {
-    await cp(repoRoot, stagedSourcePath, {
-      recursive: true,
-      force: true,
-      filter(source) {
-        const relativePath = path.relative(repoRoot, source)
-        return shouldIncludeBundledSourcePath(relativePath)
-      },
-    })
-
-    await cp(stagedSourcePath, destinationPath, {
-      recursive: true,
-      force: true,
-    })
+    await syncTree(repoRoot, stagedSourcePath)
+    await syncTree(stagedSourcePath, destinationPath)
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true })
   }
 }
 
 async function createSetupDmg(setupAppBundlePath) {
-  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-dmg-staging-'))
   const dmgPath = path.join(distPath, 'RoachNet-Setup-macOS.dmg')
 
-  try {
-    await cp(setupAppBundlePath, path.join(stagingRoot, path.basename(setupAppBundlePath)), {
-      recursive: true,
-      force: true,
-    })
+  rmSync(dmgPath, { force: true })
+  await run(
+    'hdiutil',
+    [
+      'create',
+      '-volname',
+      'RoachNet Setup',
+      '-srcfolder',
+      setupAppBundlePath,
+      '-ov',
+      '-format',
+      'UDZO',
+      dmgPath,
+    ],
+    { stdio: 'pipe' }
+  )
 
-    rmSync(dmgPath, { force: true })
-    await run(
-      'hdiutil',
-      [
-        'create',
-        '-volname',
-        'RoachNet Setup',
-        '-srcfolder',
-        stagingRoot,
-        '-ov',
-        '-format',
-        'UDZO',
-        dmgPath,
-      ],
-      { stdio: 'pipe' }
+  return dmgPath
+}
+
+async function copySwiftPackageResources(executable, resourcesPath) {
+  const executableDirectory = path.dirname(executable)
+  const executableName = path.basename(executable)
+  const entries = await readdir(executableDirectory, { withFileTypes: true })
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.endsWith('.bundle')) {
+      continue
+    }
+
+    if (!entry.name.endsWith(`_${executableName}.bundle`)) {
+      continue
+    }
+
+    await cp(
+      path.join(executableDirectory, entry.name),
+      path.join(resourcesPath, entry.name),
+      {
+        recursive: true,
+        force: true,
+      }
     )
-
-    return dmgPath
-  } finally {
-    rmSync(stagingRoot, { recursive: true, force: true })
   }
 }
 
@@ -256,6 +259,7 @@ async function bundleApp({ name, executable, identifier, iconPath, prepareResour
   mkdirSync(resourcesPath, { recursive: true })
 
   await cp(executable, path.join(macOSPath, path.basename(executable)))
+  await copySwiftPackageResources(executable, resourcesPath)
 
   if (iconPath) {
     await cp(iconPath, path.join(resourcesPath, 'RoachNet.icns'))
@@ -296,18 +300,29 @@ async function bundleApp({ name, executable, identifier, iconPath, prepareResour
 
   writeFileSync(path.join(contentsPath, 'Info.plist'), plist, 'utf8')
 
-  try {
-    await run('codesign', ['--force', '--deep', '--sign', '-', bundlePath], { stdio: 'pipe' })
-  } catch {
-    // Local build should still complete without an ad-hoc signature.
-  }
+  await signAppBundle(bundlePath)
 
   return bundlePath
 }
 
+async function notarizeArtifact(artifactPath) {
+  if (!codesignIdentity || !notaryProfile) {
+    return
+  }
+
+  const submitArgs = ['notarytool', 'submit', artifactPath, '--keychain-profile', notaryProfile, '--wait']
+  if (notaryKeychain) {
+    submitArgs.push('--keychain', notaryKeychain)
+  }
+
+  await run('xcrun', submitArgs, { stdio: 'pipe' })
+
+  await run('xcrun', ['stapler', 'staple', artifactPath], { stdio: 'pipe' })
+}
+
 async function main() {
   mkdirSync(distPath, { recursive: true })
-  await prepareBundledAdminRuntime()
+  await ensureLaunchGuideVideo()
   const binPath = await buildSwiftPackage()
   const iconPath = await buildIcns()
   const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
@@ -353,7 +368,10 @@ async function main() {
 
   const setupAppBundlePath = builtBundles.find((bundlePath) => bundlePath.endsWith('RoachNet Setup.app'))
   if (setupAppBundlePath) {
-    builtBundles.push(await createSetupDmg(setupAppBundlePath))
+    await notarizeArtifact(setupAppBundlePath)
+    const dmgPath = await createSetupDmg(setupAppBundlePath)
+    await notarizeArtifact(dmgPath)
+    builtBundles.push(dmgPath)
   }
 
   for (const bundle of builtBundles) {

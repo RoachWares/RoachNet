@@ -22,7 +22,10 @@ let package = Package(
         .executableTarget(
             name: "RoachNetApp",
             dependencies: ["RoachNetCore", "RoachNetDesign"],
-            path: "Sources/RoachNetApp"
+            path: "Sources/RoachNetApp",
+            resources: [
+                .process("Resources"),
+            ]
         ),
         .executableTarget(
             name: "RoachNetSetup",

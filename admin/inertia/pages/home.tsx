@@ -120,6 +120,21 @@ export default function Home(props: {
   const { aiAssistantName } = usePage<{ aiAssistantName: string }>().props
   const aiRuntimeStatus = useAIRuntimeStatus('ollama')
   const openClawRuntimeStatus = useAIRuntimeStatus('openclaw')
+  const aiRuntimeLabel = aiRuntimeStatus.available
+    ? aiAssistantName
+    : aiRuntimeStatus.baseUrl
+      ? `${aiAssistantName} Configured`
+      : 'Runtime Not Linked'
+  const aiRuntimeDetail = aiRuntimeStatus.available
+    ? `Connected via ${aiRuntimeStatus.source} at ${aiRuntimeStatus.baseUrl}`
+    : aiRuntimeStatus.baseUrl
+      ? `Configured via ${aiRuntimeStatus.source} at ${aiRuntimeStatus.baseUrl}, but currently offline.`
+      : 'Use AI Control or Easy Setup to connect a local or managed runtime.'
+  const openClawRuntimeDetail = openClawRuntimeStatus.available
+    ? `OpenClaw linked at ${openClawRuntimeStatus.baseUrl}`
+    : openClawRuntimeStatus.baseUrl
+      ? `OpenClaw configured at ${openClawRuntimeStatus.baseUrl} (offline)`
+      : 'OpenClaw not linked yet'
   const { isOnline } = useInternetStatus()
 
   // Check if user has visited Easy Setup
@@ -220,17 +235,13 @@ export default function Home(props: {
                   <IconCpu2 className="size-5 text-desert-orange-light" />
                   <div>
                     <div className="text-lg font-semibold text-text-primary">
-                      {aiRuntimeStatus.available ? aiAssistantName : 'Runtime Not Linked'}
+                      {aiRuntimeLabel}
                     </div>
                     <div className="text-sm text-text-secondary">
-                      {aiRuntimeStatus.available
-                        ? `Connected via ${aiRuntimeStatus.source} at ${aiRuntimeStatus.baseUrl}`
-                        : 'Use AI Control or Easy Setup to connect a local or managed runtime.'}
+                      {aiRuntimeDetail}
                     </div>
                     <div className="mt-2 text-xs uppercase tracking-[0.16em] text-text-muted">
-                      {openClawRuntimeStatus.available
-                        ? `OpenClaw linked at ${openClawRuntimeStatus.baseUrl}`
-                        : 'OpenClaw not linked yet'}
+                      {openClawRuntimeDetail}
                     </div>
                   </div>
                 </div>

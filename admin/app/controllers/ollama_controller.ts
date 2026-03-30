@@ -47,7 +47,7 @@ export default class OllamaController {
 
     try {
       // If there are no system messages in the chat inject system prompts
-      const hasSystemMessage = reqData.messages.some((msg) => msg.role === 'system')
+      const hasSystemMessage = reqData.messages.some((msg: Message) => msg.role === 'system')
       if (!hasSystemMessage) {
         const systemPrompt = {
           role: 'system' as const,
@@ -114,7 +114,7 @@ export default class OllamaController {
           }
 
           // Insert system message at the beginning (after any existing system messages)
-          const firstNonSystemIndex = reqData.messages.findIndex((msg) => msg.role !== 'system')
+          const firstNonSystemIndex = reqData.messages.findIndex((msg: Message) => msg.role !== 'system')
           const insertIndex = firstNonSystemIndex === -1 ? 0 : firstNonSystemIndex
           reqData.messages.splice(insertIndex, 0, systemMessage)
         } else if (relevantDocs.length > 0) {
@@ -135,9 +135,14 @@ export default class OllamaController {
       let userContent: string | null = null
       if (sessionId) {
         const lastUserMsg = [...reqData.messages].reverse().find((m) => m.role === 'user')
-        if (lastUserMsg) {
-          userContent = lastUserMsg.content
-          await this.chatService.addMessage(sessionId, 'user', userContent)
+        const lastUserContent =
+          lastUserMsg && typeof lastUserMsg.content === 'string'
+            ? lastUserMsg.content
+            : null
+
+        if (lastUserContent) {
+          userContent = lastUserContent
+          await this.chatService.addMessage(sessionId, 'user', lastUserContent)
         }
       }
 
@@ -273,17 +278,17 @@ export default class OllamaController {
       const recentMessages = messages.slice(-6)
 
       if (!this.shouldRewriteQuery(messages)) {
-        const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user')
+        const lastUserMessage = [...messages].reverse().find((msg) => msg.role === 'user')
         return lastUserMessage?.content || null
       }
 
-      const userMessages = recentMessages.filter(msg => msg.role === 'user')
+      const userMessages = recentMessages.filter((msg) => msg.role === 'user')
       if (userMessages.length <= 2) {
         return userMessages[userMessages.length - 1]?.content || null
       }
 
       const conversationContext = recentMessages
-        .map(msg => {
+        .map((msg) => {
           const role = msg.role === 'user' ? 'User' : 'Assistant'
           // Truncate assistant messages to first 200 chars to keep context manageable
           const content = msg.role === 'assistant'
@@ -294,10 +299,12 @@ export default class OllamaController {
         .join('\n')
 
       const installedModels = await this.ollamaService.getModels(true)
-      const rewriteModelAvailable = installedModels?.some(model => model.name === DEFAULT_QUERY_REWRITE_MODEL)
+      const rewriteModelAvailable = installedModels?.some(
+        (model) => model.name === DEFAULT_QUERY_REWRITE_MODEL
+      )
       if (!rewriteModelAvailable) {
         logger.warn(`[RAG] Query rewrite model "${DEFAULT_QUERY_REWRITE_MODEL}" not available. Skipping query rewriting.`)
-        const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user')
+        const lastUserMessage = [...messages].reverse().find((msg) => msg.role === 'user')
         return lastUserMessage?.content || null
       }
 

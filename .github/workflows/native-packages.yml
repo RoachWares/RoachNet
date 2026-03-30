@@ -6,9 +6,9 @@ on:
     branches:
       - main
     paths:
-      - 'desktop/**'
+      - 'native/macos/**'
+      - 'branding/**'
       - 'scripts/**'
-      - 'setup-ui/**'
       - 'admin/**'
       - 'package.json'
       - 'package-lock.json'
@@ -16,28 +16,21 @@ on:
 
 jobs:
   build-native:
-    name: Build ${{ matrix.label }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            label: macOS
-          - os: windows-latest
-            label: Windows
-          - os: ubuntu-latest
-            label: Linux
+    name: Build macOS
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin/package-lock.json
 
       - name: Install root dependencies
         run: npm ci
@@ -45,24 +38,56 @@ jobs:
       - name: Install admin dependencies
         run: npm --prefix admin ci
 
-      - name: Install Linux packaging prerequisites
-        if: runner.os == 'Linux'
+      - name: Import Developer ID certificate
+        if: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_BASE64 != '' && secrets.APPLE_DEVELOPER_ID_APP_CERT_PASSWORD != '' }}
+        env:
+          APP_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_BASE64 }}
+          APP_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-roachnet
         run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm fakeroot
+          CERT_PATH="$RUNNER_TEMP/roachnet-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/roachnet-signing.keychain-db"
 
-      - name: Typecheck admin
-        run: npm --prefix admin run typecheck
+          echo -n "$APP_CERT_BASE64" | openssl base64 -d -A -out "$CERT_PATH"
 
-      - name: Build admin bundle
-        run: npm --prefix admin run build
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APP_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
-      - name: Build native packages
-        run: npm run desktop:dist
+          echo "ROACHNET_SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure notarization profile
+        if: ${{ secrets.APPLE_NOTARY_APPLE_ID != '' && secrets.APPLE_NOTARY_APP_PASSWORD != '' && secrets.APPLE_NOTARY_TEAM_ID != '' && env.ROACHNET_SIGNING_KEYCHAIN != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+        run: |
+          xcrun notarytool store-credentials roachnet-notary \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --keychain "$ROACHNET_SIGNING_KEYCHAIN"
+
+          echo "ROACHNET_NOTARY_PROFILE=roachnet-notary" >> "$GITHUB_ENV"
+          echo "ROACHNET_NOTARY_KEYCHAIN=$ROACHNET_SIGNING_KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Build native macOS packages
+        env:
+          ROACHNET_CODESIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APP_IDENTITY }}
+          ROACHNET_NOTARY_PROFILE: ${{ env.ROACHNET_NOTARY_PROFILE }}
+          ROACHNET_NOTARY_KEYCHAIN: ${{ env.ROACHNET_NOTARY_KEYCHAIN }}
+        run: node scripts/build-native-macos-apps.mjs
 
       - name: Upload native artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: roachnet-${{ runner.os }}-${{ runner.arch }}
-          path: desktop-dist/*
+          name: roachnet-macos-native
+          path: |
+            native/macos/dist/RoachNet.app
+            native/macos/dist/RoachNet Setup.app
+            native/macos/dist/RoachNet-Setup-macOS.dmg
           if-no-files-found: error

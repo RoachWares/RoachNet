@@ -366,13 +366,14 @@ export default function AISettingsPage(props: {
                   AI Control
                 </h1>
                 <p className="text-base leading-7 text-text-secondary">
-                  Link RoachNet to local AI runtimes, override provider endpoints, and verify which
-                  services are reachable before deeper Ollama or OpenClaw workflows are enabled.
+                  Link RoachNet to local AI runtimes, override provider endpoints, and manage the
+                  shared surface RoachNet uses for local chat, RoachClaw defaults, skills, and
+                  connector-ready OpenClaw workflows.
                 </p>
               </div>
 
               <div className="roachnet-card rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] text-text-secondary">
-                First OpenClaw Cut
+                Shared AI Surface
               </div>
             </div>
           </div>
@@ -380,8 +381,8 @@ export default function AISettingsPage(props: {
           <Alert
             type="info"
             variant="bordered"
-            title="Scope of this pass"
-            message="This page wires provider discovery and endpoint overrides into RoachNet. Ollama chat and models are live today. OpenClaw is currently a runtime-health integration layer that prepares the UI for later agent and connector work."
+            title="Shared runtime control"
+            message="Ollama and OpenClaw now sit behind the same runtime status layer. Use this page to stage provider URLs, set the RoachClaw default model, and manage the OpenClaw workspace and skill path without splitting the setup flow across multiple pages."
             className="!mb-8"
           />
 
@@ -431,7 +432,7 @@ export default function AISettingsPage(props: {
               onSave={() => handleSaveProvider('openclaw')}
               savePending={saveSettingMutation.isPending}
               settingKey="ai.openclawBaseUrl"
-              description="This first OpenClaw integration pass adds endpoint discovery and reachability checks so RoachNet can expose OpenClaw as a first-class runtime next to Ollama instead of treating it as an external afterthought."
+              description="OpenClaw is tracked through the same runtime discovery layer as Ollama, so RoachNet can stage agent- and connector-ready defaults without hiding the provider behind a separate setup path."
               helpText="Set the OpenClaw base URL here or provide OPENCLAW_BASE_URL in the environment. RoachNet will probe /health, /api/health, and / to confirm reachability."
               placeholder="http://127.0.0.1:3001"
               icon={<IconShieldBolt className="size-7" />}
@@ -440,9 +441,9 @@ export default function AISettingsPage(props: {
                   <div className="flex items-start gap-3">
                     <IconSettings className="mt-0.5 size-5 text-desert-orange-light" />
                     <p className="text-sm leading-6 text-text-secondary">
-                      OpenClaw agent, connector, and onboarding controls are not wired yet. This
-                      page establishes the runtime contract so those surfaces can be added cleanly
-                      in the next pass.
+                      The OpenClaw HTTP runtime is optional until you actually launch it. Workspace
+                      control, skill search/install, and RoachClaw default-model wiring already use
+                      this shared surface today.
                     </p>
                   </div>
                 </div>

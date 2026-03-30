@@ -37,18 +37,26 @@ export async function doResumableDownload({
     appendMode = true
   }
 
-  // Get file info with HEAD request first
-  const headResponse = await axios.head(url, {
-    signal,
-    timeout,
-  })
+  let contentType = ''
+  let totalBytes = 0
+  let supportsRangeRequests = false
 
-  const contentType = headResponse.headers['content-type'] || ''
-  const totalBytes = parseInt(headResponse.headers['content-length'] || '0')
-  const supportsRangeRequests = headResponse.headers['accept-ranges'] === 'bytes'
+  try {
+    const headResponse = await axios.head(url, {
+      signal,
+      timeout,
+    })
+
+    contentType = headResponse.headers['content-type'] || ''
+    totalBytes = parseInt(headResponse.headers['content-length'] || '0')
+    supportsRangeRequests = headResponse.headers['accept-ranges'] === 'bytes'
+  } catch {
+    // Some upstream mirrors are slow or don't support HEAD reliably.
+    // Continue with the stream request and infer metadata from the response.
+  }
 
   // If allowedMimeTypes is provided, check content type
-  if (allowedMimeTypes && allowedMimeTypes.length > 0) {
+  if (contentType && allowedMimeTypes && allowedMimeTypes.length > 0) {
     const isMimeTypeAllowed = allowedMimeTypes.some((mimeType) => contentType.includes(mimeType))
     if (!isMimeTypeAllowed) {
       throw new Error(`MIME type ${contentType} is not allowed`)
@@ -76,11 +84,39 @@ export async function doResumableDownload({
     responseType: 'stream',
     headers,
     signal,
-    timeout,
+    timeout: 0,
   })
 
   if (response.status !== 200 && response.status !== 206) {
     throw new Error(`Failed to download: HTTP ${response.status}`)
+  }
+
+  if (!contentType) {
+    contentType = response.headers['content-type'] || ''
+  }
+
+  if (!totalBytes) {
+    const contentRange = response.headers['content-range']
+    const rangeMatch =
+      typeof contentRange === 'string' ? contentRange.match(/\/(\d+)$/) : null
+
+    if (rangeMatch) {
+      totalBytes = parseInt(rangeMatch[1], 10)
+    } else {
+      const responseLength = parseInt(response.headers['content-length'] || '0')
+      totalBytes = responseLength > 0 ? responseLength + startByte : 0
+    }
+  }
+
+  if (!supportsRangeRequests) {
+    supportsRangeRequests = response.status === 206 || response.headers['accept-ranges'] === 'bytes'
+  }
+
+  if (allowedMimeTypes && allowedMimeTypes.length > 0) {
+    const isMimeTypeAllowed = allowedMimeTypes.some((mimeType) => contentType.includes(mimeType))
+    if (!isMimeTypeAllowed) {
+      throw new Error(`MIME type ${contentType} is not allowed`)
+    }
   }
 
   return new Promise((resolve, reject) => {

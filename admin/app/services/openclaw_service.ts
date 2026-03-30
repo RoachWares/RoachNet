@@ -24,7 +24,8 @@ const DEFAULT_OPENCLAW_WORKSPACE_PATH = path.join(process.cwd(), 'storage', 'ope
 export class OpenClawService {
   public async getRuntimeStatus(): Promise<AIRuntimeStatus> {
     const candidates = await this.getRuntimeCandidates()
-    let lastError: string | null = null
+    let lastRuntimeStatus: AIRuntimeStatus | null = null
+    let preferredOfflineStatus: AIRuntimeStatus | null = null
 
     for (const candidate of candidates) {
       const runtimeStatus = await this.checkRuntimeCandidate(candidate.baseUrl, candidate.source)
@@ -32,7 +33,18 @@ export class OpenClawService {
         return runtimeStatus
       }
 
-      lastError = runtimeStatus.error || lastError
+      if (!preferredOfflineStatus && candidate.source === 'configured') {
+        preferredOfflineStatus = runtimeStatus
+      }
+      lastRuntimeStatus = runtimeStatus
+    }
+
+    if (preferredOfflineStatus) {
+      return preferredOfflineStatus
+    }
+
+    if (lastRuntimeStatus) {
+      return lastRuntimeStatus
     }
 
     return {
@@ -40,7 +52,7 @@ export class OpenClawService {
       available: false,
       source: 'none',
       baseUrl: null,
-      error: lastError || 'OpenClaw runtime is not configured.',
+      error: 'OpenClaw runtime is not configured.',
     }
   }
 

@@ -75,63 +75,18 @@
         </div>
 
         <div class="hero-visual" aria-hidden="true">
-          <div class="device-scene">
-            <div class="device-scene__glow"></div>
-            <div class="device-shell">
-              <div class="device-shell__camera"></div>
-              <div class="device-screen">
-                <div class="device-screen__topbar">
-                  <span>RoachNet</span>
-                  <span class="device-badge">Offline Ready</span>
-                  <span>Qwen warmed up</span>
-                </div>
-
-                <div class="device-commandbar">
-                  <span class="device-commandbar__glyph">⌘K</span>
-                  <span class="device-commandbar__text">Search maps, notes, models, runtime</span>
-                </div>
-
-                <div class="device-layout">
-                  <div class="device-sidebar">
-                    <span class="device-sidebar__dot device-sidebar__dot--active"></span>
-                    <span class="device-sidebar__dot"></span>
-                    <span class="device-sidebar__dot"></span>
-                    <span class="device-sidebar__dot"></span>
-                  </div>
-
-                  <div class="device-bento">
-                    <article class="device-card device-card--map">
-                      <div class="device-card__eyebrow">Command Deck</div>
-                      <strong>Your cockpit.</strong>
-                      <div class="device-map">
-                        <span class="device-map__route"></span>
-                        <span class="device-map__marker device-map__marker--green"></span>
-                        <span class="device-map__marker device-map__marker--purple"></span>
-                      </div>
-                    </article>
-
-                    <article class="device-card device-card--chat">
-                      <div class="device-card__eyebrow">RoachClaw</div>
-                      <strong>Local AI, tuned to your hardware.</strong>
-                      <div class="device-chat">
-                        <span class="device-chat__line">Summarize the latest notes.</span>
-                        <span class="device-chat__line device-chat__line--reply">Running locally. Qwen is ready.</span>
-                      </div>
-                    </article>
-
-                    <article class="device-card">
-                      <div class="device-card__eyebrow">Vault</div>
-                      <strong>Your reference shelf, unplugged.</strong>
-                    </article>
-
-                    <article class="device-card">
-                      <div class="device-card__eyebrow">Runtime</div>
-                      <strong>Local services, quietly alive.</strong>
-                    </article>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div class="screen-frame screen-frame--hero">
+            <img
+              class="screen-frame__image"
+              src="./assets/screens/roachnet-home-view.svg"
+              alt="RoachNet home command grid view"
+            />
+          </div>
+          <div class="screen-chip-row">
+            <span class="screen-chip">Home</span>
+            <span class="screen-chip">RoachClaw</span>
+            <span class="screen-chip">Maps</span>
+            <span class="screen-chip">Runtime</span>
           </div>
         </div>
       </section>
@@ -185,69 +140,46 @@
 
         <div class="story-stack">
           <article class="story-band">
-            <div class="story-band__visual screen-preview screen-preview--deck">
-              <div class="screen-preview__bar">
-                <span class="screen-preview__pill">⌘K</span>
-                <span>Search maps, chat, runtime</span>
-              </div>
-              <div class="screen-preview__tiles">
-                <div class="screen-preview__tile screen-preview__tile--wide">
-                  <strong>Command Deck</strong>
-                  <span>Everything at a glance.</span>
-                </div>
-                <div class="screen-preview__tile">
-                  <strong>Maps</strong>
-                  <span>Offline ready</span>
-                </div>
-                <div class="screen-preview__tile">
-                  <strong>Vault</strong>
-                  <span>Contained sources</span>
-                </div>
-              </div>
+            <div class="story-band__visual app-screen-shot">
+              <img src="./assets/screens/roachnet-home-view.svg" alt="RoachNet Home command grid" />
             </div>
             <div class="story-band__copy">
-              <span class="feature-card__eyebrow">Command Deck</span>
-              <h3>Your cockpit.</h3>
-              <p>One keyboard-first workspace for launching AI, watching status, and jumping between maps, chat, and your vault without tab hell.</p>
+              <span class="feature-card__eyebrow">Home</span>
+              <h3>The actual command grid.</h3>
+              <p>Home is the first pane in the native shell, with the same command bar, metric cards, and launch grid you see in the app itself.</p>
             </div>
           </article>
 
           <article class="story-band story-band--reverse">
-            <div class="story-band__visual screen-preview screen-preview--ai">
-              <div class="screen-preview__chat">
-                <span class="screen-preview__bubble">“Summarize the latest notes.”</span>
-                <span class="screen-preview__bubble screen-preview__bubble--reply">Running locally. Qwen is ready.</span>
-              </div>
-              <div class="screen-preview__meta">
-                <span>Ollama</span>
-                <span>OpenClaw</span>
-                <span>Default model</span>
-              </div>
+            <div class="story-band__visual app-screen-shot">
+              <img src="./assets/screens/roachnet-roachclaw-view.svg" alt="RoachNet RoachClaw pane" />
             </div>
             <div class="story-band__copy">
               <span class="feature-card__eyebrow">RoachClaw</span>
-              <h3>Your local AI rail.</h3>
-              <p>Kick prompts to a fast on-device model for day-to-day work. When you need something heavier, route that out on your terms, not by default.</p>
+              <h3>The local AI workbench.</h3>
+              <p>The native app exposes the same model status, skill list, workspace lane, and prompt workbench that RoachNet uses to keep local AI close to the machine.</p>
             </div>
           </article>
 
           <article class="story-band">
-            <div class="story-band__visual screen-preview screen-preview--vault">
-              <div class="screen-preview__map">
-                <span class="screen-preview__route"></span>
-                <span class="screen-preview__marker screen-preview__marker--green"></span>
-                <span class="screen-preview__marker screen-preview__marker--purple"></span>
-              </div>
-              <div class="screen-preview__list">
-                <span>Offline map pack</span>
-                <span>Studio notes</span>
-                <span>Session checklist</span>
-              </div>
+            <div class="story-band__visual app-screen-shot">
+              <img src="./assets/screens/roachnet-maps-view.svg" alt="RoachNet Maps and education content pane" />
             </div>
             <div class="story-band__copy">
-              <span class="feature-card__eyebrow">Offline Maps &amp; Vault</span>
-              <h3>The “I’m-glad-I-saved-that” drawer.</h3>
-              <p>Carry routes, studio notes, session checklists, and important docs in one contained vault so outages feel like “okay, cool” instead of “welp.”</p>
+              <span class="feature-card__eyebrow">Maps &amp; Education</span>
+              <h3>Stage the field content from one lane.</h3>
+              <p>Maps, Wikipedia, and curated education tiers are all staged through the native shell, with download progress and the next action visible in one place.</p>
+            </div>
+          </article>
+
+          <article class="story-band story-band--reverse">
+            <div class="story-band__visual app-screen-shot">
+              <img src="./assets/screens/roachnet-runtime-view.svg" alt="RoachNet Runtime pane" />
+            </div>
+            <div class="story-band__copy">
+              <span class="feature-card__eyebrow">Runtime</span>
+              <h3>Contained, inspectable, recoverable.</h3>
+              <p>The runtime pane is where RoachNet surfaces install roots, server targets, hardware context, and the diagnostics lane when something needs attention.</p>
             </div>
           </article>
         </div>

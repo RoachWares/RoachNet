@@ -27,6 +27,19 @@ Bundle output:
 
 - `native/macos/dist/RoachNet Setup.app`
 - `native/macos/dist/RoachNet.app`
+- `native/macos/dist/RoachNet-Setup-macOS.dmg`
+
+Signing and Gatekeeper:
+
+- Local builds are now ad-hoc signed so the app bundles have a valid signature structure instead of stale/invalid metadata.
+- To ship a Gatekeeper-safe internet download, the GitHub `Native Packages` workflow expects these repository secrets:
+  - `APPLE_DEVELOPER_ID_APP_CERT_BASE64`
+  - `APPLE_DEVELOPER_ID_APP_CERT_PASSWORD`
+  - `APPLE_DEVELOPER_ID_APP_IDENTITY`
+  - `APPLE_NOTARY_APPLE_ID`
+  - `APPLE_NOTARY_APP_PASSWORD`
+  - `APPLE_NOTARY_TEAM_ID`
+- When those secrets are present, `scripts/build-native-macos-apps.mjs` signs with Developer ID and the workflow notarizes plus staples the macOS artifacts.
 
 This scaffold is intentionally focused on:
 

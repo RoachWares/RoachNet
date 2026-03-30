@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVKit
 import WebKit
 import RoachNetCore
 import RoachNetDesign
@@ -61,6 +62,12 @@ struct CommandGridItem: Identifiable {
 struct PresentedWebSurface {
     let title: String
     let url: URL
+}
+
+private struct GuideFeature: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
 }
 
 private struct NativeWebView: NSViewRepresentable {
@@ -334,20 +341,20 @@ final class WorkspaceModel: ObservableObject {
 
     func downloadBaseMapAssets() async {
         await runAction("maps-base-assets", status: "Queueing base map assets.") {
-            _ = try await ManagedAppRuntimeBridge.shared.downloadBaseMapAssets(using: config)
+            _ = try await ManagedAppRuntimeBridge.shared.downloadBaseMapAssets(using: self.config)
         }
     }
 
     func downloadMapCollection(_ slug: String) async {
         await runAction("map-\(slug)", status: "Queueing map collection.") {
-            _ = try await ManagedAppRuntimeBridge.shared.downloadMapCollection(using: config, slug: slug)
+            _ = try await ManagedAppRuntimeBridge.shared.downloadMapCollection(using: self.config, slug: slug)
         }
     }
 
     func downloadEducationTier(categorySlug: String, tierSlug: String) async {
         await runAction("education-\(categorySlug)-\(tierSlug)", status: "Queueing education content.") {
             _ = try await ManagedAppRuntimeBridge.shared.downloadEducationTier(
-                using: config,
+                using: self.config,
                 categorySlug: categorySlug,
                 tierSlug: tierSlug
             )
@@ -357,7 +364,7 @@ final class WorkspaceModel: ObservableObject {
     func applyWikipediaSelection() async {
         let optionId = selectedWikipediaOptionId
         await runAction("wikipedia-\(optionId)", status: "Updating Wikipedia selection.") {
-            _ = try await ManagedAppRuntimeBridge.shared.selectWikipedia(using: config, optionId: optionId)
+            _ = try await ManagedAppRuntimeBridge.shared.selectWikipedia(using: self.config, optionId: optionId)
         }
     }
 
@@ -451,7 +458,149 @@ private struct ChatBubble: View {
     }
 }
 
-@main
+private struct LaunchGuideSheet: View {
+    let onDismiss: () -> Void
+    @State private var player: AVPlayer
+
+    private let featureRows: [GuideFeature] = [
+        .init(
+            id: "home",
+            title: "Home command grid",
+            detail: "Jump into Maps, AI Control, Easy Setup, Offline Web Apps, Install Apps, Docs, and Settings from the native shell."
+        ),
+        .init(
+            id: "roachclaw",
+            title: "RoachClaw workbench",
+            detail: "Check Ollama and OpenClaw status, confirm the default model, and send a local test prompt without leaving the app."
+        ),
+        .init(
+            id: "field",
+            title: "Field content",
+            detail: "Stage offline map packs, pick Wikipedia bundles, queue education tiers, and review mirrored sites already on disk."
+        ),
+        .init(
+            id: "runtime",
+            title: "Runtime recovery",
+            detail: "Use Runtime and Diagnostics to inspect the local gateway, logs, and storage paths when something needs attention."
+        ),
+    ]
+
+    init(onDismiss: @escaping () -> Void) {
+        self.onDismiss = onDismiss
+
+        if let url = Bundle.module.url(forResource: "roachnet-launch-guide", withExtension: "mp4") {
+            _player = State(initialValue: AVPlayer(url: url))
+        } else {
+            _player = State(initialValue: AVPlayer())
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            RoachBackground()
+
+            HStack(spacing: 18) {
+                RoachPanel {
+                    VStack(alignment: .leading, spacing: 16) {
+                        RoachKicker("Guided Tour")
+                        Text("Start here before you roam.")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundStyle(RoachPalette.text)
+                        Text("This silent walkthrough shows the main RoachNet surfaces and the quickest path through the app.")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(RoachPalette.muted)
+
+                        VStack(spacing: 10) {
+                            ForEach(featureRows) { feature in
+                                RoachInsetPanel {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(feature.title)
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundStyle(RoachPalette.text)
+                                        Text(feature.detail)
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(RoachPalette.muted)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 12) {
+                            Button("Replay") {
+                                player.seek(to: .zero)
+                                player.play()
+                            }
+                            .buttonStyle(RoachSecondaryButtonStyle())
+
+                            Button("Start Using RoachNet") {
+                                onDismiss()
+                            }
+                            .buttonStyle(RoachPrimaryButtonStyle())
+                        }
+                    }
+                }
+                .frame(width: 380)
+
+                RoachPanel {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("RoachNet Launch Guide")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(RoachPalette.text)
+                                Text("Auto-plays on first launch and stays available from the main app header.")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(RoachPalette.muted)
+                            }
+
+                            Spacer()
+
+                            RoachTag("First Launch", accent: RoachPalette.green)
+                        }
+
+                        Group {
+                            if player.currentItem != nil {
+                                VideoPlayer(player: player)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                            .stroke(RoachPalette.border, lineWidth: 1)
+                                    )
+                            } else {
+                                RoachInsetPanel {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text("Guide video unavailable")
+                                            .font(.system(size: 18, weight: .semibold))
+                                            .foregroundStyle(RoachPalette.text)
+                                        Text("Rebuild `roachnet-launch-guide.mp4` and relaunch the app to restore the guided tour.")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundStyle(RoachPalette.muted)
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 360, alignment: .leading)
+                                }
+                            }
+                        }
+                        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .frame(minWidth: 1260, minHeight: 820)
+        .onAppear {
+            player.seek(to: .zero)
+            player.play()
+        }
+        .onDisappear {
+            player.pause()
+        }
+    }
+}
+
 struct RoachNetMacApp: App {
     @NSApplicationDelegateAdaptor(RoachNetMacAppDelegate.self) private var appDelegate
     @StateObject private var model = WorkspaceModel()
@@ -467,6 +616,8 @@ struct RoachNetMacApp: App {
 
 private struct RootWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
+    @AppStorage("hasSeenLaunchGuide") private var hasSeenLaunchGuide = false
+    @State private var showLaunchGuide = false
 
     var body: some View {
         ZStack {
@@ -484,6 +635,10 @@ private struct RootWorkspaceView: View {
         .task {
             await model.refreshRuntimeState()
             model.startPolling()
+
+            if model.setupCompleted && !hasSeenLaunchGuide {
+                showLaunchGuide = true
+            }
         }
         .sheet(
             isPresented: Binding(
@@ -497,6 +652,12 @@ private struct RootWorkspaceView: View {
                     url: surface.url,
                     onClose: { model.presentedWebSurface = nil }
                 )
+            }
+        }
+        .sheet(isPresented: $showLaunchGuide) {
+            LaunchGuideSheet {
+                hasSeenLaunchGuide = true
+                showLaunchGuide = false
             }
         }
     }
@@ -602,6 +763,11 @@ private struct RootWorkspaceView: View {
             }
 
             Spacer()
+
+            Button("Guide") {
+                showLaunchGuide = true
+            }
+            .buttonStyle(RoachSecondaryButtonStyle())
 
             RoachTag(model.setupCompleted ? "Local ready" : "Setup required", accent: model.setupCompleted ? RoachPalette.green : RoachPalette.warning)
         }
@@ -752,6 +918,11 @@ private struct RootWorkspaceView: View {
                         }
 
                         Spacer()
+
+                        Button("Guide") {
+                            showLaunchGuide = true
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
 
                         footerAction(title: "Diagnostics", path: "/settings/system")
                         footerAction(title: "Stealth", path: "/settings/legal")
@@ -1447,3 +1618,5 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 }
+
+RoachNetMacApp.main()

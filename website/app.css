@@ -332,6 +332,71 @@ button {
   position: relative;
 }
 
+.screen-frame,
+.app-screen-shot {
+  position: relative;
+  padding: 14px;
+  border-radius: 30px;
+  background:
+    linear-gradient(180deg, rgba(40, 46, 56, 0.74), rgba(18, 22, 28, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 34px 96px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.screen-frame::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -24px;
+  height: 56px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.78), transparent 72%);
+  filter: blur(18px);
+  opacity: 0.85;
+}
+
+.screen-frame__image,
+.app-screen-shot img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.screen-frame--hero {
+  transform: perspective(1800px) rotateX(8deg) rotateY(-12deg) rotateZ(2deg);
+}
+
+.screen-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.screen-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--rn-text-dim);
+  font-size: 0.84rem;
+  font-family:
+    "JetBrains Mono",
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    monospace;
+}
+
 .device-scene {
   position: relative;
   min-height: 620px;
@@ -718,6 +783,10 @@ button {
   line-height: 1.02;
 }
 
+.app-screen-shot {
+  overflow: hidden;
+}
+
 .screen-preview {
   display: grid;
   gap: 14px;
@@ -882,7 +951,8 @@ button {
 }
 
 @media (max-width: 1024px) {
-  .device-shell {
+  .device-shell,
+  .screen-frame--hero {
     transform: none;
   }
 
@@ -963,6 +1033,10 @@ button {
 
   .device-scene {
     min-height: 420px;
+  }
+
+  .screen-chip-row {
+    justify-content: space-between;
   }
 
   .device-shell {

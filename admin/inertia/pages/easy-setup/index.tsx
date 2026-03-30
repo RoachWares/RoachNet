@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import AppLayout from '~/layouts/AppLayout'
 import StyledButton from '~/components/StyledButton'
 import api from '~/lib/api'
@@ -11,14 +11,25 @@ import TierSelectionModal from '~/components/TierSelectionModal'
 import WikipediaSelector from '~/components/WikipediaSelector'
 import LoadingSpinner from '~/components/LoadingSpinner'
 import Alert from '~/components/Alert'
-import { IconCheck, IconChevronDown, IconChevronUp, IconCpu, IconBooks } from '@tabler/icons-react'
+import Input from '~/components/inputs/Input'
+import {
+  IconBooks,
+  IconCheck,
+  IconChevronDown,
+  IconChevronUp,
+  IconCpu,
+  IconShieldBolt,
+  IconWand,
+} from '@tabler/icons-react'
 import StorageProjectionBar from '~/components/StorageProjectionBar'
 import { useNotifications } from '~/context/NotificationContext'
 import useInternetStatus from '~/hooks/useInternetStatus'
 import { useSystemInfo } from '~/hooks/useSystemInfo'
 import { getPrimaryDiskInfo } from '~/hooks/useDiskDisplayData'
+import { useSystemSetting } from '~/hooks/useSystemSetting'
 import classNames from 'classnames'
 import type { CategoryWithStatus, SpecTier, SpecResource } from '../../../types/collections'
+import type { AIRuntimeStatus } from '../../../types/ai'
 import { resolveTierResources } from '~/lib/collections'
 import { SERVICE_NAMES } from '../../../constants/service_names'
 import useAIRuntimeStatus from '~/hooks/useAIRuntimeStatus'
@@ -113,6 +124,116 @@ const CURATED_MAP_COLLECTIONS_KEY = 'curated-map-collections'
 const CURATED_CATEGORIES_KEY = 'curated-categories'
 const WIKIPEDIA_STATE_KEY = 'wikipedia-state'
 
+type RuntimeStatusWithLoading = AIRuntimeStatus & { loading: boolean }
+
+type ProviderOnboardingCardProps = {
+  title: string
+  description: string
+  runtimeStatus: RuntimeStatusWithLoading
+  configuredValue: string
+  placeholder: string
+  helpText: string
+  onConfiguredValueChange: (value: string) => void
+  onSave: () => void
+  onClear: () => void
+  savePending: boolean
+  icon: ReactNode
+  children?: ReactNode
+}
+
+function ProviderOnboardingCard({
+  title,
+  description,
+  runtimeStatus,
+  configuredValue,
+  placeholder,
+  helpText,
+  onConfiguredValueChange,
+  onSave,
+  onClear,
+  savePending,
+  icon,
+  children,
+}: ProviderOnboardingCardProps) {
+  const statusLabel = runtimeStatus.available ? 'Linked' : runtimeStatus.loading ? 'Checking' : 'Offline'
+  const statusClasses = runtimeStatus.available
+    ? 'border-desert-green/40 bg-desert-green/15 text-desert-green-light'
+    : runtimeStatus.loading
+      ? 'border-desert-orange-light/40 bg-desert-orange/15 text-desert-orange-light'
+      : 'border-desert-red-light/30 bg-desert-red/15 text-desert-red-light'
+
+  return (
+    <div className="rounded-[1.4rem] border border-border-default bg-surface-secondary/70 p-5">
+      <div className="flex items-start gap-4">
+        <div className="inline-flex rounded-2xl border border-border-default bg-surface-primary/80 p-3 text-desert-green-light">
+          {icon}
+        </div>
+        <div className="flex-1 space-y-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h4 className="text-lg font-semibold uppercase tracking-[0.12em] text-text-primary">
+                {title}
+              </h4>
+              <span className={classNames(
+                'inline-flex rounded-full border px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em]',
+                statusClasses
+              )}>
+                {statusLabel}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">{description}</p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[1rem] border border-border-default bg-surface-primary/80 p-4">
+              <p className="roachnet-kicker text-[0.64rem] text-text-muted">Detected Via</p>
+              <p className="mt-2 text-sm font-semibold uppercase tracking-[0.16em] text-text-primary">
+                {runtimeStatus.source}
+              </p>
+            </div>
+            <div className="rounded-[1rem] border border-border-default bg-surface-primary/80 p-4">
+              <p className="roachnet-kicker text-[0.64rem] text-text-muted">Effective URL</p>
+              <p className="mt-2 break-all text-sm text-text-primary">
+                {runtimeStatus.baseUrl || 'Not detected'}
+              </p>
+            </div>
+          </div>
+
+          <Input
+            name={`${title.toLowerCase().replace(/\s+/g, '-')}-base-url`}
+            label={`${title} Base URL`}
+            value={configuredValue}
+            onChange={(event) => onConfiguredValueChange(event.target.value)}
+            placeholder={placeholder}
+            helpText={helpText}
+            autoComplete="off"
+          />
+
+          <div className="flex flex-wrap gap-3">
+            <StyledButton onClick={onSave} loading={savePending} icon="IconDeviceFloppy">
+              Save Override
+            </StyledButton>
+            <StyledButton
+              variant="ghost"
+              onClick={onClear}
+              disabled={savePending || configuredValue.length === 0}
+              icon="IconEraser"
+            >
+              Clear Override
+            </StyledButton>
+          </div>
+
+          {runtimeStatus.error && !runtimeStatus.loading && (
+            <p className="text-sm text-desert-red-light">{runtimeStatus.error}</p>
+          )}
+
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function EasySetupWizard(props: { system: { services: ServiceSlim[] } }) {
   const { aiAssistantName } = usePage<{ aiAssistantName: string }>().props
   const CORE_CAPABILITIES = buildCoreCapabilities(aiAssistantName)
@@ -131,19 +252,20 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
 
   // Wikipedia selection state
   const [selectedWikipedia, setSelectedWikipedia] = useState<string | null>(null)
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('')
+  const [openClawBaseUrl, setOpenClawBaseUrl] = useState('')
+  const [openClawWorkspacePath, setOpenClawWorkspacePath] = useState('')
+  const [savingSettingKey, setSavingSettingKey] = useState<string | null>(null)
 
   const { addNotification } = useNotifications()
   const { isOnline } = useInternetStatus()
   const queryClient = useQueryClient()
   const { data: systemInfo } = useSystemInfo({ enabled: true })
   const aiRuntimeStatus = useAIRuntimeStatus('ollama')
-
-  const anySelectionMade =
-    selectedServices.length > 0 ||
-    selectedMapCollections.length > 0 ||
-    selectedTiers.size > 0 ||
-    selectedAiModels.length > 0 ||
-    (selectedWikipedia !== null && selectedWikipedia !== 'none')
+  const openClawRuntimeStatus = useAIRuntimeStatus('openclaw')
+  const { data: ollamaBaseUrlSetting } = useSystemSetting({ key: 'ai.ollamaBaseUrl' })
+  const { data: openClawBaseUrlSetting } = useSystemSetting({ key: 'ai.openclawBaseUrl' })
+  const { data: openClawWorkspacePathSetting } = useSystemSetting({ key: 'ai.openclawWorkspacePath' })
 
   const { data: mapCollections, isLoading: isLoadingMaps } = useQuery({
     queryKey: [CURATED_MAP_COLLECTIONS_KEY],
@@ -177,6 +299,42 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
     refetchOnWindowFocus: false,
   })
 
+  const { data: roachClawStatus } = useQuery({
+    queryKey: ['roachclaw', 'status'],
+    queryFn: () => api.getRoachClawStatus(),
+    staleTime: 15_000,
+  })
+
+  const saveSettingMutation = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: string }) => {
+      return await api.updateSetting(key, value.trim())
+    },
+    onSuccess: async (_, variables) => {
+      addNotification({
+        type: 'success',
+        message: 'AI provider setting saved. Re-checking runtime status.',
+      })
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['system-setting', variables.key] }),
+        queryClient.invalidateQueries({ queryKey: ['ai-runtime-providers'] }),
+        queryClient.invalidateQueries({ queryKey: ['roachclaw', 'status'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'status'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'installed'] }),
+      ])
+    },
+    onError: (error) => {
+      console.error('Failed to save AI provider setting:', error)
+      addNotification({
+        type: 'error',
+        message: 'Failed to save AI provider setting.',
+      })
+    },
+    onSettled: () => {
+      setSavingSettingKey(null)
+    },
+  })
+
   // All services for display purposes
   const allServices = props.system.services
 
@@ -186,6 +344,49 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
 
   // Services that are already installed
   const installedServices = props.system.services.filter((service) => service.installed)
+
+  useEffect(() => {
+    setOllamaBaseUrl(String(ollamaBaseUrlSetting?.value || ''))
+  }, [ollamaBaseUrlSetting?.value])
+
+  useEffect(() => {
+    setOpenClawBaseUrl(String(openClawBaseUrlSetting?.value || ''))
+  }, [openClawBaseUrlSetting?.value])
+
+  useEffect(() => {
+    setOpenClawWorkspacePath(String(openClawWorkspacePathSetting?.value || ''))
+  }, [openClawWorkspacePathSetting?.value])
+
+  const normalizedOllamaBaseUrl = ollamaBaseUrl.trim()
+  const normalizedOpenClawBaseUrl = openClawBaseUrl.trim()
+  const normalizedOpenClawWorkspacePath = openClawWorkspacePath.trim()
+
+  const configuredOllamaBaseUrl = String(ollamaBaseUrlSetting?.value || '').trim()
+  const configuredOpenClawBaseUrl = String(openClawBaseUrlSetting?.value || '').trim()
+  const configuredOpenClawWorkspacePath = String(openClawWorkspacePathSetting?.value || '').trim()
+
+  const hasProviderChanges =
+    normalizedOllamaBaseUrl !== configuredOllamaBaseUrl ||
+    normalizedOpenClawBaseUrl !== configuredOpenClawBaseUrl ||
+    normalizedOpenClawWorkspacePath !== configuredOpenClawWorkspacePath
+
+  const aiSelected =
+    selectedServices.includes(SERVICE_NAMES.OLLAMA) ||
+    installedServices.some((service) => service.service_name === SERVICE_NAMES.OLLAMA) ||
+    aiRuntimeStatus.available ||
+    openClawRuntimeStatus.available
+
+  const informationSelected =
+    selectedServices.includes(SERVICE_NAMES.KIWIX) ||
+    installedServices.some((service) => service.service_name === SERVICE_NAMES.KIWIX)
+
+  const anySelectionMade =
+    selectedServices.length > 0 ||
+    selectedMapCollections.length > 0 ||
+    selectedTiers.size > 0 ||
+    selectedAiModels.length > 0 ||
+    (selectedWikipedia !== null && selectedWikipedia !== 'none') ||
+    hasProviderChanges
 
   const toggleMapCollection = (slug: string) => {
     setSelectedMapCollections((prev) =>
@@ -301,13 +502,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
   // Get primary disk/filesystem info for storage projection
   const storageInfo = getPrimaryDiskInfo(systemInfo?.disk, systemInfo?.fsSize)
 
-  const canProceedToNextStep = () => {
-    if (!isOnline) return false // Must be online to proceed
-    if (currentStep === 1) return true // Can skip app installation
-    if (currentStep === 2) return true // Can skip map downloads
-    if (currentStep === 3) return true // Can skip ZIM downloads
-    return false
-  }
+  const canProceedToNextStep = () => true
 
   const handleNext = () => {
     if (currentStep < 4) {
@@ -322,10 +517,41 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
   }
 
   const handleFinish = async () => {
-    if (!isOnline) {
+    const servicesToInstall = selectedServices.filter((serviceName) => {
+      return serviceName !== SERVICE_NAMES.OLLAMA || !aiRuntimeStatus.available
+    })
+
+    const installedModelNames = new Set(roachClawStatus?.installedModels || [])
+    const selectedModelDownloads = selectedAiModels.filter((modelName) => !installedModelNames.has(modelName))
+    const roachClawModel =
+      selectedAiModels[0] ||
+      roachClawStatus?.resolvedDefaultModel ||
+      roachClawStatus?.defaultModel ||
+      roachClawStatus?.installedModels[0] ||
+      recommendedModels?.[0]?.name
+    const roachClawModelNeedsDownload = Boolean(
+      roachClawModel && !installedModelNames.has(roachClawModel)
+    )
+    const wikipediaSelectionChanged =
+      Boolean(selectedWikipedia) && selectedWikipedia !== wikipediaState?.currentSelection?.optionId
+    const aiOnboardingRequested =
+      aiSelected ||
+      normalizedOllamaBaseUrl.length > 0 ||
+      normalizedOpenClawBaseUrl.length > 0 ||
+      normalizedOpenClawWorkspacePath.length > 0
+    const requiresInternet =
+      servicesToInstall.length > 0 ||
+      selectedMapCollections.length > 0 ||
+      selectedTiers.size > 0 ||
+      selectedModelDownloads.length > 0 ||
+      wikipediaSelectionChanged ||
+      (aiOnboardingRequested && roachClawModelNeedsDownload)
+
+    if (requiresInternet && !isOnline) {
       addNotification({
         type: 'error',
-        message: 'You must have an internet connection to complete the setup.',
+        message:
+          'Local provider onboarding can be saved offline, but installs and downloads still need an internet connection.',
       })
       return
     }
@@ -333,14 +559,31 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
     setIsProcessing(true)
 
     try {
-      // All of these ops don't actually wait for completion, they just kick off the process, so we can run them in parallel without awaiting each one sequentially
-      const servicesToInstall = selectedServices.filter((serviceName) => {
-        return serviceName !== SERVICE_NAMES.OLLAMA || !aiRuntimeStatus.available
-      })
+      const providerSettingUpdates: Promise<unknown>[] = []
+
+      if (normalizedOllamaBaseUrl !== configuredOllamaBaseUrl) {
+        providerSettingUpdates.push(api.updateSetting('ai.ollamaBaseUrl', normalizedOllamaBaseUrl))
+      }
+
+      if (normalizedOpenClawBaseUrl !== configuredOpenClawBaseUrl) {
+        providerSettingUpdates.push(api.updateSetting('ai.openclawBaseUrl', normalizedOpenClawBaseUrl))
+      }
+
+      if (normalizedOpenClawWorkspacePath !== configuredOpenClawWorkspacePath) {
+        providerSettingUpdates.push(
+          api.updateSetting('ai.openclawWorkspacePath', normalizedOpenClawWorkspacePath)
+        )
+      }
+
+      if (providerSettingUpdates.length > 0) {
+        await Promise.all(providerSettingUpdates)
+      }
 
       const installPromises = servicesToInstall.map((serviceName) => api.installService(serviceName))
 
-      await Promise.all(installPromises)
+      if (installPromises.length > 0) {
+        await Promise.all(installPromises)
+      }
 
       // Download collections, category tiers, and AI models
       const categoryTierPromises: Promise<any>[] = []
@@ -354,15 +597,16 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
         ...selectedAiModels.map((modelName) => api.downloadModel(modelName)),
       ]
 
-      await Promise.all(downloadPromises)
+      if (downloadPromises.length > 0) {
+        await Promise.all(downloadPromises)
+      }
 
-      const roachClawSelected =
-        selectedServices.includes(SERVICE_NAMES.OLLAMA) || selectedAiModels.length > 0
-      const roachClawModel = selectedAiModels[0] || recommendedModels?.[0]?.name
-
-      if (roachClawSelected && roachClawModel) {
+      if (aiOnboardingRequested && roachClawModel) {
         await api.applyRoachClawOnboarding({
           model: roachClawModel,
+          workspacePath: normalizedOpenClawWorkspacePath || undefined,
+          ollamaBaseUrl: normalizedOllamaBaseUrl || undefined,
+          openclawBaseUrl: normalizedOpenClawBaseUrl || undefined,
         })
       }
 
@@ -371,9 +615,21 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
         await api.selectWikipedia(selectedWikipedia)
       }
 
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ai-runtime-providers'] }),
+        queryClient.invalidateQueries({ queryKey: ['roachclaw', 'status'] }),
+        queryClient.invalidateQueries({ queryKey: ['system-setting', 'ai.ollamaBaseUrl'] }),
+        queryClient.invalidateQueries({ queryKey: ['system-setting', 'ai.openclawBaseUrl'] }),
+        queryClient.invalidateQueries({ queryKey: ['system-setting', 'ai.openclawWorkspacePath'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'status'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'installed'] }),
+      ])
+
       addNotification({
         type: 'success',
-        message: 'Setup wizard completed! Your selections are being processed.',
+        message: requiresInternet
+          ? 'Setup wizard completed! Your selections are being processed.'
+          : 'Provider onboarding saved. RoachNet updated your local AI runtime configuration.',
       })
 
       router.visit('/easy-setup/complete')
@@ -424,7 +680,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
 
   const renderStepIndicator = () => {
     const steps = [
-      { number: 1, label: 'Apps' },
+      { number: 1, label: 'Capabilities' },
       { number: 2, label: 'Maps' },
       { number: 3, label: 'Content' },
       { number: 4, label: 'Review' },
@@ -505,7 +761,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
 
   // Check if a capability is already installed (all its services are installed)
   const isCapabilityInstalled = (capability: Capability) => {
-    if (capability.id === 'ai' && aiRuntimeStatus.available) {
+    if (capability.id === 'ai' && (aiRuntimeStatus.available || openClawRuntimeStatus.available)) {
       return true
     }
 
@@ -545,7 +801,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
     const exists = capabilityExists(capability)
     const runtimeLinked =
       capability.id === 'ai' &&
-      aiRuntimeStatus.available &&
+      (aiRuntimeStatus.available || openClawRuntimeStatus.available) &&
       !installedServices.some((service) => service.service_name === SERVICE_NAMES.OLLAMA)
 
     if (!exists) return null
@@ -591,10 +847,15 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
             >
               Powered by {capability.technicalName}
             </p>
-            {runtimeLinked && aiRuntimeStatus.baseUrl && (
-              <p className="mt-2 text-xs uppercase tracking-[0.18em] text-desert-green-light">
-                Local runtime detected at {aiRuntimeStatus.baseUrl}
-              </p>
+            {capability.id === 'ai' && (
+              <div className="mt-2 space-y-1 text-xs uppercase tracking-[0.18em] text-desert-green-light">
+                {aiRuntimeStatus.available && aiRuntimeStatus.baseUrl && (
+                  <p>Ollama linked at {aiRuntimeStatus.baseUrl}</p>
+                )}
+                {openClawRuntimeStatus.available && openClawRuntimeStatus.baseUrl && (
+                  <p>OpenClaw linked at {openClawRuntimeStatus.baseUrl}</p>
+                )}
+              </div>
             )}
             <p
               className={classNames(
@@ -666,7 +927,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
         <div className="text-center mb-6">
           <h2 className="text-3xl font-bold text-text-primary mb-2">What do you want RoachNet to do?</h2>
           <p className="text-text-secondary">
-            Select the capabilities you need. You can always add more later.
+            Select the capabilities you need, then stage the provider endpoints RoachNet should use.
           </p>
         </div>
 
@@ -674,6 +935,15 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
           <Alert
             title={`${aiAssistantName} runtime already connected`}
             message={`RoachNet found a local Ollama runtime at ${aiRuntimeStatus.baseUrl}. You can skip the managed install and go straight to model downloads.`}
+            type="info"
+            variant="bordered"
+          />
+        )}
+
+        {openClawRuntimeStatus.available && openClawRuntimeStatus.baseUrl && (
+          <Alert
+            title="OpenClaw runtime already connected"
+            message={`RoachNet found an OpenClaw runtime at ${openClawRuntimeStatus.baseUrl}. You can keep that endpoint or override it below without waiting on the managed install path.`}
             type="info"
             variant="bordered"
           />
@@ -729,6 +999,103 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
                 )}
               </div>
             )}
+
+            <div className="border-t border-desert-stone-light pt-6">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary">AI Provider Onboarding</h3>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Easy Setup now stages shared runtime settings directly. Use these overrides here
+                    or jump to the full AI Control page for the same provider surface.
+                  </p>
+                </div>
+                <StyledButton
+                  variant="ghost"
+                  icon="IconExternalLink"
+                  onClick={() => router.visit('/settings/ai')}
+                >
+                  Open Shared AI Control
+                </StyledButton>
+              </div>
+
+              {!isOnline && (
+                <Alert
+                  title="Offline provider onboarding still works"
+                  message="You can save local Ollama and OpenClaw endpoint overrides while offline. App installs, model downloads, and content packs will queue once internet access is back."
+                  type="info"
+                  variant="bordered"
+                  className="mt-4"
+                />
+              )}
+
+              <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <ProviderOnboardingCard
+                  title={aiAssistantName}
+                  description="RoachNet uses Ollama for local chat, model downloads, and the default RoachClaw model lane."
+                  runtimeStatus={aiRuntimeStatus}
+                  configuredValue={ollamaBaseUrl}
+                  placeholder="http://127.0.0.1:11434"
+                  helpText="Leave this blank to fall back to OLLAMA_BASE_URL, local discovery on 127.0.0.1:11434, then the managed runtime."
+                  onConfiguredValueChange={setOllamaBaseUrl}
+                  onSave={() => {
+                    setSavingSettingKey('ai.ollamaBaseUrl')
+                    saveSettingMutation.mutate({ key: 'ai.ollamaBaseUrl', value: ollamaBaseUrl })
+                  }}
+                  onClear={() => setOllamaBaseUrl('')}
+                  savePending={saveSettingMutation.isPending && savingSettingKey === 'ai.ollamaBaseUrl'}
+                  icon={<IconWand className="size-6" />}
+                />
+
+                <ProviderOnboardingCard
+                  title="OpenClaw"
+                  description="OpenClaw stays in the shared AI runtime layer now, so connector and skill work can be staged without inventing a separate setup flow."
+                  runtimeStatus={openClawRuntimeStatus}
+                  configuredValue={openClawBaseUrl}
+                  placeholder="http://127.0.0.1:3001"
+                  helpText="Set the OpenClaw base URL here or provide OPENCLAW_BASE_URL. RoachNet probes /health, /api/health, and / to confirm reachability."
+                  onConfiguredValueChange={setOpenClawBaseUrl}
+                  onSave={() => {
+                    setSavingSettingKey('ai.openclawBaseUrl')
+                    saveSettingMutation.mutate({ key: 'ai.openclawBaseUrl', value: openClawBaseUrl })
+                  }}
+                  onClear={() => setOpenClawBaseUrl('')}
+                  savePending={saveSettingMutation.isPending && savingSettingKey === 'ai.openclawBaseUrl'}
+                  icon={<IconShieldBolt className="size-6" />}
+                >
+                  <div className="rounded-[1rem] border border-border-default bg-surface-primary/80 p-4">
+                    <Input
+                      name="easy-setup-openclaw-workspace"
+                      label="OpenClaw Workspace Path"
+                      value={openClawWorkspacePath}
+                      onChange={(event) => setOpenClawWorkspacePath(event.target.value)}
+                      placeholder={roachClawStatus?.workspacePath || '/path/to/openclaw-workspace'}
+                      helpText="Skills install into <workspace>/skills, and RoachClaw stores the default model here."
+                    />
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <StyledButton
+                        onClick={() => {
+                          setSavingSettingKey('ai.openclawWorkspacePath')
+                          saveSettingMutation.mutate({
+                            key: 'ai.openclawWorkspacePath',
+                            value: openClawWorkspacePath,
+                          })
+                        }}
+                        loading={
+                          saveSettingMutation.isPending &&
+                          savingSettingKey === 'ai.openclawWorkspacePath'
+                        }
+                        icon="IconDeviceFloppy"
+                      >
+                        Save Workspace
+                      </StyledButton>
+                      <div className="rounded-full border border-border-default bg-surface-secondary/80 px-4 py-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
+                        Effective: {roachClawStatus?.workspacePath || normalizedOpenClawWorkspacePath || 'Pending'}
+                      </div>
+                    </div>
+                  </div>
+                </ProviderOnboardingCard>
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -782,35 +1149,37 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
   )
 
   const renderStep3 = () => {
-    // Check if AI or Information capabilities are selected OR already installed
-    const isAiSelected = selectedServices.includes(SERVICE_NAMES.OLLAMA) ||
-      installedServices.some((s) => s.service_name === SERVICE_NAMES.OLLAMA) ||
-      aiRuntimeStatus.available
-    const isInformationSelected = selectedServices.includes(SERVICE_NAMES.KIWIX) ||
-      installedServices.some((s) => s.service_name === SERVICE_NAMES.KIWIX)
-
     return (
       <div className="space-y-6">
         <div className="text-center mb-6">
           <h2 className="text-3xl font-bold text-text-primary mb-2">Choose Content</h2>
           <p className="text-text-secondary">
-            {isAiSelected && isInformationSelected
+            {aiSelected && informationSelected
               ? 'Select AI models and content categories for offline use.'
-              : isAiSelected
-                ? 'Select AI models to download for offline use.'
-                : isInformationSelected
+              : aiSelected
+                ? 'Select AI models and finalize the provider-backed local AI path.'
+                : informationSelected
                   ? 'Select content categories for offline knowledge.'
                   : 'Configure content for your selected capabilities.'}
           </p>
         </div>
 
         {/* AI Model Selection - Only show if AI capability is selected */}
-        {isAiSelected && (
+        {aiSelected && (
           <div className="mb-8">
             {aiRuntimeStatus.available && aiRuntimeStatus.baseUrl && (
               <Alert
                 title={`${aiAssistantName} is ready`}
                 message={`RoachNet will use your ${aiRuntimeStatus.source} runtime at ${aiRuntimeStatus.baseUrl} for model downloads and chat.`}
+                type="info"
+                variant="bordered"
+                className="mb-4"
+              />
+            )}
+            {openClawRuntimeStatus.available && openClawRuntimeStatus.baseUrl && (
+              <Alert
+                title="OpenClaw provider detected"
+                message={`Connector and skill workflows can point at ${openClawRuntimeStatus.baseUrl} while RoachClaw keeps Ollama as the local model default.`}
                 type="info"
                 variant="bordered"
                 className="mb-4"
@@ -900,10 +1269,10 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
         )}
 
         {/* Wikipedia Selection - Only show if Information capability is selected */}
-        {isInformationSelected && (
+        {informationSelected && (
           <>
             {/* Divider between AI Models and Wikipedia */}
-            {isAiSelected && <hr className="my-8 border-border-subtle" />}
+            {aiSelected && <hr className="my-8 border-border-subtle" />}
 
             <div className="mb-8">
               {isLoadingWikipedia ? (
@@ -924,7 +1293,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
         )}
 
         {/* Curated Categories with Tiers - Only show if Information capability is selected */}
-        {isInformationSelected && (
+        {informationSelected && (
           <>
             {/* Divider between Wikipedia and Additional Content */}
             <hr className="my-8 border-border-subtle" />
@@ -975,7 +1344,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
         )}
 
         {/* Show message if no capabilities requiring content are selected */}
-        {!isAiSelected && !isInformationSelected && (
+        {!aiSelected && !informationSelected && (
           <div className="text-center py-12">
             <p className="text-text-secondary text-lg">
               No content-based capabilities selected. You can skip this step or go back to select
@@ -1011,16 +1380,46 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
           />
         ) : (
           <div className="space-y-6">
-            {(selectedServices.includes(SERVICE_NAMES.OLLAMA) || aiRuntimeStatus.available) && (
+            {(selectedServices.includes(SERVICE_NAMES.OLLAMA) ||
+              aiRuntimeStatus.available ||
+              openClawRuntimeStatus.available ||
+              hasProviderChanges) && (
               <div className="bg-surface-primary rounded-lg border-2 border-desert-stone-light p-6">
-                <h3 className="text-xl font-semibold text-text-primary mb-4">AI Runtime</h3>
-                <div className="flex items-center">
-                  <IconCheck size={20} className="text-desert-green mr-2" />
-                  <span className="text-text-primary">
-                    {aiRuntimeStatus.available
-                      ? `${aiAssistantName} will use the detected ${aiRuntimeStatus.source} runtime${aiRuntimeStatus.baseUrl ? ` at ${aiRuntimeStatus.baseUrl}` : ''}.`
-                      : `${aiAssistantName} will be installed as a managed local runtime.`}
-                  </span>
+                <h3 className="text-xl font-semibold text-text-primary mb-4">AI Providers</h3>
+                <div className="space-y-3 text-text-primary">
+                  <div className="flex items-center">
+                    <IconCheck size={20} className="text-desert-green mr-2" />
+                    <span>
+                      {aiRuntimeStatus.available
+                        ? `${aiAssistantName} will use the detected ${aiRuntimeStatus.source} runtime${aiRuntimeStatus.baseUrl ? ` at ${aiRuntimeStatus.baseUrl}` : ''}.`
+                        : `${aiAssistantName} will be installed as a managed local runtime.`}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <IconCheck size={20} className="text-desert-green mr-2" />
+                    <span>
+                      {openClawRuntimeStatus.available
+                        ? `OpenClaw is linked at ${openClawRuntimeStatus.baseUrl}.`
+                        : normalizedOpenClawBaseUrl
+                          ? `OpenClaw will use the configured endpoint at ${normalizedOpenClawBaseUrl}.`
+                          : 'OpenClaw stays optional until its runtime is online.'}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <IconCheck size={20} className="text-desert-green mr-2" />
+                    <span>
+                      Workspace: {normalizedOpenClawWorkspacePath || roachClawStatus?.workspacePath || 'RoachNet default workspace'}
+                    </span>
+                  </div>
+                  {(selectedAiModels[0] || roachClawStatus?.resolvedDefaultModel || roachClawStatus?.defaultModel) && (
+                    <div className="flex items-center">
+                      <IconCheck size={20} className="text-desert-green mr-2" />
+                      <span>
+                        RoachClaw default model:{' '}
+                        {selectedAiModels[0] || roachClawStatus?.resolvedDefaultModel || roachClawStatus?.defaultModel}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1169,7 +1568,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
       {!isOnline && (
         <Alert
           title="No Internet Connection"
-          message="You'll need an internet connection to proceed. Please connect to the internet and try again."
+          message="Local provider onboarding still works while offline. Install tasks and content downloads will wait until internet access returns."
           type="warning"
           variant="solid"
           className="mb-8"
