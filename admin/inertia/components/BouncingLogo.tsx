@@ -31,9 +31,9 @@ const FadingImage = ({ alt = 'RoachNet mark', className = '' }) => {
       isVisible ? 'opacity-100' : 'opacity-0'
     }`}>
       <img
-        src="/roachnet-mark.svg"
+        src="/roachnet-mark.png"
         alt={alt}
-        className={`h-64 w-64 drop-shadow-[0_0_28px_rgba(0,255,102,0.26)] ${className}`}
+        className={`h-64 w-64 object-contain drop-shadow-[0_0_28px_rgba(0,255,102,0.26)] ${className}`}
       />
     </div>
   )

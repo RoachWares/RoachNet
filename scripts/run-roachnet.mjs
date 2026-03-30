@@ -8,6 +8,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import {
+  composeUpRoachNetServices,
+  detectRoachNetContainerRuntime,
+  startRoachNetContainerRuntime,
+} from './lib/roachnet_container_runtime.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -22,6 +27,7 @@ const buildAssetManifestPath = path.join(buildDir, 'public', 'assets', '.vite', 
 const storageLogsDir = path.join(adminDir, 'storage', 'logs')
 const serverLogPath = path.join(storageLogsDir, 'roachnet-server.log')
 const runtimeCacheRoot = path.join(tmpdir(), 'roachnet-runtime-cache')
+const managementComposePath = path.join(repoRoot, 'ops', 'roachnet-management.compose.yml')
 
 const SERVER_BOOT_TIMEOUT_MS = 180_000
 const BUILD_BOOT_TIMEOUT_MS = 60_000
@@ -87,6 +93,11 @@ function getBaseUrl(envValues) {
   const host = envValues.HOST || 'localhost'
   const port = envValues.PORT || '8080'
   return new URL(`http://${host}:${port}`)
+}
+
+function getRequestedOpenPath() {
+  const requestedPath = process.env.ROACHNET_OPEN_PATH || '/home'
+  return requestedPath.startsWith('/') ? requestedPath : `/${requestedPath}`
 }
 
 function getPreferredNpmBinary() {
@@ -183,7 +194,30 @@ function getPreferredNodeBinary() {
   return existsSync(macHomebrewNode22) ? macHomebrewNode22 : process.execPath
 }
 
+function getPersistentStorageRoot() {
+  return path.join(adminDir, 'storage')
+}
+
+function getRuntimeEnvValues(envValues) {
+  const storageRoot = envValues.NOMAD_STORAGE_PATH?.trim() || getPersistentStorageRoot()
+
+  return {
+    ...envValues,
+    NOMAD_STORAGE_PATH: storageRoot,
+    OPENCLAW_WORKSPACE_PATH:
+      envValues.OPENCLAW_WORKSPACE_PATH?.trim() || path.join(storageRoot, 'openclaw'),
+  }
+}
+
 function getServerRuntimeTarget() {
+  if (existsSync(managementComposePath)) {
+    return {
+      cwd: repoRoot,
+      entrypoint: managementComposePath,
+      kind: 'docker',
+    }
+  }
+
   if (process.env.ROACHNET_USE_SOURCE === '1') {
     return {
       cwd: adminDir,
@@ -225,6 +259,15 @@ function openBrowser(url) {
   spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref()
 }
 
+function writeServerInfo(info) {
+  const outputPath = process.env.ROACHNET_SERVER_INFO_FILE
+  if (!outputPath) {
+    return
+  }
+
+  writeFileSync(outputPath, JSON.stringify(info, null, 2) + '\n', 'utf8')
+}
+
 async function runCommand(binary, args, options) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, {
@@ -259,6 +302,31 @@ async function runCommand(binary, args, options) {
   })
 }
 
+async function commandPath(command) {
+  try {
+    const binary = process.platform === 'win32' ? 'where' : 'which'
+    const result = await runCommand(binary, [command], {
+      cwd: repoRoot,
+      env: process.env,
+    })
+    return result.stdout.split(/\r?\n/).find(Boolean)?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function commandExists(command, args = ['--version']) {
+  try {
+    await runCommand(command, args, {
+      cwd: repoRoot,
+      env: process.env,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function getBuildRuntimeFingerprint() {
   if (!existsSync(buildEntrypointPath) || !existsSync(buildPackageLockPath) || !existsSync(buildPackageJsonPath)) {
     return null
@@ -283,6 +351,7 @@ function getBuildRuntimeFingerprint() {
 }
 
 async function prepareBuildRuntimeTarget(envValues) {
+  const runtimeEnvValues = getRuntimeEnvValues(envValues)
   const fingerprint = getBuildRuntimeFingerprint()
 
   if (!fingerprint) {
@@ -326,7 +395,7 @@ async function prepareBuildRuntimeTarget(envValues) {
   writeFileSync(
     path.join(runtimeDir, '.env'),
     serializeEnvFile({
-      ...envValues,
+      ...runtimeEnvValues,
       NODE_ENV: 'production',
     }),
     'utf8'
@@ -344,7 +413,7 @@ async function prepareBuildRuntimeTarget(envValues) {
       cwd: runtimeDir,
       env: {
         ...process.env,
-        ...envValues,
+        ...runtimeEnvValues,
         NODE_ENV: 'production',
         PATH: `/opt/homebrew/opt/node@22/bin:${process.env.PATH || ''}`,
       },
@@ -354,8 +423,8 @@ async function prepareBuildRuntimeTarget(envValues) {
   }
 
   return {
-    cwd: runtimeDir,
-    entrypoint: 'bin/server.js',
+    cwd: adminDir,
+    entrypoint: path.join(runtimeDir, 'bin', 'server.js'),
     kind: 'build',
   }
 }
@@ -377,9 +446,49 @@ function terminateDetachedChild(child) {
 }
 
 async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogFd) {
+  if (target.kind === 'docker') {
+    await startRoachNetContainerRuntime({
+      commandExists,
+      detectRuntime: () =>
+        detectRoachNetContainerRuntime({
+          commandPath,
+          commandExists,
+          runProcess: runCommand,
+        }),
+      runProcess: runCommand,
+      runShell(command, options = {}) {
+        return runCommand(command, [], {
+          ...options,
+          shell: true,
+        })
+      },
+      env: process.env,
+    })
+
+    await composeUpRoachNetServices({
+      composeFiles: [target.entrypoint],
+      cwd: target.cwd,
+      installPath: repoRoot,
+      runProcess: runCommand,
+      env: process.env,
+      waitTimeoutMs: timeoutMs,
+      services: ['admin'],
+    })
+
+    const healthyUrl = await waitForHealth(healthUrls, timeoutMs)
+
+    return {
+      child: null,
+      childExited: false,
+      healthyUrl,
+      target,
+    }
+  }
+
   const nodeBinary = getPreferredNodeBinary()
   const resolvedTarget =
     target.kind === 'build' ? await prepareBuildRuntimeTarget(envValues) : target
+  const runtimeEnvValues = getRuntimeEnvValues(envValues)
 
   if (!resolvedTarget) {
     return {
@@ -405,7 +514,7 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
       detached: true,
       env: {
         ...process.env,
-        ...envValues,
+        ...runtimeEnvValues,
         NODE_ENV: resolvedTarget.kind === 'build' ? 'production' : envValues.NODE_ENV || 'development',
         ROACHNET_REPO_ROOT: repoRoot,
       },
@@ -445,11 +554,19 @@ async function main() {
   const envValues = await loadEnv()
   const baseUrl = getBaseUrl(envValues)
   const healthUrls = getLoopbackHealthUrls(baseUrl)
+  const requestedOpenPath = getRequestedOpenPath()
 
   const alreadyRunningUrl = await waitForHealth(healthUrls, 1_000)
 
   if (alreadyRunningUrl) {
-    const runningHomeUrl = new URL('/home', alreadyRunningUrl)
+    const runningHomeUrl = new URL(requestedOpenPath, alreadyRunningUrl)
+    writeServerInfo({
+      pid: null,
+      healthUrl: alreadyRunningUrl.toString(),
+      webUrl: runningHomeUrl.toString(),
+      target: 'existing',
+      repoRoot,
+    })
     openBrowser(runningHomeUrl.toString())
     console.log(`RoachNet is already running at ${runningHomeUrl.toString()}`)
     return
@@ -508,7 +625,16 @@ async function main() {
     throw new Error(`${reason} Check ${serverLogPath} for startup logs.`)
   }
 
-  const homeUrl = new URL('/home', launchResult.healthyUrl)
+  const homeUrl = new URL(requestedOpenPath, launchResult.healthyUrl)
+
+  writeServerInfo({
+    pid: launchResult.child?.pid ?? null,
+    healthUrl: launchResult.healthyUrl.toString(),
+    webUrl: homeUrl.toString(),
+    target: launchResult.target.kind,
+    repoRoot,
+    logPath: serverLogPath,
+  })
 
   openBrowser(homeUrl.toString())
 

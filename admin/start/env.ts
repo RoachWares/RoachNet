@@ -62,4 +62,5 @@ export default await Env.create(new URL('../', import.meta.url), {
   NOMAD_API_URL: Env.schema.string.optional(),
   OLLAMA_BASE_URL: Env.schema.string.optional(),
   OPENCLAW_BASE_URL: Env.schema.string.optional(),
+  OPENCLAW_WORKSPACE_PATH: Env.schema.string.optional(),
 })

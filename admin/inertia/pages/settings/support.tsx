@@ -25,10 +25,12 @@ export default function SupportPage() {
               href="https://github.com/AHGRoach/RoachNet"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-desert-green hover:bg-btn-green-hover text-desert-green-darker font-semibold rounded-lg transition-colors"
+              className="roachnet-button roachnet-button--primary inline-flex items-center gap-2 rounded-lg bg-desert-green px-5 py-2.5 font-semibold text-desert-green-darker transition-colors hover:bg-btn-green-hover"
             >
-              Open the GitHub Repo
-              <IconExternalLink size={18} />
+              <span className="relative z-10 inline-flex items-center gap-2">
+                Open the GitHub Repo
+                <IconExternalLink size={18} />
+              </span>
             </a>
           </section>
 

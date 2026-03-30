@@ -58,13 +58,23 @@ const SYSTEM_ITEMS = [
     poweredBy: null,
   },
   {
+    label: 'Offline Web Apps',
+    to: '/site-archives',
+    target: '',
+    description: 'Mirror standard websites into browseable offline local web apps.',
+    icon: <IconDatabase size={48} />,
+    installed: true,
+    displayOrder: 52,
+    poweredBy: null,
+  },
+  {
     label: 'Install Apps',
     to: '/settings/apps',
     target: '',
     description: 'Not seeing your favorite app? Install it here!',
     icon: <IconPlus size={48} />,
     installed: true,
-    displayOrder: 52,
+    displayOrder: 53,
     poweredBy: null,
   },
   {
@@ -74,7 +84,7 @@ const SYSTEM_ITEMS = [
     description: 'Read RoachNet manuals, deployment notes, and field references.',
     icon: <IconHelp size={48} />,
     installed: true,
-    displayOrder: 53,
+    displayOrder: 54,
     poweredBy: null,
   },
   {
@@ -84,7 +94,7 @@ const SYSTEM_ITEMS = [
     description: 'Tune RoachNet, providers, storage paths, and local services.',
     icon: <IconSettings size={48} />,
     installed: true,
-    displayOrder: 54,
+    displayOrder: 55,
     poweredBy: null,
   },
 ]

@@ -67,14 +67,14 @@ function buildCoreCapabilities(aiAssistantName: string): Capability[] {
     },
     {
       id: 'ai',
-      name: aiAssistantName,
-      technicalName: 'Ollama',
-      description: 'Local AI chat that runs entirely on your hardware - no internet required',
+      name: 'RoachClaw',
+      technicalName: `${aiAssistantName} + OpenClaw`,
+      description: 'Combined Ollama + OpenClaw onboarding with local-first models and agent tooling',
       features: [
-        'Private conversations that never leave your device',
-        'No internet connection needed after setup',
-        'Ask questions, get help with writing, brainstorm ideas',
-        'Runs on your own hardware with local AI models',
+        'Installs or links Ollama for local model execution',
+        'Sets OpenClaw to prefer your selected local Ollama model',
+        'Keeps model traffic and agent workspaces on your hardware',
+        'Combines local chat, skills, and agent workflows under one setup flow',
       ],
       services: [SERVICE_NAMES.OLLAMA],
       icon: 'IconRobot',
@@ -355,6 +355,16 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
       ]
 
       await Promise.all(downloadPromises)
+
+      const roachClawSelected =
+        selectedServices.includes(SERVICE_NAMES.OLLAMA) || selectedAiModels.length > 0
+      const roachClawModel = selectedAiModels[0] || recommendedModels?.[0]?.name
+
+      if (roachClawSelected && roachClawModel) {
+        await api.applyRoachClawOnboarding({
+          model: roachClawModel,
+        })
+      }
 
       // Select Wikipedia option if one was chosen
       if (selectedWikipedia && selectedWikipedia !== wikipediaState?.currentSelection?.optionId) {

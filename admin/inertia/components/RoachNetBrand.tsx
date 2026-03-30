@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 
 type RoachNetBrandProps = {
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   subtitle?: string
   align?: 'left' | 'center'
   className?: string
@@ -9,22 +9,28 @@ type RoachNetBrandProps = {
 
 const sizeClasses = {
   sm: {
-    mark: 'h-11 w-11',
+    markShell: 'h-14 w-14',
     title: 'text-lg',
     subtitle: 'text-[0.65rem]',
     gap: 'gap-3',
   },
   md: {
-    mark: 'h-16 w-16',
+    markShell: 'h-20 w-20',
     title: 'text-2xl',
     subtitle: 'text-[0.72rem]',
     gap: 'gap-4',
   },
   lg: {
-    mark: 'h-24 w-24',
+    markShell: 'h-28 w-28 md:h-32 md:w-32',
     title: 'text-4xl md:text-5xl',
     subtitle: 'text-xs md:text-sm',
     gap: 'gap-5',
+  },
+  xl: {
+    markShell: 'h-32 w-32 md:h-36 md:w-36',
+    title: 'text-4xl md:text-5xl',
+    subtitle: 'text-xs md:text-sm',
+    gap: 'gap-5 md:gap-6',
   },
 }
 
@@ -45,7 +51,13 @@ export default function RoachNetBrand({
         className
       )}
     >
-      <img src="/roachnet-mark.svg" alt="RoachNet mark" className={clsx(config.mark, 'shrink-0')} />
+      <div className={clsx('roachnet-brand-mark-shell shrink-0', config.markShell)}>
+        <img
+          src="/roachnet-mark.png"
+          alt="RoachNet mark"
+          className="roachnet-brand-mark h-full w-full object-contain"
+        />
+      </div>
       <div className="min-w-0">
         <div className={clsx('roachnet-wordmark leading-none', config.title)}>RoachNet</div>
         {subtitle && (

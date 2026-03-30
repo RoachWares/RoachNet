@@ -35,7 +35,7 @@ const VALIDATORS: Record<ManifestType, any> = {
 }
 
 export class CollectionManifestService {
-  private readonly mapStoragePath = '/storage/maps'
+  private readonly mapStoragePath = join('storage', 'maps')
 
   // ---- Spec management ----
 

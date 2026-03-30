@@ -1,0 +1,11 @@
+[workspace]
+members = [
+  "roachnet-design",
+  "roachnet-setup",
+  "roachnet-app",
+]
+resolver = "2"
+
+[workspace.dependencies]
+adw = { package = "libadwaita", version = "0.7", features = ["v1_5"] }
+gtk = { package = "gtk4", version = "0.9" }

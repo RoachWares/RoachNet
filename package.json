@@ -1,14 +1,108 @@
 {
   "name": "roachnet",
-  "version": "1.30.3",
+  "version": "1.30.4",
   "description": "RoachNet offline operations platform",
-  "main": "index.js",
+  "main": "desktop/main.cjs",
   "scripts": {
-    "build:web": "PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" npm --prefix admin run build",
-    "start": "PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" node scripts/run-roachnet.mjs",
-    "start:no-browser": "PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" ROACHNET_NO_BROWSER=1 node scripts/run-roachnet.mjs",
+    "build:web": "npm --prefix admin run build",
+    "setup": "node scripts/run-roachnet-setup.mjs",
+    "setup:no-browser": "ROACHNET_SETUP_NO_BROWSER=1 node scripts/run-roachnet-setup.mjs",
+    "start": "node scripts/run-roachnet.mjs",
+    "start:no-browser": "ROACHNET_NO_BROWSER=1 node scripts/run-roachnet.mjs",
+    "desktop:assets": "node scripts/prepare-native-assets.mjs",
+    "desktop:dev": "npm run desktop:assets && electron .",
+    "desktop:dev:setup": "npm run desktop:assets && electron installer/main.cjs",
+    "desktop:pack": "npm run desktop:assets && electron-builder --dir",
+    "desktop:dist": "npm run desktop:assets && electron-builder",
+    "desktop:pack:setup": "npm run desktop:assets && electron-builder --config installer/builder.cjs --dir",
+    "desktop:dist:setup": "npm run desktop:assets && electron-builder --config installer/builder.cjs",
+    "installer:dev": "npm run desktop:dev:setup",
+    "installer:pack": "npm run desktop:pack:setup",
+    "installer:dist": "npm run desktop:dist:setup",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "AHGRoach",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1",
+    "icon-gen": "^5.0.0",
+    "png-to-ico": "^3.0.1"
+  },
+  "build": {
+    "appId": "com.ahgroach.roachnet",
+    "productName": "RoachNet",
+    "asar": true,
+    "asarUnpack": [
+      "scripts/**/*",
+      "setup-ui/**/*",
+      "admin/**/*",
+      "docs/**/*",
+      "README.md",
+      "roachnet.upstream.json"
+    ],
+    "directories": {
+      "buildResources": "desktop/assets",
+      "output": "desktop-dist"
+    },
+    "generateUpdatesFilesForAllChannels": true,
+    "electronUpdaterCompatibility": ">=2.16",
+    "files": [
+      "desktop/**/*",
+      "!installer{,/**/*}",
+      "scripts/**/*",
+      "setup-ui/**/*",
+      "admin/**/*",
+      "docs/**/*",
+      "README.md",
+      "roachnet.upstream.json",
+      "package.json",
+      "!admin/node_modules{,/**/*}",
+      "!admin/node_modules_node25_partial_20260327{,/**/*}",
+      "!admin/storage/logs{,/**/*}",
+      "!admin/storage/tmp{,/**/*}",
+      "!desktop-dist{,/**/*}",
+      "!.git{,/**/*}",
+      "!node_modules/.cache{,/**/*}"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "desktop/assets/icon.icns",
+      "artifactName": "RoachNet-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "desktop/assets/icon.ico",
+      "artifactName": "RoachNet-${version}-win-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "icon": "desktop/assets/icon.png",
+      "artifactName": "RoachNet-${version}-linux-${arch}.${ext}",
+      "category": "Utility"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "AHGRoach",
+        "repo": "RoachNet",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3"
+  }
 }

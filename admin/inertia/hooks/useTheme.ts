@@ -41,7 +41,7 @@ export function useTheme() {
   // Apply theme on mount
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
-  }, [])
+  }, [theme])
 
   return { theme, setTheme, toggleTheme }
 }

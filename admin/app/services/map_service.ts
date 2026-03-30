@@ -36,7 +36,7 @@ interface IMapService {
 }
 
 export class MapService implements IMapService {
-  private readonly mapStoragePath = '/storage/maps'
+  private readonly mapStoragePath = join('storage', 'maps')
   private readonly baseStylesFile = 'nomad-base-styles.json'
   private readonly basemapsAssetsDir = 'basemaps-assets'
   private readonly baseAssetsTarFile = 'base-assets.tar.gz'

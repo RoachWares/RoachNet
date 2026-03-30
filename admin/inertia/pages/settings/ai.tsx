@@ -1,18 +1,22 @@
 import { Head, Link, usePage } from '@inertiajs/react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconExternalLink, IconSettings, IconShieldBolt, IconWand } from '@tabler/icons-react'
 import Alert from '~/components/Alert'
 import StyledButton from '~/components/StyledButton'
 import Input from '~/components/inputs/Input'
 import SettingsLayout from '~/layouts/SettingsLayout'
 import useAIRuntimeStatus from '~/hooks/useAIRuntimeStatus'
+import useDebounce from '~/hooks/useDebounce'
+import useInternetStatus from '~/hooks/useInternetStatus'
 import { useSystemSetting } from '~/hooks/useSystemSetting'
 import { useSystemInfo } from '~/hooks/useSystemInfo'
 import { useNotifications } from '~/context/NotificationContext'
 import api from '~/lib/api'
 import type { AIRuntimeProviderName, AIRuntimeStatus } from '../../../types/ai'
 import type { KVStoreKey } from '../../../types/kv_store'
+import type { InstalledOpenClawSkill, OpenClawSkillSearchResult } from '../../../types/openclaw'
+import type { RoachClawStatusResponse } from '../../../types/roachclaw'
 import type { SystemInformationResponse } from '../../../types/system'
 
 type ProviderCardProps = {
@@ -139,6 +143,8 @@ export default function AISettingsPage(props: {
   const { aiAssistantName } = usePage<{ aiAssistantName: string }>().props
   const { addNotification } = useNotifications()
   const queryClient = useQueryClient()
+  const { debounce } = useDebounce()
+  const { isOnline } = useInternetStatus()
 
   const ollamaRuntime = useAIRuntimeStatus('ollama')
   const openClawRuntime = useAIRuntimeStatus('openclaw')
@@ -146,9 +152,13 @@ export default function AISettingsPage(props: {
 
   const { data: ollamaBaseUrlSetting } = useSystemSetting({ key: 'ai.ollamaBaseUrl' })
   const { data: openClawBaseUrlSetting } = useSystemSetting({ key: 'ai.openclawBaseUrl' })
+  const { data: openClawWorkspacePathSetting } = useSystemSetting({ key: 'ai.openclawWorkspacePath' })
 
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState('')
   const [openClawBaseUrl, setOpenClawBaseUrl] = useState('')
+  const [openClawWorkspacePath, setOpenClawWorkspacePath] = useState('')
+  const [skillQueryUI, setSkillQueryUI] = useState('')
+  const [skillQuery, setSkillQuery] = useState('')
 
   useEffect(() => {
     setOllamaBaseUrl(String(ollamaBaseUrlSetting?.value || ''))
@@ -157,6 +167,60 @@ export default function AISettingsPage(props: {
   useEffect(() => {
     setOpenClawBaseUrl(String(openClawBaseUrlSetting?.value || ''))
   }, [openClawBaseUrlSetting?.value])
+
+  useEffect(() => {
+    setOpenClawWorkspacePath(String(openClawWorkspacePathSetting?.value || ''))
+  }, [openClawWorkspacePathSetting?.value])
+
+  const debouncedSetSkillQuery = debounce((value: string) => {
+    setSkillQuery(value.trim())
+  }, 350)
+
+  const { data: openClawSkillStatus } = useQuery({
+    queryKey: ['openclaw', 'skills', 'status'],
+    queryFn: () => api.getOpenClawSkillStatus(),
+    staleTime: 30_000,
+  })
+
+  const { data: roachClawStatus } = useQuery({
+    queryKey: ['roachclaw', 'status'],
+    queryFn: () => api.getRoachClawStatus(),
+    staleTime: 15_000,
+  })
+
+  const { data: installedOpenClawSkills } = useQuery({
+    queryKey: ['openclaw', 'skills', 'installed'],
+    queryFn: () => api.getInstalledOpenClawSkills(),
+    staleTime: 15_000,
+  })
+
+  const [roachClawModel, setRoachClawModel] = useState('')
+
+  useEffect(() => {
+    if (!roachClawStatus) {
+      return
+    }
+
+    const candidate =
+      roachClawStatus.defaultModel ||
+      roachClawStatus.installedModels[0] ||
+      ''
+
+    if (candidate && candidate !== roachClawModel) {
+      setRoachClawModel(candidate)
+    }
+
+    if (!openClawWorkspacePath && roachClawStatus.workspacePath) {
+      setOpenClawWorkspacePath(roachClawStatus.workspacePath)
+    }
+  }, [roachClawModel, roachClawStatus, openClawWorkspacePath])
+
+  const { data: openClawSkillSearch, isFetching: searchSkillsPending } = useQuery({
+    queryKey: ['openclaw', 'skills', 'search', skillQuery],
+    queryFn: () => api.searchOpenClawSkills(skillQuery, 8),
+    enabled: isOnline && skillQuery.trim().length >= 2,
+    staleTime: 15_000,
+  })
 
   const saveSettingMutation = useMutation({
     mutationFn: async ({ key, value }: { key: KVStoreKey; value: string }) => {
@@ -171,6 +235,8 @@ export default function AISettingsPage(props: {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['system-setting', variables.key] }),
         queryClient.invalidateQueries({ queryKey: ['ai-runtime-providers'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'status'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'installed'] }),
       ])
     },
     onError: (error) => {
@@ -196,6 +262,60 @@ export default function AISettingsPage(props: {
       value: openClawBaseUrl,
     })
   }
+
+  const installOpenClawSkillMutation = useMutation({
+    mutationFn: async ({ slug }: { slug: string }) => {
+      return await api.installOpenClawSkill(slug)
+    },
+    onSuccess: async (result) => {
+      addNotification({
+        type: 'success',
+        message: result?.message || 'OpenClaw skill installed successfully.',
+      })
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'installed'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'search'] }),
+      ])
+    },
+    onError: (error) => {
+      console.error('Failed to install OpenClaw skill:', error)
+      addNotification({
+        type: 'error',
+        message: 'Failed to install OpenClaw skill.',
+      })
+    },
+  })
+
+  const applyRoachClawMutation = useMutation({
+    mutationFn: async () => {
+      return api.applyRoachClawOnboarding({
+        model: roachClawModel,
+        workspacePath: openClawWorkspacePath,
+        ollamaBaseUrl,
+        openclawBaseUrl,
+      })
+    },
+    onSuccess: async (result) => {
+      addNotification({
+        type: 'success',
+        message: result?.message || 'RoachClaw defaults applied.',
+      })
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['roachclaw', 'status'] }),
+        queryClient.invalidateQueries({ queryKey: ['openclaw', 'skills', 'status'] }),
+        queryClient.invalidateQueries({ queryKey: ['system-setting', 'ai.roachclawDefaultModel'] }),
+      ])
+    },
+    onError: (error) => {
+      console.error('Failed to apply RoachClaw onboarding:', error)
+      addNotification({
+        type: 'error',
+        message: 'Failed to apply RoachClaw onboarding.',
+      })
+    },
+  })
 
   return (
     <SettingsLayout>
@@ -292,6 +412,272 @@ export default function AISettingsPage(props: {
                 </div>
               }
             />
+
+            <section className="roachnet-card rounded-[1.75rem] border border-border-default p-6 md:p-7">
+              <div className="flex flex-col gap-6">
+                <div className="space-y-3">
+                  <p className="roachnet-kicker text-[0.68rem] text-text-muted">RoachClaw</p>
+                  <h2 className="text-2xl font-semibold uppercase tracking-[0.08em] text-text-primary">
+                    Combined Ollama + OpenClaw Onboarding
+                  </h2>
+                  <p className="max-w-3xl text-sm leading-6 text-text-secondary">
+                    RoachClaw makes Ollama the default local model provider for OpenClaw, keeps
+                    the OpenClaw workspace under RoachNet control, and stores the chosen local
+                    model as the primary default for the suite.
+                  </p>
+                </div>
+
+                {!roachClawStatus?.cliStatus.openclawAvailable && (
+                  <Alert
+                    type="warning"
+                    variant="bordered"
+                    title="OpenClaw CLI not detected"
+                    message="RoachClaw can still save the RoachNet-side defaults, but full OpenClaw profile wiring requires the OpenClaw CLI to be installed on this machine."
+                  />
+                )}
+
+                {(roachClawStatus?.installedModels || []).length === 0 && (
+                  <Alert
+                    type="info"
+                    variant="bordered"
+                    title="No local Ollama models detected yet"
+                    message="Download at least one local Ollama model, then return here to make it the RoachClaw default."
+                  />
+                )}
+
+                <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                  <div className="rounded-[1.25rem] border border-border-default bg-surface-secondary/70 p-5">
+                    <label
+                      htmlFor="roachClawModel"
+                      className="block text-base/6 font-medium text-text-primary"
+                    >
+                      RoachClaw Default Model
+                    </label>
+                    <p className="mt-1 text-sm text-text-muted">
+                      OpenClaw will prefer this local Ollama model as its primary default.
+                    </p>
+                    <select
+                      id="roachClawModel"
+                      value={roachClawModel}
+                      onChange={(event) => setRoachClawModel(event.target.value)}
+                      className="mt-2 block w-full rounded-md bg-surface-primary px-3 py-2 text-base text-text-primary border border-border-default focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-primary sm:text-sm/6"
+                    >
+                      <option value="">Select a local model</option>
+                      {(roachClawStatus?.installedModels || []).map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="rounded-[1.25rem] border border-border-default bg-surface-secondary/70 p-5">
+                    <p className="roachnet-kicker text-[0.64rem] text-text-muted">Current Profile</p>
+                    <div className="mt-3 space-y-2 text-sm text-text-secondary">
+                      <p>
+                        Workspace: <span className="text-text-primary">{roachClawStatus?.workspacePath || openClawWorkspacePath || 'Not set'}</span>
+                      </p>
+                      <p>
+                        Default model: <span className="text-text-primary">{roachClawStatus?.defaultModel || 'Not set'}</span>
+                      </p>
+                      <p>
+                        OpenClaw config: <span className="text-text-primary break-all">{roachClawStatus?.configFilePath || 'Unavailable'}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <StyledButton
+                    onClick={() => applyRoachClawMutation.mutate()}
+                    loading={applyRoachClawMutation.isPending}
+                    disabled={!roachClawModel}
+                    icon="IconWand"
+                  >
+                    Apply RoachClaw Defaults
+                  </StyledButton>
+                  <Link
+                    href="/settings/models"
+                    className="inline-flex items-center text-sm font-semibold text-desert-green-light hover:underline"
+                  >
+                    Manage Ollama Models
+                    <IconExternalLink className="ml-1 size-4" />
+                  </Link>
+                </div>
+              </div>
+            </section>
+
+            <section className="roachnet-card rounded-[1.75rem] border border-border-default p-6 md:p-7">
+              <div className="flex flex-col gap-6">
+                <div className="space-y-3">
+                  <p className="roachnet-kicker text-[0.68rem] text-text-muted">OpenClaw Skills</p>
+                  <h2 className="text-2xl font-semibold uppercase tracking-[0.08em] text-text-primary">
+                    ClawHub Skill Browser
+                  </h2>
+                  <p className="max-w-3xl text-sm leading-6 text-text-secondary">
+                    Browse ClawHub when the machine is online, install skills into a local
+                    OpenClaw workspace, and keep the workspace path under RoachNet control.
+                    Treat third-party skills as untrusted code and review them before enabling.
+                  </p>
+                </div>
+
+                {!isOnline && (
+                  <Alert
+                    type="warning"
+                    variant="bordered"
+                    title="Internet connection required for ClawHub browsing"
+                    message="ClawHub search and install requires an internet connection. Installed skills already present in the configured workspace are still listed below."
+                  />
+                )}
+
+                {!openClawSkillStatus?.clawhubAvailable && (
+                  <Alert
+                    type="warning"
+                    variant="bordered"
+                    title="ClawHub CLI not available"
+                    message="RoachNet uses the official ClawHub CLI for search and install. Ensure Node.js/npm is installed or install the clawhub CLI directly on this machine."
+                  />
+                )}
+
+                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div className="rounded-[1.25rem] border border-border-default bg-surface-secondary/70 p-5">
+                    <Input
+                      name="ai.openclawWorkspacePath"
+                      label="OpenClaw Workspace Path"
+                      value={openClawWorkspacePath}
+                      onChange={(event) => setOpenClawWorkspacePath(event.target.value)}
+                      placeholder={openClawSkillStatus?.workspacePath || '/path/to/openclaw-workspace'}
+                      helpText="Skills are installed into <workspace>/skills using the official ClawHub CLI."
+                    />
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <StyledButton
+                        onClick={() =>
+                          saveSettingMutation.mutate({
+                            key: 'ai.openclawWorkspacePath',
+                            value: openClawWorkspacePath,
+                          })
+                        }
+                        loading={saveSettingMutation.isPending}
+                        icon="IconDeviceFloppy"
+                      >
+                        Save Workspace
+                      </StyledButton>
+                      {openClawSkillStatus?.workspacePath && (
+                        <div className="rounded-full border border-border-default bg-surface-primary/80 px-4 py-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
+                          Effective: {openClawSkillStatus.workspacePath}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.25rem] border border-border-default bg-surface-secondary/70 p-5">
+                    <p className="roachnet-kicker text-[0.64rem] text-text-muted">Installed Skills</p>
+                    <div className="mt-3 space-y-3">
+                      {(installedOpenClawSkills?.skills || []).length === 0 && (
+                        <p className="text-sm text-text-secondary">
+                          No OpenClaw skills are installed in the configured workspace yet.
+                        </p>
+                      )}
+                      {(installedOpenClawSkills?.skills || []).map((skill: InstalledOpenClawSkill) => (
+                        <div
+                          key={skill.slug}
+                          className="rounded-[1rem] border border-border-default bg-surface-primary/80 p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold uppercase tracking-[0.14em] text-text-primary">
+                                {skill.name}
+                              </p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-desert-green-light">
+                                {skill.slug}
+                              </p>
+                            </div>
+                          </div>
+                          {skill.description && (
+                            <p className="mt-2 text-sm leading-6 text-text-secondary">{skill.description}</p>
+                          )}
+                          <p className="mt-2 break-all text-xs text-text-muted">{skill.path}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[1.25rem] border border-border-default bg-surface-secondary/70 p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <Input
+                      name="clawhubSearch"
+                      label="Search ClawHub"
+                      value={skillQueryUI}
+                      onChange={(event) => {
+                        setSkillQueryUI(event.target.value)
+                        debouncedSetSkillQuery(event.target.value)
+                      }}
+                      placeholder="Search by workflow or skill slug"
+                      helpText="RoachNet queries the official ClawHub CLI when you are online."
+                      containerClassName="w-full"
+                    />
+                    <div className="rounded-full border border-border-default bg-surface-primary/80 px-4 py-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
+                      {searchSkillsPending ? 'Searching' : 'Results update as you type'}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 md:grid-cols-2">
+                    {(openClawSkillSearch?.skills || []).map((skill: OpenClawSkillSearchResult) => (
+                      <div
+                        key={skill.slug}
+                        className="rounded-[1rem] border border-border-default bg-surface-primary/80 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-text-primary">
+                              {skill.title}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.14em] text-desert-green-light">
+                              {skill.slug}
+                            </p>
+                            <p className="mt-2 text-xs text-text-muted">
+                              Search score: {skill.score?.toFixed(3) || 'n/a'}
+                            </p>
+                          </div>
+                          <StyledButton
+                            size="sm"
+                            icon="IconDownload"
+                            loading={installOpenClawSkillMutation.isPending}
+                            disabled={!isOnline || !openClawSkillStatus?.clawhubAvailable}
+                            onClick={() => installOpenClawSkillMutation.mutate({ slug: skill.slug })}
+                          >
+                            Install
+                          </StyledButton>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {skillQuery.trim().length >= 2 && !searchSkillsPending && (openClawSkillSearch?.skills || []).length === 0 && (
+                    <p className="mt-4 text-sm text-text-secondary">
+                      No ClawHub skills matched that search.
+                    </p>
+                  )}
+
+                  <div className="mt-5 flex flex-wrap items-center gap-3">
+                    <a
+                      href="https://clawhub.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center text-sm font-semibold text-desert-green-light hover:underline"
+                    >
+                      Open ClawHub
+                      <IconExternalLink className="ml-1 size-4" />
+                    </a>
+                    <div className="rounded-full border border-border-default bg-surface-primary/80 px-4 py-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
+                      Runner: {openClawSkillStatus?.runner || 'unknown'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </main>
       </div>

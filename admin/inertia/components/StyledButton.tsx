@@ -149,6 +149,8 @@ const StyledButton: React.FC<StyledButtonProps> = ({
     <button
       type="button"
       className={clsx(
+        'roachnet-button',
+        `roachnet-button--${variant}`,
         fullWidth ? 'flex w-full' : 'inline-flex',
         getSizeClasses(),
         getVariantClasses(),
@@ -160,14 +162,16 @@ const StyledButton: React.FC<StyledButtonProps> = ({
       disabled={isDisabled}
       onClick={onClickHandler}
     >
-      {loading ? (
-        getLoadingSpinner()
-      ) : (
-        <>
-          {icon && <DynamicIcon icon={icon} className={getIconSize()} />}
-          {children}
-        </>
-      )}
+      <span className="relative z-10 inline-flex items-center justify-center">
+        {loading ? (
+          getLoadingSpinner()
+        ) : (
+          <>
+            {icon && <DynamicIcon icon={icon} className={getIconSize()} />}
+            {children}
+          </>
+        )}
+      </span>
     </button>
   )
 }

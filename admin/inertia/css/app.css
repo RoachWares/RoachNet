@@ -1,61 +1,95 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-desert-white: #eef3ef;
-  --color-desert-sand: #c9d1cb;
+  --color-desert-white: #f7fff8;
+  --color-desert-sand: #dfe9e1;
 
-  --color-desert-green-darker: #04180a;
-  --color-desert-green-dark: #0b2a14;
+  --color-desert-green-darker: #083514;
+  --color-desert-green-dark: #106322;
   --color-desert-green: #00ff00;
-  --color-desert-green-light: #67ff52;
-  --color-desert-green-lighter: #c1ffb7;
+  --color-desert-green-light: #28bf36;
+  --color-desert-green-lighter: #bcffc0;
 
-  --color-desert-orange-dark: #860086;
+  --color-desert-orange-dark: #8a0b8a;
   --color-desert-orange: #ff00ff;
-  --color-desert-orange-light: #ff62ff;
-  --color-desert-orange-lighter: #ffb7ff;
+  --color-desert-orange-light: #d53bd5;
+  --color-desert-orange-lighter: #ffc9ff;
 
-  --color-desert-tan-dark: #6f4a19;
+  --color-desert-tan-dark: #7d5724;
   --color-desert-tan: #9c6b2f;
-  --color-desert-tan-light: #cf9a58;
-  --color-desert-tan-lighter: #efd0a5;
+  --color-desert-tan-light: #b88339;
+  --color-desert-tan-lighter: #f0d8b8;
 
   --color-desert-red-dark: #7e1d2f;
   --color-desert-red: #b62b4a;
-  --color-desert-red-light: #f06b8a;
-  --color-desert-red-lighter: #ffc6d3;
+  --color-desert-red-light: #db5d7d;
+  --color-desert-red-lighter: #ffd4de;
 
   --color-desert-olive-dark: #0f5526;
   --color-desert-olive: #198d41;
-  --color-desert-olive-light: #45d47a;
-  --color-desert-olive-lighter: #c6ffda;
+  --color-desert-olive-light: #2da95d;
+  --color-desert-olive-lighter: #d6ffdf;
 
-  --color-desert-stone-dark: #0c0d0f;
-  --color-desert-stone: #1b1e22;
-  --color-desert-stone-light: #39424d;
-  --color-desert-stone-lighter: #71808e;
+  --color-desert-stone-dark: #f4faf5;
+  --color-desert-stone: #dfe8e1;
+  --color-desert-stone-light: #a8b7aa;
+  --color-desert-stone-lighter: #6e8173;
 
-  --color-surface-primary: rgba(12, 16, 20, 0.86);
-  --color-surface-secondary: rgba(19, 25, 31, 0.76);
-  --color-surface-elevated: rgba(24, 31, 39, 0.94);
-  --color-text-primary: #edf7ee;
-  --color-text-secondary: #b5c1b7;
-  --color-text-muted: #7d8a82;
-  --color-border-default: rgba(109, 255, 83, 0.22);
-  --color-border-subtle: rgba(113, 128, 142, 0.2);
+  --color-surface-primary: rgba(245, 252, 247, 0.92);
+  --color-surface-secondary: rgba(233, 243, 235, 0.84);
+  --color-surface-elevated: rgba(255, 255, 255, 0.96);
+  --color-text-primary: #0b140d;
+  --color-text-secondary: #36503a;
+  --color-text-muted: #6a7c6d;
+  --color-border-default: rgba(25, 141, 65, 0.24);
+  --color-border-subtle: rgba(113, 128, 142, 0.16);
+  --color-wordmark: #102216;
+  --color-panel-background:
+    linear-gradient(180deg, rgba(249, 255, 250, 0.95), rgba(230, 240, 232, 0.92)),
+    linear-gradient(135deg, rgba(0, 255, 102, 0.08), transparent 45%);
+  --color-panel-border: rgba(25, 141, 65, 0.14);
+  --color-panel-shadow:
+    0 24px 60px rgba(18, 38, 22, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 0 0 1px rgba(255, 0, 255, 0.04);
+  --color-card-background:
+    linear-gradient(180deg, rgba(251, 255, 252, 0.94), rgba(237, 246, 239, 0.92)),
+    linear-gradient(135deg, rgba(0, 255, 102, 0.06), transparent 40%);
+  --color-card-border: rgba(25, 141, 65, 0.12);
+  --color-card-shadow:
+    0 18px 40px rgba(18, 38, 22, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  --color-brand-shell-background:
+    radial-gradient(circle at 50% 34%, rgba(0, 255, 0, 0.14), transparent 48%),
+    linear-gradient(180deg, rgba(247, 253, 248, 0.96), rgba(226, 237, 228, 0.94));
+  --color-brand-shell-border: rgba(25, 141, 65, 0.16);
+  --color-brand-shell-shadow:
+    0 22px 44px rgba(18, 38, 22, 0.14),
+    0 0 0 1px rgba(255, 0, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 0 28px rgba(109, 255, 83, 0.08);
 
   --color-btn-green-hover: #67ff52;
   --color-btn-green-active: #00c800;
+
+  --color-body-start: rgba(247, 255, 248, 0.98);
+  --color-body-mid: rgba(228, 239, 231, 0.95);
+  --color-body-end: rgba(221, 231, 223, 0.98);
+  --color-body-top-left: rgba(0, 255, 102, 0.14);
+  --color-body-top-right: rgba(255, 0, 255, 0.1);
+  --color-body-bottom: rgba(207, 154, 88, 0.1);
+  --color-grid-line: rgba(25, 141, 65, 0.035);
+  --color-screen-gloss: rgba(255, 255, 255, 0.18);
 }
 
 body {
   position: relative;
-  background-color: #06090d;
+  background-color: var(--color-desert-white);
   background-image:
-    radial-gradient(circle at 12% 18%, rgba(0, 255, 102, 0.18), transparent 24%),
-    radial-gradient(circle at 86% 14%, rgba(255, 0, 255, 0.14), transparent 20%),
-    radial-gradient(circle at 70% 68%, rgba(207, 154, 88, 0.1), transparent 22%),
-    linear-gradient(135deg, rgba(7, 12, 14, 0.98), rgba(13, 19, 24, 0.94) 50%, rgba(7, 10, 12, 0.98));
+    radial-gradient(circle at 12% 18%, var(--color-body-top-left), transparent 24%),
+    radial-gradient(circle at 86% 14%, var(--color-body-top-right), transparent 20%),
+    radial-gradient(circle at 70% 68%, var(--color-body-bottom), transparent 22%),
+    linear-gradient(135deg, var(--color-body-start), var(--color-body-mid) 50%, var(--color-body-end));
   color: var(--color-text-primary);
   font-family: 'Eurostile', 'Bank Gothic', 'Aldrich', 'Rajdhani', 'Segoe UI', sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -71,19 +105,19 @@ body::after {
 
 body::before {
   background:
-    linear-gradient(rgba(109, 255, 83, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(109, 255, 83, 0.03) 1px, transparent 1px);
+    linear-gradient(var(--color-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-grid-line) 1px, transparent 1px);
   background-size: 28px 28px;
   opacity: 0.32;
 }
 
 body::after {
   background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.04), transparent 28%),
+    linear-gradient(to bottom, var(--color-screen-gloss), transparent 28%),
     repeating-linear-gradient(
       to bottom,
-      rgba(255, 255, 255, 0.03) 0,
-      rgba(255, 255, 255, 0.03) 1px,
+      rgba(255, 255, 255, 0.04) 0,
+      rgba(255, 255, 255, 0.04) 1px,
       transparent 1px,
       transparent 4px
     );
@@ -123,29 +157,20 @@ body::after {
 }
 
 .roachnet-panel {
-  background:
-    linear-gradient(180deg, rgba(24, 31, 39, 0.96), rgba(10, 14, 18, 0.9)),
-    linear-gradient(135deg, rgba(109, 255, 83, 0.08), transparent 45%);
-  border: 1px solid rgba(109, 255, 83, 0.16);
-  box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 0 0 1px rgba(255, 0, 255, 0.06);
+  background: var(--color-panel-background);
+  border: 1px solid var(--color-panel-border);
+  box-shadow: var(--color-panel-shadow);
   backdrop-filter: blur(18px);
 }
 
 .roachnet-card {
-  background:
-    linear-gradient(180deg, rgba(22, 28, 35, 0.92), rgba(11, 15, 18, 0.88)),
-    linear-gradient(135deg, rgba(109, 255, 83, 0.1), transparent 40%);
-  border: 1px solid rgba(109, 255, 83, 0.14);
-  box-shadow:
-    0 18px 40px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: var(--color-card-background);
+  border: 1px solid var(--color-card-border);
+  box-shadow: var(--color-card-shadow);
 }
 
 .roachnet-wordmark {
-  color: #f6fff7;
+  color: var(--color-wordmark);
   font-family: 'Eurostile', 'Bank Gothic', 'Aldrich', 'Rajdhani', 'Segoe UI', sans-serif;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -158,6 +183,202 @@ body::after {
 .roachnet-kicker {
   letter-spacing: 0.28em;
   text-transform: uppercase;
+}
+
+.roachnet-brand-mark-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 1.75rem;
+  background: var(--color-brand-shell-background);
+  border: 1px solid var(--color-brand-shell-border);
+  box-shadow: var(--color-brand-shell-shadow);
+}
+
+.roachnet-brand-mark-shell::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 180deg,
+    rgba(109, 255, 83, 0.28),
+    rgba(255, 0, 255, 0.24),
+    rgba(207, 154, 88, 0.22),
+    rgba(109, 255, 83, 0.28)
+  );
+  opacity: 0.75;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  padding: 1.5px;
+}
+
+.roachnet-brand-mark {
+  position: relative;
+  z-index: 1;
+  filter:
+    drop-shadow(0 0 14px rgba(109, 255, 83, 0.22))
+    drop-shadow(0 0 28px rgba(255, 0, 255, 0.08));
+}
+
+.roachnet-button {
+  --roachnet-ring-primary: rgba(109, 255, 83, 0.9);
+  --roachnet-ring-secondary: rgba(255, 0, 255, 0.78);
+  --roachnet-ring-tertiary: rgba(207, 154, 88, 0.72);
+  --roachnet-ring-glow: rgba(109, 255, 83, 0.22);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.roachnet-button::before,
+.roachnet-button::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease,
+    filter 220ms ease;
+}
+
+.roachnet-button::before {
+  padding: 1.5px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--roachnet-ring-primary) 65deg,
+    var(--roachnet-ring-secondary) 145deg,
+    var(--roachnet-ring-tertiary) 235deg,
+    var(--roachnet-ring-primary) 320deg,
+    transparent 360deg
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  filter: saturate(1.05) brightness(1.08);
+}
+
+.roachnet-button::after {
+  inset: -10px;
+  background:
+    radial-gradient(circle at 20% 50%, var(--roachnet-ring-primary), transparent 26%),
+    radial-gradient(circle at 80% 50%, var(--roachnet-ring-secondary), transparent 24%),
+    radial-gradient(circle at 50% 100%, var(--roachnet-ring-tertiary), transparent 26%);
+  filter: blur(16px);
+  transform: scale(0.96);
+}
+
+.roachnet-button:hover,
+.roachnet-button:focus-visible {
+  transform: translateY(-1px);
+}
+
+.roachnet-button:hover::before,
+.roachnet-button:hover::after,
+.roachnet-button:focus-visible::before,
+.roachnet-button:focus-visible::after {
+  opacity: 1;
+  animation-play-state: running;
+}
+
+.roachnet-button:hover::before,
+.roachnet-button:focus-visible::before {
+  animation:
+    roachnet-ring-spin 2.8s linear infinite,
+    roachnet-ring-breathe 2.2s ease-in-out infinite;
+}
+
+.roachnet-button:hover::after,
+.roachnet-button:focus-visible::after {
+  animation: roachnet-ring-pulse 1.9s ease-in-out infinite;
+}
+
+.roachnet-button--primary {
+  --roachnet-ring-primary: rgba(103, 255, 82, 0.96);
+  --roachnet-ring-secondary: rgba(255, 98, 255, 0.8);
+  --roachnet-ring-tertiary: rgba(207, 154, 88, 0.78);
+}
+
+.roachnet-button--secondary {
+  --roachnet-ring-primary: rgba(239, 208, 165, 0.86);
+  --roachnet-ring-secondary: rgba(207, 154, 88, 0.92);
+  --roachnet-ring-tertiary: rgba(109, 255, 83, 0.58);
+}
+
+.roachnet-button--danger {
+  --roachnet-ring-primary: rgba(240, 107, 138, 0.92);
+  --roachnet-ring-secondary: rgba(255, 98, 255, 0.72);
+  --roachnet-ring-tertiary: rgba(207, 154, 88, 0.62);
+}
+
+.roachnet-button--action {
+  --roachnet-ring-primary: rgba(255, 98, 255, 0.92);
+  --roachnet-ring-secondary: rgba(103, 255, 82, 0.72);
+  --roachnet-ring-tertiary: rgba(207, 154, 88, 0.72);
+}
+
+.roachnet-button--success {
+  --roachnet-ring-primary: rgba(90, 240, 137, 0.92);
+  --roachnet-ring-secondary: rgba(103, 255, 82, 0.72);
+  --roachnet-ring-tertiary: rgba(255, 98, 255, 0.5);
+}
+
+.roachnet-button--ghost,
+.roachnet-button--outline {
+  --roachnet-ring-primary: rgba(103, 255, 82, 0.88);
+  --roachnet-ring-secondary: rgba(255, 98, 255, 0.68);
+  --roachnet-ring-tertiary: rgba(207, 154, 88, 0.58);
+}
+
+@keyframes roachnet-ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes roachnet-ring-breathe {
+  0%,
+  100% {
+    filter: saturate(1.02) brightness(1);
+  }
+  50% {
+    filter: saturate(1.22) brightness(1.18);
+  }
+}
+
+@keyframes roachnet-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.02);
+  }
 }
 
 .roachnet-divider {
@@ -307,9 +528,42 @@ body::after {
   --color-text-muted: #7d8c83;
   --color-border-default: rgba(0, 255, 102, 0.26);
   --color-border-subtle: rgba(125, 140, 131, 0.22);
+  --color-wordmark: #f6fff7;
+  --color-panel-background:
+    linear-gradient(180deg, rgba(24, 31, 39, 0.96), rgba(10, 14, 18, 0.9)),
+    linear-gradient(135deg, rgba(109, 255, 83, 0.08), transparent 45%);
+  --color-panel-border: rgba(109, 255, 83, 0.16);
+  --color-panel-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(255, 0, 255, 0.06);
+  --color-card-background:
+    linear-gradient(180deg, rgba(22, 28, 35, 0.92), rgba(11, 15, 18, 0.88)),
+    linear-gradient(135deg, rgba(109, 255, 83, 0.1), transparent 40%);
+  --color-card-border: rgba(109, 255, 83, 0.14);
+  --color-card-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --color-brand-shell-background:
+    radial-gradient(circle at 50% 34%, rgba(0, 255, 0, 0.16), transparent 48%),
+    linear-gradient(180deg, rgba(22, 30, 37, 0.95), rgba(8, 12, 16, 0.92));
+  --color-brand-shell-border: rgba(109, 255, 83, 0.2);
+  --color-brand-shell-shadow:
+    0 0 0 1px rgba(255, 0, 255, 0.08),
+    0 22px 44px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 28px rgba(109, 255, 83, 0.08);
 
   --color-btn-green-hover: #67ff52;
   --color-btn-green-active: #00c800;
+  --color-body-start: rgba(7, 12, 14, 0.98);
+  --color-body-mid: rgba(13, 19, 24, 0.94);
+  --color-body-end: rgba(7, 10, 12, 0.98);
+  --color-body-top-left: rgba(0, 255, 102, 0.18);
+  --color-body-top-right: rgba(255, 0, 255, 0.14);
+  --color-body-bottom: rgba(207, 154, 88, 0.1);
+  --color-grid-line: rgba(109, 255, 83, 0.03);
+  --color-screen-gloss: rgba(255, 255, 255, 0.04);
 
   color-scheme: dark;
 }

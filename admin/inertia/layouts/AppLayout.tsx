@@ -24,7 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               onClick={() => (window.location.href = '/home')}
             >
               <RoachNetBrand
-                size="lg"
+                size="xl"
                 subtitle="Offline command grid for maps, archives, local AI, and field ops"
               />
             </button>
@@ -49,7 +49,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="mt-6">
               <Link
                 href="/home"
-                className="inline-flex items-center rounded-full border border-border-default bg-surface-secondary/80 px-4 py-2 text-sm font-semibold text-text-secondary transition-colors hover:text-desert-green-light"
+                className="roachnet-button roachnet-button--outline inline-flex items-center rounded-full border border-border-default bg-surface-secondary/80 px-4 py-2 text-sm font-semibold text-text-secondary transition-colors hover:text-desert-green-light"
               >
                 <IconArrowLeft className="mr-2 size-4" />
                 Back to Home

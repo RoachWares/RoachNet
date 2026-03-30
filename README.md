@@ -1,77 +1,112 @@
 # RoachNet
 
-RoachNet is an offline-first command center for local knowledge, AI, maps, utilities, and operator workflows when the internet is unavailable or unreliable.
+Your stuff, still here when the internet isn't.
 
-This repository uses an open-source upstream base from [Crosstalk Solutions](https://github.com/Crosstalk-Solutions/project-nomad) and is being adapted into a broader day-to-day offline operations platform with local AI, guided onboarding, and user-manageable agents and skills.
+RoachNet is a local-first command center for offline maps, local AI, education, saved websites, and your own notes. It keeps the important parts of your workflow on your machine, so bad Wi-Fi, outages, and cloud slowdowns do not take the rest of your day down with them.
 
-## Upstream Base
+[roachnet.org](https://roachnet.org)  
+[GitHub Releases](https://github.com/AHGRoach/RoachNet/releases)
 
-- Upstream base: `Crosstalk-Solutions/project-nomad`
-- Imported into this repo on 2026-03-27
-- Imported from upstream commit `5c92c8981304424e37d38f74ef7e80d78fe82a13`
-- Local git setup keeps `origin` pointed at `AHGRoach/RoachNet` and adds `upstream` for the imported source repo
+## What You Get
 
-RoachNet also exposes a separate upstream sync path in the app at `Settings -> Update -> Source Upstream Sync`. That flow fetches `upstream/main`, creates a backup branch, replays the RoachNet patchset onto a temporary refreshed upstream worktree, and then validates the refreshed checkout with the admin typecheck/build before switching the main branch over.
+- `Command Deck`
+  One calm place for runtime health, maps, education, archives, and local AI.
+- `RoachClaw`
+  RoachNet's local AI path, built around Ollama and OpenClaw with a fast local default model.
+- `Offline Maps`
+  Curated map collections and route-aware surfaces that stay available when the network drops.
+- `Education`
+  Wikipedia and Khan Academy-style offline learning content, grouped in one place.
+- `Archives`
+  Saved websites and captured references for offline browsing.
+- `Contained Install`
+  App, runtime data, workspace, and support services stay grouped near the RoachNet install root instead of being smeared across the OS.
 
-RoachNet preserves upstream attribution and currently carries forward the Apache 2.0 licensing shipped with the imported upstream base.
+## Download
 
-## Current Foundation
+Start with `RoachNet Setup`.
 
-The imported base already provides:
+The installer checks the machine, prepares the local runtime, aligns RoachClaw, and then hands off into the main RoachNet app.
 
-- an offline-first management UI and API in [`admin/`](./admin)
-- install, start, stop, update, and uninstall scripts in [`install/`](./install)
-- curated content collections in [`collections/`](./collections)
-- local Ollama chat and RAG plumbing
-- settings, maps, docs, benchmarking, and easy-setup flows
+- Website: [roachnet.org](https://roachnet.org)
+- macOS installer: [RoachNet-Setup-macOS.dmg](https://roachnet.org/downloads/RoachNet-Setup-macOS.dmg)
+- Releases: [github.com/AHGRoach/RoachNet/releases](https://github.com/AHGRoach/RoachNet/releases)
 
-## Quick Start
+## Current Product Direction
 
-From the repo root on macOS:
+RoachNet is moving toward fully native desktop apps:
+
+- `macOS Apple Silicon`
+  SwiftUI/AppKit shell and native installer flow
+- `Windows 11 x64`
+  WinUI 3 scaffold in progress
+- `Linux`
+  GTK4/libadwaita scaffold in progress
+
+The current shipping focus is the macOS-native path, with the website and GitHub release flow centered on the native installer.
+
+## RoachClaw
+
+RoachClaw is the default local AI lane inside RoachNet.
+
+It brings Ollama and OpenClaw together so the app can:
+
+- detect local model availability
+- save a machine-appropriate default model
+- keep local chat working even when OpenClaw's agent runtime is not yet online
+- grow into agent workflows later without forcing remote providers first
+
+For this release, RoachNet prefers `qwen2.5-coder:7b` as the default local RoachClaw model because it is a better fit for everyday work plus coding on this setup than the heavier defaults we were previously surfacing.
+
+## Repo Layout
+
+- [`admin/`](./admin)
+  Local API, web admin, RoachClaw services, maps, archives, and content plumbing
+- [`native/macos/`](./native/macos)
+  Native macOS app and installer
+- [`website/`](./website)
+  RoachNet.org landing page and downloadable installer assets
+- [`scripts/`](./scripts)
+  Setup, runtime, native bundling, and asset preparation scripts
+- [`docs/`](./docs)
+  Architecture notes, evaluations, and rewrite plans
+
+## Local Development
+
+From the repo root:
 
 ```bash
 npm start
 ```
 
-That root launcher now:
-
-- starts the local RoachNet server from [`admin/`](./admin)
-- waits for the app to become healthy on the configured local URL
-- opens the web UI in the default browser at `/home`
-
-If you want to start the server without opening a browser tab:
+No-browser boot:
 
 ```bash
 npm run start:no-browser
 ```
 
-## RoachNet Direction
+Native macOS app build:
 
-RoachNet extends the base toward an all-in-one offline utility for normal day-to-day operations during disaster scenarios, network outages, or disconnected field use.
+```bash
+node scripts/build-native-macos-apps.mjs
+```
 
-Planned RoachNet-specific work includes:
+Setup backend:
 
-1. OpenClaw integration alongside the existing Ollama stack
-2. A unified settings surface for Ollama and OpenClaw configuration
-3. An agent and skill management UI for adding, configuring, and operating local workflows
-4. A guided onboarding flow that explains each step, option, and tradeoff to the user
-5. Additional offline tools that keep the machine operational without relying on a live network connection
+```bash
+npm run setup:no-browser
+```
 
-## Immediate Next Steps
+## Upstream Attribution
 
-1. Rebrand key docs, assets, and UI copy from the imported upstream product name to RoachNet
-2. Map existing Ollama, settings, and easy-setup surfaces to RoachNet feature requirements
-3. Add the first OpenClaw service layer and API endpoints
-4. Extend the onboarding flow to cover Ollama, OpenClaw, agents, and skills
-5. Define persistent configuration models for local providers, agents, skills, and onboarding state
+RoachNet started from an imported upstream base from [Crosstalk Solutions project-nomad](https://github.com/Crosstalk-Solutions/project-nomad) and is being reshaped into a calmer, product-grade local command center with native installers, local AI, contained runtime management, and a more cohesive desktop UX.
 
-## Repo Notes
+See:
 
-- See [`docs/UPSTREAM.md`](./docs/UPSTREAM.md) for import provenance and sync notes
-- See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the initial RoachNet implementation plan
-- See [`docs/LOCAL_BOOT.md`](./docs/LOCAL_BOOT.md) for the verified macOS local-dev boot path
-- See [`docs/SURFACE_MAP.md`](./docs/SURFACE_MAP.md) for the current settings, onboarding, and Ollama integration map
+- [`docs/UPSTREAM.md`](./docs/UPSTREAM.md)
+- [`docs/NATIVE_REWRITE_PLAN.md`](./docs/NATIVE_REWRITE_PLAN.md)
+- [`CHANGELOG.md`](./CHANGELOG.md)
 
 ## License
 
-This repository currently includes the upstream Apache 2.0 license from the imported base. Review [`LICENSE`](./LICENSE) and [`docs/UPSTREAM.md`](./docs/UPSTREAM.md) before changing licensing or attribution details.
+This repository currently carries the upstream Apache 2.0 license from the imported base. Review [`LICENSE`](./LICENSE) and [`docs/UPSTREAM.md`](./docs/UPSTREAM.md) before changing attribution or licensing details.

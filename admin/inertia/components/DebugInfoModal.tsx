@@ -74,19 +74,21 @@ export default function DebugInfoModal({ open, onClose }: DebugInfoModalProps) {
         <button
           onClick={handleCopy}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-md bg-desert-green px-3 py-1.5 text-sm font-semibold text-white hover:bg-desert-green-dark transition-colors disabled:opacity-50"
+          className="roachnet-button roachnet-button--primary inline-flex items-center gap-1.5 rounded-md bg-desert-green px-3 py-1.5 text-sm font-semibold text-white hover:bg-desert-green-dark transition-colors disabled:opacity-50"
         >
-          {copied ? (
-            <>
-              <IconCheck className="size-4" />
-              Copied!
-            </>
-          ) : (
-            <>
-              <IconCopy className="size-4" />
-              Copy to Clipboard
-            </>
-          )}
+          <span className="relative z-10 inline-flex items-center gap-1.5">
+            {copied ? (
+              <>
+                <IconCheck className="size-4" />
+                Copied!
+              </>
+            ) : (
+              <>
+                <IconCopy className="size-4" />
+                Copy to Clipboard
+              </>
+            )}
+          </span>
         </button>
 
         <a

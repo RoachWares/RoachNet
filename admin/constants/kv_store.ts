@@ -9,4 +9,6 @@ export const SETTINGS_KEYS: KVStoreKey[] = [
   'ai.assistantCustomName',
   'ai.ollamaBaseUrl',
   'ai.openclawBaseUrl',
+  'ai.openclawWorkspacePath',
+  'ai.roachclawDefaultModel',
 ];

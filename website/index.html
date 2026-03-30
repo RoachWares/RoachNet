@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RoachNet</title>
+    <meta
+      name="description"
+      content="RoachNet is a local-first command center for offline maps, local AI, and your own notes. Keep the important stuff close, even when the internet is gone."
+    />
+    <meta name="theme-color" content="#0b1016" />
+    <link rel="canonical" href="https://roachnet.org/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="RoachNet" />
+    <meta
+      property="og:description"
+      content="Your stuff, still here when the internet isn’t. Offline maps, local AI, and your own notes in one calm little command center."
+    />
+    <meta property="og:url" content="https://roachnet.org/" />
+    <meta property="og:image" content="https://roachnet.org/assets/roachnet-logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="RoachNet" />
+    <meta
+      name="twitter:description"
+      content="Offline maps, local AI, and your own notes in one calm little command center that lives on your machine."
+    />
+    <meta name="twitter:image" content="https://roachnet.org/assets/roachnet-logo.png" />
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="bg-glow bg-glow--blue" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow--green" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand-lockup" href="#top" aria-label="RoachNet home">
+        <img class="brand-mark" src="./assets/roachnet-logo.png" alt="RoachNet logo" />
+        <div class="brand-copy">
+          <span class="brand-kicker">Local-first command center</span>
+          <strong>RoachNet</strong>
+        </div>
+      </a>
+
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#screens">Screens</a>
+        <a href="#downloads">Downloads</a>
+        <a href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top" class="page-shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">RoachNet</p>
+          <h1>Your stuff, still here when the internet isn’t.</h1>
+          <p class="hero-body">
+            Offline maps, local AI, and your own notes in one calm little command center that lives on your machine.
+          </p>
+
+          <div class="hero-actions">
+            <button class="cta cta--primary" id="primary-download" type="button">Download RoachNet for macOS</button>
+            <a class="cta cta--ghost" href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">View on GitHub</a>
+          </div>
+
+          <p class="hero-footnote">Built for Apple Silicon, Windows 11, and Linux desktops.</p>
+          <p class="download-meta" id="download-meta">Starts with RoachNet Setup · RoachNet-Setup-macOS.dmg</p>
+
+          <div class="hero-status" aria-label="RoachNet status row">
+            <span>04:20 PM</span>
+            <span class="hero-status__pill">Offline Ready</span>
+            <span>18 GB free</span>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="device-scene">
+            <div class="device-scene__glow"></div>
+            <div class="device-shell">
+              <div class="device-shell__camera"></div>
+              <div class="device-screen">
+                <div class="device-screen__topbar">
+                  <span>RoachNet</span>
+                  <span class="device-badge">Offline Ready</span>
+                  <span>Qwen warmed up</span>
+                </div>
+
+                <div class="device-commandbar">
+                  <span class="device-commandbar__glyph">⌘K</span>
+                  <span class="device-commandbar__text">Search maps, notes, models, runtime</span>
+                </div>
+
+                <div class="device-layout">
+                  <div class="device-sidebar">
+                    <span class="device-sidebar__dot device-sidebar__dot--active"></span>
+                    <span class="device-sidebar__dot"></span>
+                    <span class="device-sidebar__dot"></span>
+                    <span class="device-sidebar__dot"></span>
+                  </div>
+
+                  <div class="device-bento">
+                    <article class="device-card device-card--map">
+                      <div class="device-card__eyebrow">Command Deck</div>
+                      <strong>Your cockpit.</strong>
+                      <div class="device-map">
+                        <span class="device-map__route"></span>
+                        <span class="device-map__marker device-map__marker--green"></span>
+                        <span class="device-map__marker device-map__marker--purple"></span>
+                      </div>
+                    </article>
+
+                    <article class="device-card device-card--chat">
+                      <div class="device-card__eyebrow">RoachClaw</div>
+                      <strong>Local AI, tuned to your hardware.</strong>
+                      <div class="device-chat">
+                        <span class="device-chat__line">Summarize the latest notes.</span>
+                        <span class="device-chat__line device-chat__line--reply">Running locally. Qwen is ready.</span>
+                      </div>
+                    </article>
+
+                    <article class="device-card">
+                      <div class="device-card__eyebrow">Vault</div>
+                      <strong>Your reference shelf, unplugged.</strong>
+                    </article>
+
+                    <article class="device-card">
+                      <div class="device-card__eyebrow">Runtime</div>
+                      <strong>Local services, quietly alive.</strong>
+                    </article>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" id="features">
+        <div class="section-head">
+          <p class="eyebrow">What RoachNet is</p>
+          <h2>A home base for your brain when the network taps out.</h2>
+          <p>RoachNet keeps the important things close: where you’re going, what you’re working on, and the ideas you don’t want to lose in some cloud tab.</p>
+        </div>
+
+        <div class="card-grid card-grid--three">
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Local Runtime</span>
+            <h3>Bring your stack home.</h3>
+            <p>Run models, tools, and services in a local runtime that actually lives on your desktop instead of somebody else’s data center.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">RoachClaw</span>
+            <h3>Local AI that knows your machine.</h3>
+            <p>RoachClaw glues OpenClaw and Ollama into one sane local AI setup, with a fast default model for your box.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Command Deck</span>
+            <h3>Everything at a glance, no juggling.</h3>
+            <p>A focused, keyboard-first view for maps, AI, services, and what your machine is up to.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Offline Maps &amp; Vault</span>
+            <h3>Your reference shelf, unplugged.</h3>
+            <p>Routes, checklists, lyrics, patch notes, and weird ideas at 3 AM all live in one place instead of random folders.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Contained Install</span>
+            <h3>An AI stack in a folder, not smeared across your OS.</h3>
+            <p>RoachNet keeps the app, data, workspace, and services grouped together so you can back it up, move it, or nuke it in one go.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section" id="screens">
+        <div class="section-head">
+          <p class="eyebrow">Screens</p>
+          <h2>What life with RoachNet actually looks like.</h2>
+          <p>Three main views hold your world together when the network stops pretending to be reliable.</p>
+        </div>
+
+        <div class="story-stack">
+          <article class="story-band">
+            <div class="story-band__visual screen-preview screen-preview--deck">
+              <div class="screen-preview__bar">
+                <span class="screen-preview__pill">⌘K</span>
+                <span>Search maps, chat, runtime</span>
+              </div>
+              <div class="screen-preview__tiles">
+                <div class="screen-preview__tile screen-preview__tile--wide">
+                  <strong>Command Deck</strong>
+                  <span>Everything at a glance.</span>
+                </div>
+                <div class="screen-preview__tile">
+                  <strong>Maps</strong>
+                  <span>Offline ready</span>
+                </div>
+                <div class="screen-preview__tile">
+                  <strong>Vault</strong>
+                  <span>Contained sources</span>
+                </div>
+              </div>
+            </div>
+            <div class="story-band__copy">
+              <span class="feature-card__eyebrow">Command Deck</span>
+              <h3>Your cockpit.</h3>
+              <p>One keyboard-first workspace for launching AI, watching status, and jumping between maps, chat, and your vault without tab hell.</p>
+            </div>
+          </article>
+
+          <article class="story-band story-band--reverse">
+            <div class="story-band__visual screen-preview screen-preview--ai">
+              <div class="screen-preview__chat">
+                <span class="screen-preview__bubble">“Summarize the latest notes.”</span>
+                <span class="screen-preview__bubble screen-preview__bubble--reply">Running locally. Qwen is ready.</span>
+              </div>
+              <div class="screen-preview__meta">
+                <span>Ollama</span>
+                <span>OpenClaw</span>
+                <span>Default model</span>
+              </div>
+            </div>
+            <div class="story-band__copy">
+              <span class="feature-card__eyebrow">RoachClaw</span>
+              <h3>Your local AI rail.</h3>
+              <p>Kick prompts to a fast on-device model for day-to-day work. When you need something heavier, route that out on your terms, not by default.</p>
+            </div>
+          </article>
+
+          <article class="story-band">
+            <div class="story-band__visual screen-preview screen-preview--vault">
+              <div class="screen-preview__map">
+                <span class="screen-preview__route"></span>
+                <span class="screen-preview__marker screen-preview__marker--green"></span>
+                <span class="screen-preview__marker screen-preview__marker--purple"></span>
+              </div>
+              <div class="screen-preview__list">
+                <span>Offline map pack</span>
+                <span>Studio notes</span>
+                <span>Session checklist</span>
+              </div>
+            </div>
+            <div class="story-band__copy">
+              <span class="feature-card__eyebrow">Offline Maps &amp; Vault</span>
+              <h3>The “I’m-glad-I-saved-that” drawer.</h3>
+              <p>Carry routes, studio notes, session checklists, and important docs in one contained vault so outages feel like “okay, cool” instead of “welp.”</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section" id="scenarios">
+        <div class="section-head">
+          <p class="eyebrow">Where RoachNet shines</p>
+          <h2>Built by someone who’s been burned by bad Wi-Fi more than once.</h2>
+          <p>RoachNet is for people who still need their tools when the network is flaky, slow, or straight-up gone.</p>
+        </div>
+
+        <div class="card-grid card-grid--three">
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Studio days</span>
+            <h3>The router is on its experimental phase again.</h3>
+            <p>Keep reference docs, AI tools, notes, and routing maps in one offline-ready workspace. Your session doesn’t have to care what the ISP is doing.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Travel</span>
+            <h3>Remote sessions on hotel Wi-Fi.</h3>
+            <p>Bring maps, checklists, local AI, and your vault with you so a bad network just means slower memes, not blocked work.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Outages</span>
+            <h3>Cloud tools paused? You don’t have to be.</h3>
+            <p>RoachNet runs on your machine, so your work keeps moving when hosted tools slow down, rate-limit, or disappear for maintenance.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section content-section--spotlight" id="why">
+        <div class="section-head">
+          <p class="eyebrow">Why RoachNet</p>
+          <h2>Built for people who keep going.</h2>
+          <p>Producers, engineers, and builders who want their tools to show up every time they do, no matter the network.</p>
+        </div>
+
+        <div class="split-highlight">
+          <article class="spotlight-card">
+            <strong>One calm control center.</strong>
+            <p>RoachNet stays out of your way until you need it, then gives you exactly what you need, fast.</p>
+          </article>
+
+          <div class="stack-list" role="list">
+            <div class="stack-item" role="listitem">
+              <strong>Local models first.</strong>
+              <span>Your prompts still flow when the internet doesn’t.</span>
+            </div>
+            <div class="stack-item" role="listitem">
+              <strong>Contained by default.</strong>
+              <span>Your stack stays grouped, portable, and easy to clean up when it’s time to start fresh.</span>
+            </div>
+            <div class="stack-item" role="listitem">
+              <strong>Designed to disappear.</strong>
+              <span>It stays quiet until you need it, then acts like the home base you already trusted.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section content-section--downloads" id="downloads">
+        <div class="section-head">
+          <p class="eyebrow">Download</p>
+          <h2>Grab RoachNet and keep your tools close.</h2>
+          <p>Install RoachNet on your desktop and keep the important stuff tied to your machine, not to a connection.</p>
+        </div>
+
+        <div class="download-grid">
+          <button class="download-card" data-platform="mac" type="button">
+            <span class="download-card__label">macOS · Apple Silicon</span>
+            <strong>Native RoachNet build for modern Mac hardware.</strong>
+            <small>Download RoachNet-Setup-macOS.dmg</small>
+          </button>
+          <button class="download-card" data-platform="win" type="button">
+            <span class="download-card__label">Windows 11 · x64</span>
+            <strong>RoachNet for Windows desktops.</strong>
+            <small>Guided setup for Docker, RoachClaw, and the desktop app.</small>
+          </button>
+          <button class="download-card" data-platform="linux" type="button">
+            <span class="download-card__label">Linux · Ubuntu / Bazzite</span>
+            <strong>RoachNet for Linux systems.</strong>
+            <small>Installer-first flow with AppImage and package options.</small>
+          </button>
+        </div>
+
+        <div class="downloads-actions">
+          <button class="cta cta--primary" id="downloads-primary" type="button">Download RoachNet for macOS</button>
+          <a class="cta cta--ghost" href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">View on GitHub</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__copy">
+        <strong>RoachNet</strong>
+        <span>Offline maps, local AI, and your knowledge in one place.</span>
+      </div>
+      <nav class="site-footer__nav" aria-label="Footer">
+        <a href="#features">Features</a>
+        <a href="#screens">Screens</a>
+        <a href="#downloads">Downloads</a>
+        <a href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+      <a href="https://github.com/AHGRoach/RoachNet/releases/latest" target="_blank" rel="noreferrer">Latest release</a>
+    </footer>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

@@ -25,10 +25,12 @@ export default function Footer() {
         </div>
         <button
           onClick={() => setDebugModalOpen(true)}
-          className="inline-flex items-center gap-1 text-sm/6 text-text-secondary hover:text-desert-green-light cursor-pointer"
+          className="roachnet-button roachnet-button--ghost inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm/6 text-text-secondary hover:text-desert-green-light cursor-pointer"
         >
-          <IconBug className="size-3.5" />
-          Debug Info
+          <span className="relative z-10 inline-flex items-center gap-1">
+            <IconBug className="size-3.5" />
+            Debug Info
+          </span>
         </button>
       </div>
       <DebugInfoModal open={debugModalOpen} onClose={() => setDebugModalOpen(false)} />

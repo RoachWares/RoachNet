@@ -11,6 +11,8 @@ export const KV_STORE_SCHEMA = {
   'ai.assistantCustomName':     'string',
   'ai.ollamaBaseUrl':           'string',
   'ai.openclawBaseUrl':         'string',
+  'ai.openclawWorkspacePath':   'string',
+  'ai.roachclawDefaultModel':   'string',
   'gpu.type':                   'string',
 } as const
 

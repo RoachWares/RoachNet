@@ -13,9 +13,12 @@ import DownloadsController from '#controllers/downloads_controller'
 import EasySetupController from '#controllers/easy_setup_controller'
 import HomeController from '#controllers/home_controller'
 import MapsController from '#controllers/maps_controller'
+import OpenClawController from '#controllers/openclaw_controller'
 import OllamaController from '#controllers/ollama_controller'
 import RagController from '#controllers/rag_controller'
+import RoachClawController from '#controllers/roachclaw_controller'
 import SettingsController from '#controllers/settings_controller'
+import SiteArchivesController from '#controllers/site_archives_controller'
 import SystemController from '#controllers/system_controller'
 import CollectionUpdatesController from '#controllers/collection_updates_controller'
 import ZimController from '#controllers/zim_controller'
@@ -29,6 +32,8 @@ router.get('/home', [HomeController, 'home'])
 router.on('/about').renderInertia('about')
 router.get('/chat', [ChatsController, 'inertia'])
 router.get('/maps', [MapsController, 'index'])
+router.get('/site-archives', [SiteArchivesController, 'index'])
+router.get('/site-archives/:slug/*', [SiteArchivesController, 'serve'])
 router.on('/knowledge-base').redirectToPath('/chat?knowledge_base=true') // redirect for legacy knowledge-base links
 
 router.get('/easy-setup', [EasySetupController, 'index'])
@@ -110,6 +115,30 @@ router
     router.get('/installed-models', [OllamaController, 'installedModels'])
   })
   .prefix('/api/ollama')
+
+router
+  .group(() => {
+    router.get('/skills/status', [OpenClawController, 'getSkillCliStatus'])
+    router.get('/skills/search', [OpenClawController, 'searchSkills'])
+    router.get('/skills/installed', [OpenClawController, 'listInstalledSkills'])
+    router.post('/skills/install', [OpenClawController, 'installSkill'])
+  })
+  .prefix('/api/openclaw')
+
+router
+  .group(() => {
+    router.get('/status', [RoachClawController, 'getStatus'])
+    router.post('/apply', [RoachClawController, 'apply'])
+  })
+  .prefix('/api/roachclaw')
+
+router
+  .group(() => {
+    router.get('/', [SiteArchivesController, 'list'])
+    router.post('/', [SiteArchivesController, 'create'])
+    router.delete('/:slug', [SiteArchivesController, 'destroy'])
+  })
+  .prefix('/api/site-archives')
 
 router
   .group(() => {

@@ -17,6 +17,14 @@ import { NomadOllamaModel, OllamaChatRequest } from '../../types/ollama'
 import { ChatResponse, ModelResponse } from 'ollama'
 import BenchmarkResult from '#models/benchmark_result'
 import { BenchmarkType, RunBenchmarkResponse, SubmitBenchmarkResponse, UpdateBuilderTagResponse } from '../../types/benchmark'
+import type {
+  OpenClawInstallSkillResponse,
+  OpenClawInstalledSkillsResponse,
+  OpenClawSkillCliStatus,
+  OpenClawSkillSearchResponse,
+} from '../../types/openclaw'
+import type { ApplyRoachClawResponse, RoachClawStatusResponse } from '../../types/roachclaw'
+import type { SiteArchiveRecord, SiteArchivesResponse } from '../../types/site_archives'
 
 class API {
   private client: AxiosInstance
@@ -456,6 +464,79 @@ class API {
   async getAIRuntimeProviders() {
     return catchInternal(async () => {
       const response = await this.client.get<AIRuntimeProvidersResponse>('/system/ai/providers')
+      return response.data
+    })()
+  }
+
+  async getOpenClawSkillStatus() {
+    return catchInternal(async () => {
+      const response = await this.client.get<OpenClawSkillCliStatus>('/openclaw/skills/status')
+      return response.data
+    })()
+  }
+
+  async searchOpenClawSkills(query: string, limit: number = 8) {
+    return catchInternal(async () => {
+      const response = await this.client.get<OpenClawSkillSearchResponse>('/openclaw/skills/search', {
+        params: { query, limit },
+      })
+      return response.data
+    })()
+  }
+
+  async getInstalledOpenClawSkills() {
+    return catchInternal(async () => {
+      const response = await this.client.get<OpenClawInstalledSkillsResponse>('/openclaw/skills/installed')
+      return response.data
+    })()
+  }
+
+  async installOpenClawSkill(slug: string, version?: string) {
+    return catchInternal(async () => {
+      const response = await this.client.post<OpenClawInstallSkillResponse>('/openclaw/skills/install', {
+        slug,
+        version,
+      })
+      return response.data
+    })()
+  }
+
+  async getRoachClawStatus() {
+    return catchInternal(async () => {
+      const response = await this.client.get<RoachClawStatusResponse>('/roachclaw/status')
+      return response.data
+    })()
+  }
+
+  async applyRoachClawOnboarding(payload: {
+    model: string
+    workspacePath?: string
+    ollamaBaseUrl?: string
+    openclawBaseUrl?: string
+  }) {
+    return catchInternal(async () => {
+      const response = await this.client.post<ApplyRoachClawResponse>('/roachclaw/apply', payload)
+      return response.data
+    })()
+  }
+
+  async listSiteArchives() {
+    return catchInternal(async () => {
+      const response = await this.client.get<SiteArchivesResponse>('/site-archives')
+      return response.data
+    })()
+  }
+
+  async createSiteArchive(url: string, title?: string) {
+    return catchInternal(async () => {
+      const response = await this.client.post<SiteArchiveRecord>('/site-archives', { url, title })
+      return response.data
+    })()
+  }
+
+  async deleteSiteArchive(slug: string) {
+    return catchInternal(async () => {
+      const response = await this.client.delete<{ success: boolean }>(`/site-archives/${slug}`)
       return response.data
     })()
   }

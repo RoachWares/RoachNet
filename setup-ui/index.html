@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RoachNet Setup</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <div class="scanlines"></div>
+      <main class="frame">
+        <header class="hero panel">
+          <div class="hero-brand">
+            <div class="brand-mark-shell">
+              <img class="brand-mark" src="/roachnet-mark.png" alt="RoachNet mark" />
+            </div>
+            <div>
+              <p class="kicker">Cross-Platform Setup Console</p>
+              <h1>RoachNet Installer / Launcher</h1>
+              <p class="lede">
+                Configure the install path, bootstrap the required runtime dependencies, stand up
+                support services, pin a native release channel, and hand off into RoachNet from one
+                screen.
+              </p>
+            </div>
+          </div>
+
+          <div class="hero-status">
+            <div class="status-pill">
+              <span class="status-label">Mode</span>
+              <strong>Native Shell</strong>
+            </div>
+            <div class="status-pill">
+              <span class="status-label">Flow</span>
+              <strong>Install, Update, Launch</strong>
+            </div>
+          </div>
+        </header>
+
+        <section class="grid two-up">
+          <article class="panel">
+            <div class="section-head">
+              <p class="kicker">Machine</p>
+              <h2>Host Profile</h2>
+            </div>
+            <div id="system-grid" class="system-grid"></div>
+          </article>
+
+          <article class="panel">
+            <div class="section-head">
+              <p class="kicker">Dependencies</p>
+              <h2>Readiness</h2>
+            </div>
+            <div id="runtime-summary" class="runtime-summary"></div>
+            <div id="dependency-list" class="dependency-list"></div>
+            <div class="action-row action-row-inline">
+              <button id="startRuntimeButton" class="button button-secondary" type="button">
+                Start Container Runtime
+              </button>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <p class="kicker">Configure</p>
+            <h2>Install Target</h2>
+          </div>
+
+          <form id="setup-form" class="form-grid">
+            <label class="field field-wide">
+              <span>Install Path</span>
+              <input id="installPath" name="installPath" type="text" autocomplete="off" />
+              <small>Choose the folder where RoachNet should be cloned or updated.</small>
+            </label>
+
+            <label class="field">
+              <span>Source Mode</span>
+              <select id="sourceMode" name="sourceMode"></select>
+              <small>Use the bundled installer payload, clone from GitHub, or point at a developer workspace.</small>
+            </label>
+
+            <label class="field">
+              <span>Git Ref</span>
+              <input id="sourceRef" name="sourceRef" type="text" autocomplete="off" />
+              <small>Branch or tag to install.</small>
+            </label>
+
+            <label class="field">
+              <span>Release Channel</span>
+              <select id="releaseChannel" name="releaseChannel">
+                <option value="stable">Stable</option>
+                <option value="beta">Beta</option>
+                <option value="alpha">Alpha</option>
+              </select>
+              <small>Controls which native update stream this machine will follow.</small>
+            </label>
+
+            <label class="field field-wide" id="repo-url-field">
+              <span>Source Repository URL</span>
+              <input id="sourceRepoUrl" name="sourceRepoUrl" type="text" autocomplete="off" />
+              <small>Default points at the RoachNet GitHub repository.</small>
+            </label>
+
+            <label class="field field-wide">
+              <span>Update Feed Base URL</span>
+              <input id="updateBaseUrl" name="updateBaseUrl" type="text" autocomplete="off" />
+              <small>Optional generic update feed. Leave blank to use the packaged GitHub release feed.</small>
+            </label>
+
+            <label class="toggle">
+              <input id="autoInstallDependencies" name="autoInstallDependencies" type="checkbox" />
+              <div>
+                <strong>Automatically install missing dependencies</strong>
+                <span>Uses Homebrew, WinGet, or your detected Linux package manager when possible.</span>
+              </div>
+            </label>
+
+            <label class="toggle">
+              <input id="installOptionalOllama" name="installOptionalOllama" type="checkbox" />
+              <div>
+                <strong>Also install Ollama</strong>
+                <span>Optional local AI runtime. RoachNet can still boot without it.</span>
+              </div>
+            </label>
+
+            <label class="toggle">
+              <input id="installOptionalOpenClaw" name="installOptionalOpenClaw" type="checkbox" />
+              <div>
+                <strong>Also install OpenClaw</strong>
+                <span>Installs the OpenClaw CLI so RoachClaw onboarding can link OpenClaw to local Ollama models.</span>
+              </div>
+            </label>
+
+            <label class="toggle">
+              <input id="autoLaunch" name="autoLaunch" type="checkbox" />
+              <div>
+                <strong>Launch RoachNet after setup</strong>
+                <span>Starts the local runtime and hands off into RoachNet inside the native shell.</span>
+              </div>
+            </label>
+
+            <label class="toggle">
+              <input id="autoCheckUpdates" name="autoCheckUpdates" type="checkbox" />
+              <div>
+                <strong>Check for native app updates automatically</strong>
+                <span>Polls the selected release channel in the background after first-run setup.</span>
+              </div>
+            </label>
+
+            <label class="toggle">
+              <input id="launchAtLogin" name="launchAtLogin" type="checkbox" />
+              <div>
+                <strong>Launch native shell at OS login</strong>
+                <span>Starts the RoachNet desktop shell automatically when the user signs in.</span>
+              </div>
+            </label>
+
+            <label class="toggle">
+              <input id="dryRun" name="dryRun" type="checkbox" />
+              <div>
+                <strong>Dry run</strong>
+                <span>Preview the workflow without changing the machine.</span>
+              </div>
+            </label>
+          </form>
+
+          <div class="action-row">
+            <button id="refreshButton" class="button button-outline" type="button">Refresh Status</button>
+            <button id="launchButton" class="button button-secondary" type="button">Launch Existing Install</button>
+            <button id="installButton" class="button button-primary" type="button">Run Setup</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <p class="kicker">Activity</p>
+            <h2>Installer Log</h2>
+          </div>
+          <div id="task-meta" class="task-meta"></div>
+          <pre id="log-output" class="log-output">Loading RoachNet Setup state…</pre>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

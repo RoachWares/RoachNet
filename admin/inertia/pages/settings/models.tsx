@@ -1,5 +1,5 @@
 import { Head, router, usePage } from '@inertiajs/react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import StyledTable from '~/components/StyledTable'
 import SettingsLayout from '~/layouts/SettingsLayout'
 import { NomadOllamaModel } from '../../../types/ollama'
@@ -37,6 +37,7 @@ export default function ModelsPage(props: {
   const { debounce } = useDebounce()
   const { data: systemInfo } = useSystemInfo({})
   const runtimeStatus = props.models.runtimeStatus
+  const installedModelNames = props.models.installedModels.map((model) => model.name)
 
   const [gpuBannerDismissed, setGpuBannerDismissed] = useState(() => {
     try {
@@ -110,6 +111,11 @@ export default function ModelsPage(props: {
   const [query, setQuery] = useState('')
   const [queryUI, setQueryUI] = useState('')
   const [limit, setLimit] = useState(15)
+  const [testModel, setTestModel] = useState(installedModelNames[0] || '')
+  const [testPrompt, setTestPrompt] = useState(
+    'Give me a short RoachNet runtime readiness check in one paragraph.'
+  )
+  const [testOutput, setTestOutput] = useState('')
 
   const debouncedSetQuery = debounce((val: string) => {
     setQuery(val)
@@ -117,6 +123,12 @@ export default function ModelsPage(props: {
 
   const forceRefreshRef = useRef(false)
   const [isForceRefreshing, setIsForceRefreshing] = useState(false)
+
+  useEffect(() => {
+    if (!installedModelNames.includes(testModel)) {
+      setTestModel(installedModelNames[0] || '')
+    }
+  }, [installedModelNames, testModel])
 
   const { data: availableModelData, isFetching, refetch } = useQuery({
     queryKey: ['ollama', 'availableModels', query, limit],
@@ -227,6 +239,35 @@ export default function ModelsPage(props: {
     },
   })
 
+  const runModelCheckMutation = useMutation({
+    mutationFn: async ({ model, prompt }: { model: string; prompt: string }) => {
+      const response = await api.sendChatMessage({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+      })
+
+      if (!response?.message?.content) {
+        throw new Error('No response returned from the selected Ollama model.')
+      }
+
+      return response
+    },
+    onSuccess: (response) => {
+      setTestOutput(response.message.content)
+      addNotification({
+        message: `Model check completed with ${response.model}.`,
+        type: 'success',
+      })
+    },
+    onError: (error) => {
+      console.error('Error running Ollama model check:', error)
+      addNotification({
+        message: error instanceof Error ? error.message : 'Failed to run model check.',
+        type: 'error',
+      })
+    },
+  })
+
   return (
     <SettingsLayout>
       <Head title={`${aiAssistantName} Settings | RoachNet`} />
@@ -306,6 +347,117 @@ export default function ModelsPage(props: {
             </div>
           </div>
           <ActiveModelDownloads withHeader />
+
+          <StyledSectionHeader title="Model Runtime Check" className="mt-12 mb-4" />
+          <div className="bg-surface-primary rounded-lg border-2 border-border-subtle p-6">
+            <div className="flex flex-col gap-6">
+              <div className="space-y-2">
+                <p className="text-text-primary font-semibold">
+                  Run a quick prompt against any installed Ollama model.
+                </p>
+                <p className="text-sm text-text-muted">
+                  This confirms the selected model is downloaded, reachable, and responding on the
+                  configured runtime endpoint.
+                </p>
+                <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                  Runtime source: {runtimeStatus.source} {runtimeStatus.baseUrl ? `• ${runtimeStatus.baseUrl}` : ''}
+                </p>
+              </div>
+
+              {installedModelNames.length === 0 ? (
+                <Alert
+                  type="warning"
+                  variant="bordered"
+                  title="No Installed Models Yet"
+                  message="Install at least one Ollama model below, then return here to run a live prompt against it."
+                />
+              ) : (
+                <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+                  <div className="space-y-4">
+                    <div>
+                      <label
+                        htmlFor="testModel"
+                        className="block text-base/6 font-medium text-text-primary"
+                      >
+                        Installed Model
+                      </label>
+                      <div className="mt-1.5">
+                        <select
+                          id="testModel"
+                          name="testModel"
+                          value={testModel}
+                          onChange={(event) => setTestModel(event.target.value)}
+                          className="block w-full rounded-md bg-surface-primary px-3 py-2 text-base text-text-primary border border-border-default focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-primary sm:text-sm/6"
+                        >
+                          {installedModelNames.map((modelName) => (
+                            <option key={modelName} value={modelName}>
+                              {modelName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="testPrompt"
+                        className="block text-base/6 font-medium text-text-primary"
+                      >
+                        Test Prompt
+                      </label>
+                      <p className="mt-1 text-sm text-text-muted">
+                        Keep this short. RoachNet uses a normal chat call here, so this is a real
+                        runtime test, not a mock ping.
+                      </p>
+                      <textarea
+                        id="testPrompt"
+                        name="testPrompt"
+                        value={testPrompt}
+                        onChange={(event) => setTestPrompt(event.target.value)}
+                        rows={6}
+                        className="mt-1.5 block w-full rounded-md bg-surface-primary px-3 py-2 text-base text-text-primary border border-border-default placeholder:text-text-muted focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-primary sm:text-sm/6"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <StyledButton
+                        onClick={() =>
+                          runModelCheckMutation.mutate({
+                            model: testModel,
+                            prompt: testPrompt.trim(),
+                          })
+                        }
+                        loading={runModelCheckMutation.isPending}
+                        disabled={!runtimeStatus.available || !testModel || testPrompt.trim().length === 0}
+                        icon="IconPlayerPlay"
+                      >
+                        Run Prompt
+                      </StyledButton>
+                      <StyledButton
+                        variant="ghost"
+                        onClick={() => setTestOutput('')}
+                        disabled={!testOutput}
+                        icon="IconEraser"
+                      >
+                        Clear Output
+                      </StyledButton>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border-default bg-surface-secondary/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                      Model Output
+                    </p>
+                    <div className="mt-3 min-h-48 rounded-lg border border-border-subtle bg-surface-primary/80 p-4 text-sm leading-6 text-text-secondary whitespace-pre-wrap">
+                      {runModelCheckMutation.isPending
+                        ? `Running ${testModel}...`
+                        : testOutput || 'Run a prompt to verify the selected Ollama model.'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
 
           <StyledSectionHeader title="Models" className="mt-12 mb-4" />
           <div className="flex justify-start items-center gap-3 mt-4">

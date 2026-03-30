@@ -103,10 +103,11 @@ export default class OllamaController {
         }
       }
 
-      // Check if the model supports "thinking" capability for enhanced response generation
-      // If gpt-oss model, it requires a text param for "think" https://docs.ollama.com/api/chat
-      const thinkingCapability = await this.ollamaService.checkModelHasThinking(reqData.model)
-      const think: boolean | 'medium' = thinkingCapability ? (reqData.model.startsWith('gpt-oss') ? 'medium' : true) : false
+      // Default to fast local responses. Thinking mode is opt-in because
+      // enabling it automatically adds visible latency on models like qwen3.5.
+      const think: boolean | 'medium' = reqData.think
+        ? (reqData.model.startsWith('gpt-oss') ? 'medium' : true)
+        : false
 
       // Separate sessionId from the Ollama request payload — Ollama rejects unknown fields
       const { sessionId, ...ollamaRequest } = reqData
