@@ -59,8 +59,12 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-.
+reported to the project maintainer at
+[github.com/AHGRoach](https://github.com/AHGRoach). For general project
+coordination, contributors can also use
+[github.com/AHGRoach/RoachNet/issues](https://github.com/AHGRoach/RoachNet/issues)
+or
+[github.com/AHGRoach/RoachNet/discussions](https://github.com/AHGRoach/RoachNet/discussions).
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
