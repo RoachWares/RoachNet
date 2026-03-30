@@ -1,4 +1,4 @@
-import { IconSend, IconWand } from '@tabler/icons-react'
+import { IconPlayerStopFilled, IconSend, IconSparkles, IconWand } from '@tabler/icons-react'
 import { useState, useRef, useEffect } from 'react'
 import classNames from '~/lib/classNames'
 import { ChatMessage } from '../../../types/chat'
@@ -14,7 +14,10 @@ import { usePage } from '@inertiajs/react'
 interface ChatInterfaceProps {
   messages: ChatMessage[]
   onSendMessage: (message: string) => void
+  onStopStreaming?: () => void
   isLoading?: boolean
+  showLoadingBubble?: boolean
+  loadingLabel?: string
   chatSuggestions?: string[]
   chatSuggestionsEnabled?: boolean
   chatSuggestionsLoading?: boolean
@@ -24,7 +27,10 @@ interface ChatInterfaceProps {
 export default function ChatInterface({
   messages,
   onSendMessage,
+  onStopStreaming,
   isLoading = false,
+  showLoadingBubble = false,
+  loadingLabel = 'Thinking',
   chatSuggestions = [],
   chatSuggestionsEnabled = false,
   chatSuggestionsLoading = false,
@@ -98,7 +104,7 @@ export default function ChatInterface({
               {chatSuggestionsEnabled && chatSuggestions && chatSuggestions.length > 0 && !chatSuggestionsLoading && (
                 <div className="mt-8">
                   <h4 className="text-sm font-medium text-text-secondary mb-2">Suggestions:</h4>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap justify-center gap-2">
                     {chatSuggestions.map((suggestion, index) => (
                       <button
                         key={index}
@@ -109,8 +115,9 @@ export default function ChatInterface({
                             textareaRef.current?.focus()
                           }, 0)
                         }}
-                        className="px-4 py-2 bg-surface-secondary hover:bg-surface-secondary rounded-lg text-sm text-text-primary transition-colors"
+                        className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-secondary/80 px-4 py-2 text-sm text-text-primary transition hover:-translate-y-0.5 hover:border-desert-green/40 hover:bg-surface-primary"
                       >
+                        <IconSparkles className="size-4 text-desert-green-light" />
                         {suggestion}
                       </button>
                     ))}
@@ -118,7 +125,7 @@ export default function ChatInterface({
                 </div>
               )}
               {/* Display bouncing dots while loading suggestions */}
-              {chatSuggestionsEnabled && chatSuggestionsLoading && <BouncingDots text="Thinking" containerClassName="mt-8" />}
+              {chatSuggestionsEnabled && chatSuggestionsLoading && <BouncingDots text="Refreshing suggestions" containerClassName="mt-8" />}
               {!chatSuggestionsEnabled && (
                 <div className="mt-8 text-sm text-text-muted">
                   Need some inspiration? Enable chat suggestions in settings to get started with example prompts.
@@ -141,11 +148,11 @@ export default function ChatInterface({
               </div>
             ))}
             {/* Loading/thinking indicator */}
-            {isLoading && (
+            {showLoadingBubble && (
               <div className="flex gap-4 justify-start">
                 <ChatAssistantAvatar />
                 <div className="max-w-[70%] rounded-lg px-4 py-3 bg-surface-secondary text-text-primary">
-                  <BouncingDots text="Thinking" />
+                  <BouncingDots text={loadingLabel} />
                 </div>
               </div>
             )}
@@ -185,6 +192,16 @@ export default function ChatInterface({
               <IconSend className="h-6 w-6" />
             )}
           </button>
+          {isLoading && onStopStreaming && (
+            <button
+              type="button"
+              onClick={onStopStreaming}
+              className="mb-2 inline-flex items-center gap-2 rounded-lg border border-desert-red-light/30 bg-desert-red/10 px-3 py-3 text-desert-red-light transition hover:bg-desert-red/20"
+            >
+              <IconPlayerStopFilled className="h-5 w-5" />
+              <span className="text-sm font-medium">Stop</span>
+            </button>
+          )}
         </form>
         {!rewriteModelAvailable && (
           <div className="text-sm text-text-muted mt-2">

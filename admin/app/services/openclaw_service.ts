@@ -15,6 +15,7 @@ import type {
   OpenClawSkillSearchResponse,
   OpenClawSkillSearchResult,
 } from '../../types/openclaw.js'
+import { findCommandPath } from '../utils/process.js'
 
 const OPENCLAW_HEALTH_PATHS = ['/health', '/api/health', '/']
 const DEFAULT_OPENCLAW_WORKSPACE_PATH = path.join(process.cwd(), 'storage', 'openclaw')
@@ -45,9 +46,10 @@ export class OpenClawService {
 
   public async getSkillCliStatus(): Promise<OpenClawSkillCliStatus> {
     const workspacePath = await this.getWorkspacePath()
-    const openclawBinaryAvailable = await this.commandExists('openclaw', ['--help'])
-    const clawhubInstalled = await this.commandExists('clawhub', ['--help'])
-    const npxClawhubAvailable = clawhubInstalled || (await this.commandExists(this.getNpxBinary(), ['-y', 'clawhub', '--help']))
+    const openclawBinaryAvailable = await this.commandExists('openclaw')
+    const clawhubInstalled = await this.commandExists('clawhub')
+    const npxAvailable = await this.commandExists(this.getNpxBinary())
+    const npxClawhubAvailable = clawhubInstalled || npxAvailable
 
     return {
       openclawAvailable: openclawBinaryAvailable,
@@ -250,19 +252,14 @@ export class OpenClawService {
     return process.platform === 'win32' ? 'npx.cmd' : 'npx'
   }
 
-  private async commandExists(binary: string, args: string[]): Promise<boolean> {
-    try {
-      await this.runCommand(binary, args, process.cwd())
-      return true
-    } catch {
-      return false
-    }
+  private async commandExists(binary: string): Promise<boolean> {
+    return Boolean(await findCommandPath(binary))
   }
 
   private async runClawhubCommand(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
     await mkdir(cwd, { recursive: true })
 
-    if (await this.commandExists('clawhub', ['--help'])) {
+    if (await this.commandExists('clawhub')) {
       try {
         return await this.runCommand('clawhub', args, cwd)
       } catch (error) {

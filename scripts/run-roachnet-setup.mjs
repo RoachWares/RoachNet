@@ -751,6 +751,10 @@ async function commandPath(command) {
 }
 
 async function commandExists(command, args = ['--version']) {
+  return Boolean(await commandPath(command))
+}
+
+async function commandResponds(command, args = ['--version']) {
   try {
     await runProcess(command, args, {})
     return true
@@ -860,7 +864,7 @@ async function detectDependencies() {
   const openclawPath = await commandPath(process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw')
   const containerRuntime = await detectRoachNetContainerRuntime({
     commandPath,
-    commandExists,
+    commandExists: commandResponds,
     runProcess,
   })
   const gitVersion = gitPath ? await detectCommandVersion('git', ['--version']) : null
@@ -868,10 +872,10 @@ async function detectDependencies() {
   const npmVersion = npmPath
     ? await detectCommandVersion(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'])
     : null
-  const ollamaAvailable = await commandExists('ollama', ['--version'])
+  const ollamaAvailable = await commandExists('ollama')
   const ollamaVersion = ollamaAvailable ? await detectCommandVersion('ollama', ['--version']) : null
   const openclawAvailable =
-    Boolean(openclawPath) || (await commandExists('openclaw', ['--version']))
+    Boolean(openclawPath) || (await commandExists('openclaw'))
   const openclawVersion = openclawAvailable
     ? await detectCommandVersion(process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw', ['--version'])
     : null

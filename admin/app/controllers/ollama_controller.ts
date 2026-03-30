@@ -8,6 +8,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import { DEFAULT_QUERY_REWRITE_MODEL, RAG_CONTEXT_LIMITS, SYSTEM_PROMPTS } from '../../constants/ollama.js'
 import logger from '@adonisjs/core/services/logger'
 import type { Message } from 'ollama'
+import { getErrorMessage } from '../utils/errors.js'
 
 @inject()
 export default class OllamaController {
@@ -30,6 +31,10 @@ export default class OllamaController {
 
   async chat({ request, response }: HttpContext) {
     const reqData = await request.validateUsing(chatSchema)
+    const writeSSE = (event: string, payload: Record<string, unknown>) => {
+      response.response.write(`event: ${event}\n`)
+      response.response.write(`data: ${JSON.stringify(payload)}\n\n`)
+    }
 
     // Flush SSE headers immediately so the client connection is open while
     // pre-processing (query rewriting, RAG lookup) runs in the background.
@@ -54,10 +59,22 @@ export default class OllamaController {
 
       // Query rewriting for better RAG retrieval with manageable context
       // Will return user's latest message if no rewriting is needed
+      if (reqData.stream && this.shouldRewriteQuery(reqData.messages)) {
+        writeSSE('status', {
+          status: 'enhancing-query',
+          message: 'Enhancing query...',
+        })
+      }
       const rewrittenQuery = await this.rewriteQueryWithContext(reqData.messages)
 
       logger.debug(`[OllamaController] Rewritten query for RAG: "${rewrittenQuery}"`)
       if (rewrittenQuery) {
+        if (reqData.stream) {
+          writeSSE('status', {
+            status: 'searching-knowledge',
+            message: 'Searching knowledge...',
+          })
+        }
         const relevantDocs = await this.ragService.searchSimilarDocuments(
           rewrittenQuery,
           5, // Top 5 most relevant chunks
@@ -66,8 +83,8 @@ export default class OllamaController {
 
         logger.debug(`[RAG] Retrieved ${relevantDocs.length} relevant documents for query: "${rewrittenQuery}"`)
 
-        // If relevant context is found, inject as a system message with adaptive limits
-        if (relevantDocs.length > 0) {
+        // Only inject retrieved context when the top match is clearly relevant.
+        if (this.shouldInjectRagContext(relevantDocs)) {
           // Determine context budget based on model size
           const { maxResults, maxTokens } = this.getContextLimitsForModel(reqData.model)
           let trimmedDocs = relevantDocs.slice(0, maxResults)
@@ -100,6 +117,8 @@ export default class OllamaController {
           const firstNonSystemIndex = reqData.messages.findIndex((msg) => msg.role !== 'system')
           const insertIndex = firstNonSystemIndex === -1 ? 0 : firstNonSystemIndex
           reqData.messages.splice(insertIndex, 0, systemMessage)
+        } else if (relevantDocs.length > 0) {
+          logger.debug('[RAG] Retrieved context did not clear the relevance gate. Skipping injection.')
         }
       }
 
@@ -131,20 +150,48 @@ export default class OllamaController {
           if (chunk.message?.content) {
             fullContent += chunk.message.content
           }
-          response.response.write(`data: ${JSON.stringify(chunk)}\n\n`)
+          writeSSE('chunk', chunk as unknown as Record<string, unknown>)
         }
-        response.response.end()
 
         // Save assistant message and optionally generate title
+        let generatedTitle: string | null = null
+        let persistenceError: string | null = null
         if (sessionId && fullContent) {
-          await this.chatService.addMessage(sessionId, 'assistant', fullContent)
-          const messageCount = await this.chatService.getMessageCount(sessionId)
-          if (messageCount <= 2 && userContent) {
-            this.chatService.generateTitle(sessionId, userContent, fullContent).catch((err) => {
-              logger.error(`[OllamaController] Title generation failed: ${err instanceof Error ? err.message : err}`)
+          try {
+            writeSSE('status', {
+              status: 'persisting-response',
+              message: 'Saving response...',
             })
+            await this.chatService.addMessage(sessionId, 'assistant', fullContent)
+            const messageCount = await this.chatService.getMessageCount(sessionId)
+            if (messageCount <= 2 && userContent) {
+              writeSSE('status', {
+                status: 'generating-title',
+                message: 'Naming chat...',
+              })
+              generatedTitle = await this.chatService.generateTitle(sessionId, userContent, fullContent)
+            }
+          } catch (error) {
+            persistenceError = getErrorMessage(error)
+            logger.error(
+              {
+                sessionId,
+                model: reqData.model,
+                error: persistenceError,
+              },
+              '[OllamaController] Failed to persist streamed chat response'
+            )
           }
         }
+
+        writeSSE('done', {
+          done: true,
+          sessionId,
+          title: generatedTitle,
+          persisted: !persistenceError,
+          error: persistenceError,
+        })
+        response.response.end()
         return
       }
 
@@ -155,16 +202,21 @@ export default class OllamaController {
         await this.chatService.addMessage(sessionId, 'assistant', result.message.content)
         const messageCount = await this.chatService.getMessageCount(sessionId)
         if (messageCount <= 2 && userContent) {
-          this.chatService.generateTitle(sessionId, userContent, result.message.content).catch((err) => {
+          try {
+            await this.chatService.generateTitle(sessionId, userContent, result.message.content)
+          } catch (err) {
             logger.error(`[OllamaController] Title generation failed: ${err instanceof Error ? err.message : err}`)
-          })
+          }
         }
       }
 
       return result
     } catch (error) {
       if (reqData.stream) {
-        response.response.write(`data: ${JSON.stringify({ error: true })}\n\n`)
+        writeSSE('error', {
+          error: true,
+          message: getErrorMessage(error),
+        })
         response.response.end()
         return
       }
@@ -220,8 +272,11 @@ export default class OllamaController {
       // Get recent conversation history (last 6 messages for 3 turns)
       const recentMessages = messages.slice(-6)
 
-      // Skip rewriting for short conversations. Rewriting adds latency with
-      // little RAG benefit until there is enough context to matter.
+      if (!this.shouldRewriteQuery(messages)) {
+        const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user')
+        return lastUserMessage?.content || null
+      }
+
       const userMessages = recentMessages.filter(msg => msg.role === 'user')
       if (userMessages.length <= 2) {
         return userMessages[userMessages.length - 1]?.content || null
@@ -272,5 +327,25 @@ export default class OllamaController {
       const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user')
       return lastUserMessage?.content || null
     }
+  }
+
+  private shouldRewriteQuery(messages: Message[]): boolean {
+    const recentMessages = messages.slice(-6)
+    const userMessages = recentMessages.filter((msg) => msg.role === 'user')
+    return userMessages.length > 2
+  }
+
+  private shouldInjectRagContext(
+    relevantDocs: Array<{ text: string; score: number; metadata?: Record<string, any> }>
+  ): boolean {
+    if (relevantDocs.length === 0) {
+      return false
+    }
+
+    const topScore = relevantDocs[0]?.score ?? 0
+    const averageScore =
+      relevantDocs.reduce((total, doc) => total + doc.score, 0) / relevantDocs.length
+
+    return topScore > 0.5 || topScore - averageScore > 0.15
   }
 }

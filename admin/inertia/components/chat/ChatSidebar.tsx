@@ -2,8 +2,8 @@ import classNames from '~/lib/classNames'
 import StyledButton from '../StyledButton'
 import { router, usePage } from '@inertiajs/react'
 import { ChatSession } from '../../../types/chat'
-import { IconMessage } from '@tabler/icons-react'
-import { useState } from 'react'
+import { IconMessage, IconSearch } from '@tabler/icons-react'
+import { useMemo, useState } from 'react'
 import KnowledgeBaseModal from './KnowledgeBaseModal'
 import RoachNetBrand from '../RoachNetBrand'
 
@@ -28,6 +28,50 @@ export default function ChatSidebar({
   const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(
     () => new URLSearchParams(window.location.search).get('knowledge_base') === 'true'
   )
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredSessions = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+    if (!normalizedQuery) {
+      return sessions
+    }
+
+    return sessions.filter((session) =>
+      [session.title, session.lastMessage || ''].some((value) =>
+        value.toLowerCase().includes(normalizedQuery)
+      )
+    )
+  }, [searchQuery, sessions])
+
+  const groupedSessions = useMemo(() => {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startOfYesterday = new Date(startOfToday)
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+    const startOfWeek = new Date(startOfToday)
+    startOfWeek.setDate(startOfWeek.getDate() - 6)
+
+    const buckets: Array<{ label: string; sessions: ChatSession[] }> = [
+      { label: 'Today', sessions: [] },
+      { label: 'Yesterday', sessions: [] },
+      { label: 'This Week', sessions: [] },
+      { label: 'Older', sessions: [] },
+    ]
+
+    for (const session of filteredSessions) {
+      if (session.timestamp >= startOfToday) {
+        buckets[0].sessions.push(session)
+      } else if (session.timestamp >= startOfYesterday) {
+        buckets[1].sessions.push(session)
+      } else if (session.timestamp >= startOfWeek) {
+        buckets[2].sessions.push(session)
+      } else {
+        buckets[3].sessions.push(session)
+      }
+    }
+
+    return buckets.filter((bucket) => bucket.sessions.length > 0)
+  }, [filteredSessions])
 
   function handleCloseKnowledgeBase() {
     setIsKnowledgeBaseModalOpen(false)
@@ -47,44 +91,67 @@ export default function ChatSidebar({
         </StyledButton>
       </div>
 
+      <div className="border-b border-border-subtle px-4 py-3">
+        <label className="relative block">
+          <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search chats"
+            className="w-full rounded-xl border border-border-default bg-surface-primary px-10 py-2.5 text-sm text-text-primary outline-none transition focus:border-desert-green/40 focus:ring-2 focus:ring-desert-green/20"
+          />
+        </label>
+      </div>
+
       <div className="flex-1 overflow-y-auto">
         {sessions.length === 0 ? (
           <div className="p-4 text-center text-text-muted text-sm">No previous chats</div>
+        ) : groupedSessions.length === 0 ? (
+          <div className="p-4 text-center text-text-muted text-sm">No chats match that search</div>
         ) : (
-          <div className="p-2 space-y-1">
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => onSessionSelect(session.id)}
-                className={classNames(
-                  'w-full text-left px-3 py-2 rounded-lg transition-colors group',
-                  activeSessionId === session.id
-                    ? 'bg-desert-green text-white'
-                    : 'hover:bg-surface-secondary text-text-primary'
-                )}
-              >
-                <div className="flex items-start gap-2">
-                  <IconMessage
-                    className={classNames(
-                      'h-5 w-5 mt-0.5 shrink-0',
-                      activeSessionId === session.id ? 'text-white' : 'text-text-muted'
-                    )}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{session.title}</div>
-                    {session.lastMessage && (
-                      <div
-                        className={classNames(
-                          'text-xs truncate mt-0.5',
-                          activeSessionId === session.id ? 'text-white/80' : 'text-text-muted'
-                        )}
-                      >
-                        {session.lastMessage}
-                      </div>
-                    )}
-                  </div>
+          <div className="space-y-4 p-2">
+            {groupedSessions.map((group) => (
+              <div key={group.label}>
+                <div className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+                  {group.label}
                 </div>
-              </button>
+                <div className="space-y-1">
+                  {group.sessions.map((session) => (
+                    <button
+                      key={session.id}
+                      onClick={() => onSessionSelect(session.id)}
+                      className={classNames(
+                        'w-full rounded-xl px-3 py-2 text-left transition-colors group',
+                        activeSessionId === session.id
+                          ? 'bg-desert-green text-white'
+                          : 'text-text-primary hover:bg-surface-primary'
+                      )}
+                    >
+                      <div className="flex items-start gap-2">
+                        <IconMessage
+                          className={classNames(
+                            'mt-0.5 h-5 w-5 shrink-0',
+                            activeSessionId === session.id ? 'text-white' : 'text-text-muted'
+                          )}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">{session.title}</div>
+                          {session.lastMessage && (
+                            <div
+                              className={classNames(
+                                'mt-0.5 truncate text-xs',
+                                activeSessionId === session.id ? 'text-white/80' : 'text-text-muted'
+                              )}
+                            >
+                              {session.lastMessage}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}

@@ -14,6 +14,8 @@ export const KV_STORE_SCHEMA = {
   'ai.openclawWorkspacePath':   'string',
   'ai.roachclawDefaultModel':   'string',
   'gpu.type':                   'string',
+  'gpu.detectedAt':             'string',
+  'gpu.noneDetectionCount':     'string',
 } as const
 
 type KVTagToType<T extends string> = T extends 'boolean' ? boolean : string

@@ -1,6 +1,8 @@
+import { IconCopy, IconCheck } from '@tabler/icons-react'
 import classNames from '~/lib/classNames'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useState } from 'react'
 import { ChatMessage } from '../../../types/chat'
 
 export interface ChatMessageBubbleProps {
@@ -8,20 +10,34 @@ export interface ChatMessageBubbleProps {
 }
 
 export default function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
+  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
+
+  const handleCopy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedSnippet(value)
+      window.setTimeout(() => {
+        setCopiedSnippet((current) => (current === value ? null : current))
+      }, 1500)
+    } catch {
+      setCopiedSnippet(null)
+    }
+  }
+
   return (
     <div
       className={classNames(
-        'max-w-[70%] rounded-lg px-4 py-3',
+        'group max-w-[70%] rounded-2xl px-4 py-3 shadow-sm',
         message.role === 'user' ? 'bg-desert-green text-white' : 'bg-surface-secondary text-text-primary'
       )}
     >
       {message.isThinking && message.thinking && (
-        <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
-          <div className="mb-1 flex items-center gap-1.5 font-medium text-amber-700">
+        <div className="mb-3 rounded-2xl border border-border-subtle bg-surface-secondary px-3 py-2 text-xs">
+          <div className="mb-1 flex items-center gap-1.5 font-medium text-desert-orange-light">
             <span>Reasoning</span>
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse inline-block" />
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-desert-orange-light" />
           </div>
-          <div className="prose prose-xs max-w-none text-amber-900/80 max-h-32 overflow-y-auto">
+          <div className="prose prose-xs max-w-none max-h-32 overflow-y-auto text-text-secondary">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.thinking}</ReactMarkdown>
           </div>
         </div>
@@ -50,6 +66,7 @@ export default function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             components={{
               code: ({ node, className, children, ...props }: any) => {
                 const isInline = !className?.includes('language-')
+                const codeContent = String(children).replace(/\n$/, '')
                 if (isInline) {
                   return (
                     <code
@@ -61,12 +78,31 @@ export default function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                   )
                 }
                 return (
-                  <code
-                    className="block bg-gray-800 text-gray-100 p-3 rounded-lg overflow-x-auto font-mono text-sm my-2"
-                    {...props}
-                  >
-                    {children}
-                  </code>
+                  <div className="relative my-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(codeContent)}
+                      className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[11px] font-medium text-gray-100 transition hover:bg-black/50"
+                    >
+                      {copiedSnippet === codeContent ? (
+                        <>
+                          <IconCheck className="size-3.5" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <IconCopy className="size-3.5" />
+                          Copy
+                        </>
+                      )}
+                    </button>
+                    <code
+                      className="block overflow-x-auto rounded-xl bg-gray-950 p-3 pr-16 font-mono text-sm text-gray-100"
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  </div>
                 )
               },
               p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
@@ -104,8 +140,8 @@ export default function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
       </div>
       <div
         className={classNames(
-          'text-xs mt-2',
-          message.role === 'user' ? 'text-white/70' : 'text-text-muted'
+          'mt-2 text-xs opacity-0 transition-opacity group-hover:opacity-100',
+          message.role === 'user' ? 'text-white/80' : 'text-text-muted'
         )}
       >
         {message.timestamp.toLocaleTimeString([], {

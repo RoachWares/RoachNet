@@ -12,6 +12,7 @@ export interface RoachClawStatusResponse {
   preferredMode: 'ollama' | 'openclaw' | 'offline'
   ready: boolean
   installedModels: string[]
+  preferredModels: string[]
   configFilePath: string | null
 }
 

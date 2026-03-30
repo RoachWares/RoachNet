@@ -7,6 +7,7 @@ export interface ChatMessage {
   thinking?: string
   isThinking?: boolean
   thinkingDuration?: number
+  statusText?: string | null
 }
 
 export interface ChatSession {
@@ -14,4 +15,5 @@ export interface ChatSession {
   title: string
   lastMessage?: string
   timestamp: Date
+  model?: string
 }

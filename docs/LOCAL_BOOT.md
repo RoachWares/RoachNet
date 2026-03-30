@@ -122,6 +122,7 @@ With an OpenClaw runtime configured through `OPENCLAW_BASE_URL` or the AI Contro
 - `200 /settings/ai`
 - `200 /api/system/ai/providers`
 - `providers.openclaw` reports reachability when the endpoint responds on `/health`, `/api/health`, or `/`
+- when you containerize the admin app, set `OPENCLAW_WORKSPACE_PATH` to a volume-mounted path so the workspace survives redeploys
 
 Remaining limitation:
 

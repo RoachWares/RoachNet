@@ -315,7 +315,7 @@ async function commandPath(command) {
   }
 }
 
-async function commandExists(command, args = ['--version']) {
+async function commandResponds(command, args = ['--version']) {
   try {
     await runCommand(command, args, {
       cwd: repoRoot,
@@ -448,11 +448,11 @@ function terminateDetachedChild(child) {
 async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogFd) {
   if (target.kind === 'docker') {
     await startRoachNetContainerRuntime({
-      commandExists,
+      commandExists: commandResponds,
       detectRuntime: () =>
         detectRoachNetContainerRuntime({
           commandPath,
-          commandExists,
+          commandExists: commandResponds,
           runProcess: runCommand,
         }),
       runProcess: runCommand,

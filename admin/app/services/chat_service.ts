@@ -36,10 +36,19 @@ export class ChatService {
         return [] // If no models are available, return empty suggestions
       }
 
-      // Larger models generally give "better" responses, so pick the largest one
-      const largestModel = models.reduce((prev, current) => {
-        return prev.size > current.size ? prev : current
-      })
+      const localModels = models.filter((model) => !model.name.endsWith(':cloud'))
+      if (localModels.length === 0) {
+        return []
+      }
+
+      // Larger local models generally give better results for suggestion generation.
+      const sizedLocalModels = localModels.filter(
+        (model) => typeof model.size === 'number' && model.size > 0
+      )
+      const candidateModels = sizedLocalModels.length > 0 ? sizedLocalModels : localModels
+      const largestModel = candidateModels.reduce((prev, current) =>
+        (prev.size ?? -1) > (current.size ?? -1) ? prev : current
+      )
 
       if (!largestModel) {
         return []
@@ -58,31 +67,17 @@ export class ChatService {
 
       if (response && response.message && response.message.content) {
         const content = response.message.content.trim()
-        
-        // Handle both comma-separated and newline-separated formats
-        let suggestions: string[] = []
-        
-        // Try splitting by commas first
-        if (content.includes(',')) {
-          suggestions = content.split(',').map((s) => s.trim())
-        } 
-        // Fall back to newline separation
-        else {
-          suggestions = content
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            // Remove numbered list markers (1., 2., 3., etc.) and bullet points
-            .map((s) => s.replace(/^\d+\.\s*/, '').replace(/^[-*•]\s*/, ''))
-            // Remove surrounding quotes if present
-            .map((s) => s.replace(/^["']|["']$/g, ''))
-        }
-        
-        // Filter out empty strings and limit to 3 suggestions
-        const filtered =  suggestions
-          .filter((s) => s.length > 0)
-          .slice(0, 3)
 
-        return filtered.map((s) => toTitleCase(s))
+        const suggestions = content
+          .split(/\r?\n/)
+          .flatMap((line) => line.split(','))
+          .map((s) => s.trim())
+          .map((s) => s.replace(/^\d+\.\s*/, '').replace(/^[-*•]\s*/, ''))
+          .map((s) => s.replace(/^["']|["']$/g, ''))
+          .filter((s) => s.length > 0)
+
+        const uniqueSuggestions = Array.from(new Set(suggestions)).slice(0, 3)
+        return uniqueSuggestions.map((s) => toTitleCase(s))
       } else {
         return []
       }
@@ -259,6 +254,7 @@ export class ChatService {
 
       await this.updateSession(sessionId, { title })
       logger.info(`[ChatService] Generated title for session ${sessionId}: "${title}"`)
+      return title
     } catch (error) {
       logger.error(
         `[ChatService] Failed to generate title for session ${sessionId}: ${error instanceof Error ? error.message : error}`
@@ -267,9 +263,12 @@ export class ChatService {
       try {
         const fallbackTitle = userMessage.slice(0, 57) + (userMessage.length > 57 ? '...' : '')
         await this.updateSession(sessionId, { title: fallbackTitle })
+        return fallbackTitle
       } catch {
         // Silently fail - session keeps "New Chat" title
       }
+
+      return null
     }
   }
 

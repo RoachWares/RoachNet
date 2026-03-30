@@ -26,6 +26,7 @@ export class OllamaService {
   private ollama: Ollama | null = null
   private ollamaInitPromise: Promise<void> | null = null
   private ollamaHost: string | null = null
+  private ollamaConfigFingerprint: string | null = null
 
   constructor() { }
 
@@ -41,9 +42,11 @@ export class OllamaService {
           this.ollamaHost = runtimeStatus.baseUrl
           this.ollama = new Ollama({ host: runtimeStatus.baseUrl })
         }
+        this.ollamaConfigFingerprint = await this.getConfigFingerprint()
       })().catch((error) => {
         this.ollama = null
         this.ollamaHost = null
+        this.ollamaConfigFingerprint = null
         this.ollamaInitPromise = null
         throw error
       })
@@ -52,9 +55,23 @@ export class OllamaService {
   }
 
   private async _ensureDependencies() {
+    const configFingerprint = await this.getConfigFingerprint()
+    if (this.ollama && this.ollamaConfigFingerprint !== configFingerprint) {
+      this.ollama = null
+      this.ollamaHost = null
+      this.ollamaInitPromise = null
+      this.ollamaConfigFingerprint = null
+    }
+
     if (!this.ollama) {
       await this._initializeOllamaClient()
     }
+  }
+
+  private async getConfigFingerprint(): Promise<string> {
+    const settingUrl = (await KVStore.getValue('ai.ollamaBaseUrl'))?.trim()
+    const configuredUrl = env.get('OLLAMA_BASE_URL')?.trim()
+    return this.normalizeBaseUrl(settingUrl || configuredUrl || '__auto__')
   }
 
   /**

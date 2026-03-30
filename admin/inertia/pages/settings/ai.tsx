@@ -1,7 +1,13 @@
 import { Head, Link, usePage } from '@inertiajs/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconExternalLink, IconSettings, IconShieldBolt, IconWand } from '@tabler/icons-react'
+import {
+  Listbox,
+  ListboxButton,
+  ListboxOption,
+  ListboxOptions,
+} from '@headlessui/react'
+import { IconCheck, IconChevronDown, IconExternalLink, IconSettings, IconShieldBolt, IconWand } from '@tabler/icons-react'
 import Alert from '~/components/Alert'
 import StyledButton from '~/components/StyledButton'
 import Input from '~/components/inputs/Input'
@@ -18,6 +24,8 @@ import type { KVStoreKey } from '../../../types/kv_store'
 import type { InstalledOpenClawSkill, OpenClawSkillSearchResult } from '../../../types/openclaw'
 import type { RoachClawStatusResponse } from '../../../types/roachclaw'
 import type { SystemInformationResponse } from '../../../types/system'
+import { formatModelName, getClawHubRelevanceLabel } from '~/lib/ollama'
+import classNames from '~/lib/classNames'
 
 type ProviderCardProps = {
   title: string
@@ -195,6 +203,34 @@ export default function AISettingsPage(props: {
   })
 
   const [roachClawModel, setRoachClawModel] = useState('')
+
+  const roachClawReadiness = (() => {
+    if (!roachClawStatus) {
+      return {
+        label: 'Checking',
+        classes: 'border-desert-orange-light/40 bg-desert-orange/15 text-desert-orange-light',
+      }
+    }
+
+    if (roachClawStatus.ready) {
+      return {
+        label: 'Ready',
+        classes: 'border-desert-green/40 bg-desert-green/15 text-desert-green-light',
+      }
+    }
+
+    if (roachClawStatus.ollama.available && !roachClawStatus.resolvedDefaultModel) {
+      return {
+        label: 'Partial',
+        classes: 'border-desert-orange-light/40 bg-desert-orange/15 text-desert-orange-light',
+      }
+    }
+
+    return {
+      label: 'Not Configured',
+      classes: 'border-desert-red-light/30 bg-desert-red/15 text-desert-red-light',
+    }
+  })()
 
   useEffect(() => {
     if (!roachClawStatus) {
@@ -417,14 +453,40 @@ export default function AISettingsPage(props: {
               <div className="flex flex-col gap-6">
                 <div className="space-y-3">
                   <p className="roachnet-kicker text-[0.68rem] text-text-muted">RoachClaw</p>
-                  <h2 className="text-2xl font-semibold uppercase tracking-[0.08em] text-text-primary">
-                    Combined Ollama + OpenClaw Onboarding
-                  </h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-2xl font-semibold uppercase tracking-[0.08em] text-text-primary">
+                      Combined Ollama + OpenClaw Onboarding
+                    </h2>
+                    <span
+                      className={classNames(
+                        'inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]',
+                        roachClawReadiness.classes
+                      )}
+                    >
+                      {roachClawReadiness.label}
+                    </span>
+                  </div>
                   <p className="max-w-3xl text-sm leading-6 text-text-secondary">
                     RoachClaw makes Ollama the default local model provider for OpenClaw, keeps
                     the OpenClaw workspace under RoachNet control, and stores the chosen local
                     model as the primary default for the suite.
                   </p>
+                  {(roachClawStatus?.preferredModels || []).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {roachClawStatus?.preferredModels.map((model) => {
+                        const formatted = formatModelName(model)
+                        return (
+                          <span
+                            key={model}
+                            className="rounded-full border border-border-default bg-surface-secondary/70 px-3 py-1 text-xs uppercase tracking-[0.16em] text-text-secondary"
+                          >
+                            {formatted.family}
+                            {formatted.size ? ` · ${formatted.size}` : ''}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {!roachClawStatus?.cliStatus.openclawAvailable && (
@@ -447,28 +509,68 @@ export default function AISettingsPage(props: {
 
                 <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
                   <div className="rounded-[1.25rem] border border-border-default bg-surface-secondary/70 p-5">
-                    <label
-                      htmlFor="roachClawModel"
-                      className="block text-base/6 font-medium text-text-primary"
-                    >
+                    <label className="block text-base/6 font-medium text-text-primary">
                       RoachClaw Default Model
                     </label>
                     <p className="mt-1 text-sm text-text-muted">
                       OpenClaw will prefer this local Ollama model as its primary default.
                     </p>
-                    <select
-                      id="roachClawModel"
-                      value={roachClawModel}
-                      onChange={(event) => setRoachClawModel(event.target.value)}
-                      className="mt-2 block w-full rounded-md bg-surface-primary px-3 py-2 text-base text-text-primary border border-border-default focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-primary sm:text-sm/6"
-                    >
-                      <option value="">Select a local model</option>
-                      {(roachClawStatus?.installedModels || []).map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-3">
+                      <Listbox value={roachClawModel} onChange={setRoachClawModel}>
+                        <div className="relative">
+                          <ListboxButton className="flex w-full items-center justify-between rounded-xl border border-border-default bg-surface-primary px-4 py-3 text-left">
+                            {roachClawModel ? (
+                              <div>
+                                <div className="text-sm font-semibold uppercase tracking-[0.14em] text-text-primary">
+                                  {formatModelName(roachClawModel).family}
+                                </div>
+                                <div className="mt-1 text-xs text-text-muted">
+                                  {formatModelName(roachClawModel).size || roachClawModel}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-text-muted">Select a local model</span>
+                            )}
+                            <IconChevronDown className="size-4 text-text-muted" />
+                          </ListboxButton>
+                          <ListboxOptions className="absolute z-20 mt-2 max-h-72 w-full overflow-auto rounded-2xl border border-border-default bg-surface-primary p-2 shadow-xl focus:outline-none">
+                            {(roachClawStatus?.installedModels || []).map((model) => {
+                              const formatted = formatModelName(model)
+                              return (
+                                <ListboxOption
+                                  key={model}
+                                  value={model}
+                                  className={({ focus, selected }) =>
+                                    classNames(
+                                      'mb-1 cursor-pointer rounded-xl border px-3 py-3 transition last:mb-0',
+                                      focus || selected
+                                        ? 'border-desert-green/40 bg-surface-secondary'
+                                        : 'border-transparent hover:border-border-subtle hover:bg-surface-secondary/70'
+                                    )
+                                  }
+                                >
+                                  {({ selected }) => (
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <div className="text-sm font-semibold uppercase tracking-[0.14em] text-text-primary">
+                                          {formatted.family}
+                                        </div>
+                                        <div className="mt-1 text-xs text-text-muted">
+                                          {formatted.size || model}
+                                        </div>
+                                      </div>
+                                      {selected && (
+                                        <IconCheck className="mt-0.5 size-4 text-desert-green-light" />
+                                      )}
+                                    </div>
+                                  )}
+                                </ListboxOption>
+                              )
+                            })}
+                          </ListboxOptions>
+                        </div>
+                      </Listbox>
+                    </div>
                   </div>
 
                   <div className="rounded-[1.25rem] border border-border-default bg-surface-secondary/70 p-5">
@@ -478,7 +580,12 @@ export default function AISettingsPage(props: {
                         Workspace: <span className="text-text-primary">{roachClawStatus?.workspacePath || openClawWorkspacePath || 'Not set'}</span>
                       </p>
                       <p>
-                        Default model: <span className="text-text-primary">{roachClawStatus?.defaultModel || 'Not set'}</span>
+                        Default model:{' '}
+                        <span className="text-text-primary">
+                          {roachClawStatus?.defaultModel
+                            ? `${formatModelName(roachClawStatus.defaultModel).family}${formatModelName(roachClawStatus.defaultModel).size ? ` · ${formatModelName(roachClawStatus.defaultModel).size}` : ''}`
+                            : 'Not set'}
+                        </span>
                       </p>
                       <p>
                         OpenClaw config: <span className="text-text-primary break-all">{roachClawStatus?.configFilePath || 'Unavailable'}</span>
@@ -619,7 +726,11 @@ export default function AISettingsPage(props: {
                       containerClassName="w-full"
                     />
                     <div className="rounded-full border border-border-default bg-surface-primary/80 px-4 py-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
-                      {searchSkillsPending ? 'Searching' : 'Results update as you type'}
+                      {skillQuery.trim().length < 2
+                        ? 'Start typing to search (min 2 chars)'
+                        : searchSkillsPending
+                          ? 'Searching'
+                          : 'Results update as you type'}
                     </div>
                   </div>
 
@@ -637,8 +748,8 @@ export default function AISettingsPage(props: {
                             <p className="mt-1 text-xs uppercase tracking-[0.14em] text-desert-green-light">
                               {skill.slug}
                             </p>
-                            <p className="mt-2 text-xs text-text-muted">
-                              Search score: {skill.score?.toFixed(3) || 'n/a'}
+                            <p className="mt-2 text-xs uppercase tracking-[0.14em] text-text-muted">
+                              {getClawHubRelevanceLabel(skill.score)}
                             </p>
                           </div>
                           <StyledButton

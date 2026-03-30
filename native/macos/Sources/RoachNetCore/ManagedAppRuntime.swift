@@ -231,11 +231,17 @@ public actor ManagedAppRuntimeBridge {
 
         let node = RoachNetRepositoryLocator.preferredNodeBinary()
         let process = Process()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        let exitState = ProcessExitState()
         process.currentDirectoryURL = repoRoot
         process.executableURL = URL(fileURLWithPath: node)
         process.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path] : [scriptURL.path]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+        process.terminationHandler = { process in
+            exitState.record(process)
+        }
 
         var environment = ProcessInfo.processInfo.environment
         environment["ROACHNET_NO_BROWSER"] = "1"
@@ -257,6 +263,20 @@ public actor ManagedAppRuntimeBridge {
                 return serverInfo
             }
 
+            if let exitDescription = exitState.describeExit() {
+                let stderr = Self.readPipeOutput(from: stderrPipe)
+                let stdout = Self.readPipeOutput(from: stdoutPipe)
+                let details = [stderr, stdout]
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .first(where: { !$0.isEmpty })
+
+                throw NSError(domain: "RoachNetRuntime", code: 24, userInfo: [
+                    NSLocalizedDescriptionKey: details.map {
+                        "RoachNet exited before it became healthy (\(exitDescription)). \($0)"
+                    } ?? "RoachNet exited before it became healthy (\(exitDescription))."
+                ])
+            }
+
             try await Task.sleep(for: .milliseconds(300))
         }
 
@@ -268,30 +288,77 @@ public actor ManagedAppRuntimeBridge {
     public func fetchSnapshot(using config: RoachNetInstallerConfig) async throws -> ManagedAppSnapshot {
         let serverInfo = try await ensureRunning(using: config)
         let baseURL = try runtimeBaseURL(from: serverInfo)
+        let workspacePath = defaultWorkspacePath(from: config)
+        let fallbackSystemInfo = self.fallbackSystemInfo()
+        let fallbackProviders = self.fallbackProviders()
+        let fallbackRoachClawStatus = self.fallbackRoachClawStatus(
+            workspacePath: workspacePath,
+            defaultModel: config.roachClawDefaultModel
+        )
 
-        async let systemInfo: SystemInfoResponse = get("/api/system/info", baseURL: baseURL)
-        async let providers: AIRuntimeProvidersResponse = get("/api/system/ai/providers", baseURL: baseURL)
-        async let roachClaw: RoachClawStatusResponse = get("/api/roachclaw/status", baseURL: baseURL)
-        async let models: [OllamaInstalledModel] = get("/api/ollama/installed-models", baseURL: baseURL)
-        async let skills: OpenClawInstalledSkillsResponse = get("/api/openclaw/skills/installed", baseURL: baseURL)
-        async let files: RagFilesResponse = get("/api/rag/files", baseURL: baseURL)
-        async let mapCollections: [MapCuratedCollection] = get("/api/maps/curated-collections", baseURL: baseURL)
-        async let educationCategories: [EducationCategory] = get("/api/zim/curated-categories", baseURL: baseURL)
-        async let wikipediaState: WikipediaStateResponse = get("/api/zim/wikipedia", baseURL: baseURL)
-        async let siteArchives: SiteArchivesResponse = get("/api/site-archives", baseURL: baseURL)
+        async let systemInfo = fetchOrFallback(
+            "/api/system/info",
+            baseURL: baseURL,
+            fallback: fallbackSystemInfo
+        )
+        async let providers = fetchOrFallback(
+            "/api/system/ai/providers",
+            baseURL: baseURL,
+            fallback: fallbackProviders
+        )
+        async let roachClaw = fetchOrFallback(
+            "/api/roachclaw/status",
+            baseURL: baseURL,
+            fallback: fallbackRoachClawStatus
+        )
+        async let models = fetchOrFallback(
+            "/api/ollama/installed-models",
+            baseURL: baseURL,
+            fallback: [OllamaInstalledModel]()
+        )
+        async let skills = fetchOrFallback(
+            "/api/openclaw/skills/installed",
+            baseURL: baseURL,
+            fallback: OpenClawInstalledSkillsResponse(workspacePath: workspacePath, skills: [])
+        )
+        async let files = fetchOrFallback(
+            "/api/rag/files",
+            baseURL: baseURL,
+            fallback: RagFilesResponse(files: [])
+        )
+        async let mapCollections = fetchOrFallback(
+            "/api/maps/curated-collections",
+            baseURL: baseURL,
+            fallback: [MapCuratedCollection]()
+        )
+        async let educationCategories = fetchOrFallback(
+            "/api/zim/curated-categories",
+            baseURL: baseURL,
+            fallback: [EducationCategory]()
+        )
+        async let wikipediaState = fetchOrFallback(
+            "/api/zim/wikipedia",
+            baseURL: baseURL,
+            fallback: WikipediaStateResponse(options: [], currentSelection: nil)
+        )
+        async let siteArchives = fetchOrFallback(
+            "/api/site-archives",
+            baseURL: baseURL,
+            fallback: SiteArchivesResponse(archives: [])
+        )
 
         return ManagedAppSnapshot(
             serverInfo: serverInfo,
-            systemInfo: try await systemInfo,
-            providers: try await providers,
-            roachClaw: try await roachClaw,
-            installedModels: try await models,
-            installedSkills: (try await skills).skills,
-            knowledgeFiles: (try await files).files,
-            mapCollections: try await mapCollections,
-            educationCategories: try await educationCategories,
-            wikipediaState: try await wikipediaState,
-            siteArchives: (try await siteArchives).archives
+            systemInfo: await systemInfo,
+            providers: await providers,
+            roachClaw: await roachClaw,
+            installedModels: await models,
+            installedSkills: (await skills).skills,
+            knowledgeFiles: (await files).files,
+            mapCollections: await mapCollections,
+            educationCategories: await educationCategories,
+            wikipediaState: await wikipediaState,
+            siteArchives: (await siteArchives).archives
         )
     }
 
@@ -372,6 +439,13 @@ public actor ManagedAppRuntimeBridge {
         return root
     }
 
+    private func defaultWorkspacePath(from config: RoachNetInstallerConfig) -> String {
+        URL(fileURLWithPath: config.installPath)
+            .appendingPathComponent("storage")
+            .appendingPathComponent("openclaw")
+            .path
+    }
+
     private func isHealthy(_ healthURLString: String) async throws -> Bool {
         guard let url = URL(string: healthURLString) else {
             return false
@@ -382,6 +456,100 @@ public actor ManagedAppRuntimeBridge {
         let (_, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500
         return (200..<300).contains(status)
+    }
+
+    private func fetchOrFallback<Response: Decodable & Sendable>(
+        _ path: String,
+        baseURL: URL,
+        fallback: Response
+    ) async -> Response {
+        do {
+            return try await get(path, baseURL: baseURL)
+        } catch {
+            NSLog("[ManagedAppRuntimeBridge] Falling back for %@: %@", path, error.localizedDescription)
+            return fallback
+        }
+    }
+
+    private func fallbackProviders() -> AIRuntimeProvidersResponse {
+        AIRuntimeProvidersResponse(providers: [
+            "ollama": fallbackRuntimeStatus(provider: "ollama"),
+            "openclaw": fallbackRuntimeStatus(provider: "openclaw"),
+        ])
+    }
+
+    private func fallbackRoachClawStatus(
+        workspacePath: String,
+        defaultModel: String
+    ) -> RoachClawStatusResponse {
+        RoachClawStatusResponse(
+            label: "RoachClaw",
+            ollama: fallbackRuntimeStatus(provider: "ollama"),
+            openclaw: fallbackRuntimeStatus(provider: "openclaw"),
+            cliStatus: .init(
+                openclawAvailable: false,
+                clawhubAvailable: false,
+                workspacePath: workspacePath,
+                runner: "none"
+            ),
+            workspacePath: workspacePath,
+            defaultModel: defaultModel,
+            resolvedDefaultModel: nil,
+            preferredMode: "offline",
+            ready: false,
+            installedModels: [],
+            configFilePath: nil
+        )
+    }
+
+    private func fallbackRuntimeStatus(provider: String) -> AIRuntimeStatusResponse {
+        AIRuntimeStatusResponse(
+            provider: provider,
+            available: false,
+            source: "none",
+            baseUrl: nil,
+            error: "Provider unavailable while the local runtime finishes starting."
+        )
+    }
+
+    private func fallbackSystemInfo() -> SystemInfoResponse {
+        SystemInfoResponse(
+            cpu: .init(
+                manufacturer: nil,
+                brand: nil,
+                physicalCores: nil,
+                cores: nil
+            ),
+            mem: .init(
+                total: 0,
+                available: 0,
+                swapused: nil
+            ),
+            os: .init(
+                hostname: Host.current().localizedName,
+                arch: nil,
+                distro: nil
+            ),
+            hardwareProfile: .init(
+                platformLabel: "Unavailable",
+                chipFamily: "Unknown",
+                isAppleSilicon: false,
+                memoryTier: "unknown",
+                recommendedRuntime: "native_local",
+                recommendedModelClass: "small",
+                notes: [],
+                warnings: ["System info is still warming up."]
+            )
+        )
+    }
+
+    private static func readPipeOutput(from pipe: Pipe) -> String {
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard !data.isEmpty else {
+            return ""
+        }
+
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func get<Response: Decodable>(_ path: String, baseURL: URL) async throws -> Response {
@@ -434,5 +602,32 @@ private struct AnyEncodable: Encodable {
 
     func encode(to encoder: Encoder) throws {
         try encodeImpl(encoder)
+    }
+}
+
+private final class ProcessExitState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var description: String?
+
+    func record(_ process: Process) {
+        let reason: String
+        switch process.terminationReason {
+        case .exit:
+            reason = "exit code \(process.terminationStatus)"
+        case .uncaughtSignal:
+            reason = "signal \(process.terminationStatus)"
+        @unknown default:
+            reason = "unknown termination \(process.terminationStatus)"
+        }
+
+        lock.lock()
+        description = reason
+        lock.unlock()
+    }
+
+    func describeExit() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return description
     }
 }

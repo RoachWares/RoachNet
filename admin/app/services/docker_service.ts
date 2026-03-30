@@ -12,12 +12,15 @@ import { promisify } from 'util'
 // import { readdir } from 'fs/promises'
 import KVStore from '#models/kv_store'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
+import { getErrorMessage } from '../utils/errors.js'
 
 @inject()
 export class DockerService {
   public docker: Docker
   private activeInstallations: Set<string> = new Set()
   public static NOMAD_NETWORK = 'project-nomad_default'
+  private static GPU_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  private static GPU_NONE_INVALIDATION_THRESHOLD = 3
 
   constructor() {
     // Support both Linux (production) and Windows (development with Docker Desktop)
@@ -92,10 +95,11 @@ export class DockerService {
         message: `Invalid action: ${action}. Use 'start', 'stop', or 'restart'.`,
       }
     } catch (error) {
-      logger.error(`Error starting service ${serviceName}: ${error.message}`)
+      const errorMessage = getErrorMessage(error)
+      logger.error(`Error starting service ${serviceName}: ${errorMessage}`)
       return {
         success: false,
-        message: `Failed to start service ${serviceName}: ${error.message}`,
+        message: `Failed to start service ${serviceName}: ${errorMessage}`,
       }
     }
   }
@@ -124,7 +128,7 @@ export class DockerService {
         status: container.State,
       }))
     } catch (error) {
-      logger.error(`Error fetching services status: ${error.message}`)
+      logger.error(`Error fetching services status: ${getErrorMessage(error)}`)
       return []
     }
   }
@@ -232,7 +236,7 @@ export class DockerService {
 
     // Execute installation asynchronously and handle cleanup
     this._createContainer(service, containerConfig).catch(async (error) => {
-      logger.error(`Installation failed for ${serviceName}: ${error.message}`)
+      logger.error(`Installation failed for ${serviceName}: ${getErrorMessage(error)}`)
       await this._cleanupFailedInstallation(serviceName)
     })
 
@@ -289,8 +293,9 @@ export class DockerService {
             this._broadcast(serviceName, 'stopping', `Stopping container...`)
             await dockerContainer.stop({ t: 10 }).catch((error) => {
               // If already stopped, continue
-              if (!error.message.includes('already stopped')) {
-                logger.warn(`Error stopping container: ${error.message}`)
+              const errorMessage = getErrorMessage(error)
+              if (!errorMessage.includes('already stopped')) {
+                logger.warn(`Error stopping container: ${errorMessage}`)
               }
             })
           }
@@ -298,7 +303,7 @@ export class DockerService {
           // Step 2: Remove the container
           this._broadcast(serviceName, 'removing', `Removing container...`)
           await dockerContainer.remove({ force: true }).catch((error) => {
-            logger.warn(`Error removing container: ${error.message}`)
+            logger.warn(`Error removing container: ${getErrorMessage(error)}`)
           })
         } else {
           this._broadcast(
@@ -308,8 +313,9 @@ export class DockerService {
           )
         }
       } catch (error) {
-        logger.warn(`Error during container cleanup: ${error.message}`)
-        this._broadcast(serviceName, 'cleanup-warning', `Warning during cleanup: ${error.message}`)
+        const errorMessage = getErrorMessage(error)
+        logger.warn(`Error during container cleanup: ${errorMessage}`)
+        this._broadcast(serviceName, 'cleanup-warning', `Warning during cleanup: ${errorMessage}`)
       }
 
       // Step 3: Clear volumes/data if needed
@@ -327,7 +333,7 @@ export class DockerService {
             await volume.remove({ force: true })
             this._broadcast(serviceName, 'volume-removed', `Removed volume: ${vol.Name}`)
           } catch (error) {
-            logger.warn(`Failed to remove volume ${vol.Name}: ${error.message}`)
+            logger.warn(`Failed to remove volume ${vol.Name}: ${getErrorMessage(error)}`)
           }
         }
 
@@ -335,11 +341,12 @@ export class DockerService {
           this._broadcast(serviceName, 'no-volumes', `No volumes found to clear`)
         }
       } catch (error) {
-        logger.warn(`Error during volume cleanup: ${error.message}`)
+        const errorMessage = getErrorMessage(error)
+        logger.warn(`Error during volume cleanup: ${errorMessage}`)
         this._broadcast(
           serviceName,
           'volume-cleanup-warning',
-          `Warning during volume cleanup: ${error.message}`
+          `Warning during volume cleanup: ${errorMessage}`
         )
       }
 
@@ -354,7 +361,7 @@ export class DockerService {
 
       // Execute installation asynchronously and handle cleanup
       this._createContainer(service, containerConfig).catch(async (error) => {
-        logger.error(`Reinstallation failed for ${serviceName}: ${error.message}`)
+        logger.error(`Reinstallation failed for ${serviceName}: ${getErrorMessage(error)}`)
         await this._cleanupFailedInstallation(serviceName)
       })
 
@@ -363,11 +370,12 @@ export class DockerService {
         message: `Service ${serviceName} force reinstall initiated successfully. You can receive updates via server-sent events.`,
       }
     } catch (error) {
-      logger.error(`Force reinstall failed for ${serviceName}: ${error.message}`)
+      const errorMessage = getErrorMessage(error)
+      logger.error(`Force reinstall failed for ${serviceName}: ${errorMessage}`)
       await this._cleanupFailedInstallation(serviceName)
       return {
         success: false,
-        message: `Failed to force reinstall service ${serviceName}: ${error.message}`,
+        message: `Failed to force reinstall service ${serviceName}: ${errorMessage}`,
       }
     }
   }
@@ -408,10 +416,7 @@ export class DockerService {
               'dependency-not-installed',
               `Dependency service ${dependency.service_name} is not installed. Installing it first...`
             )
-            await this._createContainer(
-              dependency,
-              this._parseContainerConfig(dependency.container_config)
-            )
+            await this._installDependency(service.service_name, dependency)
           } else {
             this._broadcast(
               service.service_name,
@@ -565,15 +570,77 @@ export class DockerService {
         `Service ${service.service_name} installation completed successfully.`
       )
     } catch (error) {
+      const errorMessage = getErrorMessage(error)
       this._broadcast(
         service.service_name,
         'error',
-        `Error installing service ${service.service_name}: ${error.message}`
+        `Error installing service ${service.service_name}: ${errorMessage}`
       )
       // Mark install as failed and cleanup
       await this._cleanupFailedInstallation(service.service_name)
-      throw new Error(`Failed to install service ${service.service_name}: ${error.message}`)
+      throw new Error(`Failed to install service ${service.service_name}: ${errorMessage}`)
     }
+  }
+
+  private async _installDependency(
+    parentServiceName: string,
+    dependency: Service
+  ): Promise<void> {
+    const dependencyName = dependency.service_name
+    const shouldTrackDependency = !this.activeInstallations.has(dependencyName)
+
+    if (!shouldTrackDependency) {
+      this._broadcast(
+        parentServiceName,
+        'dependency-pending',
+        `Dependency service ${dependencyName} is already installing. Waiting for it to finish...`
+      )
+      await this._waitForDependencyInstallation(dependencyName)
+      return
+    }
+
+    const dependencyConfig = this._parseContainerConfig(dependency.container_config)
+
+    this.activeInstallations.add(dependencyName)
+    dependency.installation_status = 'installing'
+    await dependency.save()
+
+    try {
+      await this._createContainer(dependency, dependencyConfig)
+    } catch (error) {
+      const errorMessage = getErrorMessage(error)
+      logger.error(
+        `[DockerService] Dependency installation failed for ${parentServiceName} -> ${dependencyName}: ${errorMessage}`
+      )
+      throw error
+    } finally {
+      if (this.activeInstallations.has(dependencyName) && !dependency.installed) {
+        this.activeInstallations.delete(dependencyName)
+      }
+    }
+  }
+
+  private async _waitForDependencyInstallation(serviceName: string): Promise<void> {
+    const deadline = Date.now() + 5 * 60 * 1000
+
+    while (Date.now() < deadline) {
+      const dependency = await Service.query().where('service_name', serviceName).first()
+      if (!dependency) {
+        throw new Error(`Dependency service ${serviceName} no longer exists.`)
+      }
+
+      if (dependency.installed) {
+        return
+      }
+
+      if (dependency.installation_status === 'error') {
+        throw new Error(`Dependency service ${serviceName} failed to install.`)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+
+    throw new Error(`Timed out waiting for dependency service ${serviceName} to install.`)
   }
 
   async _checkIfServiceContainerExists(serviceName: string): Promise<boolean> {
@@ -581,7 +648,7 @@ export class DockerService {
       const containers = await this.docker.listContainers({ all: true })
       return containers.some((container) => container.Names.includes(`/${serviceName}`))
     } catch (error) {
-      logger.error(`Error checking if service container exists: ${error.message}`)
+      logger.error(`Error checking if service container exists: ${getErrorMessage(error)}`)
       return false
     }
   }
@@ -601,10 +668,11 @@ export class DockerService {
 
       return { success: true, message: `Service ${serviceName} container removed successfully` }
     } catch (error) {
-      logger.error(`Error removing service container: ${error.message}`)
+      const errorMessage = getErrorMessage(error)
+      logger.error(`Error removing service container: ${errorMessage}`)
       return {
         success: false,
-        message: `Failed to remove service ${serviceName} container: ${error.message}`,
+        message: `Failed to remove service ${serviceName} container: ${errorMessage}`,
       }
     }
   }
@@ -649,12 +717,13 @@ export class DockerService {
         `Downloaded Wikipedia ZIM file to ${filepath}`
       )
     } catch (error) {
+      const errorMessage = getErrorMessage(error)
       this._broadcast(
         SERVICE_NAMES.KIWIX,
         'preinstall-error',
-        `Failed to download Wikipedia ZIM file: ${error.message}`
+        `Failed to download Wikipedia ZIM file: ${errorMessage}`
       )
-      throw new Error(`Pre-install action failed: ${error.message}`)
+      throw new Error(`Pre-install action failed: ${errorMessage}`)
     }
   }
 
@@ -673,7 +742,7 @@ export class DockerService {
       logger.info(`[DockerService] Cleaned up failed installation for ${serviceName}`)
     } catch (error) {
       logger.error(
-        `[DockerService] Failed to cleanup installation for ${serviceName}: ${error.message}`
+        `[DockerService] Failed to cleanup installation for ${serviceName}: ${getErrorMessage(error)}`
       )
     }
   }
@@ -685,6 +754,8 @@ export class DockerService {
    */
   private async _detectGPUType(): Promise<{ type: 'nvidia' | 'amd' | 'none'; toolkitMissing?: boolean }> {
     try {
+      let completedLiveGpuProbe = false
+
       // Primary: Check Docker daemon for nvidia runtime (works from inside containers)
       try {
         const dockerInfo = await this.docker.info()
@@ -695,7 +766,9 @@ export class DockerService {
           return { type: 'nvidia' }
         }
       } catch (error) {
-        logger.warn(`[DockerService] Could not query Docker info for GPU runtimes: ${error.message}`)
+        logger.warn(
+          `[DockerService] Could not query Docker info for GPU runtimes: ${getErrorMessage(error)}`
+        )
       }
 
       // Fallback: lspci for host-based installs (not available inside Docker)
@@ -706,6 +779,7 @@ export class DockerService {
         const { stdout: nvidiaCheck } = await execAsync(
           'lspci 2>/dev/null | grep -i nvidia || true'
         )
+        completedLiveGpuProbe = true
         if (nvidiaCheck.trim()) {
           // GPU hardware found but no nvidia runtime — toolkit not installed
           logger.warn('[DockerService] NVIDIA GPU detected via lspci but NVIDIA Container Toolkit is not installed')
@@ -721,6 +795,7 @@ export class DockerService {
         const { stdout: amdCheck } = await execAsync(
           'lspci 2>/dev/null | grep -iE "VGA|3D controller|Display" | grep -iE "amd|radeon" || true'
         )
+        completedLiveGpuProbe = true
         if (amdCheck.trim()) {
           logger.info('[DockerService] AMD GPU detected via lspci')
           await this._persistGPUType('amd')
@@ -733,30 +808,93 @@ export class DockerService {
       // Last resort: check if we previously detected a GPU and it's likely still present.
       // This handles cases where live detection fails transiently (e.g., Docker daemon
       // hiccup, runtime temporarily unavailable) but the hardware hasn't changed.
-      try {
-        const savedType = await KVStore.getValue('gpu.type')
-        if (savedType === 'nvidia' || savedType === 'amd') {
-          logger.info(`[DockerService] No GPU detected live, but KV store has '${savedType}' from previous detection. Using saved value.`)
-          return { type: savedType as 'nvidia' | 'amd' }
-        }
-      } catch {
-        // KV store not available, continue
+      const cachedType = await this._getPersistedGPUType()
+      if (cachedType) {
+        logger.info(
+          `[DockerService] No GPU detected live, but KV store has a fresh '${cachedType}' detection. Using saved value.`
+        )
+        return { type: cachedType }
+      }
+
+      if (completedLiveGpuProbe) {
+        await this._recordNoGPUDetection()
       }
 
       logger.info('[DockerService] No GPU detected')
       return { type: 'none' }
     } catch (error) {
-      logger.warn(`[DockerService] Error detecting GPU type: ${error.message}`)
+      logger.warn(`[DockerService] Error detecting GPU type: ${getErrorMessage(error)}`)
       return { type: 'none' }
     }
   }
 
   private async _persistGPUType(type: 'nvidia' | 'amd'): Promise<void> {
     try {
-      await KVStore.setValue('gpu.type', type)
+      await Promise.all([
+        KVStore.setValue('gpu.type', type),
+        KVStore.setValue('gpu.detectedAt', new Date().toISOString()),
+        KVStore.setValue('gpu.noneDetectionCount', '0'),
+      ])
       logger.info(`[DockerService] Persisted GPU type '${type}' to KV store`)
     } catch (error) {
-      logger.warn(`[DockerService] Failed to persist GPU type: ${error.message}`)
+      logger.warn(`[DockerService] Failed to persist GPU type: ${getErrorMessage(error)}`)
+    }
+  }
+
+  private async _getPersistedGPUType(): Promise<'nvidia' | 'amd' | null> {
+    try {
+      const [savedType, detectedAtRaw, noneDetectionCountRaw] = await Promise.all([
+        KVStore.getValue('gpu.type'),
+        KVStore.getValue('gpu.detectedAt'),
+        KVStore.getValue('gpu.noneDetectionCount'),
+      ])
+
+      if (savedType !== 'nvidia' && savedType !== 'amd') {
+        return null
+      }
+
+      const detectedAt = detectedAtRaw ? Date.parse(detectedAtRaw) : Number.NaN
+      const noneDetectionCount = Number.parseInt(noneDetectionCountRaw || '0', 10) || 0
+
+      if (
+        Number.isNaN(detectedAt) ||
+        Date.now() - detectedAt > DockerService.GPU_CACHE_TTL_MS ||
+        noneDetectionCount >= DockerService.GPU_NONE_INVALIDATION_THRESHOLD
+      ) {
+        await this._clearPersistedGPUType()
+        return null
+      }
+
+      return savedType
+    } catch {
+      return null
+    }
+  }
+
+  private async _recordNoGPUDetection(): Promise<void> {
+    try {
+      const currentCount = Number.parseInt((await KVStore.getValue('gpu.noneDetectionCount')) || '0', 10) || 0
+      const nextCount = currentCount + 1
+
+      await KVStore.setValue('gpu.noneDetectionCount', String(nextCount))
+
+      if (nextCount >= DockerService.GPU_NONE_INVALIDATION_THRESHOLD) {
+        await this._clearPersistedGPUType()
+      }
+    } catch (error) {
+      logger.warn(`[DockerService] Failed to record a no-GPU detection: ${getErrorMessage(error)}`)
+    }
+  }
+
+  private async _clearPersistedGPUType(): Promise<void> {
+    try {
+      await Promise.all([
+        KVStore.clearValue('gpu.type'),
+        KVStore.clearValue('gpu.detectedAt'),
+        KVStore.clearValue('gpu.noneDetectionCount'),
+      ])
+    } catch (error) {
+      logger.warn(`[DockerService] Failed to clear cached GPU type: ${getErrorMessage(error)}`)
     }
   }
 
@@ -952,12 +1090,13 @@ export class DockerService {
         newContainer = await this.docker.createContainer(newContainerConfig)
       } catch (createError) {
         // Rollback: rename old container back
-        this._broadcast(serviceName, 'update-rollback', `Failed to create new container: ${createError.message}. Rolling back...`)
+        const createErrorMessage = getErrorMessage(createError)
+        this._broadcast(serviceName, 'update-rollback', `Failed to create new container: ${createErrorMessage}. Rolling back...`)
         const rollbackContainer = this.docker.getContainer((await this.docker.listContainers({ all: true })).find((c) => c.Names.includes(`/${oldName}`))!.Id)
         await rollbackContainer.rename({ name: serviceName })
         await rollbackContainer.start()
         this.activeInstallations.delete(serviceName)
-        return { success: false, message: `Failed to create updated container: ${createError.message}` }
+        return { success: false, message: `Failed to create updated container: ${createErrorMessage}` }
       }
 
       // Step 5: Start new container
@@ -1024,14 +1163,15 @@ export class DockerService {
         }
       }
     } catch (error) {
+      const errorMessage = getErrorMessage(error)
       this.activeInstallations.delete(serviceName)
       this._broadcast(
         serviceName,
         'update-rollback',
-        `Update failed: ${error.message}`
+        `Update failed: ${errorMessage}`
       )
-      logger.error(`[DockerService] Update failed for ${serviceName}: ${error.message}`)
-      return { success: false, message: `Update failed: ${error.message}` }
+      logger.error(`[DockerService] Update failed for ${serviceName}: ${errorMessage}`)
+      return { success: false, message: `Update failed: ${errorMessage}` }
     }
   }
 
@@ -1059,8 +1199,9 @@ export class DockerService {
 
       return JSON.parse(toParse)
     } catch (error) {
-      logger.error(`Failed to parse container configuration: ${error.message}`)
-      throw new Error(`Invalid container configuration: ${error.message}`)
+      const errorMessage = getErrorMessage(error)
+      logger.error(`Failed to parse container configuration: ${errorMessage}`)
+      throw new Error(`Invalid container configuration: ${errorMessage}`)
     }
   }
 
@@ -1076,7 +1217,7 @@ export class DockerService {
       // Check if any image has a RepoTag that matches the requested image
       return images.some((image) => image.RepoTags && image.RepoTags.includes(imageName))
     } catch (error) {
-      logger.warn(`Error checking if image exists: ${error.message}`)
+      logger.warn(`Error checking if image exists: ${getErrorMessage(error)}`)
       // If run into an error, assume the image does not exist
       return false
     }

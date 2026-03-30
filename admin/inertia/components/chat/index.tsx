@@ -2,15 +2,16 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import ChatSidebar from './ChatSidebar'
 import ChatInterface from './ChatInterface'
+import ChatModelPicker from './ChatModelPicker'
 import StyledModal from '../StyledModal'
-import api from '~/lib/api'
-import { formatBytes } from '~/lib/util'
+import api, { type ChatStreamEvent } from '~/lib/api'
 import { useModals } from '~/context/ModalContext'
 import { ChatMessage } from '../../../types/chat'
 import classNames from '~/lib/classNames'
 import { IconX } from '@tabler/icons-react'
 import { DEFAULT_QUERY_REWRITE_MODEL } from '../../../constants/ollama'
 import { useSystemSetting } from '~/hooks/useSystemSetting'
+import { useNotifications } from '~/context/NotificationContext'
 
 interface ChatProps {
   enabled: boolean
@@ -29,10 +30,24 @@ export default function Chat({
 }: ChatProps) {
   const queryClient = useQueryClient()
   const { openModal, closeAllModals } = useModals()
+  const { addNotification } = useNotifications()
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [isStreamingResponse, setIsStreamingResponse] = useState(false)
+  const [streamStatusMessage, setStreamStatusMessage] = useState<string | null>(null)
+  const [cachedSuggestions, setCachedSuggestions] = useState<string[]>(() => {
+    if (typeof window === 'undefined') {
+      return []
+    }
+
+    try {
+      const saved = window.sessionStorage.getItem('roachnet-chat-suggestions')
+      return saved ? (JSON.parse(saved) as string[]) : []
+    } catch {
+      return []
+    }
+  })
   const streamAbortRef = useRef<AbortController | null>(null)
 
   // Fetch all sessions
@@ -69,12 +84,31 @@ export default function Chat({
     },
     enabled: suggestionsEnabled && !activeSessionId,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: true,
   })
+
+  useEffect(() => {
+    if (!chatSuggestions || chatSuggestions.length === 0 || typeof window === 'undefined') {
+      return
+    }
+
+    setCachedSuggestions(chatSuggestions)
+    window.sessionStorage.setItem('roachnet-chat-suggestions', JSON.stringify(chatSuggestions))
+  }, [chatSuggestions])
 
   const rewriteModelAvailable = useMemo(() => {
     return installedModels.some(model => model.name === DEFAULT_QUERY_REWRITE_MODEL)
   }, [installedModels])
+
+  const displayedSuggestions = useMemo(() => {
+    return chatSuggestions && chatSuggestions.length > 0 ? chatSuggestions : cachedSuggestions
+  }, [cachedSuggestions, chatSuggestions])
+
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort()
+    }
+  }, [])
 
   const deleteAllSessionsMutation = useMutation({
     mutationFn: () => api.deleteAllChatSessions(),
@@ -107,9 +141,7 @@ export default function Chat({
 
       setMessages((prev) => [...prev, assistantMessage])
 
-      // Refresh sessions to pick up backend-persisted messages and title
       queryClient.invalidateQueries({ queryKey: ['chatSessions'] })
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ['chatSessions'] }), 3000)
     },
     onError: (error) => {
       console.error('Error sending message:', error)
@@ -143,9 +175,11 @@ export default function Chat({
   }, [selectedModel])
 
   const handleNewChat = useCallback(() => {
+    streamAbortRef.current?.abort()
     // Just clear the active session and messages - don't create a session yet
     setActiveSessionId(null)
     setMessages([])
+    setStreamStatusMessage(null)
   }, [])
 
   const handleClearHistory = useCallback(() => {
@@ -170,10 +204,12 @@ export default function Chat({
 
   const handleSessionSelect = useCallback(
     async (sessionId: string) => {
+      streamAbortRef.current?.abort()
       // Cancel any ongoing suggestions fetch
       queryClient.cancelQueries({ queryKey: ['chatSuggestions'] })
 
       setActiveSessionId(sessionId)
+      setStreamStatusMessage(null)
       // Load messages for this session
       const sessionData = await api.getChatSession(sessionId)
       if (sessionData?.messages) {
@@ -195,6 +231,43 @@ export default function Chat({
       }
     },
     [installedModels, queryClient]
+  )
+
+  const handleStopStreaming = useCallback(() => {
+    streamAbortRef.current?.abort()
+  }, [])
+
+  const patchSessionTitle = useCallback(
+    (sessionId: string, title: string | null | undefined) => {
+      if (!title) {
+        return
+      }
+
+      queryClient.setQueryData<
+        Array<{
+          id: string
+          title: string
+          model: string | null
+          timestamp: string
+          lastMessage: string | null
+        }>
+      >(['chatSessions'], (current) => {
+        if (!current) {
+          return current
+        }
+
+        return current.map((session) =>
+          session.id === sessionId
+            ? {
+                ...session,
+                title,
+                timestamp: new Date().toISOString(),
+              }
+            : session
+        )
+      })
+    },
+    [queryClient]
   )
 
   const handleSendMessage = useCallback(
@@ -234,25 +307,44 @@ export default function Chat({
         streamAbortRef.current = abortController
 
         setIsStreamingResponse(true)
+        setStreamStatusMessage(null)
 
         const assistantMsgId = `msg-${Date.now()}-assistant`
         let isFirstChunk = true
-        let fullContent = ''
-        let thinkingContent = ''
         let isThinkingPhase = true
         let thinkingStartTime: number | null = null
         let thinkingDuration: number | null = null
+        let doneEvent: Extract<ChatStreamEvent, { type: 'done' }> | null = null
 
         try {
-          await api.streamChatMessage(
+          doneEvent = await api.streamChatMessage(
             { model: selectedModel || 'llama3.2', messages: chatMessages, stream: true, sessionId: sessionId ? Number(sessionId) : undefined },
-            (chunkContent, chunkThinking, done) => {
+            (event) => {
+              if (event.type === 'status') {
+                setStreamStatusMessage(event.message)
+                return
+              }
+
+              if (event.type === 'done') {
+                doneEvent = event
+                setStreamStatusMessage(null)
+                if (!event.persisted && event.error) {
+                  addNotification({
+                    type: 'info',
+                    message: `Reply streamed, but RoachNet could not save it cleanly: ${event.error}`,
+                  })
+                }
+                return
+              }
+
+              const { content: chunkContent, thinking: chunkThinking, done } = event
+              setStreamStatusMessage(null)
+
               if (chunkThinking.length > 0 && thinkingStartTime === null) {
                 thinkingStartTime = Date.now()
               }
               if (isFirstChunk) {
                 isFirstChunk = false
-                setIsStreamingResponse(false)
                 setMessages((prev) => [
                   ...prev,
                   {
@@ -264,6 +356,7 @@ export default function Chat({
                     isStreaming: true,
                     isThinking: chunkThinking.length > 0 && chunkContent.length === 0,
                     thinkingDuration: undefined,
+                    statusText: null,
                   },
                 ])
               } else {
@@ -277,24 +370,52 @@ export default function Chat({
                   prev.map((m) =>
                     m.id === assistantMsgId
                       ? {
-                        ...m,
-                        content: m.content + chunkContent,
-                        thinking: (m.thinking ?? '') + chunkThinking,
-                        isStreaming: !done,
-                        isThinking: isThinkingPhase,
-                        thinkingDuration: thinkingDuration ?? undefined,
-                      }
+                          ...m,
+                          content: m.content + chunkContent,
+                          thinking: (m.thinking ?? '') + chunkThinking,
+                          isStreaming: !done,
+                          isThinking: isThinkingPhase,
+                          thinkingDuration: thinkingDuration ?? undefined,
+                          statusText: null,
+                        }
                       : m
                   )
                 )
               }
-              fullContent += chunkContent
-              thinkingContent += chunkThinking
             },
             abortController.signal
           )
         } catch (error: any) {
-          if (error?.name !== 'AbortError') {
+          if (error?.name === 'AbortError') {
+            setMessages((prev) => {
+              const hasAssistantMsg = prev.some((m) => m.id === assistantMsgId)
+              if (hasAssistantMsg) {
+                return prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? {
+                        ...m,
+                        content: m.content
+                          ? `${m.content}\n\nResponse stopped.`
+                          : 'Response stopped.',
+                        isStreaming: false,
+                        isThinking: false,
+                      }
+                    : m
+                )
+              }
+
+              return [
+                ...prev,
+                {
+                  id: assistantMsgId,
+                  role: 'assistant',
+                  content: 'Response stopped.',
+                  timestamp: new Date(),
+                  isStreaming: false,
+                },
+              ]
+            })
+          } else {
             setMessages((prev) => {
               const hasAssistantMsg = prev.some((m) => m.id === assistantMsgId)
               if (hasAssistantMsg) {
@@ -315,10 +436,11 @@ export default function Chat({
           }
         } finally {
           setIsStreamingResponse(false)
+          setStreamStatusMessage(null)
           streamAbortRef.current = null
         }
 
-        if (fullContent && sessionId) {
+        if (sessionId) {
           // Ensure the streaming cursor is removed
           setMessages((prev) =>
             prev.map((m) =>
@@ -326,9 +448,11 @@ export default function Chat({
             )
           )
 
-          // Refresh sessions to pick up backend-persisted messages and title
+          if (doneEvent?.title) {
+            patchSessionTitle(sessionId, doneEvent.title)
+          }
+
           queryClient.invalidateQueries({ queryKey: ['chatSessions'] })
-          setTimeout(() => queryClient.invalidateQueries({ queryKey: ['chatSessions'] }), 3000)
         }
       } else {
         // Non-streaming (legacy) path
@@ -339,7 +463,7 @@ export default function Chat({
         })
       }
     },
-    [activeSessionId, messages, selectedModel, chatMutation, queryClient, streamingEnabled]
+    [activeSessionId, addNotification, messages, patchSessionTitle, selectedModel, chatMutation, queryClient, streamingEnabled]
   )
 
   return (
@@ -372,18 +496,11 @@ export default function Chat({
               ) : installedModels.length === 0 ? (
                 <div className="text-sm text-red-600">No models installed</div>
               ) : (
-                <select
-                  id="model-select"
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="px-3 py-1.5 border border-border-default rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-desert-green focus:border-transparent bg-surface-primary"
-                >
-                  {installedModels.map((model) => (
-                    <option key={model.name} value={model.name}>
-                      {model.name} ({formatBytes(model.size)})
-                    </option>
-                  ))}
-                </select>
+                <ChatModelPicker
+                  models={installedModels.map((model) => ({ name: model.name, size: model.size }))}
+                  selectedModel={selectedModel}
+                  onChange={setSelectedModel}
+                />
               )}
             </div>
             {isInModal && (
@@ -403,10 +520,13 @@ export default function Chat({
         <ChatInterface
           messages={messages}
           onSendMessage={handleSendMessage}
+          onStopStreaming={handleStopStreaming}
           isLoading={isStreamingResponse || chatMutation.isPending}
-          chatSuggestions={chatSuggestions}
+          showLoadingBubble={chatMutation.isPending || (isStreamingResponse && !messages.some((message) => message.isStreaming))}
+          loadingLabel={streamStatusMessage || 'Thinking'}
+          chatSuggestions={displayedSuggestions}
           chatSuggestionsEnabled={suggestionsEnabled}
-          chatSuggestionsLoading={chatSuggestionsLoading}
+          chatSuggestionsLoading={chatSuggestionsLoading && displayedSuggestions.length === 0}
           rewriteModelAvailable={rewriteModelAvailable}
         />
       </div>

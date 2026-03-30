@@ -26,6 +26,23 @@ import type {
 import type { ApplyRoachClawResponse, RoachClawStatusResponse } from '../../types/roachclaw'
 import type { SiteArchiveRecord, SiteArchivesResponse } from '../../types/site_archives'
 
+export type ChatStreamStatus =
+  | 'enhancing-query'
+  | 'searching-knowledge'
+  | 'persisting-response'
+  | 'generating-title'
+
+export type ChatStreamEvent =
+  | { type: 'status'; status: ChatStreamStatus; message: string }
+  | { type: 'chunk'; content: string; thinking: string; done: boolean }
+  | {
+      type: 'done'
+      sessionId?: number
+      title?: string | null
+      persisted: boolean
+      error?: string | null
+    }
+
 class API {
   private client: AxiosInstance
 
@@ -279,9 +296,9 @@ class API {
 
   async streamChatMessage(
     chatRequest: OllamaChatRequest,
-    onChunk: (content: string, thinking: string, done: boolean) => void,
+    onEvent: (event: ChatStreamEvent) => void,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): Promise<Extract<ChatStreamEvent, { type: 'done' }> | null> {
     // Axios doesn't support ReadableStream in browser, so need to use fetch
     const response = await fetch('/api/ollama/chat', {
       method: 'POST',
@@ -297,6 +314,72 @@ class API {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let doneEvent: Extract<ChatStreamEvent, { type: 'done' }> | null = null
+
+    const processEventBlock = (block: string) => {
+      const lines = block
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter(Boolean)
+
+      if (lines.length === 0) {
+        return
+      }
+
+      let eventName = 'message'
+      const dataLines: string[] = []
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trim())
+        }
+      }
+
+      if (dataLines.length === 0) {
+        return
+      }
+
+      let data: any
+      try {
+        data = JSON.parse(dataLines.join('\n'))
+      } catch {
+        return
+      }
+
+      if (eventName === 'error' || data.error) {
+        throw new Error(data.message || 'The model encountered an error. Please try again.')
+      }
+
+      if (eventName === 'status') {
+        onEvent({
+          type: 'status',
+          status: data.status,
+          message: data.message,
+        })
+        return
+      }
+
+      if (eventName === 'done') {
+        doneEvent = {
+          type: 'done',
+          sessionId: data.sessionId,
+          title: data.title,
+          persisted: Boolean(data.persisted),
+          error: data.error ?? null,
+        }
+        onEvent(doneEvent)
+        return
+      }
+
+      onEvent({
+        type: 'chunk',
+        content: data.message?.content ?? '',
+        thinking: data.message?.thinking ?? '',
+        done: data.done ?? false,
+      })
+    }
 
     try {
       while (true) {
@@ -304,28 +387,23 @@ class API {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+        const eventBlocks = buffer.split('\n\n')
+        buffer = eventBlocks.pop() || ''
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          let data: any
-          try {
-            data = JSON.parse(line.slice(6))
-          } catch { continue /* skip malformed chunks */ }
-
-          if (data.error) throw new Error('The model encountered an error. Please try again.')
-
-          onChunk(
-            data.message?.content ?? '',
-            data.message?.thinking ?? '',
-            data.done ?? false
-          )
+        for (const block of eventBlocks) {
+          processEventBlock(block)
         }
+      }
+
+      const trailing = buffer.trim()
+      if (trailing.length > 0) {
+        processEventBlock(trailing)
       }
     } finally {
       reader.releaseLock()
     }
+
+    return doneEvent
   }
 
   async getBenchmarkResults() {

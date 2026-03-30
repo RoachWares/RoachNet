@@ -10,6 +10,7 @@ build/Release
 
 # Dependency directories
 node_modules/
+node_modules_node*_partial_*/
 
 # Optional npm cache directory
 .npm

@@ -7,11 +7,15 @@ import { OpenClawService } from '#services/openclaw_service'
 import { spawn } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import logger from '@adonisjs/core/services/logger'
 import type {
   ApplyRoachClawRequest,
   ApplyRoachClawResponse,
   RoachClawStatusResponse,
 } from '../../types/roachclaw.js'
+import { getErrorMessage } from '../utils/errors.js'
+import { findCommandPath } from '../utils/process.js'
+import { PREFERRED_ROACHCLAW_MODELS } from '../../constants/ollama.js'
 
 @inject()
 export class RoachClawService {
@@ -64,6 +68,7 @@ export class RoachClawService {
       preferredMode,
       ready,
       installedModels,
+      preferredModels: [...PREFERRED_ROACHCLAW_MODELS],
       configFilePath,
     }
   }
@@ -109,13 +114,26 @@ export class RoachClawService {
     let message = `RoachClaw saved ${normalizedModel} as the default local model.`
 
     try {
-      await this.applyOpenClawCliConfig(workspacePath, normalizedModel, ollamaBaseUrl)
+      const cliConfigResult = await this.applyOpenClawCliConfig(
+        workspacePath,
+        normalizedModel,
+        ollamaBaseUrl
+      )
       configFilePath = await this.tryGetOpenClawConfigPath(workspacePath)
-      message =
-        `RoachClaw configured OpenClaw to default to ollama/${normalizedModel} ` +
-        `and set the workspace to ${workspacePath}.`
-    } catch {
-      message += ' OpenClaw CLI was not detected yet, so only the RoachNet-side defaults were saved.'
+      if (cliConfigResult.failures.length === 0) {
+        message =
+          `RoachClaw configured OpenClaw to default to ollama/${normalizedModel} ` +
+          `and set the workspace to ${workspacePath}.`
+      } else {
+        message =
+          `RoachClaw saved the local defaults and applied OpenClaw CLI settings with ` +
+          `${cliConfigResult.failures.length} non-fatal issue(s). Check the server logs if a CLI value did not stick yet.`
+      }
+    } catch (error) {
+      logger.warn(
+        `[RoachClawService] OpenClaw CLI configuration did not finish cleanly: ${getErrorMessage(error)}`
+      )
+      message += ' OpenClaw CLI config did not finish cleanly, so only the RoachNet-side defaults were guaranteed.'
     }
 
     await this.writeRoachClawProfile({
@@ -150,13 +168,7 @@ export class RoachClawService {
       return defaultModel
     }
 
-    const explicitPriority = [
-      'qwen2.5-coder:7b',
-      'qwen2.5-coder:14b',
-      'qwen3.5:latest',
-    ]
-
-    for (const candidate of explicitPriority) {
+    for (const candidate of PREFERRED_ROACHCLAW_MODELS) {
       if (installedModels.includes(candidate)) {
         return candidate
       }
@@ -181,19 +193,14 @@ export class RoachClawService {
     return process.platform === 'win32' ? 'npx.cmd' : 'npx'
   }
 
-  private async commandExists(binary: string, args: string[]): Promise<boolean> {
-    try {
-      await this.runCommand(binary, args, process.cwd())
-      return true
-    } catch {
-      return false
-    }
+  private async commandExists(binary: string): Promise<boolean> {
+    return Boolean(await findCommandPath(binary))
   }
 
   private async runOpenClawCommand(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
     await mkdir(cwd, { recursive: true })
 
-    if (await this.commandExists(this.getOpenClawBinary(), ['--help'])) {
+    if (await this.commandExists(this.getOpenClawBinary())) {
       return this.runCommand(this.getOpenClawBinary(), args, cwd)
     }
 
@@ -231,19 +238,93 @@ export class RoachClawService {
     })
   }
 
-  private async applyOpenClawCliConfig(workspacePath: string, model: string, ollamaBaseUrl: string) {
+  private async applyOpenClawCliConfig(
+    workspacePath: string,
+    model: string,
+    ollamaBaseUrl: string
+  ): Promise<{ failures: string[] }> {
     const normalizedBaseUrl = ollamaBaseUrl.replace(/\/+$/, '')
+    const failures: string[] = []
+    let totalWrites = 3
 
-    await this.runOpenClawCommand(['setup', '--workspace', workspacePath], workspacePath).catch(() => {})
-    await this.runOpenClawCommand(['config', 'set', 'agents.defaults.workspace', workspacePath], workspacePath)
-    await this.runOpenClawCommand(['config', 'set', 'models.providers.ollama.apiKey', 'ollama-local'], workspacePath)
-
-    if (normalizedBaseUrl !== 'http://127.0.0.1:11434' && normalizedBaseUrl !== 'http://localhost:11434') {
-      await this.runOpenClawCommand(['config', 'set', 'models.providers.ollama.baseUrl', normalizedBaseUrl], workspacePath)
-      await this.runOpenClawCommand(['config', 'set', 'models.providers.ollama.api', 'ollama'], workspacePath)
+    try {
+      await this.runOpenClawSetupCommand(workspacePath)
+    } catch (error) {
+      logger.warn(
+        `[RoachClawService] OpenClaw setup did not complete cleanly: ${getErrorMessage(error)}`
+      )
     }
 
-    await this.runOpenClawCommand(['models', 'set', `ollama/${model}`], workspacePath)
+    await this.waitForOpenClawConfigReady(workspacePath)
+
+    const writeCommand = async (args: string[]) => {
+      try {
+        await this.runOpenClawCommand(args, workspacePath)
+      } catch (error) {
+        const errorMessage = getErrorMessage(error)
+        failures.push(`${args.join(' ')}: ${errorMessage}`)
+        logger.warn(
+          `[RoachClawService] OpenClaw CLI command failed (${args.join(' ')}): ${errorMessage}`
+        )
+      }
+    }
+
+    await writeCommand(['config', 'set', 'agents.defaults.workspace', workspacePath])
+    await writeCommand(['config', 'set', 'models.providers.ollama.apiKey', 'ollama-local'])
+
+    if (normalizedBaseUrl !== 'http://127.0.0.1:11434' && normalizedBaseUrl !== 'http://localhost:11434') {
+      totalWrites += 2
+      await writeCommand([
+        'config',
+        'set',
+        'models.providers.ollama.baseUrl',
+        normalizedBaseUrl,
+      ])
+      await writeCommand(['config', 'set', 'models.providers.ollama.api', 'ollama'])
+    }
+
+    await writeCommand(['models', 'set', `ollama/${model}`])
+
+    if (failures.length >= totalWrites) {
+      throw new Error('OpenClaw CLI accepted the onboarding request, but the config writes did not settle yet.')
+    }
+
+    return { failures }
+  }
+
+  private async waitForOpenClawConfigReady(workspacePath: string): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const configPath = await this.tryGetOpenClawConfigPath(workspacePath)
+        if (configPath) {
+          return
+        }
+      } catch {
+        // Keep polling for the config path to settle after setup.
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+
+  private async runOpenClawSetupCommand(workspacePath: string): Promise<void> {
+    let lastError: unknown = null
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await this.runOpenClawCommand(['setup', '--workspace', workspacePath], workspacePath)
+        return
+      } catch (error) {
+        lastError = error
+        if (attempt === 2) {
+          break
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('OpenClaw setup failed.')
   }
 
   private async tryGetOpenClawConfigPath(workspacePath: string): Promise<string | null> {
