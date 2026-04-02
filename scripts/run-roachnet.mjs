@@ -252,6 +252,43 @@ function getPersistentStorageRoot() {
   return path.join(adminDir, 'storage')
 }
 
+function normalizeStorageRoot(candidatePath) {
+  const fallbackRoot = getPersistentStorageRoot()
+  const trimmedPath = candidatePath?.trim()
+
+  if (!trimmedPath) {
+    return fallbackRoot
+  }
+
+  const resolvedPath = path.resolve(trimmedPath)
+  const currentRepoRoot = path.resolve(repoRoot)
+  const currentRepoStorageRoot = path.resolve(fallbackRoot)
+  const currentRepoAdminRoot = path.resolve(adminDir)
+
+  if (
+    resolvedPath === currentRepoStorageRoot ||
+    resolvedPath.startsWith(`${currentRepoStorageRoot}${path.sep}`) ||
+    resolvedPath.startsWith(`${currentRepoAdminRoot}${path.sep}`) ||
+    process.env.ROACHNET_ALLOW_FOREIGN_STORAGE_PATH === '1'
+  ) {
+    return resolvedPath
+  }
+
+  const looksLikeMovedRepoStorageRoot =
+    resolvedPath.endsWith(path.join('admin', 'storage')) ||
+    resolvedPath.includes(`${path.sep}RoachNet${path.sep}admin${path.sep}storage`)
+
+  if (looksLikeMovedRepoStorageRoot && !resolvedPath.startsWith(`${currentRepoRoot}${path.sep}`)) {
+    debugBoot('runtime-env:rewire-storage-root', {
+      from: resolvedPath,
+      to: currentRepoStorageRoot,
+    })
+    return currentRepoStorageRoot
+  }
+
+  return resolvedPath
+}
+
 function getManagedRuntimeStateRoot(envValues) {
   const explicitRoot =
     envValues.ROACHNET_RUNTIME_STATE_ROOT?.trim() ||
@@ -269,18 +306,22 @@ function getManagedRuntimeStateRoot(envValues) {
 }
 
 function getRuntimeEnvValues(envValues) {
-  const storageRoot = envValues.NOMAD_STORAGE_PATH?.trim() || getPersistentStorageRoot()
+  const storageRoot = normalizeStorageRoot(
+    process.env.NOMAD_STORAGE_PATH?.trim() || envValues.NOMAD_STORAGE_PATH?.trim()
+  )
   const manifestsBaseUrl =
-    envValues.ROACHNET_MANIFESTS_BASE_URL?.trim() ||
     process.env.ROACHNET_MANIFESTS_BASE_URL?.trim() ||
+    envValues.ROACHNET_MANIFESTS_BASE_URL?.trim() ||
     'https://roachnet.org/collections'
+  const configuredOpenClawWorkspace =
+    process.env.OPENCLAW_WORKSPACE_PATH?.trim() || envValues.OPENCLAW_WORKSPACE_PATH?.trim()
 
   return {
     ...envValues,
     NOMAD_STORAGE_PATH: storageRoot,
     ROACHNET_MANIFESTS_BASE_URL: manifestsBaseUrl,
     OPENCLAW_WORKSPACE_PATH:
-      envValues.OPENCLAW_WORKSPACE_PATH?.trim() || path.join(storageRoot, 'openclaw'),
+      configuredOpenClawWorkspace ? path.resolve(configuredOpenClawWorkspace) : path.join(storageRoot, 'openclaw'),
   }
 }
 

@@ -78,7 +78,7 @@ const fallbackCatalog = {
       source: 'Ollama + RoachNet curation',
       summary: 'Machine-aware recommended models for contained first boot, with cloud lane fallback and local download guidance inside the app.',
       primaryLabel: `Download RoachNet ${releaseVersion}`,
-      primaryUrl: './downloads/RoachNet-Setup-macOS.dmg',
+      primaryUrl: hostedDownloads.mac.url,
     },
     {
       title: 'Field Ops Toolkit',

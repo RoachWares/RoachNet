@@ -277,10 +277,16 @@ public actor ManagedAppRuntimeBridge {
         }
 
         var environment = ProcessInfo.processInfo.environment
+        let normalizedStoragePath = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+        let normalizedWorkspacePath = defaultWorkspacePath(from: config)
         environment["ROACHNET_NO_BROWSER"] = "1"
         environment["ROACHNET_SERVER_INFO_FILE"] = infoURL.path
         environment["ROACHNET_REPO_ROOT"] = repoRoot.path
         environment["ROACHNET_RUNTIME_STATE_ROOT"] = RoachNetRepositoryLocator.defaultRuntimeStatePath()
+        environment["NOMAD_STORAGE_PATH"] = normalizedStoragePath
+        environment["OPENCLAW_WORKSPACE_PATH"] = normalizedWorkspacePath
         environment["ROACHNET_ROACHCLAW_DEFAULT_MODEL"] = config.roachClawDefaultModel
         process.environment = environment
 
@@ -624,9 +630,15 @@ public actor ManagedAppRuntimeBridge {
         stopProcess.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path, "--stop"] : [scriptURL.path, "--stop"]
 
         var environment = ProcessInfo.processInfo.environment
+        let normalizedStoragePath = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+        let normalizedWorkspacePath = defaultWorkspacePath(from: config)
         environment["ROACHNET_NO_BROWSER"] = "1"
         environment["ROACHNET_REPO_ROOT"] = repoRoot.path
         environment["ROACHNET_RUNTIME_STATE_ROOT"] = RoachNetRepositoryLocator.defaultRuntimeStatePath()
+        environment["NOMAD_STORAGE_PATH"] = normalizedStoragePath
+        environment["OPENCLAW_WORKSPACE_PATH"] = normalizedWorkspacePath
         stopProcess.environment = environment
 
         do {

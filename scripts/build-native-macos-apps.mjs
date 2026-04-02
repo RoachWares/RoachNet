@@ -67,6 +67,46 @@ function run(command, args, options = {}) {
   })
 }
 
+function parseEnvFile(content) {
+  const values = {}
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim()
+
+    if (!line || line.startsWith('#')) {
+      continue
+    }
+
+    const separatorIndex = line.indexOf('=')
+    if (separatorIndex === -1) {
+      continue
+    }
+
+    const key = line.slice(0, separatorIndex).trim()
+    let value = line.slice(separatorIndex + 1).trim()
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+
+    values[key] = value
+  }
+
+  return values
+}
+
+function serializeEnvFile(values) {
+  return (
+    Object.entries(values)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${key}=${String(value)}`)
+      .join('\n') + '\n'
+  )
+}
+
 function getPreferredNodeBinary() {
   const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/node'
   return existsSync(macHomebrewNode22) ? macHomebrewNode22 : process.execPath
@@ -264,7 +304,10 @@ async function copyBundledSourceTree(destinationPath) {
 
   if (existsSync(bundledEnvSource)) {
     console.log(`Copying bundled environment file into ${bundledEnvDestination}...`)
-    writeFileSync(bundledEnvDestination, readFileSync(bundledEnvSource))
+    const bundledEnvValues = parseEnvFile(readFileSync(bundledEnvSource, 'utf8'))
+    delete bundledEnvValues.NOMAD_STORAGE_PATH
+    delete bundledEnvValues.OPENCLAW_WORKSPACE_PATH
+    writeFileSync(bundledEnvDestination, serializeEnvFile(bundledEnvValues), 'utf8')
   }
 }
 
