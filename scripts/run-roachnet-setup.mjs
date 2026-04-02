@@ -33,7 +33,7 @@ const DOCKER_BOOT_TIMEOUT_MS = 180_000
 const PORT_WAIT_INTERVAL_MS = 1_500
 const PORT_WAIT_TIMEOUT_MS = 180_000
 const GITHUB_API_ROOT = 'https://api.github.com'
-const DEFAULT_ROACHCLAW_MODEL = 'qwen2.5-coder:7b'
+const DEFAULT_ROACHCLAW_MODEL = 'qwen2.5-coder:1.5b'
 
 const runtimeState = {
   task: null,
@@ -204,7 +204,7 @@ function getCurrentAppVersion() {
     return packagedVersion
   }
 
-  return readJsonFile(path.join(repoRoot, 'package.json'))?.version || '1.30.3'
+  return readJsonFile(path.join(repoRoot, 'package.json'))?.version || '1.30.5'
 }
 
 function parseGitHubRepo(sourceRepoUrl = DEFAULT_SOURCE_REPO_URL) {
@@ -386,6 +386,7 @@ async function installDirectoryArtifact(sourcePath, targetPath) {
     recursive: true,
     force: true,
   })
+  await clearMacQuarantine(targetPath)
 }
 
 async function installFileArtifact(sourcePath, targetPath) {
@@ -395,6 +396,18 @@ async function installFileArtifact(sourcePath, targetPath) {
   if (process.platform !== 'win32') {
     await chmod(targetPath, 0o755).catch(() => {})
   }
+  await clearMacQuarantine(targetPath)
+}
+
+async function clearMacQuarantine(targetPath) {
+  if (process.platform !== 'darwin') {
+    return
+  }
+
+  await runProcess('xattr', ['-cr', targetPath], { env: getShellEnv() }).catch(() => {})
+  await runProcess('xattr', ['-dr', 'com.apple.quarantine', targetPath], {
+    env: getShellEnv(),
+  }).catch(() => {})
 }
 
 async function resolveLocalNativeAppSource(config, task) {
@@ -1248,12 +1261,6 @@ async function ensureDirectory(directoryPath) {
 
 async function ensureRequiredDependencies(config, task, packageManager, dependencies) {
   const requiredIds = ['git', 'node', 'docker']
-  const installRoachClaw = config.installRoachClaw !== false
-
-  if (installRoachClaw) {
-    requiredIds.push('ollama')
-    requiredIds.push('openclaw')
-  }
 
   for (const dependencyId of requiredIds) {
     const dependency = dependencies[dependencyId]
@@ -1299,6 +1306,13 @@ async function ensureRequiredDependencies(config, task, packageManager, dependen
         }
       },
     })
+  }
+
+  if (config.installRoachClaw !== false) {
+    appendTaskLog(
+      task,
+      'RoachClaw defaults to contained Ollama and OpenClaw lanes managed by RoachNet. Existing host installs stay optional and can be imported later.'
+    )
   }
 }
 
@@ -1520,11 +1534,17 @@ function buildManagementCompose({
     image: mysql:8.0
     container_name: roachnet_mysql_${hashString(installPath).slice(0, 8)}
     restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - rm -f /var/run/mysqld/mysqld.sock.lock /var/run/mysqld/mysqlx.sock.lock /var/run/mysqld/mysqld.sock /var/run/mysqld/mysqlx.sock && exec docker-entrypoint.sh mysqld
     environment:
       MYSQL_ROOT_PASSWORD: "${resolvedDbRootPassword}"
       MYSQL_DATABASE: nomad
       MYSQL_USER: "${resolvedDbUser}"
       MYSQL_PASSWORD: "${resolvedDbPassword}"
+    tmpfs:
+      - /var/run/mysqld
     volumes:
       - "${runtimeRoot}/mysql:/var/lib/mysql"
     healthcheck:

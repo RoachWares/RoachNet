@@ -3,8 +3,12 @@ import Foundation
 public struct RoachNetInstallerConfig: Codable, Sendable {
     public var installPath: String
     public var installedAppPath: String
+    public var storagePath: String
     public var installRoachClaw: Bool
     public var roachClawDefaultModel: String
+    public var distributedInferenceBackend: String
+    public var exoBaseUrl: String
+    public var exoModelId: String
     public var autoInstallDependencies: Bool
     public var autoLaunch: Bool
     public var releaseChannel: String
@@ -15,8 +19,12 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
     public init(
         installPath: String,
         installedAppPath: String,
+        storagePath: String? = nil,
         installRoachClaw: Bool = true,
-        roachClawDefaultModel: String = "qwen2.5-coder:7b",
+        roachClawDefaultModel: String = "qwen2.5-coder:1.5b",
+        distributedInferenceBackend: String = "disabled",
+        exoBaseUrl: String = "http://127.0.0.1:52415",
+        exoModelId: String = "",
         autoInstallDependencies: Bool = true,
         autoLaunch: Bool = true,
         releaseChannel: String = "stable",
@@ -26,8 +34,12 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
     ) {
         self.installPath = installPath
         self.installedAppPath = installedAppPath
+        self.storagePath = storagePath ?? RoachNetRepositoryLocator.defaultStoragePath(installPath: installPath)
         self.installRoachClaw = installRoachClaw
         self.roachClawDefaultModel = roachClawDefaultModel
+        self.distributedInferenceBackend = distributedInferenceBackend
+        self.exoBaseUrl = exoBaseUrl
+        self.exoModelId = exoModelId
         self.autoInstallDependencies = autoInstallDependencies
         self.autoLaunch = autoLaunch
         self.releaseChannel = releaseChannel
@@ -39,8 +51,12 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case installPath
         case installedAppPath
+        case storagePath
         case installRoachClaw
         case roachClawDefaultModel
+        case distributedInferenceBackend
+        case exoBaseUrl
+        case exoModelId
         case autoInstallDependencies
         case autoLaunch
         case releaseChannel
@@ -61,12 +77,19 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
             try container.decodeIfPresent(String.self, forKey: .installedAppPath) ??
             compatibility.decodeIfPresent(String.self, forKey: .appInstallPath) ??
             RoachNetRepositoryLocator.defaultInstalledAppPath(installPath: installPath)
+        let storagePath =
+            try container.decodeIfPresent(String.self, forKey: .storagePath) ??
+            RoachNetRepositoryLocator.defaultStoragePath(installPath: installPath)
 
         self.init(
             installPath: installPath,
             installedAppPath: installedAppPath,
+            storagePath: storagePath,
             installRoachClaw: try container.decodeIfPresent(Bool.self, forKey: .installRoachClaw) ?? true,
-            roachClawDefaultModel: try container.decodeIfPresent(String.self, forKey: .roachClawDefaultModel) ?? "qwen2.5-coder:7b",
+            roachClawDefaultModel: try container.decodeIfPresent(String.self, forKey: .roachClawDefaultModel) ?? "qwen2.5-coder:1.5b",
+            distributedInferenceBackend: try container.decodeIfPresent(String.self, forKey: .distributedInferenceBackend) ?? "disabled",
+            exoBaseUrl: try container.decodeIfPresent(String.self, forKey: .exoBaseUrl) ?? "http://127.0.0.1:52415",
+            exoModelId: try container.decodeIfPresent(String.self, forKey: .exoModelId) ?? "",
             autoInstallDependencies: try container.decodeIfPresent(Bool.self, forKey: .autoInstallDependencies) ?? true,
             autoLaunch: try container.decodeIfPresent(Bool.self, forKey: .autoLaunch) ?? true,
             releaseChannel: try container.decodeIfPresent(String.self, forKey: .releaseChannel) ?? "stable",
@@ -80,8 +103,12 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(installPath, forKey: .installPath)
         try container.encode(installedAppPath, forKey: .installedAppPath)
+        try container.encode(storagePath, forKey: .storagePath)
         try container.encode(installRoachClaw, forKey: .installRoachClaw)
         try container.encode(roachClawDefaultModel, forKey: .roachClawDefaultModel)
+        try container.encode(distributedInferenceBackend, forKey: .distributedInferenceBackend)
+        try container.encode(exoBaseUrl, forKey: .exoBaseUrl)
+        try container.encode(exoModelId, forKey: .exoModelId)
         try container.encode(autoInstallDependencies, forKey: .autoInstallDependencies)
         try container.encode(autoLaunch, forKey: .autoLaunch)
         try container.encode(releaseChannel, forKey: .releaseChannel)
@@ -265,6 +292,29 @@ public enum RoachNetRepositoryLocator {
             .path
     }
 
+    public static func defaultStoragePath(installPath: String? = nil) -> String {
+        let root = installPath ?? defaultInstallPath()
+        return URL(fileURLWithPath: root)
+            .appendingPathComponent("storage", isDirectory: true)
+            .path
+    }
+
+    public static func defaultRuntimeStatePath() -> String {
+        if
+            let override = ProcessInfo.processInfo.environment["ROACHNET_RUNTIME_STATE_ROOT"],
+            !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return URL(fileURLWithPath: override).standardizedFileURL.path
+        }
+
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let base = support ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return base
+            .appendingPathComponent("roachnet", isDirectory: true)
+            .appendingPathComponent("runtime-state", isDirectory: true)
+            .path
+    }
+
     public static func preferredNodeBinary() -> String {
         let candidates = [
             ProcessInfo.processInfo.environment["ROACHNET_NODE_BINARY"],
@@ -281,6 +331,38 @@ public enum RoachNetRepositoryLocator {
         return "/usr/bin/env"
     }
 
+    public static func preferredBinarySearchPath() -> String {
+        let pathSeparator = ":"
+        let existingSegments = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+            .split(separator: Character(pathSeparator))
+            .map(String.init)
+        let preferredSegments = [
+            "/opt/homebrew/opt/node@22/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/Applications/Docker.app/Contents/Resources/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ]
+
+        var orderedSegments: [String] = []
+        var seen = Set<String>()
+
+        for segment in preferredSegments + existingSegments {
+            let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else {
+                continue
+            }
+
+            orderedSegments.append(trimmed)
+            seen.insert(trimmed)
+        }
+
+        return orderedSegments.joined(separator: pathSeparator)
+    }
+
     public static func readConfig() -> RoachNetInstallerConfig {
         let url = configURL()
 
@@ -291,7 +373,8 @@ public enum RoachNetRepositoryLocator {
             let installPath = defaultInstallPath()
             return RoachNetInstallerConfig(
                 installPath: installPath,
-                installedAppPath: defaultInstalledAppPath(installPath: installPath)
+                installedAppPath: defaultInstalledAppPath(installPath: installPath),
+                storagePath: defaultStoragePath(installPath: installPath)
             )
         }
 

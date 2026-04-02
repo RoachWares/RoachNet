@@ -4,6 +4,7 @@ import { SystemService } from '#services/system_service'
 import { SystemUpdateService } from '#services/system_update_service'
 import { UpstreamSyncService } from '#services/upstream_sync_service'
 import { ContainerRegistryService } from '#services/container_registry_service'
+import { NativeRuntimeSnapshotService } from '#services/native_runtime_snapshot_service'
 import { CheckServiceUpdatesJob } from '#jobs/check_service_updates_job'
 import { affectServiceValidator, checkLatestVersionValidator, installServiceValidator, subscribeToReleaseNotesValidator, updateServiceValidator } from '#validators/system';
 import { inject } from '@adonisjs/core'
@@ -17,7 +18,8 @@ export default class SystemController {
         private dockerService: DockerService,
         private systemUpdateService: SystemUpdateService,
         private upstreamSyncService: UpstreamSyncService,
-        private containerRegistryService: ContainerRegistryService
+        private containerRegistryService: ContainerRegistryService,
+        private nativeRuntimeSnapshotService: NativeRuntimeSnapshotService
     ) { }
 
     async getInternetStatus({ }: HttpContext) {
@@ -29,11 +31,15 @@ export default class SystemController {
     }
 
     async getServices({ }: HttpContext) {
-        return await this.systemService.getServices({ installedOnly: true });
+        return await this.systemService.getServices({ installedOnly: false });
     }
 
     async getAIRuntimeProviders({ }: HttpContext) {
         return await this.aiRuntimeService.getProviders();
+    }
+
+    async getNativeSnapshot({}: HttpContext) {
+        return await this.nativeRuntimeSnapshotService.getSnapshot()
     }
 
     async installService({ request, response }: HttpContext) {

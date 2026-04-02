@@ -207,6 +207,33 @@ export async function composeUpRoachNetServices({
   })
 }
 
+export async function composeDownRoachNetServices({
+  composeFiles,
+  cwd,
+  installPath,
+  runProcess,
+  env = process.env,
+  onStdout,
+  onStderr,
+  removeOrphans = true,
+}) {
+  const args = buildComposeArgs({
+    projectName: getRoachNetComposeProjectName(installPath),
+    composeFiles,
+    commandArgs: [
+      'down',
+      ...(removeOrphans ? ['--remove-orphans'] : []),
+    ],
+  })
+
+  return runProcess('docker', ['compose', ...args], {
+    cwd,
+    env,
+    onStdout,
+    onStderr,
+  })
+}
+
 export async function composePreviewRoachNetServices({
   composeFiles,
   cwd,

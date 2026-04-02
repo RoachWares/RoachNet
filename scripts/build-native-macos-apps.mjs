@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { cp, mkdtemp, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -23,10 +23,18 @@ const launchGuideVideoPath = path.join(
   'Resources',
   'roachnet-launch-guide.mp4'
 )
-const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.30.4'
+const installerHelperPath = path.join(
+  repoRoot,
+  'native',
+  'macos',
+  'installer-support',
+  'RoachNet Fix.command'
+)
+const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.30.5'
 const codesignIdentity = process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || ''
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
 const notaryKeychain = process.env.ROACHNET_NOTARY_KEYCHAIN?.trim() || ''
+const skipDmg = process.env.ROACHNET_SKIP_DMG === '1'
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -81,6 +89,22 @@ async function ensureLaunchGuideVideo() {
 
   const nodeBinary = getPreferredNodeBinary()
   await run(nodeBinary, [path.join(repoRoot, 'scripts', 'build-launch-guide-video.mjs')], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      PATH: `${path.dirname(nodeBinary)}:${process.env.PATH || ''}`,
+    },
+  })
+}
+
+async function buildAdminRuntime() {
+  const nodeBinary = getPreferredNodeBinary()
+  if (process.env.ROACHNET_SKIP_ADMIN_RUNTIME_BUILD === '1') {
+    console.log('Using the existing compiled admin runtime.')
+    return
+  }
+
+  await run(nodeBinary, [path.join(repoRoot, 'scripts', 'build-admin-runtime.mjs')], {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -153,13 +177,17 @@ const bundledSourceExcludes = [
   'desktop-dist/',
   'setup-dist/',
   'node_modules/',
+  'runtime/',
+  'storage/',
   'native/macos/.build/',
+  'native/macos/.swiftpm/',
   'native/macos/dist/',
   'native/linux/target/',
   'native/windows/bin/',
   'native/windows/obj/',
   'admin/node_modules/',
-  'admin/build/',
+  'admin/build/node_modules/',
+  'admin/.runtime-build-cache/',
   'admin/storage/',
   'installer/node_modules/',
   'admin/.env',
@@ -187,38 +215,99 @@ async function syncTree(sourcePath, destinationPath, excludePatterns = bundledSo
   await run('rsync', args, { stdio: 'pipe' })
 }
 
-async function copyBundledSourceTree(destinationPath) {
-  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-source-staging-'))
-  const stagedSourcePath = path.join(stagingRoot, 'RoachNetSource')
+async function copyTreeFast(sourcePath, destinationPath) {
+  discardPath(destinationPath)
+  mkdirSync(path.dirname(destinationPath), { recursive: true })
+  // On APFS this avoids a full byte-for-byte duplicate pass for large bundle trees.
+  await run('ditto', ['--clone', sourcePath, destinationPath], { stdio: 'pipe' })
+}
 
-  rmSync(destinationPath, { recursive: true, force: true })
+function discardPath(targetPath) {
+  if (!existsSync(targetPath)) {
+    return
+  }
+
+  const parentPath = path.dirname(targetPath)
+  const trashedPath = path.join(parentPath, `${path.basename(targetPath)}.discard-${Date.now()}`)
+
   try {
-    await syncTree(repoRoot, stagedSourcePath)
-    await syncTree(stagedSourcePath, destinationPath)
-  } finally {
-    rmSync(stagingRoot, { recursive: true, force: true })
+    renameSync(targetPath, trashedPath)
+  } catch {
+    rmSync(targetPath, { recursive: true, force: true })
+    return
+  }
+
+  const cleanup = spawn('rm', ['-rf', trashedPath], {
+    cwd: repoRoot,
+    detached: true,
+    stdio: 'ignore',
+  })
+  cleanup.unref()
+}
+
+async function copyBundledSourceTree(destinationPath) {
+  const bundledEnvSource = existsSync(path.join(repoRoot, 'admin', '.env'))
+    ? path.join(repoRoot, 'admin', '.env')
+    : path.join(repoRoot, 'admin', '.env.example')
+  const bundledEnvDestination = path.join(destinationPath, 'admin', '.env')
+
+  discardPath(destinationPath)
+  console.log(`Bundling source tree into ${destinationPath}...`)
+  await syncTree(repoRoot, destinationPath)
+
+  const bundledBuildNodeModulesSource = path.join(repoRoot, 'admin', 'build', 'node_modules')
+  const bundledBuildNodeModulesDestination = path.join(destinationPath, 'admin', 'build', 'node_modules')
+  if (existsSync(bundledBuildNodeModulesSource)) {
+    console.log(`Copying bundled runtime dependencies into ${bundledBuildNodeModulesDestination}...`)
+    await copyTreeFast(bundledBuildNodeModulesSource, bundledBuildNodeModulesDestination)
+  }
+
+  if (existsSync(bundledEnvSource)) {
+    console.log(`Copying bundled environment file into ${bundledEnvDestination}...`)
+    writeFileSync(bundledEnvDestination, readFileSync(bundledEnvSource))
   }
 }
 
 async function createSetupDmg(setupAppBundlePath) {
   const dmgPath = path.join(distPath, 'RoachNet-Setup-macOS.dmg')
+  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-dmg-staging-'))
+  const stagingFolder = path.join(stagingRoot, 'RoachNet Setup')
+  const stagedSetupAppPath = path.join(stagingFolder, path.basename(setupAppBundlePath))
+  const stagedHelperPath = path.join(stagingFolder, 'RoachNet Fix.command')
 
   rmSync(dmgPath, { force: true })
-  await run(
-    'hdiutil',
-    [
-      'create',
-      '-volname',
-      'RoachNet Setup',
-      '-srcfolder',
-      setupAppBundlePath,
-      '-ov',
-      '-format',
-      'UDZO',
-      dmgPath,
-    ],
-    { stdio: 'pipe' }
-  )
+
+  mkdirSync(stagingFolder, { recursive: true })
+  await cp(setupAppBundlePath, stagedSetupAppPath, { recursive: true, force: true })
+
+  if (existsSync(installerHelperPath)) {
+    await cp(installerHelperPath, stagedHelperPath, { force: true })
+    chmodSync(stagedHelperPath, 0o755)
+  }
+
+  try {
+    symlinkSync('/Applications', path.join(stagingFolder, 'Applications'))
+  } catch {}
+
+  try {
+    await run(
+      'hdiutil',
+      [
+        'create',
+        '-volname',
+        'RoachNet Setup',
+        '-srcfolder',
+        stagingFolder,
+        '-ov',
+        '-format',
+        'UDZO',
+        dmgPath,
+      ],
+      { stdio: 'pipe' }
+    )
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true })
+  }
 
   return dmgPath
 }
@@ -254,7 +343,7 @@ async function bundleApp({ name, executable, identifier, iconPath, prepareResour
   const macOSPath = path.join(contentsPath, 'MacOS')
   const resourcesPath = path.join(contentsPath, 'Resources')
 
-  rmSync(bundlePath, { recursive: true, force: true })
+  discardPath(bundlePath)
   mkdirSync(macOSPath, { recursive: true })
   mkdirSync(resourcesPath, { recursive: true })
 
@@ -266,6 +355,7 @@ async function bundleApp({ name, executable, identifier, iconPath, prepareResour
   }
 
   if (prepareResources) {
+    console.log(`Preparing bundled resources for ${name}...`)
     await prepareResources({ bundlePath, contentsPath, resourcesPath })
   }
 
@@ -299,6 +389,7 @@ async function bundleApp({ name, executable, identifier, iconPath, prepareResour
 `
 
   writeFileSync(path.join(contentsPath, 'Info.plist'), plist, 'utf8')
+  console.log(`Signing ${name}...`)
 
   await signAppBundle(bundlePath)
 
@@ -323,6 +414,7 @@ async function notarizeArtifact(artifactPath) {
 async function main() {
   mkdirSync(distPath, { recursive: true })
   await ensureLaunchGuideVideo()
+  await buildAdminRuntime()
   const binPath = await buildSwiftPackage()
   const iconPath = await buildIcns()
   const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
@@ -332,6 +424,10 @@ async function main() {
       name: 'RoachNet',
       executable: path.join(binPath, 'RoachNetApp'),
       identifier: 'com.roachwares.roachnet',
+      prepareResources: async ({ resourcesPath }) => {
+        const bundledSourcePath = path.join(resourcesPath, 'RoachNetSource')
+        await copyBundledSourceTree(bundledSourcePath)
+      },
     },
     {
       name: 'RoachNet Setup',
@@ -346,10 +442,7 @@ async function main() {
         writeFileSync(path.join(installerAssetsPath, 'setup-assets.marker'), '', 'utf8')
 
         if (existsSync(desktopAppBundlePath)) {
-          await cp(desktopAppBundlePath, path.join(installerAssetsPath, 'RoachNet.app'), {
-            recursive: true,
-            force: true,
-          })
+          await copyTreeFast(desktopAppBundlePath, path.join(installerAssetsPath, 'RoachNet.app'))
         }
       },
     },
@@ -369,9 +462,11 @@ async function main() {
   const setupAppBundlePath = builtBundles.find((bundlePath) => bundlePath.endsWith('RoachNet Setup.app'))
   if (setupAppBundlePath) {
     await notarizeArtifact(setupAppBundlePath)
-    const dmgPath = await createSetupDmg(setupAppBundlePath)
-    await notarizeArtifact(dmgPath)
-    builtBundles.push(dmgPath)
+    if (!skipDmg) {
+      const dmgPath = await createSetupDmg(setupAppBundlePath)
+      await notarizeArtifact(dmgPath)
+      builtBundles.push(dmgPath)
+    }
   }
 
   for (const bundle of builtBundles) {

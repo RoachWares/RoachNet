@@ -1,11 +1,14 @@
 const owner = 'AHGRoach'
 const repo = 'RoachNet'
+const releaseVersion = '1.30.5'
 const latestReleaseApi = `https://api.github.com/repos/${owner}/${repo}/releases/latest`
 const latestReleasePage = `https://github.com/${owner}/${repo}/releases/latest`
+const latestDownloadBase = `https://github.com/${owner}/${repo}/releases/latest/download`
 const hostedDownloads = {
   mac: {
-    url: './downloads/RoachNet-Setup-macOS.dmg',
+    url: `${latestDownloadBase}/RoachNet-Setup-macOS.dmg`,
     name: 'RoachNet-Setup-macOS.dmg',
+    version: releaseVersion,
   },
 }
 
@@ -18,11 +21,16 @@ const commandPalette = document.querySelector('#command-palette')
 const commandScrim = document.querySelector('#command-scrim')
 const commandInput = document.querySelector('#command-input')
 const commandItems = [...document.querySelectorAll('.command-item')]
+const heroTime = document.querySelector('[data-hero-time]')
+const heroConnectivity = document.querySelector('[data-hero-connectivity]')
+const heroStorage = document.querySelector('[data-hero-storage]')
+const appStoreGrid = document.querySelector('#app-store-grid')
+const appStoreUpdated = document.querySelector('#app-store-updated')
 
 const platformPresets = {
   mac: {
     label: 'macOS',
-    patterns: [/RoachNet-Setup-.*-mac-.*\.dmg$/i, /RoachNet-Setup-.*-mac-.*\.zip$/i],
+    patterns: [/^RoachNet-Setup-macOS\.dmg$/i, /RoachNet-Setup-.*-mac-.*\.dmg$/i, /RoachNet-Setup-.*-mac-.*\.zip$/i],
   },
   win: {
     label: 'Windows 11',
@@ -37,6 +45,53 @@ const platformPresets = {
 let latestRelease = null
 let activePlatform = detectPlatform()
 let selectedCommandIndex = -1
+let timeTicker = null
+
+const fallbackCatalog = {
+  updatedAt: '2026-04-01T12:00:00-04:00',
+  items: [
+    {
+      title: 'Field Maps',
+      kind: 'Mirror',
+      size: '2-40 GB',
+      status: 'Design ready',
+      source: 'Geofabrik + curated packs',
+      summary: 'Versioned regional map packs with resumable downloads, integrity checks, and direct install into the RoachNet maps lane.',
+      primaryLabel: 'Open maps manifest',
+      primaryUrl: './collections/maps.json',
+    },
+    {
+      title: 'Knowledge Shelf',
+      kind: 'Archive',
+      size: '4-90 GB',
+      status: 'Cataloging',
+      source: 'Kiwix, ZIM, offline docs',
+      summary: 'Wikipedia, medical references, and long-lived docs mirrored behind roachnet.org manifests instead of raw upstream URLs.',
+      primaryLabel: 'Open knowledge manifest',
+      primaryUrl: './collections/kiwix-categories.json',
+    },
+    {
+      title: 'RoachClaw Model Packs',
+      kind: 'AI',
+      size: '1-20 GB',
+      status: 'Contained',
+      source: 'Ollama + RoachNet curation',
+      summary: 'Machine-aware recommended models for contained first boot, with cloud lane fallback and local download guidance inside the app.',
+      primaryLabel: `Download RoachNet ${releaseVersion}`,
+      primaryUrl: './downloads/RoachNet-Setup-macOS.dmg',
+    },
+    {
+      title: 'Field Ops Toolkit',
+      kind: 'Tools',
+      size: '500 MB-8 GB',
+      status: 'Planning',
+      source: 'Jam, CyberChef, dev utilities',
+      summary: 'Curated offline-friendly utility bundles staged through one catalog instead of a mess of installer links.',
+      primaryLabel: 'Open wikipedia manifest',
+      primaryUrl: './collections/wikipedia.json',
+    },
+  ],
+}
 
 function markActivePlatform(platformKey) {
   platformButtons.forEach((button) => {
@@ -94,23 +149,31 @@ function setPrimaryButton(platformKey) {
 
   if (hostedAsset) {
     primaryButtons.forEach((button) => {
-      button.textContent = `Download RoachNet for ${label}`
+      button.textContent = `Download RoachNet ${hostedAsset.version} for ${label}`
       button.onclick = () => {
         window.location.href = hostedAsset.url
       }
     })
-    downloadMeta.textContent = `Starts with RoachNet Setup · ${hostedAsset.name}`
+    if (downloadMeta) {
+      downloadMeta.textContent = `Starts with RoachNet Setup v${hostedAsset.version} · ${hostedAsset.name}`
+    }
     return
   }
 
   if (asset) {
+    const assetVersion =
+      latestRelease?.tag_name?.replace(/^v/i, '') ||
+      hostedAsset?.version ||
+      releaseVersion
     primaryButtons.forEach((button) => {
-      button.textContent = `Download RoachNet for ${label}`
+      button.textContent = `Download RoachNet ${assetVersion} for ${label}`
       button.onclick = () => {
         window.location.href = asset.browser_download_url
       }
     })
-    downloadMeta.textContent = `Starts with RoachNet Setup · ${asset.name}`
+    if (downloadMeta) {
+      downloadMeta.textContent = `Starts with RoachNet Setup v${assetVersion} · ${asset.name}`
+    }
     return
   }
 
@@ -120,7 +183,149 @@ function setPrimaryButton(platformKey) {
       window.open(latestReleasePage, '_blank', 'noopener,noreferrer')
     }
   })
-  downloadMeta.textContent = `No direct ${label} installer is posted yet. Opening the latest release instead.`
+  if (downloadMeta) {
+    downloadMeta.textContent = `No direct ${label} installer is posted yet. Opening the latest release instead.`
+  }
+}
+
+function formatCompactBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 GB'
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1
+  return `${value.toFixed(precision)} ${units[unitIndex]}`
+}
+
+function updateHeroTime() {
+  if (!heroTime) {
+    return
+  }
+
+  heroTime.textContent = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date())
+}
+
+function updateConnectivity() {
+  if (!heroConnectivity) {
+    return
+  }
+
+  const isOnline = navigator.onLine
+  heroConnectivity.dataset.state = isOnline ? 'online' : 'offline'
+  heroConnectivity.textContent = isOnline ? 'Online Now' : 'Offline Ready'
+}
+
+async function updateStorageEstimate() {
+  if (!heroStorage) {
+    return
+  }
+
+  if (!navigator.storage?.estimate) {
+    heroStorage.textContent = 'Disk check in app'
+    return
+  }
+
+  try {
+    const { quota = 0, usage = 0 } = await navigator.storage.estimate()
+    const available = Math.max(0, quota - usage)
+
+    if (!available) {
+      heroStorage.textContent = 'Storage estimate unavailable'
+      return
+    }
+
+    heroStorage.textContent = `${formatCompactBytes(available)} storage est.`
+  } catch (error) {
+    heroStorage.textContent = 'Storage estimate unavailable'
+    console.error(error)
+  }
+}
+
+function startHeroTelemetry() {
+  updateHeroTime()
+  updateConnectivity()
+  updateStorageEstimate()
+
+  if (timeTicker) {
+    window.clearInterval(timeTicker)
+  }
+
+  timeTicker = window.setInterval(updateHeroTime, 30_000)
+  window.addEventListener('online', updateConnectivity)
+  window.addEventListener('offline', updateConnectivity)
+}
+
+function renderAppStoreCatalog(catalog) {
+  if (!appStoreGrid) {
+    return
+  }
+
+  const items = Array.isArray(catalog?.items) ? catalog.items : []
+
+  appStoreGrid.innerHTML = items
+    .map(
+      (item) => `
+        <article class="app-store-card">
+          <div class="app-store-card__meta">
+            <span class="feature-card__eyebrow">${item.kind}</span>
+            <span class="app-store-card__status">${item.status}</span>
+          </div>
+          <h3>${item.title}</h3>
+          <p>${item.summary}</p>
+          <div class="app-store-card__footer">
+            <span>${item.size}</span>
+            <span>${item.source}</span>
+          </div>
+          ${
+            item.primaryUrl
+              ? `<a class="app-store-card__action" href="${item.primaryUrl}">${item.primaryLabel || 'Open resource'}</a>`
+              : ''
+          }
+        </article>
+      `
+    )
+    .join('')
+
+  if (appStoreUpdated) {
+    const updated = catalog?.updatedAt ? new Date(catalog.updatedAt) : null
+    appStoreUpdated.textContent =
+      updated && !Number.isNaN(updated.valueOf())
+        ? `Catalog updated ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(updated)}`
+        : 'Catalog preview'
+  }
+}
+
+async function loadAppStoreCatalog() {
+  renderAppStoreCatalog(fallbackCatalog)
+
+  try {
+    const response = await fetch('./app-store-catalog.json', {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`)
+    }
+
+    const catalog = await response.json()
+    renderAppStoreCatalog(catalog)
+  } catch (error) {
+    console.error(error)
+  }
 }
 
 async function loadLatestRelease() {
@@ -150,7 +355,9 @@ async function loadLatestRelease() {
           window.open(latestReleasePage, '_blank', 'noopener,noreferrer')
         }
       })
-      downloadMeta.textContent = 'The live release feed is unavailable. Opening the latest release instead.'
+      if (downloadMeta) {
+        downloadMeta.textContent = 'The live release feed is unavailable. Opening the latest release instead.'
+      }
     }
     console.error(error)
   }
@@ -327,3 +534,5 @@ document.addEventListener('keydown', (event) => {
 })
 
 loadLatestRelease()
+startHeroTelemetry()
+loadAppStoreCatalog()

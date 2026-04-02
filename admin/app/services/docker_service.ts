@@ -1,37 +1,98 @@
 import Service from '#models/service'
+import InstalledResource from '#models/installed_resource'
 import Docker from 'dockerode'
 import logger from '@adonisjs/core/services/logger'
 import { inject } from '@adonisjs/core'
-import transmit from '@adonisjs/transmit/services/main'
 import { doResumableDownloadWithRetry } from '../utils/downloads.js'
-import { join } from 'path'
-import { ZIM_STORAGE_PATH } from '../utils/fs.js'
+import { basename, resolve } from 'path'
+import { ZIM_STORAGE_PATH, getStorageRoot, resolveStoragePath } from '../utils/fs.js'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { existsSync } from 'fs'
+import { readdir } from 'fs/promises'
+import { homedir } from 'os'
 // import { readdir } from 'fs/promises'
 import KVStore from '#models/kv_store'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import { getErrorMessage } from '../utils/errors.js'
+import { broadcastTransmit } from '#services/transmit_bridge'
 
 @inject()
 export class DockerService {
   public docker: Docker
   private activeInstallations: Set<string> = new Set()
-  public static NOMAD_NETWORK = 'project-nomad_default'
+  public static FALLBACK_NOMAD_NETWORK = 'project-nomad_default'
   private static GPU_CACHE_TTL_MS = 24 * 60 * 60 * 1000
   private static GPU_NONE_INVALIDATION_THRESHOLD = 3
 
   constructor() {
-    // Support both Linux (production) and Windows (development with Docker Desktop)
-    const isWindows = process.platform === 'win32'
-    if (isWindows) {
-      // Windows Docker Desktop uses named pipe
-      this.docker = new Docker({ socketPath: '//./pipe/docker_engine' })
-    } else {
-      // Linux uses Unix socket
-      this.docker = new Docker({ socketPath: '/var/run/docker.sock' })
+    this.docker = new Docker(this.resolveDockerConnectionOptions())
+  }
+
+  private resolveDockerConnectionOptions(): Docker.DockerOptions {
+    const dockerHost = process.env.DOCKER_HOST?.trim()
+    if (dockerHost) {
+      if (dockerHost.startsWith('unix://')) {
+        return { socketPath: dockerHost.replace('unix://', '') }
+      }
+
+      if (dockerHost.startsWith('npipe://')) {
+        return { socketPath: dockerHost.replace('npipe://', '') }
+      }
+
+      try {
+        const url = new URL(dockerHost)
+        const normalizedProtocol = url.protocol.replace(':', '')
+        const protocol =
+          normalizedProtocol === 'https' || normalizedProtocol === 'ssh'
+            ? normalizedProtocol
+            : 'http'
+        return {
+          host: url.hostname,
+          port: url.port ? Number(url.port) : protocol === 'https' ? 443 : 2375,
+          protocol,
+        }
+      } catch {
+        logger.warn(`[DockerService] Ignoring invalid DOCKER_HOST value: ${dockerHost}`)
+      }
     }
+
+    if (process.platform === 'win32') {
+      return { socketPath: '//./pipe/docker_engine' }
+    }
+
+    const socketCandidates = [
+      process.env.ROACHNET_DOCKER_SOCKET?.trim(),
+      `${homedir()}/.docker/run/docker.sock`,
+      `${homedir()}/.colima/default/docker.sock`,
+      '/var/run/docker.sock',
+    ].filter((candidate): candidate is string => Boolean(candidate && candidate.trim()))
+
+    const socketPath = socketCandidates.find((candidate) => existsSync(candidate))
+    return { socketPath: socketPath ?? '/var/run/docker.sock' }
+  }
+
+  private shouldUseManagedDockerNetwork(): boolean {
+    return process.env.ROACHNET_USE_DOCKER === '1' || process.env.ROACHNET_RUNTIME_TARGET === 'docker'
+  }
+
+  private getManagedDockerNetworkName(): string {
+    const explicitNetwork = process.env.ROACHNET_MANAGED_DOCKER_NETWORK?.trim()
+    if (explicitNetwork) {
+      return explicitNetwork
+    }
+
+    const composeProjectName = process.env.ROACHNET_COMPOSE_PROJECT_NAME?.trim()
+    if (composeProjectName) {
+      return `${composeProjectName}_default`
+    }
+
+    return DockerService.FALLBACK_NOMAD_NETWORK
+  }
+
+  private getHostStorageRoot(): string {
+    return process.env.ROACHNET_HOST_STORAGE_PATH?.trim() || getStorageRoot()
   }
 
   async affectContainer(
@@ -144,6 +205,15 @@ export class DockerService {
       return null
     }
 
+    const nativeOverrides: Record<string, string | undefined> = {
+      [SERVICE_NAMES.OLLAMA]: process.env.OLLAMA_BASE_URL?.trim(),
+      [SERVICE_NAMES.QDRANT]: process.env.QDRANT_URL?.trim(),
+    }
+    const nativeOverride = nativeOverrides[serviceName]
+    if (nativeOverride) {
+      return nativeOverride
+    }
+
     const service = await Service.query()
       .where('service_name', serviceName)
       .andWhere('installed', true)
@@ -153,7 +223,7 @@ export class DockerService {
       return null
     }
 
-    const hostname = process.env.NODE_ENV === 'production' ? serviceName : 'localhost'
+    const hostname = this.shouldUseManagedDockerNetwork() ? serviceName : 'localhost'
 
     // First, check if ui_location is set and is a valid port number
     if (service.ui_location && parseInt(service.ui_location, 10)) {
@@ -510,6 +580,15 @@ export class DockerService {
         'creating',
         `Creating Docker container for service ${service.service_name}...`
       )
+      const managedNetworkName = this.getManagedDockerNetworkName()
+      logger.info(
+        `[DockerService] [${service.service_name}] Preparing container with network=${managedNetworkName} image=${finalImage}`
+      )
+      const containerCmd =
+        service.service_name === SERVICE_NAMES.KIWIX
+          ? await this._buildKiwixCommand()
+          : (service.container_command ? service.container_command.split(' ') : undefined)
+
       const container = await this.docker.createContainer({
         Image: finalImage,
         name: service.service_name,
@@ -518,12 +597,13 @@ export class DockerService {
         ...(containerConfig?.WorkingDir && { WorkingDir: containerConfig.WorkingDir }),
         ...(containerConfig?.ExposedPorts && { ExposedPorts: containerConfig.ExposedPorts }),
         ...(containerConfig?.Env && { Env: containerConfig.Env }),
-        ...(service.container_command ? { Cmd: service.container_command.split(' ') } : {}),
-        // Ensure container is attached to the Nomad docker network in production
-        ...(process.env.NODE_ENV === 'production' && {
+        ...(containerCmd ? { Cmd: containerCmd } : {}),
+        // Only attach services to the managed compose network when the runtime explicitly
+        // opted into the Docker orchestration path.
+        ...(this.shouldUseManagedDockerNetwork() && {
           NetworkingConfig: {
             EndpointsConfig: {
-              [DockerService.NOMAD_NETWORK]: {},
+              [managedNetworkName]: {},
             },
           },
         }),
@@ -685,7 +765,7 @@ export class DockerService {
     const WIKIPEDIA_ZIM_URL =
       'https://github.com/Crosstalk-Solutions/project-nomad/raw/refs/heads/main/install/wikipedia_en_100_mini_2026-01.zim'
     const filename = 'wikipedia_en_100_mini_2026-01.zim'
-    const filepath = join(process.cwd(), ZIM_STORAGE_PATH, filename)
+    const filepath = resolveStoragePath(ZIM_STORAGE_PATH, filename)
     logger.info(`[DockerService] Kiwix Serve pre-install: Downloading ZIM file to ${filepath}`)
 
     this._broadcast(
@@ -725,6 +805,43 @@ export class DockerService {
       )
       throw new Error(`Pre-install action failed: ${errorMessage}`)
     }
+  }
+
+  private async _buildKiwixCommand(): Promise<string[]> {
+    const installedEntries = await InstalledResource.query().where('resource_type', 'zim').orderBy('installed_at', 'asc')
+
+    const filenames = Array.from(
+      new Set(
+        installedEntries
+          .map((entry) => entry.file_path)
+          .filter((filePath): filePath is string => Boolean(filePath))
+          .map((filePath) => basename(filePath))
+      )
+    )
+
+    if (filenames.length === 0) {
+      try {
+        const directoryEntries = await readdir(resolveStoragePath(ZIM_STORAGE_PATH), {
+          withFileTypes: true,
+        })
+
+        for (const entry of directoryEntries) {
+          if (entry.isFile() && entry.name.endsWith('.zim')) {
+            filenames.push(entry.name)
+          }
+        }
+      } catch (error) {
+        logger.warn(
+          `[DockerService] Failed to inspect ZIM storage for Kiwix startup: ${getErrorMessage(error)}`
+        )
+      }
+    }
+
+    if (filenames.length === 0) {
+      filenames.push('wikipedia_en_100_mini_2026-01.zim')
+    }
+
+    return ['--skipInvalid', ...Array.from(new Set(filenames)), '--address=all']
   }
 
   private async _cleanupFailedInstallation(serviceName: string): Promise<void> {
@@ -1176,13 +1293,39 @@ export class DockerService {
   }
 
   private _broadcast(service: string, status: string, message: string) {
-    transmit.broadcast(BROADCAST_CHANNELS.SERVICE_INSTALLATION, {
+    void broadcastTransmit(BROADCAST_CHANNELS.SERVICE_INSTALLATION, {
       service_name: service,
       timestamp: new Date().toISOString(),
       status,
       message,
     })
     logger.info(`[DockerService] [${service}] ${status}: ${message}`)
+  }
+
+  async repairLegacyContainerIfNeeded(service: Service): Promise<void> {
+    if (!service.installed || this.activeInstallations.has(service.service_name)) {
+      return
+    }
+
+    try {
+      const requiresRepair = await this._shouldRepairContainer(service)
+      if (!requiresRepair) {
+        return
+      }
+
+      logger.warn(
+        `[DockerService] Detected stale container wiring for ${service.service_name}. Recreating it with the current runtime configuration.`
+      )
+
+      const result = await this.forceReinstall(service.service_name)
+      if (!result.success) {
+        logger.warn(`[DockerService] Failed to repair ${service.service_name}: ${result.message}`)
+      }
+    } catch (error) {
+      logger.warn(
+        `[DockerService] Failed to inspect ${service.service_name} for repair: ${getErrorMessage(error)}`
+      )
+    }
   }
 
   private _parseContainerConfig(containerConfig: any): any {
@@ -1197,12 +1340,94 @@ export class DockerService {
         toParse = JSON.stringify(containerConfig)
       }
 
-      return JSON.parse(toParse)
+      const parsed = JSON.parse(toParse)
+      const binds = parsed?.HostConfig?.Binds
+
+      if (Array.isArray(binds)) {
+        parsed.HostConfig.Binds = binds.map((bind) => this._normalizeStorageBind(bind))
+      }
+
+      return parsed
     } catch (error) {
       const errorMessage = getErrorMessage(error)
       logger.error(`Failed to parse container configuration: ${errorMessage}`)
       throw new Error(`Invalid container configuration: ${errorMessage}`)
     }
+  }
+
+  private _normalizeStorageBind(bind: string): string {
+    if (typeof bind !== 'string') {
+      return bind
+    }
+
+    const [source, destination, ...rest] = bind.split(':')
+    if (!source || !destination) {
+      return bind
+    }
+
+    const storageMatch = source.match(/(?:^|[/\\])storage[/\\]([^:/\\]+)$/)
+    if (!storageMatch) {
+      return bind
+    }
+
+    const normalizedSource = resolve(this.getHostStorageRoot(), storageMatch[1])
+    return [normalizedSource, destination, ...rest].join(':')
+  }
+
+  private async _shouldRepairContainer(service: Service): Promise<boolean> {
+    const containers = await this.docker.listContainers({ all: true })
+    const containerInfo = containers.find((container) =>
+      container.Names.includes(`/${service.service_name}`)
+    )
+
+    if (!containerInfo) {
+      return false
+    }
+
+    const inspection = await this.docker.getContainer(containerInfo.Id).inspect()
+
+    if (service.service_name === SERVICE_NAMES.KIWIX) {
+      const currentCmd = inspection.Config?.Cmd || []
+      if (currentCmd.some((entry: string) => entry.includes('*.zim'))) {
+        return true
+      }
+    }
+
+    const desiredConfig = this._parseContainerConfig(service.container_config)
+    const desiredBinds = desiredConfig?.HostConfig?.Binds
+
+    if (!Array.isArray(desiredBinds) || desiredBinds.length === 0) {
+      return false
+    }
+
+    const actualMounts = new Map<string, string>()
+    for (const mount of inspection.Mounts || []) {
+      if (mount.Type === 'bind' && mount.Destination && mount.Source) {
+        actualMounts.set(mount.Destination, mount.Source)
+      }
+    }
+
+    for (const bind of desiredBinds) {
+      if (typeof bind !== 'string') {
+        continue
+      }
+
+      const [desiredSource, destination] = bind.split(':')
+      if (!desiredSource || !destination) {
+        continue
+      }
+
+      const actualSource = actualMounts.get(destination)
+      if (!actualSource) {
+        return true
+      }
+
+      if (resolve(actualSource) !== resolve(desiredSource)) {
+        return true
+      }
+    }
+
+    return false
   }
 
   /**

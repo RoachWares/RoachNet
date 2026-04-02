@@ -4,10 +4,16 @@ import { inject } from '@adonisjs/core'
 import logger from '@adonisjs/core/services/logger'
 import { TokenChunker } from '@chonkiejs/core'
 import sharp from 'sharp'
-import { deleteFileIfExists, determineFileType, getFile, getFileStatsIfExists, listDirectoryContentsRecursive, ZIM_STORAGE_PATH } from '../utils/fs.js'
-import { PDFParse } from 'pdf-parse'
-import { createWorker } from 'tesseract.js'
-import { fromBuffer } from 'pdf2pic'
+import {
+  deleteFileIfExists,
+  determineFileType,
+  getFile,
+  getFileStatsIfExists,
+  KB_UPLOADS_STORAGE_PATH,
+  listDirectoryContentsRecursive,
+  resolveStoragePath,
+  ZIM_STORAGE_PATH,
+} from '../utils/fs.js'
 import { OllamaService } from './ollama_service.js'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { removeStopwords } from 'stopword'
@@ -22,8 +28,9 @@ import { ProcessAndEmbedFileResponse, ProcessZIMFileResponse, RAGResult, Reranke
 export class RagService {
   private qdrant: QdrantClient | null = null
   private qdrantInitPromise: Promise<void> | null = null
+  private qdrantUnavailableReason: string | null = null
   private embeddingModelVerified = false
-  public static UPLOADS_STORAGE_PATH = 'storage/kb_uploads'
+  public static UPLOADS_STORAGE_PATH = KB_UPLOADS_STORAGE_PATH
   public static CONTENT_COLLECTION_NAME = 'nomad_knowledge_base'
   public static EMBEDDING_MODEL = 'nomic-embed-text:v1.5'
   public static EMBEDDING_DIMENSION = 768 // Nomic Embed Text v1.5 dimension is 768
@@ -47,12 +54,31 @@ export class RagService {
       this.qdrantInitPromise = (async () => {
         const qdrantUrl = await this.dockerService.getServiceURL(SERVICE_NAMES.QDRANT)
         if (!qdrantUrl) {
-          throw new Error('Qdrant service is not installed or running.')
+          this.qdrantUnavailableReason = 'Qdrant service is not installed or running.'
+          throw new Error(this.qdrantUnavailableReason)
         }
         this.qdrant = new QdrantClient({ url: qdrantUrl })
+        this.qdrantUnavailableReason = null
       })()
     }
     return this.qdrantInitPromise
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
+  }
+
+  private isQdrantUnavailable(error: unknown): boolean {
+    const message = this.getErrorMessage(error)
+    return (
+      message.includes('Qdrant service is not installed or running') ||
+      message.includes('ECONNREFUSED') ||
+      message.includes('fetch failed')
+    )
+  }
+
+  private logOptionalQdrantSkip(context: string, error: unknown) {
+    logger.info(`[RAG] ${context} skipped: ${this.getErrorMessage(error)}`)
   }
 
   private async _ensureDependencies() {
@@ -89,7 +115,11 @@ export class RagService {
         field_schema: 'keyword',
       })
     } catch (error) {
-      logger.error('Error ensuring Qdrant collection:', error)
+      if (this.isQdrantUnavailable(error)) {
+        this.logOptionalQdrantSkip('Knowledge base setup', error)
+      } else {
+        logger.error('Error ensuring Qdrant collection:', error)
+      }
       throw error
     }
   }
@@ -400,7 +430,22 @@ export class RagService {
       .toBuffer()
   }
 
+  private async loadPDFTools() {
+    const [{ fromBuffer }, { PDFParse }] = await Promise.all([
+      import('pdf2pic'),
+      import('pdf-parse'),
+    ])
+
+    return { fromBuffer, PDFParse }
+  }
+
+  private async loadOCRWorkerFactory() {
+    const { createWorker } = await import('tesseract.js')
+    return createWorker
+  }
+
   private async convertPDFtoImages(filebuffer: Buffer): Promise<Buffer[]> {
+    const { fromBuffer } = await this.loadPDFTools()
     const converted = await fromBuffer(filebuffer, {
       quality: 50,
       density: 200,
@@ -412,6 +457,7 @@ export class RagService {
   }
 
   private async extractPDFText(filebuffer: Buffer): Promise<string> {
+    const { PDFParse } = await this.loadPDFTools()
     const parser = new PDFParse({ data: filebuffer })
     const data = await parser.getText()
     await parser.destroy()
@@ -423,6 +469,7 @@ export class RagService {
   }
 
   private async extractImageText(filebuffer: Buffer): Promise<string> {
+    const createWorker = await this.loadOCRWorkerFactory()
     const worker = await createWorker('eng')
     const result = await worker.recognize(filebuffer)
     await worker.terminate()
@@ -796,7 +843,11 @@ export class RagService {
         },
       }))
     } catch (error) {
-      logger.error('[RAG] Error searching similar documents:', error)
+      if (this.isQdrantUnavailable(error)) {
+        this.logOptionalQdrantSkip('Similarity search', error)
+      } else {
+        logger.error('[RAG] Error searching similar documents:', error)
+      }
       return []
     }
   }
@@ -962,7 +1013,11 @@ export class RagService {
 
       return Array.from(sources)
     } catch (error) {
-      logger.error('Error retrieving stored files:', error)
+      if (this.isQdrantUnavailable(error)) {
+        this.logOptionalQdrantSkip('Stored file lookup', error)
+      } else {
+        logger.error('Error retrieving stored files:', error)
+      }
       return []
     }
   }
@@ -992,7 +1047,7 @@ export class RagService {
       * check to prevent path traversal vulns
       * The trailing sep is to ensure a prefix like "kb_uploads_{something_incorrect}" can't slip through.
       */
-      const uploadsAbsPath = join(process.cwd(), RagService.UPLOADS_STORAGE_PATH)
+      const uploadsAbsPath = resolveStoragePath(RagService.UPLOADS_STORAGE_PATH)
       const resolvedSource = resolve(source)
       if (resolvedSource.startsWith(uploadsAbsPath + sep)) {
         await deleteFileIfExists(resolvedSource)
@@ -1081,8 +1136,8 @@ export class RagService {
     try {
       logger.info('[RAG] Starting knowledge base sync scan')
 
-      const KB_UPLOADS_PATH = join(process.cwd(), RagService.UPLOADS_STORAGE_PATH)
-      const ZIM_PATH = join(process.cwd(), ZIM_STORAGE_PATH)
+      const KB_UPLOADS_PATH = resolveStoragePath(RagService.UPLOADS_STORAGE_PATH)
+      const ZIM_PATH = resolveStoragePath(ZIM_STORAGE_PATH)
 
       const filesInStorage: string[] = []
 

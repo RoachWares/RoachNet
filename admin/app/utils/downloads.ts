@@ -220,6 +220,8 @@ export async function doResumableDownloadWithRetry({
   signal,
   timeout = 30000,
   onProgress,
+  onComplete,
+  forceNew = false,
   max_retries = 3,
   retry_delay = 2000,
   onAttemptError,
@@ -240,6 +242,8 @@ export async function doResumableDownloadWithRetry({
         timeout,
         allowedMimeTypes,
         onProgress,
+        onComplete,
+        forceNew,
       })
 
       return result // return on success
@@ -247,11 +251,24 @@ export async function doResumableDownloadWithRetry({
       attempt++
       lastError = error as Error
 
-      const isAborted = error.name === 'AbortError' || error.code === 'ABORT_ERR'
+      const errorCode =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: string }).code)
+          : ''
+      const errorMessage = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+      const isAborted =
+        (error instanceof Error && error.name === 'AbortError') ||
+        errorCode === 'ABORT_ERR' ||
+        errorMessage === 'download aborted'
       const isNetworkError =
-        error.code === 'ECONNRESET' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT'
+        ['ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNABORTED', 'EPIPE', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH']
+          .includes(errorCode) ||
+        errorMessage.includes('socket hang up') ||
+        errorMessage.includes('stream has been aborted') ||
+        errorMessage.includes('premature close') ||
+        errorMessage.includes('download stalled')
 
-      onAttemptError?.(error, attempt)
+      onAttemptError?.(lastError, attempt)
       if (isAborted) {
         throw new Error(`Download aborted for URL: ${url}`)
       }

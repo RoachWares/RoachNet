@@ -1,0 +1,100 @@
+services:
+  admin:
+    build:
+      context: ${ROACHNET_REPO_ROOT}
+      dockerfile: ${ROACHNET_REPO_ROOT}/Dockerfile
+    image: roachnet-local-admin
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - "${NOMAD_STORAGE_PATH}:/app/storage"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      HOST: "0.0.0.0"
+      URL: "http://127.0.0.1:8080"
+      LOG_LEVEL: "info"
+      APP_KEY: "9929e1b6ef66a58d8347504854911fe7a790ce71f8e22a70"
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_DATABASE: nomad
+      DB_USER: "nomad_user"
+      DB_PASSWORD: "7154b9bbb511df8d89c1e1417d8427e3"
+      DB_SSL: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      NOMAD_STORAGE_PATH: /app/storage
+      ROACHNET_HOST_STORAGE_PATH: "${ROACHNET_HOST_STORAGE_PATH}"
+      OPENCLAW_WORKSPACE_PATH: "${OPENCLAW_WORKSPACE_PATH}"
+      ROACHNET_COMPOSE_PROJECT_NAME: "${ROACHNET_COMPOSE_PROJECT_NAME}"
+      ROACHNET_MANAGED_DOCKER_NETWORK: "${ROACHNET_MANAGED_DOCKER_NETWORK}"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OPENCLAW_BASE_URL: "http://host.docker.internal:3001"
+      ROACHNET_DB_ROOT_PASSWORD: "00e17487a0231b35b6030087ecb9aaf5"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:33306:3306"
+    command:
+      - sh
+      - -c
+      - rm -f /var/run/mysqld/mysqld.sock.lock /var/run/mysqld/mysqlx.sock.lock /var/run/mysqld/mysqld.sock /var/run/mysqld/mysqlx.sock && exec docker-entrypoint.sh mysqld
+    environment:
+      MYSQL_ROOT_PASSWORD: "00e17487a0231b35b6030087ecb9aaf5"
+      MYSQL_DATABASE: nomad
+      MYSQL_USER: "nomad_user"
+      MYSQL_PASSWORD: "7154b9bbb511df8d89c1e1417d8427e3"
+    tmpfs:
+      - /var/run/mysqld
+    volumes:
+      - "${ROACHNET_RUNTIME_STATE_ROOT}/mysql:/var/lib/mysql"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p00e17487a0231b35b6030087ecb9aaf5"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:36379:6379"
+    volumes:
+      - "${ROACHNET_RUNTIME_STATE_ROOT}/redis:/data"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.16
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:36333:6333"
+    volumes:
+      - "${ROACHNET_RUNTIME_STATE_ROOT}/qdrant:/qdrant/storage"
+
+  ollama:
+    image: ollama/ollama:0.18.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:36434:11434"
+    volumes:
+      - "${ROACHNET_RUNTIME_STATE_ROOT}/ollama:/root/.ollama"

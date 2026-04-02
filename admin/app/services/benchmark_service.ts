@@ -1,6 +1,5 @@
 import { inject } from '@adonisjs/core'
 import logger from '@adonisjs/core/services/logger'
-import transmit from '@adonisjs/transmit/services/main'
 import si from 'systeminformation'
 import axios from 'axios'
 import { DateTime } from 'luxon'
@@ -27,6 +26,7 @@ import { randomUUID, createHmac } from 'node:crypto'
 import { DockerService } from './docker_service.js'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import Dockerode from 'dockerode'
+import { broadcastTransmit } from '#services/transmit_bridge'
 
 // HMAC secret for signing submissions to the benchmark repository
 // This provides basic protection against casual API abuse.
@@ -785,7 +785,7 @@ export class BenchmarkService {
       timestamp: new Date().toISOString(),
     }
 
-    transmit.broadcast(BROADCAST_CHANNELS.BENCHMARK_PROGRESS, {
+    void broadcastTransmit(BROADCAST_CHANNELS.BENCHMARK_PROGRESS, {
       benchmark_id: this.currentBenchmarkId,
       ...progress,
     })

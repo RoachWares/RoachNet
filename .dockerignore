@@ -6,3 +6,12 @@ node_modules
 admin/storage
 admin/node_modules
 admin/build
+admin/.runtime-build-cache
+runtime
+storage
+admin/zim
+native/macos/.swiftpm
+native/macos/.build
+native/macos/dist
+website/downloads
+.DS_Store

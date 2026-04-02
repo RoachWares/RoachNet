@@ -2,9 +2,9 @@ import { Job } from 'bullmq'
 import { QueueService } from '#services/queue_service'
 import { DockerService } from '#services/docker_service'
 import { ContainerRegistryService } from '#services/container_registry_service'
+import { broadcastTransmit } from '#services/transmit_bridge'
 import Service from '#models/service'
 import logger from '@adonisjs/core/services/logger'
-import transmit from '@adonisjs/transmit/services/main'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import { DateTime } from 'luxon'
 
@@ -62,7 +62,7 @@ export class CheckServiceUpdatesJob {
     )
 
     // Broadcast completion so the frontend can refresh
-    transmit.broadcast(BROADCAST_CHANNELS.SERVICE_UPDATES, {
+    void broadcastTransmit(BROADCAST_CHANNELS.SERVICE_UPDATES, {
       status: 'completed',
       updatesFound,
       timestamp: new Date().toISOString(),

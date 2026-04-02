@@ -1,0 +1,45 @@
+{
+  "updatedAt": "2026-04-01T18:55:00-04:00",
+  "items": [
+    {
+      "title": "Field Maps",
+      "kind": "Mirror",
+      "size": "2-40 GB",
+      "status": "Ready for mirror",
+      "source": "Geofabrik + curated packs",
+      "summary": "Regional map bundles staged through RoachNet manifests so the app can install verified packs without depending on live upstream links.",
+      "primaryLabel": "Open maps manifest",
+      "primaryUrl": "./collections/maps.json"
+    },
+    {
+      "title": "Knowledge Shelf",
+      "kind": "Archive",
+      "size": "4-90 GB",
+      "status": "Cataloging",
+      "source": "Kiwix, ZIM, offline docs",
+      "summary": "Wikipedia, medical references, and field manuals mirrored behind roachnet.org URLs with resumable pulls and integrity checks.",
+      "primaryLabel": "Open knowledge manifest",
+      "primaryUrl": "./collections/kiwix-categories.json"
+    },
+    {
+      "title": "RoachClaw Model Packs",
+      "kind": "AI",
+      "size": "1-20 GB",
+      "status": "Contained first",
+      "source": "Ollama + RoachNet curation",
+      "summary": "Machine-aware local models recommended from the user’s specs, with contained installs and a cloud lane fallback for first boot.",
+      "primaryLabel": "Download RoachNet 1.30.5",
+      "primaryUrl": "https://github.com/AHGRoach/RoachNet/releases/latest/download/RoachNet-Setup-macOS.dmg"
+    },
+    {
+      "title": "Field Ops Toolkit",
+      "kind": "Tools",
+      "size": "500 MB-8 GB",
+      "status": "Planning",
+      "source": "Jam, CyberChef, dev utilities",
+      "summary": "A future catalog lane for offline-friendly dev and field tools that should install from RoachNet’s mirror instead of scattered upstream download pages.",
+      "primaryLabel": "Open wikipedia manifest",
+      "primaryUrl": "./collections/wikipedia.json"
+    }
+  ]
+}

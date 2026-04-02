@@ -57,6 +57,7 @@ struct CommandGridItem: Identifiable {
     let badge: String?
     let systemImage: String
     let routePath: String
+    let isInstalled: Bool
 }
 
 struct PresentedWebSurface {
@@ -68,6 +69,41 @@ private struct GuideFeature: Identifiable {
     let id: String
     let title: String
     let detail: String
+}
+
+private struct ReadinessStep: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let status: String
+    let systemImage: String
+    let accent: Color
+    let routePath: String?
+    let isReady: Bool
+}
+
+private enum CommandPaletteTarget: Hashable {
+    case pane(WorkspacePane)
+    case route(title: String, path: String)
+    case service(serviceName: String)
+    case refreshRuntime
+    case launchGuide
+}
+
+private enum HomeMenuSection: String, CaseIterable, Identifiable {
+    case commandDeck = "Command Deck"
+    case installedModules = "Installed Modules"
+    case availableModules = "Available Modules"
+
+    var id: String { rawValue }
+}
+
+private struct CommandPaletteEntry: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let detail: String
+    let systemImage: String
+    let target: CommandPaletteTarget
 }
 
 private struct NativeWebView: NSViewRepresentable {
@@ -96,47 +132,217 @@ private struct EmbeddedRouteView: View {
     let onClose: () -> Void
 
     var body: some View {
-        ZStack {
-            RoachBackground()
+        GeometryReader { proxy in
+            let isTight = proxy.size.width < 980
 
-            VStack(spacing: 16) {
-                RoachInsetPanel {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(title)
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundStyle(RoachPalette.text)
-                            Text(url.absoluteString)
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                .foregroundStyle(RoachPalette.muted)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+            ZStack {
+                RoachBackground()
+
+                VStack(spacing: 16) {
+                    RoachInsetPanel {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(title)
+                                        .font(.system(size: isTight ? 21 : 24, weight: .bold))
+                                        .foregroundStyle(RoachPalette.text)
+                                    Text(url.absoluteString)
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(RoachPalette.muted)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+
+                                Spacer()
+
+                                HStack(spacing: 12) {
+                                    Button("Open in Browser") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                    .buttonStyle(RoachSecondaryButtonStyle())
+
+                                    Button("Close") {
+                                        onClose()
+                                    }
+                                    .buttonStyle(RoachPrimaryButtonStyle())
+                                }
+                            }
+
+                            VStack(alignment: .leading, spacing: 14) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(title)
+                                        .font(.system(size: isTight ? 21 : 24, weight: .bold))
+                                        .foregroundStyle(RoachPalette.text)
+                                    Text(url.absoluteString)
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(RoachPalette.muted)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+
+                                HStack(spacing: 12) {
+                                    Button("Open in Browser") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                    .buttonStyle(RoachSecondaryButtonStyle())
+
+                                    Button("Close") {
+                                        onClose()
+                                    }
+                                    .buttonStyle(RoachPrimaryButtonStyle())
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    NativeWebView(url: url)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: 1)
+                        )
+                }
+                .padding(isTight ? 16 : 24)
+            }
+        }
+        .frame(minWidth: 760, minHeight: 560)
+    }
+}
+
+private struct CommandPaletteSheet: View {
+    let entries: [CommandPaletteEntry]
+    let onSelect: (CommandPaletteEntry) -> Void
+    let onDismiss: () -> Void
+
+    @State private var query = ""
+    @FocusState private var queryFocused: Bool
+
+    private var filteredEntries: [CommandPaletteEntry] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return entries
+        }
+
+        return entries.filter { entry in
+            let haystack = "\(entry.title) \(entry.detail)".lowercased()
+            return haystack.contains(trimmedQuery.lowercased())
+        }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let isTight = proxy.size.width < 760 || proxy.size.height < 560
+
+            ZStack {
+                RoachBackground()
+
+                RoachPanel {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Command Palette")
+                                        .font(.system(size: isTight ? 24 : 28, weight: .bold))
+                                        .foregroundStyle(RoachPalette.text)
+                                    Text("Jump through the command deck without hunting through the shell.")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(RoachPalette.muted)
+                                }
+
+                                Spacer()
+
+                                Button("Close") {
+                                    onDismiss()
+                                }
+                                .buttonStyle(RoachSecondaryButtonStyle())
+                            }
+
+                            VStack(alignment: .leading, spacing: 14) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Command Palette")
+                                        .font(.system(size: isTight ? 24 : 28, weight: .bold))
+                                        .foregroundStyle(RoachPalette.text)
+                                    Text("Jump through the command deck without hunting through the shell.")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(RoachPalette.muted)
+                                }
+
+                                Button("Close") {
+                                    onDismiss()
+                                }
+                                .buttonStyle(RoachSecondaryButtonStyle())
+                            }
                         }
 
-                        Spacer()
+                        RoachInsetPanel {
+                            HStack(spacing: 12) {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundStyle(RoachPalette.green)
 
-                        Button("Open in Browser") {
-                            NSWorkspace.shared.open(url)
+                                TextField("Search commands, views, tools, and modules", text: $query)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundStyle(RoachPalette.text)
+                                    .focused($queryFocused)
+                            }
+                            .padding(.horizontal, 4)
                         }
-                        .buttonStyle(RoachSecondaryButtonStyle())
 
-                        Button("Close") {
-                            onClose()
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 10) {
+                                ForEach(filteredEntries.prefix(18)) { entry in
+                                    Button {
+                                        onSelect(entry)
+                                    } label: {
+                                        RoachInsetPanel {
+                                            HStack(spacing: 12) {
+                                                Image(systemName: entry.systemImage)
+                                                    .font(.system(size: 15, weight: .semibold))
+                                                    .foregroundStyle(RoachPalette.green)
+                                                    .frame(width: 30, height: 30)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                            .fill(RoachPalette.panelGlass)
+                                                    )
+
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(entry.title)
+                                                        .font(.system(size: 15, weight: .semibold))
+                                                        .foregroundStyle(RoachPalette.text)
+                                                    Text(entry.detail)
+                                                        .font(.system(size: 13, weight: .medium))
+                                                        .foregroundStyle(RoachPalette.muted)
+                                                        .fixedSize(horizontal: false, vertical: true)
+                                                }
+
+                                                Spacer()
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                    .buttonStyle(RoachCardButtonStyle())
+                                }
+
+                                if filteredEntries.isEmpty {
+                                    RoachInsetPanel {
+                                        Text("No commands matched that search yet.")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundStyle(RoachPalette.muted)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                }
+                            }
                         }
-                        .buttonStyle(RoachPrimaryButtonStyle())
                     }
                 }
-
-                NativeWebView(url: url)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(RoachPalette.border, lineWidth: 1)
-                    )
+                .frame(maxWidth: min(proxy.size.width - 28, 700), maxHeight: min(proxy.size.height - 28, 540))
+                .padding(14)
             }
-            .padding(24)
         }
-        .frame(minWidth: 1080, minHeight: 760)
+        .onAppear {
+            queryFocused = true
+        }
     }
 }
 
@@ -153,12 +359,16 @@ final class WorkspaceModel: ObservableObject {
         .init(role: "RoachClaw", text: "Try a quick prompt when you want to test the local model."),
     ]
     @Published var promptDraft: String = ""
+    @Published var selectedChatModel: String = ""
     @Published var selectedWikipediaOptionId: String = "none"
     @Published var isApplyingDefaults = false
     @Published var isSendingPrompt = false
+    @Published var isRelocatingStorage = false
     @Published var activeActions: Set<String> = []
     @Published var presentedWebSurface: PresentedWebSurface?
     private var attemptedRoachClawBootstrap = false
+    private var attemptedRoachClawServiceBootstrap = false
+    private var attemptedInstalledServiceBootstrap = false
     private var refreshLoopTask: Task<Void, Never>?
 
     var setupCompleted: Bool { config.setupCompletedAt != nil }
@@ -166,10 +376,104 @@ final class WorkspaceModel: ObservableObject {
     var installedAppPath: String {
         config.installedAppPath.isEmpty ? RoachNetRepositoryLocator.defaultInstalledAppPath(installPath: installPath) : config.installedAppPath
     }
+    var storagePath: String {
+        config.storagePath.isEmpty ? RoachNetRepositoryLocator.defaultStoragePath(installPath: installPath) : config.storagePath
+    }
+    var chatModelOptions: [String] {
+        var ordered: [String] = []
+        var seen = Set<String>()
+
+        let configuredExoModel = config.exoModelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if config.distributedInferenceBackend == "exo", !configuredExoModel.isEmpty, seen.insert(configuredExoModel).inserted {
+            ordered.append(configuredExoModel)
+        }
+
+        let preferredModels = [
+            snapshot?.roachClaw.resolvedDefaultModel,
+            snapshot?.roachClaw.defaultModel,
+            config.roachClawDefaultModel,
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+        for modelName in preferredModels {
+            if seen.insert(modelName).inserted {
+                ordered.append(modelName)
+            }
+        }
+
+        for modelName in snapshot?.installedModels.map(\.name) ?? [] {
+            if seen.insert(modelName).inserted {
+                ordered.append(modelName)
+            }
+        }
+
+        return ordered
+    }
+    var recommendedLocalModels: [String] {
+        var ordered: [String] = []
+        var seen = Set<String>()
+        let recommendedClass = snapshot?.systemInfo.hardwareProfile.recommendedModelClass.lowercased() ?? ""
+        let memoryTier = snapshot?.systemInfo.hardwareProfile.memoryTier.lowercased() ?? ""
+
+        func append(_ modelName: String) {
+            guard !modelName.isEmpty, seen.insert(modelName).inserted else { return }
+            ordered.append(modelName)
+        }
+
+        // Keep first boot fast with a compact coder model, then surface the
+        // larger machine-appropriate upgrade path in the same order the UI shows it.
+        append("qwen2.5-coder:1.5b")
+
+        if recommendedClass.contains("7b") || recommendedClass.contains("14b") || memoryTier == "balanced" || memoryTier == "high" {
+            append("qwen2.5-coder:7b")
+        }
+
+        if recommendedClass.contains("14b") || memoryTier == "high" {
+            append("qwen2.5-coder:14b")
+        }
+
+        append(config.roachClawDefaultModel.trimmingCharacters(in: .whitespacesAndNewlines))
+        return ordered
+    }
+    var recommendedLocalModelSummary: String {
+        if let hardwareProfile = snapshot?.systemInfo.hardwareProfile {
+            return "\(hardwareProfile.platformLabel) is best suited to \(hardwareProfile.recommendedModelClass). RoachNet quickstarts with qwen2.5-coder:1.5b so the first local lane comes up faster."
+        }
+
+        return "RoachNet quickstarts with qwen2.5-coder:1.5b, then recommends a larger local coder model once hardware guidance is available."
+    }
+    var displayedRoachClawDefaultModel: String {
+        let configuredModel = config.roachClawDefaultModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let roachClaw = snapshot?.roachClaw
+
+        if config.pendingRoachClawSetup, !configuredModel.isEmpty {
+            return configuredModel
+        }
+
+        let resolvedModel = roachClaw?.resolvedDefaultModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !resolvedModel.isEmpty {
+            return resolvedModel
+        }
+
+        let fallbackModel = roachClaw?.defaultModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !fallbackModel.isEmpty {
+            return fallbackModel
+        }
+
+        return configuredModel
+    }
+    var selectedChatModelLabel: String {
+        chatModelLabel(for: resolvedChatModel())
+    }
+    var hasCloudChatFallback: Bool {
+        preferredCloudChatModel(excluding: nil) != nil
+    }
 
     func refreshConfigOnly() {
         config = RoachNetRepositoryLocator.readConfig()
         statusLine = setupCompleted ? "Setup complete." : "Setup still required."
+        synchronizeSelectedChatModel()
     }
 
     deinit {
@@ -201,7 +505,12 @@ final class WorkspaceModel: ObservableObject {
 
         do {
             snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: currentConfig)
+            errorLine = nil
+            persistRoachClawSetupCompletionIfNeeded()
             synchronizeWikipediaSelection()
+            synchronizeSelectedChatModel()
+            await bootstrapRoachClawServiceIfNeeded(using: currentConfig)
+            await bootstrapInstalledServicesIfNeeded(using: currentConfig)
             await bootstrapRoachClawIfNeeded(using: currentConfig)
             if !silently {
                 statusLine = "Local runtime ready."
@@ -220,13 +529,17 @@ final class WorkspaceModel: ObservableObject {
 
     func applyRoachClawDefaults() async {
         guard setupCompleted, !isApplyingDefaults else { return }
-        let currentConfig = config
-        let currentModel = config.roachClawDefaultModel
+        var currentConfig = config
+        let suggestedModel = recommendedLocalModels.first ?? config.roachClawDefaultModel
+        if currentConfig.roachClawDefaultModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            currentConfig.roachClawDefaultModel = suggestedModel
+        }
+        let currentModel = currentConfig.roachClawDefaultModel
         let currentWorkspacePath = snapshot?.roachClaw.workspacePath
 
         isApplyingDefaults = true
         errorLine = nil
-            statusLine = "Saving local AI defaults."
+        statusLine = "Saving local AI defaults."
 
         do {
             try await ManagedAppRuntimeBridge.shared.applyRoachClawDefaults(
@@ -235,7 +548,13 @@ final class WorkspaceModel: ObservableObject {
                 workspacePath: currentWorkspacePath
             )
             snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: currentConfig)
-            statusLine = "Local AI defaults saved."
+            persistRoachClawSetupCompletionIfNeeded()
+            synchronizeSelectedChatModel()
+            if snapshot?.roachClaw.ready == true {
+                statusLine = "Local AI defaults saved."
+            } else {
+                statusLine = "RoachClaw queued the first local model."
+            }
         } catch {
             errorLine = error.localizedDescription
             statusLine = "Local AI update failed."
@@ -251,29 +570,107 @@ final class WorkspaceModel: ObservableObject {
         guard !trimmedPrompt.isEmpty else { return }
 
         let currentConfig = config
-        let selectedModel =
-            snapshot?.roachClaw.resolvedDefaultModel ??
-            snapshot?.roachClaw.defaultModel ??
-            config.roachClawDefaultModel
+        if snapshot?.roachClaw.ready != true {
+            await bootstrapRoachClawIfNeeded(using: currentConfig)
+        }
+
+        let selectedModel = resolvedChatModel()
+        let preferredCloudModel = isCloudModel(selectedModel) ? selectedModel : preferredCloudChatModel(excluding: nil)
+        let cloudFallbackModel = preferredCloudChatModel(excluding: selectedModel)
+        let roachClawReady = snapshot?.roachClaw.ready == true
+        let canUseCloudWarmupLane =
+            snapshot?.internetConnected == true &&
+            preferredCloudModel != nil
+
+        guard roachClawReady || canUseCloudWarmupLane else {
+            errorLine = "RoachClaw is still staging its first local model. Keep RoachNet open, or use a connected cloud lane once internet is available."
+            statusLine = "Local AI still warming up."
+            return
+        }
+
+        let shouldPreferCloudWarmupLane =
+            (!roachClawReady && canUseCloudWarmupLane) ||
+            (
+                !isCloudModel(selectedModel) &&
+                snapshot?.internetConnected == true &&
+                cloudFallbackModel != nil &&
+                !chatLines.contains(where: { $0.role == "User" }) &&
+                (config.pendingRoachClawSetup || selectedModel == config.roachClawDefaultModel)
+            )
+        let primaryModel = shouldPreferCloudWarmupLane ? (preferredCloudModel ?? selectedModel) : selectedModel
+        let primaryTimeout: TimeInterval
+        if isCloudModel(primaryModel) {
+            primaryTimeout = 45
+        } else if cloudFallbackModel != nil, snapshot?.internetConnected == true {
+            primaryTimeout = 12
+        } else {
+            primaryTimeout = 30
+        }
 
         chatLines.append(.init(role: "User", text: trimmedPrompt))
         promptDraft = ""
         isSendingPrompt = true
         errorLine = nil
-        statusLine = "Running local prompt."
+        statusLine = isCloudModel(primaryModel)
+            ? (roachClawReady ? "Routing prompt through the cloud lane." : "Local AI is still warming up, so RoachNet is using the cloud lane.")
+            : "Running local prompt."
 
         do {
             let response = try await ManagedAppRuntimeBridge.shared.sendChat(
                 using: currentConfig,
-                model: selectedModel,
-                prompt: trimmedPrompt
+                model: primaryModel,
+                prompt: trimmedPrompt,
+                timeout: primaryTimeout
             )
+            if primaryModel != selectedModel {
+                selectedChatModel = primaryModel
+                chatLines.append(
+                    .init(
+                        role: "System",
+                        text: "\(selectedModel) is still warming up, so RoachNet used \(primaryModel) for this first prompt."
+                    )
+                )
+            }
             chatLines.append(.init(role: "RoachClaw", text: response.isEmpty ? "No content returned." : response))
             statusLine = "Prompt complete."
         } catch {
+            let fallbackModel = preferredCloudChatModel(excluding: primaryModel)
+            if !isCloudModel(primaryModel), let fallbackModel {
+                do {
+                    statusLine = "Local AI stalled. Retrying with a cloud lane."
+                    let fallbackResponse = try await ManagedAppRuntimeBridge.shared.sendChat(
+                        using: currentConfig,
+                        model: fallbackModel,
+                        prompt: trimmedPrompt,
+                        timeout: 45
+                    )
+                    selectedChatModel = fallbackModel
+                    chatLines.append(
+                        .init(
+                            role: "System",
+                            text: "\(primaryModel) stalled, so RoachNet retried with \(fallbackModel)."
+                        )
+                    )
+                    chatLines.append(
+                        .init(
+                            role: "RoachClaw",
+                            text: fallbackResponse.isEmpty ? "No content returned." : fallbackResponse
+                        )
+                    )
+                    statusLine = "Prompt complete."
+                    isSendingPrompt = false
+                    return
+                } catch {
+                    errorLine = error.localizedDescription
+                    statusLine = "Prompt failed."
+                    isSendingPrompt = false
+                    return
+                }
+            }
+
             let description = error.localizedDescription
             if description.localizedCaseInsensitiveContains("timed out") {
-                errorLine = "The local model took too long to answer. RoachNet is tuned for qwen2.5-coder:7b now, so refresh after setup finishes pulling it."
+                errorLine = "The selected model took too long to answer. Open Model Store or switch to a cloud lane from the RoachClaw workbench."
             } else {
                 errorLine = description
             }
@@ -281,6 +678,11 @@ final class WorkspaceModel: ObservableObject {
         }
 
         isSendingPrompt = false
+    }
+
+    func shutdownRuntime() async {
+        refreshLoopTask?.cancel()
+        await ManagedAppRuntimeBridge.shared.stopRuntime(using: config)
     }
 
     func openRoute(_ routePath: String, title: String) async {
@@ -342,6 +744,43 @@ final class WorkspaceModel: ObservableObject {
     func downloadBaseMapAssets() async {
         await runAction("maps-base-assets", status: "Queueing base map assets.") {
             _ = try await ManagedAppRuntimeBridge.shared.downloadBaseMapAssets(using: self.config)
+        }
+    }
+
+    func installService(_ service: ManagedSystemService) async {
+        guard !(service.installed ?? false) else {
+            await openService(service)
+            return
+        }
+
+        await runAction("service-\(service.service_name)", status: "Installing \(service.friendly_name ?? service.service_name).") {
+            _ = try await ManagedAppRuntimeBridge.shared.installService(
+                using: self.config,
+                serviceName: service.service_name
+            )
+        }
+    }
+
+    func clearFailedDownloads(filetype: String? = nil) async {
+        let failedJobs = (snapshot?.downloads ?? []).filter { job in
+            job.status == "failed" && (filetype == nil || job.filetype == filetype)
+        }
+
+        guard !failedJobs.isEmpty else {
+            statusLine = "No failed downloads to clear."
+            return
+        }
+
+        await runAction(
+            "downloads-clear-\(filetype ?? "all")",
+            status: "Clearing failed download history."
+        ) {
+            for job in failedJobs {
+                try await ManagedAppRuntimeBridge.shared.removeDownloadJob(
+                    using: self.config,
+                    jobId: job.jobId
+                )
+            }
         }
     }
 
@@ -411,21 +850,335 @@ final class WorkspaceModel: ObservableObject {
         guard !attemptedRoachClawBootstrap else { return }
         guard let snapshot else { return }
         guard snapshot.roachClaw.ollama.available else { return }
-        guard snapshot.roachClaw.defaultModel == nil else { return }
+        let resolvedDefaultModel = snapshot.roachClaw.resolvedDefaultModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard resolvedDefaultModel.isEmpty || config.pendingRoachClawSetup else { return }
 
         attemptedRoachClawBootstrap = true
+        let bootstrapModel = recommendedLocalModels.first ?? config.roachClawDefaultModel
 
         do {
+            if config.roachClawDefaultModel != bootstrapModel {
+                var updatedConfig = config
+                updatedConfig.roachClawDefaultModel = bootstrapModel
+                try RoachNetRepositoryLocator.writeConfig(updatedConfig)
+                self.config = updatedConfig
+            }
             try await ManagedAppRuntimeBridge.shared.applyRoachClawDefaults(
-                using: config,
-                model: config.roachClawDefaultModel,
+                using: self.config,
+                model: bootstrapModel,
                 workspacePath: snapshot.roachClaw.workspacePath
             )
-            self.snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: config)
-            statusLine = "RoachClaw defaults staged."
+            self.snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: self.config)
+            persistRoachClawSetupCompletionIfNeeded()
+            synchronizeSelectedChatModel()
+            if self.snapshot?.roachClaw.ready == true {
+                statusLine = "RoachClaw defaults staged."
+            } else {
+                statusLine = "RoachClaw is staging the first local model."
+            }
         } catch {
             errorLine = "RoachClaw still needs one more pass: \(error.localizedDescription)"
         }
+    }
+
+    private func bootstrapRoachClawServiceIfNeeded(using config: RoachNetInstallerConfig) async {
+        guard !attemptedRoachClawServiceBootstrap else { return }
+        guard config.installRoachClaw else { return }
+        guard let snapshot else { return }
+
+        let ollamaService = snapshot.services.first { $0.service_name == "nomad_ollama" }
+        guard let ollamaService, !(ollamaService.installed ?? false) else { return }
+
+        attemptedRoachClawServiceBootstrap = true
+        statusLine = "Installing the contained RoachClaw lane."
+
+        do {
+            _ = try await ManagedAppRuntimeBridge.shared.installService(
+                using: config,
+                serviceName: ollamaService.service_name
+            )
+            self.snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: config)
+            synchronizeWikipediaSelection()
+            synchronizeSelectedChatModel()
+            statusLine = "RoachClaw lane queued."
+        } catch {
+            errorLine = "RoachClaw couldn’t install its contained Ollama lane: \(error.localizedDescription)"
+            statusLine = "RoachClaw still needs attention."
+        }
+    }
+
+    private func persistRoachClawSetupCompletionIfNeeded() {
+        guard snapshot?.roachClaw.ready == true, config.pendingRoachClawSetup else { return }
+
+        do {
+            var updatedConfig = config
+            updatedConfig.pendingRoachClawSetup = false
+            try RoachNetRepositoryLocator.writeConfig(updatedConfig)
+            config = updatedConfig
+        } catch {
+            errorLine = error.localizedDescription
+        }
+    }
+
+    private func bootstrapInstalledServicesIfNeeded(using config: RoachNetInstallerConfig) async {
+        guard !attemptedInstalledServiceBootstrap else { return }
+        guard let currentSnapshot = snapshot else { return }
+
+        let servicesToStart = currentSnapshot.services.filter { service in
+            guard service.installed ?? false else { return false }
+            let status = service.status?.lowercased() ?? ""
+            return !["running", "starting", "installing", "updating", "restarting"].contains(status)
+        }
+
+        guard !servicesToStart.isEmpty else { return }
+
+        attemptedInstalledServiceBootstrap = true
+        statusLine = "Restoring installed modules."
+
+        var failedServices: [String] = []
+
+        for service in servicesToStart {
+            do {
+                _ = try await ManagedAppRuntimeBridge.shared.affectService(
+                    using: config,
+                    serviceName: service.service_name,
+                    action: "start"
+                )
+            } catch {
+                failedServices.append(service.friendly_name ?? service.service_name)
+            }
+        }
+
+        if let refreshedSnapshot = try? await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: config) {
+            snapshot = refreshedSnapshot
+            synchronizeWikipediaSelection()
+            synchronizeSelectedChatModel()
+        }
+
+        if failedServices.isEmpty {
+            statusLine = "Installed modules restored."
+        } else {
+            errorLine = "RoachNet could not restart: \(failedServices.joined(separator: ", "))."
+            statusLine = "Some modules still need attention."
+        }
+    }
+
+    func saveInferenceRoutingSettings() async {
+        errorLine = nil
+        statusLine = "Saving AI routing."
+
+        do {
+            try RoachNetRepositoryLocator.writeConfig(config)
+            synchronizeSelectedChatModel()
+            await refreshRuntimeState(silently: true)
+            statusLine = "AI routing saved."
+        } catch {
+            errorLine = error.localizedDescription
+            statusLine = "AI routing update failed."
+        }
+    }
+
+    func chatModelLabel(for modelName: String) -> String {
+        if modelName == config.exoModelId, config.distributedInferenceBackend == "exo" {
+            return "Exo · \(modelName)"
+        }
+        return isCloudModel(modelName) ? "Cloud · \(modelName)" : "Local · \(modelName)"
+    }
+
+    private func resolvedChatModel() -> String {
+        let trimmedSelection = selectedChatModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSelection.isEmpty {
+            return trimmedSelection
+        }
+
+        if let first = chatModelOptions.first {
+            return first
+        }
+
+        return config.roachClawDefaultModel
+    }
+
+    private func synchronizeSelectedChatModel() {
+        let options = chatModelOptions
+
+        guard !options.isEmpty else {
+            selectedChatModel = config.roachClawDefaultModel
+            return
+        }
+
+        let trimmedSelection = selectedChatModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if options.contains(trimmedSelection) {
+            return
+        }
+
+        if let preferredModel = preferredInitialChatModel(from: options) {
+            selectedChatModel = preferredModel
+            return
+        }
+
+        selectedChatModel = options[0]
+    }
+
+    private func preferredInitialChatModel(from options: [String]) -> String? {
+        let trimmedExoModel = config.exoModelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if config.distributedInferenceBackend == "exo", !trimmedExoModel.isEmpty, options.contains(trimmedExoModel) {
+            return trimmedExoModel
+        }
+
+        if config.pendingRoachClawSetup,
+           snapshot?.internetConnected == true,
+           let cloudModel = preferredCloudChatModel(excluding: nil),
+           options.contains(cloudModel) {
+            return cloudModel
+        }
+
+        let resolvedLocals = [
+            snapshot?.roachClaw.resolvedDefaultModel,
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+        if let localModel = resolvedLocals.first(where: { options.contains($0) }) {
+            return localModel
+        }
+
+        if snapshot?.internetConnected == true,
+           let cloudModel = preferredCloudChatModel(excluding: nil),
+           options.contains(cloudModel) {
+            return cloudModel
+        }
+
+        let preferredLocals = [
+            snapshot?.roachClaw.defaultModel,
+            config.roachClawDefaultModel,
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+        if let localModel = preferredLocals.first(where: { options.contains($0) }) {
+            return localModel
+        }
+
+        return options.first
+    }
+
+    private func preferredCloudChatModel(excluding currentModel: String?) -> String? {
+        let cloudModels = snapshot?.installedModels
+            .filter { isCloudModel($0.name) }
+            .map(\.name) ?? []
+
+        return cloudModels.first { $0 != currentModel }
+    }
+
+    private func isCloudModel(_ modelName: String) -> Bool {
+        modelName.localizedCaseInsensitiveContains(":cloud")
+    }
+
+    func openStorageInFinder() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: storagePath))
+    }
+
+    func promptForStorageRelocation() async {
+        guard let destinationPath = Self.chooseDirectory(startingAt: storagePath) else {
+            return
+        }
+
+        await relocateStorage(to: destinationPath)
+    }
+
+    private func relocateStorage(to destinationPath: String) async {
+        let normalizedDestination = URL(fileURLWithPath: destinationPath).standardizedFileURL.path
+        let currentStoragePath = storagePath
+
+        guard normalizedDestination != currentStoragePath else {
+            statusLine = "Storage location unchanged."
+            return
+        }
+
+        isRelocatingStorage = true
+        errorLine = nil
+        statusLine = "Moving RoachNet content."
+
+        do {
+            await ManagedAppRuntimeBridge.shared.stopRuntime()
+            try Self.moveStorageDirectory(from: currentStoragePath, to: normalizedDestination)
+
+            var updatedConfig = config
+            updatedConfig.storagePath = normalizedDestination
+            try RoachNetRepositoryLocator.writeConfig(updatedConfig)
+            config = updatedConfig
+            snapshot = nil
+
+            await refreshRuntimeState()
+            statusLine = "RoachNet content moved."
+        } catch {
+            errorLine = error.localizedDescription
+            statusLine = "Storage move failed."
+        }
+
+        isRelocatingStorage = false
+    }
+
+    private static func chooseDirectory(startingAt path: String) -> String? {
+        let panel = NSOpenPanel()
+        panel.title = "Choose RoachNet Content Folder"
+        panel.message = "Select the folder RoachNet should use for maps, archives, downloads, and local content."
+        panel.prompt = "Use Folder"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: path).deletingLastPathComponent()
+
+        return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+
+    private static func moveStorageDirectory(from sourcePath: String, to destinationPath: String) throws {
+        let fileManager = FileManager.default
+        let sourceURL = URL(fileURLWithPath: sourcePath).standardizedFileURL
+        let destinationURL = URL(fileURLWithPath: destinationPath).standardizedFileURL
+
+        guard sourceURL.path != destinationURL.path else {
+            return
+        }
+
+        if destinationURL.path.hasPrefix(sourceURL.path + "/") || sourceURL.path.hasPrefix(destinationURL.path + "/") {
+            throw NSError(domain: "RoachNetStorage", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Choose a storage folder outside the current RoachNet content directory."
+            ])
+        }
+
+        var sourceIsDirectory: ObjCBool = false
+        let sourceExists = fileManager.fileExists(atPath: sourceURL.path, isDirectory: &sourceIsDirectory)
+
+        if !sourceExists || !sourceIsDirectory.boolValue {
+            try fileManager.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+            return
+        }
+
+        var destinationIsDirectory: ObjCBool = false
+        let destinationExists = fileManager.fileExists(atPath: destinationURL.path, isDirectory: &destinationIsDirectory)
+
+        if destinationExists {
+            guard destinationIsDirectory.boolValue else {
+                throw NSError(domain: "RoachNetStorage", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "Choose a folder, not a file, for RoachNet content."
+                ])
+            }
+
+            let destinationContents = try fileManager.contentsOfDirectory(atPath: destinationURL.path)
+            if !destinationContents.isEmpty {
+                throw NSError(domain: "RoachNetStorage", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: "Choose an empty folder for the new RoachNet content location."
+                ])
+            }
+
+            try fileManager.removeItem(at: destinationURL)
+        } else {
+            try fileManager.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        }
+
+        try fileManager.moveItem(at: sourceURL, to: destinationURL)
     }
 }
 
@@ -458,9 +1211,239 @@ private struct ChatBubble: View {
     }
 }
 
+@MainActor
+private final class LaunchGuidePlaybackController: ObservableObject {
+    let player: AVPlayer?
+    private var windowController: LaunchGuideVideoWindowController?
+    @Published private(set) var isPresentingWindow = false
+
+    var hasVideo: Bool { player != nil }
+
+    init() {
+        if let url = Bundle.module.url(forResource: "roachnet-launch-guide", withExtension: "mp4") {
+            let player = AVPlayer(url: url)
+            player.actionAtItemEnd = .pause
+            self.player = player
+        } else {
+            self.player = nil
+        }
+    }
+
+    func playFromStart() {
+        player?.seek(to: .zero)
+        player?.play()
+    }
+
+    func presentVideoWindow() {
+        guard let player else { return }
+
+        if windowController == nil {
+            windowController = LaunchGuideVideoWindowController(player: player) { [weak self] in
+                guard let self else { return }
+                self.isPresentingWindow = false
+                self.player?.pause()
+            }
+        }
+
+        windowController?.showWindow(nil)
+        windowController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        isPresentingWindow = true
+        playFromStart()
+    }
+
+    func pause() {
+        player?.pause()
+    }
+
+    func dismissVideoWindow() {
+        player?.pause()
+        windowController?.close()
+        isPresentingWindow = false
+    }
+}
+
+private final class LaunchGuideVideoWindowController: NSWindowController, NSWindowDelegate {
+    private let onClose: () -> Void
+
+    init(player: AVPlayer, onClose: @escaping () -> Void) {
+        self.onClose = onClose
+
+        let playerView = AVPlayerView(frame: .zero)
+        playerView.player = player
+        playerView.controlsStyle = .floating
+        playerView.videoGravity = .resizeAspect
+        playerView.translatesAutoresizingMaskIntoConstraints = false
+
+        let contentViewController = NSViewController()
+        let contentView = NSView()
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.black.cgColor
+        contentView.addSubview(playerView)
+
+        NSLayoutConstraint.activate([
+            playerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            playerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            playerView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            playerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+
+        contentViewController.view = contentView
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "RoachNet Launch Guide"
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.contentViewController = contentViewController
+
+        super.init(window: window)
+
+        window.delegate = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose()
+    }
+}
+
+private struct LaunchGuideFeatureColumn: View {
+    let featureRows: [GuideFeature]
+    let onDismiss: () -> Void
+
+    var body: some View {
+        RoachPanel {
+            VStack(alignment: .leading, spacing: 16) {
+                RoachKicker("Guided Tour")
+                Text("Start here before you roam.")
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(RoachPalette.text)
+                Text("This silent walkthrough shows the main RoachNet surfaces and the quickest path through the app.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(RoachPalette.muted)
+
+                VStack(spacing: 10) {
+                    ForEach(featureRows) { feature in
+                        RoachInsetPanel {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(feature.title)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(RoachPalette.text)
+                                Text(feature.detail)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(RoachPalette.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 12) {
+                    Button("Skip for now") {
+                        onDismiss()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+
+                    Button("Start Using RoachNet") {
+                        onDismiss()
+                    }
+                    .buttonStyle(RoachPrimaryButtonStyle())
+                }
+            }
+        }
+        .frame(minWidth: 300, idealWidth: 340, maxWidth: 360)
+    }
+}
+
+private struct LaunchGuideVideoColumn: View {
+    @ObservedObject var playbackController: LaunchGuidePlaybackController
+    let onDismiss: () -> Void
+
+    var body: some View {
+        RoachPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("RoachNet Launch Guide")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(RoachPalette.text)
+                        Text("Auto-plays on first launch and stays available from the main app header.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(RoachPalette.muted)
+                    }
+
+                    Spacer()
+
+                    RoachTag("First Launch", accent: RoachPalette.green)
+                }
+
+                RoachInsetPanel {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if playbackController.hasVideo {
+                            Text("The walkthrough plays in its own floating window so the main app stays stable while you settle in.")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(RoachPalette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text(playbackController.isPresentingWindow ? "Guide window is open now." : "Guide window is ready to open.")
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(RoachPalette.green)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("What it covers")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(RoachPalette.text)
+                                Text("Home, AI Control, Easy Setup, map packs, reference bundles, archives, runtime health, and the command deck.")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(RoachPalette.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        } else {
+                            Text("Guide video unavailable")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(RoachPalette.text)
+                            Text("Rebuild `roachnet-launch-guide.mp4` and relaunch the app to restore the guided tour.")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(RoachPalette.muted)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 360, alignment: .leading)
+                }
+
+                HStack(spacing: 12) {
+                    Button(playbackController.isPresentingWindow ? "Replay Video" : "Open Video") {
+                        playbackController.presentVideoWindow()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+                    .disabled(!playbackController.hasVideo)
+
+                    Spacer()
+
+                    Button("Close Guide") {
+                        onDismiss()
+                    }
+                    .buttonStyle(RoachPrimaryButtonStyle())
+                }
+            }
+        }
+    }
+}
+
 private struct LaunchGuideSheet: View {
     let onDismiss: () -> Void
-    @State private var player: AVPlayer
+    @StateObject private var playbackController = LaunchGuidePlaybackController()
 
     private let featureRows: [GuideFeature] = [
         .init(
@@ -485,118 +1468,45 @@ private struct LaunchGuideSheet: View {
         ),
     ]
 
-    init(onDismiss: @escaping () -> Void) {
-        self.onDismiss = onDismiss
-
-        if let url = Bundle.module.url(forResource: "roachnet-launch-guide", withExtension: "mp4") {
-            _player = State(initialValue: AVPlayer(url: url))
-        } else {
-            _player = State(initialValue: AVPlayer())
-        }
-    }
-
     var body: some View {
         ZStack {
-            RoachBackground()
+            Color.black.opacity(0.56)
+                .ignoresSafeArea()
 
-            HStack(spacing: 18) {
-                RoachPanel {
-                    VStack(alignment: .leading, spacing: 16) {
-                        RoachKicker("Guided Tour")
-                        Text("Start here before you roam.")
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundStyle(RoachPalette.text)
-                        Text("This silent walkthrough shows the main RoachNet surfaces and the quickest path through the app.")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(RoachPalette.muted)
+            GeometryReader { proxy in
+                let isCompact = proxy.size.width < 1280
 
-                        VStack(spacing: 10) {
-                            ForEach(featureRows) { feature in
-                                RoachInsetPanel {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text(feature.title)
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundStyle(RoachPalette.text)
-                                        Text(feature.detail)
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundStyle(RoachPalette.muted)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
+                Group {
+                    if isCompact {
+                        VStack(spacing: 16) {
+                            LaunchGuideFeatureColumn(featureRows: featureRows, onDismiss: onDismiss)
+                            LaunchGuideVideoColumn(playbackController: playbackController, onDismiss: onDismiss)
                         }
-
-                        Spacer()
-
-                        HStack(spacing: 12) {
-                            Button("Replay") {
-                                player.seek(to: .zero)
-                                player.play()
-                            }
-                            .buttonStyle(RoachSecondaryButtonStyle())
-
-                            Button("Start Using RoachNet") {
-                                onDismiss()
-                            }
-                            .buttonStyle(RoachPrimaryButtonStyle())
+                    } else {
+                        HStack(spacing: 18) {
+                            LaunchGuideFeatureColumn(featureRows: featureRows, onDismiss: onDismiss)
+                            LaunchGuideVideoColumn(playbackController: playbackController, onDismiss: onDismiss)
                         }
                     }
                 }
-                .frame(width: 380)
-
-                RoachPanel {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("RoachNet Launch Guide")
-                                    .font(.system(size: 22, weight: .bold))
-                                    .foregroundStyle(RoachPalette.text)
-                                Text("Auto-plays on first launch and stays available from the main app header.")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(RoachPalette.muted)
-                            }
-
-                            Spacer()
-
-                            RoachTag("First Launch", accent: RoachPalette.green)
-                        }
-
-                        Group {
-                            if player.currentItem != nil {
-                                VideoPlayer(player: player)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                            .stroke(RoachPalette.border, lineWidth: 1)
-                                    )
-                            } else {
-                                RoachInsetPanel {
-                                    VStack(alignment: .leading, spacing: 10) {
-                                        Text("Guide video unavailable")
-                                            .font(.system(size: 18, weight: .semibold))
-                                            .foregroundStyle(RoachPalette.text)
-                                        Text("Rebuild `roachnet-launch-guide.mp4` and relaunch the app to restore the guided tour.")
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundStyle(RoachPalette.muted)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: 360, alignment: .leading)
-                                }
-                            }
-                        }
-                        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    }
+                .frame(
+                    maxWidth: min(proxy.size.width - 40, 1160),
+                    maxHeight: min(proxy.size.height - 40, 720),
+                    alignment: .center
+                )
+                .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear {
+            if playbackController.hasVideo {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    playbackController.presentVideoWindow()
                 }
             }
-            .padding(24)
-        }
-        .frame(minWidth: 1260, minHeight: 820)
-        .onAppear {
-            player.seek(to: .zero)
-            player.play()
         }
         .onDisappear {
-            player.pause()
+            playbackController.dismissVideoWindow()
         }
     }
 }
@@ -608,7 +1518,10 @@ struct RoachNetMacApp: App {
     var body: some Scene {
         WindowGroup("RoachNet") {
             RootWorkspaceView(model: model)
-                .frame(minWidth: 1220, idealWidth: 1380, minHeight: 820, idealHeight: 900)
+                .frame(minWidth: 760, idealWidth: 1100, minHeight: 560, idealHeight: 760)
+                .onAppear {
+                    appDelegate.model = model
+                }
         }
         .windowStyle(.hiddenTitleBar)
     }
@@ -617,26 +1530,95 @@ struct RoachNetMacApp: App {
 private struct RootWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     @AppStorage("hasSeenLaunchGuide") private var hasSeenLaunchGuide = false
+    @Namespace private var sidebarMotion
     @State private var showLaunchGuide = false
+    @State private var showCommandPalette = false
+    @State private var sidebarCollapsed = false
+    @State private var homeMenuSection: HomeMenuSection = .commandDeck
+    private let topTitlebarInset: CGFloat = 30
+    private let surfacePadding: CGFloat = 16
+    private let shellSpring = Animation.spring(response: 0.42, dampingFraction: 0.86, blendDuration: 0.12)
+
+    private var activePane: WorkspacePane {
+        guard let selectedPane = model.selectedPane, visiblePanes.contains(selectedPane) else {
+            return .home
+        }
+
+        return selectedPane
+    }
 
     var body: some View {
-        ZStack {
-            RoachBackground()
+        GeometryReader { proxy in
+            let isCompactShell = proxy.size.width < 960
+            let isTightShell = proxy.size.width < 1180 || proxy.size.height < 760
+            let isVeryTightShell = proxy.size.width < 900 || proxy.size.height < 680
+            let autoCollapsed = proxy.size.width < 1220
+            let effectiveSidebarCollapsed = sidebarCollapsed || autoCollapsed
+            let shellPadding = isVeryTightShell ? 10.0 : (isTightShell ? 12.0 : surfacePadding)
+            let verticalInset = proxy.size.height < 700 ? 16.0 : (isTightShell ? 22.0 : topTitlebarInset)
+            let sidebarWidth = effectiveSidebarCollapsed ? (isVeryTightShell ? 68.0 : 74.0) : (isTightShell ? 252.0 : 272.0)
+            let shellSpacing = effectiveSidebarCollapsed ? 8.0 : (isTightShell ? 14.0 : 18.0)
 
-            HStack(alignment: .top, spacing: 20) {
-                sidebar
-                    .frame(width: 286)
+            ZStack {
+                RoachBackground()
 
-                detailPane
-                    .frame(maxWidth: .infinity)
+                Group {
+                    if isCompactShell {
+                        VStack(alignment: .leading, spacing: 12) {
+                            compactShellHeader(isTight: isTightShell)
+                            compactNavigation(isTight: isTightShell)
+                            detailPane(isTight: isTightShell)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        HStack(alignment: .top, spacing: shellSpacing) {
+                            sidebar(isCollapsed: effectiveSidebarCollapsed, isTight: isTightShell, isVeryTight: isVeryTightShell)
+                                .frame(width: sidebarWidth)
+
+                            detailPane(isTight: isTightShell)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                .frame(maxWidth: 1440, maxHeight: .infinity, alignment: .topLeading)
+                .padding(shellPadding)
+                .padding(.top, verticalInset)
+                .padding(.bottom, 12)
+                .animation(shellSpring, value: effectiveSidebarCollapsed)
+                .animation(shellSpring, value: activePane)
+
+                if showLaunchGuide {
+                    LaunchGuideSheet {
+                        hasSeenLaunchGuide = true
+                        showLaunchGuide = false
+                    }
+                    .transition(.opacity)
+                    .zIndex(20)
+                }
+
+                if showCommandPalette {
+                    CommandPaletteSheet(
+                        entries: commandPaletteEntries,
+                        onSelect: { entry in
+                            performCommand(entry)
+                        },
+                        onDismiss: { showCommandPalette = false }
+                    )
+                    .transition(.opacity)
+                    .zIndex(15)
+                }
             }
-            .padding(24)
         }
         .task {
+            if !visiblePanes.contains(model.selectedPane ?? .home) {
+                model.selectedPane = .home
+            }
+
             await model.refreshRuntimeState()
             model.startPolling()
 
             if model.setupCompleted && !hasSeenLaunchGuide {
+                try? await Task.sleep(for: .milliseconds(450))
                 showLaunchGuide = true
             }
         }
@@ -654,118 +1636,300 @@ private struct RootWorkspaceView: View {
                 )
             }
         }
-        .sheet(isPresented: $showLaunchGuide) {
-            LaunchGuideSheet {
-                hasSeenLaunchGuide = true
-                showLaunchGuide = false
-            }
-        }
     }
 
-    private var sidebar: some View {
+    private func sidebar(isCollapsed: Bool, isTight: Bool, isVeryTight: Bool) -> some View {
         RoachPanel {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 12) {
-                    RoachOrbitMark()
-                        .frame(width: 58, height: 58)
+            ZStack(alignment: .top) {
+                if isCollapsed {
+                    VStack(alignment: .center, spacing: 14) {
+                        RoachOrbitMark()
+                            .matchedGeometryEffect(id: "sidebar-mark", in: sidebarMotion)
+                            .frame(width: isVeryTight ? 58 : 66, height: isVeryTight ? 58 : 66)
+                            .padding(.top, 2)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("RoachNet")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(RoachPalette.text)
-                        Text("Your local command center")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(RoachPalette.muted)
-                    }
-                }
+                        sidebarToggleButton(isCollapsed: true)
+                            .matchedGeometryEffect(id: "sidebar-toggle", in: sidebarMotion)
 
-                VStack(spacing: 10) {
-                    ForEach(WorkspacePane.allCases) { pane in
+                        VStack(spacing: 10) {
+                            ForEach(visiblePanes) { pane in
+                                Button {
+                                    model.selectedPane = pane
+                                } label: {
+                                    RoachSidebarTile(
+                                        title: pane.rawValue,
+                                        subtitle: pane.subtitle,
+                                        systemName: pane.icon,
+                                        isSelected: activePane == pane,
+                                        isCompact: true
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .help("\(pane.rawValue): \(pane.subtitle)")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        Spacer(minLength: 0)
+
                         Button {
-                            model.selectedPane = pane
+                            showCommandPalette = true
                         } label: {
-                            RoachSidebarTile(
-                                title: pane.rawValue,
-                                subtitle: pane.subtitle,
-                                systemName: pane.icon,
-                                isSelected: model.selectedPane == pane
-                            )
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(RoachPalette.text)
+                                .frame(width: isVeryTight ? 44 : 48, height: isVeryTight ? 44 : 48)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .fill(RoachPalette.panelRaised.opacity(0.70))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(RoachPalette.border, lineWidth: 1)
+                                )
                         }
                         .buttonStyle(.plain)
+                        .help("Open Command Bar")
                     }
-                }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.94, anchor: .leading)),
+                            removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.88, anchor: .leading))
+                        )
+                    )
+                } else {
+                    VStack(alignment: .leading, spacing: isTight ? 14 : 18) {
+                        HStack(spacing: 14) {
+                            RoachOrbitMark()
+                                .matchedGeometryEffect(id: "sidebar-mark", in: sidebarMotion)
+                                .frame(width: isTight ? 82 : 96, height: isTight ? 82 : 96)
 
-                Spacer()
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("RoachNet")
+                                    .font(.system(size: isTight ? 26 : 30, weight: .bold))
+                                    .foregroundStyle(RoachPalette.text)
+                                Text("Your local command center")
+                                    .font(.system(size: isTight ? 11 : 12, weight: .regular))
+                                    .foregroundStyle(RoachPalette.muted)
+                            }
 
-                RoachInsetPanel {
-                    VStack(alignment: .leading, spacing: 10) {
-                        RoachKicker("System")
-                        RoachStatusRow(title: "Install", value: model.setupCompleted ? "Ready" : "Locked", accent: model.setupCompleted ? RoachPalette.success : RoachPalette.warning)
-                        RoachStatusRow(title: "Runtime", value: model.snapshot == nil ? "Offline" : "Live", accent: model.snapshot == nil ? RoachPalette.warning : RoachPalette.green)
+                            Spacer(minLength: 0)
+
+                            sidebarToggleButton(isCollapsed: false)
+                                .matchedGeometryEffect(id: "sidebar-toggle", in: sidebarMotion)
+                        }
+
+                        VStack(spacing: isTight ? 8 : 10) {
+                            ForEach(visiblePanes) { pane in
+                                Button {
+                                    model.selectedPane = pane
+                                } label: {
+                                    RoachSidebarTile(
+                                        title: pane.rawValue,
+                                        subtitle: pane.subtitle,
+                                        systemName: pane.icon,
+                                        isSelected: activePane == pane
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        Spacer()
+
+                        RoachInsetPanel {
+                            VStack(alignment: .leading, spacing: 10) {
+                                RoachKicker("System")
+                                RoachStatusRow(title: "Install", value: model.setupCompleted ? "Ready" : "Locked", accent: model.setupCompleted ? RoachPalette.success : RoachPalette.warning)
+                                RoachStatusRow(title: "Runtime", value: model.snapshot == nil ? "Offline" : "Live", accent: model.snapshot == nil ? RoachPalette.warning : RoachPalette.green)
+                                RoachStatusRow(title: "Storage", value: model.storagePath, accent: RoachPalette.green)
+                            }
+                        }
                     }
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.98, anchor: .leading)),
+                            removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .leading))
+                        )
+                    )
                 }
             }
+            .animation(shellSpring, value: isCollapsed)
         }
+        .clipped()
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
+    private func sidebarToggleButton(isCollapsed: Bool) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                sidebarCollapsed.toggle()
+            }
+        } label: {
+            Image(systemName: isCollapsed ? "sidebar.left" : "sidebar.leading")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(RoachPalette.text)
+                .frame(width: 36, height: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(RoachPalette.panelRaised.opacity(0.72))
+                )
+        }
+        .buttonStyle(.plain)
+        .help(isCollapsed ? "Expand sidebar" : "Collapse sidebar")
+    }
+
+    private func compactShellHeader(isTight: Bool) -> some View {
+        RoachPanel {
+            HStack(spacing: 16) {
+                RoachOrbitMark()
+                    .frame(width: isTight ? 76 : 88, height: isTight ? 76 : 88)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("RoachNet")
+                        .font(.system(size: isTight ? 26 : 30, weight: .bold))
+                        .foregroundStyle(RoachPalette.text)
+                    Text("Your local command center")
+                        .font(.system(size: isTight ? 11 : 12, weight: .regular))
+                        .foregroundStyle(RoachPalette.muted)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    showCommandPalette = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(RoachPalette.text)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(RoachPalette.panelRaised.opacity(0.72))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func compactNavigation(isTight: Bool) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(visiblePanes) { pane in
+                    Button {
+                        model.selectedPane = pane
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: pane.icon)
+                                .font(.system(size: isTight ? 12 : 13, weight: .semibold))
+                            Text(pane.rawValue)
+                                .font(.system(size: isTight ? 12 : 13, weight: .semibold))
+                        }
+                        .foregroundStyle(activePane == pane ? RoachPalette.text : RoachPalette.muted)
+                        .padding(.horizontal, isTight ? 12 : 14)
+                        .padding(.vertical, isTight ? 9 : 10)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    activePane == pane
+                                        ? RoachPalette.panelSoft.opacity(0.80)
+                                        : RoachPalette.panelRaised.opacity(0.46)
+                                )
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(
+                                    activePane == pane ? RoachPalette.green.opacity(0.28) : RoachPalette.border,
+                                    lineWidth: 1
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
     @ViewBuilder
-    private var detailPane: some View {
+    private func detailPane(isTight: Bool) -> some View {
         RoachPanel {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    headerBar
+                VStack(alignment: .leading, spacing: isTight ? 16 : 18) {
+                    headerBar(isTight: isTight)
 
                     if let errorLine = model.errorLine {
                         RoachNotice(title: "Runtime notice", detail: errorLine)
                     }
 
-                    commandTray
+                    commandTray(isTight: isTight)
 
                     if model.setupCompleted {
-                        switch model.selectedPane ?? .home {
-                        case .suite:
-                            suite
-                        case .home:
-                            home
-                        case .roachClaw:
-                            roachClaw
-                        case .maps:
-                            maps
-                        case .education:
-                            education
-                        case .archives:
-                            archives
-                        case .knowledge:
-                            knowledge
-                        case .runtime:
-                            runtime
+                        Group {
+                            switch activePane {
+                            case .suite, .home:
+                                home
+                            case .roachClaw:
+                                roachClaw
+                            case .maps:
+                                maps
+                            case .education:
+                                education
+                            case .archives:
+                                archives
+                            case .knowledge:
+                                knowledge
+                            case .runtime:
+                                runtime
+                            }
                         }
+                        .id(activePane.rawValue)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     } else {
-                            lockedState
+                        lockedState
+                            .id("locked")
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
+                .frame(maxWidth: isTight ? 1180 : 1260, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(shellSpring, value: activePane)
+                .animation(shellSpring, value: model.setupCompleted)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private var headerBar: some View {
-        HStack(spacing: 12) {
+    private func headerBar(isTight: Bool) -> some View {
+        let commandLabel = isTight ? "Command" : "Command Bar"
+        let sidebarLabel = sidebarCollapsed ? (isTight ? "Sidebar" : "Show Sidebar") : (isTight ? "Focus" : "Focus Mode")
+
+        return responsiveBar {
             VStack(alignment: .leading, spacing: 4) {
-                Text(model.selectedPane?.rawValue ?? "Home")
-                    .font(.system(size: 34, weight: .bold))
+                Text(activePane.rawValue)
+                    .font(.system(size: isTight ? 26 : 30, weight: .bold))
                     .foregroundStyle(RoachPalette.text)
-                Text(model.selectedPane?.subtitle ?? "Local-first control surface")
-                    .font(.system(size: 14, weight: .regular))
+                Text(activePane.subtitle)
+                    .font(.system(size: isTight ? 13 : 14, weight: .regular))
                     .foregroundStyle(RoachPalette.muted)
             }
-
-            Spacer()
+        } actions: {
+            Button(commandLabel) {
+                showCommandPalette = true
+            }
+            .buttonStyle(RoachSecondaryButtonStyle())
 
             Button("Guide") {
                 showLaunchGuide = true
+            }
+            .buttonStyle(RoachSecondaryButtonStyle())
+
+            Button(sidebarLabel) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    sidebarCollapsed.toggle()
+                }
             }
             .buttonStyle(RoachSecondaryButtonStyle())
 
@@ -773,18 +1937,30 @@ private struct RootWorkspaceView: View {
         }
     }
 
-    private var commandTray: some View {
-        RoachCommandTray(
-            label: "Command Bar",
-            prompt: "Jump between maps, education, archives, models, runtime, and sources from one place."
-        )
+    private func commandTray(isTight: Bool) -> some View {
+        Button {
+            showCommandPalette = true
+        } label: {
+            RoachCommandTray(
+                label: "Command Bar",
+                prompt: isTight
+                    ? "Jump between maps, models, runtime, downloads, and modules from one place."
+                    : "Jump between maps, education, archives, models, runtime, and sources from one place."
+            )
+        }
+        .buttonStyle(RoachCardButtonStyle())
+        .contentShape(Rectangle())
+        .keyboardShortcut("k", modifiers: [.command])
     }
 
     private var suite: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        let installedServices = serviceCatalogServices.filter { $0.installed ?? false }
+        let availableServices = serviceCatalogServices.filter { !($0.installed ?? false) }
+
+        return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
-                    RoachSectionHeader("Suite", title: "Everything stays together.", detail: "Maps, education, archives, and local AI live in one calm workspace.")
+                    RoachSectionHeader("Suite", title: "Everything stays together.", detail: "Installed modules open from here, and missing ones can be staged without leaving the app.")
 
                     LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
                         suiteCard(title: "Maps", detail: "Offline regions and route assets.", value: "\(model.snapshot?.mapCollections.count ?? 0) collections", pane: .maps)
@@ -792,7 +1968,29 @@ private struct RootWorkspaceView: View {
                         suiteCard(title: "Archives", detail: "Saved websites and captured references.", value: "\(model.snapshot?.siteArchives.count ?? 0) saved", pane: .archives)
                         suiteCard(title: "RoachClaw", detail: "Local AI with Ollama as the default lane.", value: roachClawSummary, pane: .roachClaw)
                     }
+
+                    LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
+                        RoachInfoPill(title: "Installed Modules", value: "\(installedServices.count)")
+                        RoachInfoPill(title: "Available Modules", value: "\(availableServices.count)")
+                        RoachInfoPill(title: "Failed Installs", value: "\(serviceCatalogServices.filter { $0.installation_status == "error" }.count)")
+                    }
                 }
+            }
+
+            if !installedServices.isEmpty {
+                serviceModuleSection(
+                    title: "Installed Modules",
+                    detail: "Launch the modules already staged in this RoachNet install.",
+                    services: installedServices
+                )
+            }
+
+            if !availableServices.isEmpty {
+                serviceModuleSection(
+                    title: "Available Modules",
+                    detail: "Project NOMAD-derived modules can be installed directly from the native shell.",
+                    services: availableServices
+                )
             }
         }
     }
@@ -820,6 +2018,8 @@ private struct RootWorkspaceView: View {
         let system = model.snapshot?.systemInfo
         let hardware = system?.hardwareProfile
         let roachClaw = model.snapshot?.roachClaw
+        let installedServices = serviceCatalogServices.filter { $0.installed ?? false }
+        let availableServices = serviceCatalogServices.filter { !($0.installed ?? false) }
 
         return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
@@ -838,7 +2038,7 @@ private struct RootWorkspaceView: View {
                     LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
                         RoachInfoPill(title: "Offline First", value: "Maps, Docs, AI")
                         RoachInfoPill(title: "Runtime", value: roachClaw?.preferredMode ?? hardware?.recommendedRuntime ?? "native_local")
-                        RoachInfoPill(title: "Default Model", value: roachClaw?.resolvedDefaultModel ?? roachClaw?.defaultModel ?? model.config.roachClawDefaultModel)
+                        RoachInfoPill(title: "Default Model", value: model.displayedRoachClawDefaultModel)
                     }
                 }
             }
@@ -878,27 +2078,72 @@ private struct RootWorkspaceView: View {
                         detail: "Launch installed RoachNet services and the core command surfaces from the native shell."
                     )
 
-                    LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
-                        ForEach(homeGridItems) { item in
-                            Button {
-                                Task { await model.openRoute(item.routePath, title: item.title) }
-                            } label: {
-                                commandGridCard(item)
+                    homeMenuStrip(
+                        installedCount: installedServices.count,
+                        availableCount: availableServices.count
+                    )
+
+                    if homeMenuSection == .commandDeck {
+                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
+                            ForEach(homeGridItems) { item in
+                                Button {
+                                    Task { await model.openRoute(item.routePath, title: item.title) }
+                                } label: {
+                                    commandGridCard(item)
+                                }
+                                .buttonStyle(RoachCardButtonStyle())
                             }
-                            .buttonStyle(.plain)
+                        }
+                    } else if homeMenuSection == .installedModules {
+                        if installedServices.isEmpty {
+                            emptyHomeMenuState(
+                                title: "No modules installed yet.",
+                                detail: "Use the Available Modules tab here on Home to stage the Project NOMAD-derived services you actually want."
+                            )
+                        } else {
+                            LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
+                                ForEach(installedServices) { service in
+                                    serviceModuleCard(service)
+                                }
+                            }
+                        }
+                    } else {
+                        if availableServices.isEmpty {
+                            emptyHomeMenuState(
+                                title: "Nothing left to stage.",
+                                detail: "All currently available modules are already installed in this RoachNet workspace."
+                            )
+                        } else {
+                            LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
+                                ForEach(availableServices) { service in
+                                    serviceModuleCard(service)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if readinessSteps.contains(where: { !$0.isReady }) {
+                RoachInsetPanel {
+                    VStack(alignment: .leading, spacing: 16) {
+                        responsiveBar {
+                            RoachSectionHeader(
+                                "Next Up",
+                                title: "Finish the missing pieces without guessing.",
+                                detail: "RoachNet surfaces what still needs a hand so you can keep the command deck calm."
+                            )
+                        } actions: {
+                            Button("Easy Setup") {
+                                Task { await model.openRoute("/easy-setup", title: "Easy Setup") }
+                            }
+                            .buttonStyle(RoachSecondaryButtonStyle())
                         }
 
-                        ForEach(serviceGridItems) { item in
-                            Button {
-                                Task {
-                                    if let service = model.snapshot?.services.first(where: { $0.service_name == item.id }) {
-                                        await model.openService(service)
-                                    }
-                                }
-                            } label: {
-                                commandGridCard(item)
+                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
+                            ForEach(readinessSteps.filter { !$0.isReady }) { step in
+                                readinessCard(step)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -907,7 +2152,7 @@ private struct RootWorkspaceView: View {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 12) {
                     RoachKicker("System Meta")
-                    HStack(spacing: 12) {
+                    responsiveBar {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("RoachNet")
                                 .font(.system(size: 18, weight: .bold))
@@ -917,8 +2162,7 @@ private struct RootWorkspaceView: View {
                                 .foregroundStyle(RoachPalette.muted)
                         }
 
-                        Spacer()
-
+                    } actions: {
                         Button("Guide") {
                             showLaunchGuide = true
                         }
@@ -936,15 +2180,27 @@ private struct RootWorkspaceView: View {
     private var roachClaw: some View {
         let roachClaw = model.snapshot?.roachClaw
         let providers = model.snapshot?.providers.providers ?? [:]
+        let chatModels = model.chatModelOptions
+        let recommendedQuickstartModel = model.recommendedLocalModels.first ?? model.config.roachClawDefaultModel
+        let cloudModels = chatModels.filter { $0.localizedCaseInsensitiveContains(":cloud") }
+        let activeModelDownloads = model.snapshot?.downloads.filter { $0.filetype == "model" && $0.status != "failed" } ?? []
 
         return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        RoachSectionHeader("RoachClaw", title: "Local AI, aligned.", detail: "A fast local default first, with room to grow later.")
-                        Spacer()
+                    responsiveBar {
+                        RoachSectionHeader(
+                            "RoachClaw",
+                            title: "Local AI, aligned.",
+                            detail: "A contained local lane first, with a cloud fallback for first boot and room to scale later."
+                        )
+                    } actions: {
                         Button("Open AI Control") {
                             Task { await model.openRoute("/settings/ai", title: "AI Control") }
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+                        Button("Model Store") {
+                            Task { await model.openRoute("/settings/models", title: "Model Store") }
                         }
                         .buttonStyle(RoachSecondaryButtonStyle())
                         Button(model.isApplyingDefaults ? "Saving..." : "Apply Defaults") {
@@ -957,13 +2213,59 @@ private struct RootWorkspaceView: View {
                     LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
                         RoachInfoPill(title: "Ollama", value: providerValue(providers["ollama"]))
                         RoachInfoPill(title: "OpenClaw", value: providerValue(providers["openclaw"]))
-                        RoachInfoPill(title: "Workspace", value: roachClaw?.workspacePath ?? "Loading")
+                        RoachInfoPill(title: "Workspace", value: workspaceValue(roachClaw?.workspacePath))
+                        RoachInfoPill(
+                            title: "Route",
+                            value: model.config.distributedInferenceBackend == "exo" ? "exo" : "single-machine"
+                        )
                     }
 
                     if let openclaw = providers["openclaw"], !openclaw.available {
                             Text("OpenClaw isn’t running yet. RoachNet can still use local Ollama while the agent runtime catches up.")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(RoachPalette.muted)
+                    } else {
+                        Text("RoachClaw stays inside this RoachNet workspace by default, so your global OpenClaw setup stays separate unless you choose to import it later.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(RoachPalette.muted)
+                    }
+                }
+            }
+
+            RoachInsetPanel {
+                VStack(alignment: .leading, spacing: 14) {
+                    responsiveBar {
+                        RoachSectionHeader(
+                            "Routing",
+                            title: "Keep one machine fast. Add more only when you mean it.",
+                            detail: "exo stays optional. Leave it off for the cleanest single-machine path, or point it at a cluster when you want distributed inference."
+                        )
+                    } actions: {
+                        Button("Save Route") {
+                            Task { await model.saveInferenceRoutingSettings() }
+                        }
+                        .buttonStyle(RoachPrimaryButtonStyle())
+                    }
+
+                    Picker("Inference Route", selection: $model.config.distributedInferenceBackend) {
+                        Text("Disabled").tag("disabled")
+                        Text("Exo").tag("exo")
+                    }
+                    .pickerStyle(.segmented)
+
+                    if model.config.distributedInferenceBackend == "exo" {
+                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
+                            RoachInlineField(
+                                title: "exo Base URL",
+                                value: $model.config.exoBaseUrl,
+                                placeholder: "http://127.0.0.1:52415"
+                            )
+                            RoachInlineField(
+                                title: "exo Model ID",
+                                value: $model.config.exoModelId,
+                                placeholder: "llama-3.2-3b"
+                            )
+                        }
                     }
                 }
             }
@@ -972,16 +2274,103 @@ private struct RootWorkspaceView: View {
                 RoachInsetPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         RoachKicker("Models")
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Pick the first lane on purpose.")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(RoachPalette.text)
+                            Text("RoachNet can queue the recommended local model for this machine, or keep the first prompt fast by aiming at a cloud lane while the contained local path warms up.")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(RoachPalette.muted)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
+                                Button("Quickstart Local") {
+                                    model.config.roachClawDefaultModel = recommendedQuickstartModel
+                                    model.selectedChatModel = recommendedQuickstartModel
+                                    Task { await model.applyRoachClawDefaults() }
+                                }
+                                .buttonStyle(RoachPrimaryButtonStyle())
+                                .disabled(model.isApplyingDefaults)
+
+                                if let cloudModel = cloudModels.first {
+                                    Button("Use Cloud First") {
+                                        model.selectedChatModel = cloudModel
+                                    }
+                                    .buttonStyle(RoachSecondaryButtonStyle())
+                                }
+
+                                Button("Open Model Store") {
+                                    Task { await model.openRoute("/settings/models", title: "Model Store") }
+                                }
+                                .buttonStyle(RoachSecondaryButtonStyle())
+                            }
+                        }
+                        Text(model.recommendedLocalModelSummary)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(RoachPalette.muted)
+                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 10) {
+                            RoachInfoPill(
+                                title: "Default",
+                                value: model.displayedRoachClawDefaultModel
+                            )
+                        RoachInfoPill(
+                            title: "Cloud Lane",
+                            value: model.hasCloudChatFallback ? "Ready" : "Not installed"
+                        )
+                    }
+                    if !activeModelDownloads.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            RoachKicker("Staging")
+                            Text("RoachNet is downloading the first contained local model now, so the RoachClaw lane will come online without borrowing a host Ollama install.")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(RoachPalette.muted)
+                            downloadsPanel(title: "Local Model Queue", jobs: activeModelDownloads)
+                        }
+                    }
+                    if !model.recommendedLocalModels.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoachKicker("Recommended")
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], alignment: .leading, spacing: 8) {
+                                ForEach(model.recommendedLocalModels, id: \.self) { modelName in
+                                        RoachTag(
+                                            modelName,
+                                            accent: modelName == model.config.roachClawDefaultModel ? RoachPalette.green : RoachPalette.magenta
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         if let installed = roachClaw?.installedModels, !installed.isEmpty {
-                            ForEach(installed.prefix(8), id: \.self) { modelName in
-                                Text(modelName)
-                                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(RoachPalette.text)
+                            VStack(alignment: .leading, spacing: 8) {
+                                RoachKicker("Installed")
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], alignment: .leading, spacing: 8) {
+                                    ForEach(installed.prefix(8), id: \.self) { modelName in
+                                        RoachTag(
+                                            modelName,
+                                            accent: modelName == roachClaw?.resolvedDefaultModel ? RoachPalette.green : RoachPalette.muted
+                                        )
+                                    }
+                                }
                             }
                         } else {
-                            Text("No local models detected yet.")
+                            Text(
+                                model.hasCloudChatFallback
+                                    ? "No local models are ready yet. RoachNet can answer through the cloud lane first while it stages the contained default model in the background."
+                                    : "No local models are detected yet. RoachNet will stage the quickstart model first, then you can move up to the machine-sized recommendation."
+                            )
                                 .font(.system(size: 14, weight: .regular))
                                 .foregroundStyle(RoachPalette.muted)
+                        }
+                        if !cloudModels.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                RoachKicker("Cloud")
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], alignment: .leading, spacing: 8) {
+                                    ForEach(cloudModels.prefix(4), id: \.self) { modelName in
+                                        RoachTag(
+                                            modelName,
+                                            accent: modelName == model.selectedChatModel ? RoachPalette.cyan : RoachPalette.cyan.opacity(0.86)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1014,11 +2403,32 @@ private struct RootWorkspaceView: View {
                     HStack {
                         RoachKicker("Workbench")
                         Spacer()
-                        Text(roachClaw?.resolvedDefaultModel ?? roachClaw?.defaultModel ?? model.config.roachClawDefaultModel)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        Menu {
+                            ForEach(chatModels, id: \.self) { modelName in
+                                Button(model.chatModelLabel(for: modelName)) {
+                                    model.selectedChatModel = modelName
+                                }
+                            }
+
+                            Divider()
+
+                            Button("Open Model Store") {
+                                Task { await model.openRoute("/settings/models", title: "Model Store") }
+                            }
+                        } label: {
+                            Text(model.selectedChatModelLabel)
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(RoachPalette.muted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+
+                    if model.hasCloudChatFallback {
+                        Text("Cloud-backed Ollama models are installed, so RoachNet can fall back there if the local lane stalls.")
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
                     }
 
                     ForEach(Array(model.chatLines.suffix(6))) { line in
@@ -1046,7 +2456,7 @@ private struct RootWorkspaceView: View {
                             Task { await model.sendPrompt() }
                         }
                         .buttonStyle(RoachPrimaryButtonStyle())
-                        .disabled(model.isSendingPrompt || roachClaw == nil)
+                        .disabled(model.isSendingPrompt || chatModels.isEmpty)
                     }
                 }
             }
@@ -1055,14 +2465,15 @@ private struct RootWorkspaceView: View {
 
     private var maps: some View {
         let collections = model.snapshot?.mapCollections ?? []
-        let activeMapDownloads = model.snapshot?.downloads.filter { $0.filetype == "map" } ?? []
+        let activeMapDownloads = model.snapshot?.downloads.filter { $0.filetype == "map" && $0.status != "failed" } ?? []
+        let failedMapDownloads = model.snapshot?.downloads.filter { $0.filetype == "map" && $0.status == "failed" } ?? []
 
         return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
+                    responsiveBar {
                         RoachSectionHeader("Maps", title: "Offline regions, ready to stage.", detail: "Download region packs, install the base atlas, and open the full map surface when you need it.")
-                        Spacer()
+                    } actions: {
                         Button("Open Full Maps") {
                             Task { await model.openRoute("/maps", title: "Maps") }
                         }
@@ -1076,6 +2487,21 @@ private struct RootWorkspaceView: View {
 
                     if !activeMapDownloads.isEmpty {
                         downloadsPanel(title: "Map Downloads", jobs: activeMapDownloads)
+                    }
+
+                    if !failedMapDownloads.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            RoachNotice(
+                                title: "Map downloads need another pass",
+                                detail: "\(failedMapDownloads.count) failed map jobs are still in the local queue history.",
+                                accent: RoachPalette.warning
+                            )
+
+                            Button("Clear Failed") {
+                                Task { await model.clearFailedDownloads(filetype: "map") }
+                            }
+                            .buttonStyle(RoachSecondaryButtonStyle())
+                        }
                     }
                 }
             }
@@ -1117,15 +2543,16 @@ private struct RootWorkspaceView: View {
     private var education: some View {
         let wikipedia = model.snapshot?.wikipediaState
         let categories = model.snapshot?.educationCategories ?? []
-        let activeEducationDownloads = model.snapshot?.downloads.filter { $0.filetype == "zim" } ?? []
+        let activeEducationDownloads = model.snapshot?.downloads.filter { $0.filetype == "zim" && $0.status != "failed" } ?? []
+        let failedEducationDownloads = model.snapshot?.downloads.filter { $0.filetype == "zim" && $0.status == "failed" } ?? []
         let selectedWikipediaName = wikipedia?.options.first(where: { $0.id == model.selectedWikipediaOptionId })?.name
 
         return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top) {
+                    responsiveBar {
                         RoachSectionHeader("Education", title: "Wikipedia and reference packs.", detail: "Pick a Wikipedia bundle, queue recommended content tiers, or open the full docs and setup surfaces.")
-                        Spacer()
+                    } actions: {
                         Button("Open Docs") {
                             Task { await model.openRoute("/docs/home", title: "Docs") }
                         }
@@ -1162,6 +2589,21 @@ private struct RootWorkspaceView: View {
 
                     if !activeEducationDownloads.isEmpty {
                         downloadsPanel(title: "Content Downloads", jobs: activeEducationDownloads)
+                    }
+
+                    if !failedEducationDownloads.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            RoachNotice(
+                                title: "Some education downloads failed earlier",
+                                detail: "\(failedEducationDownloads.count) failed jobs are still being shown from older attempts.",
+                                accent: RoachPalette.warning
+                            )
+
+                            Button("Clear Failed") {
+                                Task { await model.clearFailedDownloads(filetype: "zim") }
+                            }
+                            .buttonStyle(RoachSecondaryButtonStyle())
+                        }
                     }
                 }
             }
@@ -1209,9 +2651,9 @@ private struct RootWorkspaceView: View {
         return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
+                    responsiveBar {
                         RoachSectionHeader("Archives", title: "Saved sites stay close.", detail: "Open the offline web app manager or review mirrored sites already on disk.")
-                        Spacer()
+                    } actions: {
                         Button("Open Offline Web Apps") {
                             Task { await model.openRoute("/site-archives", title: "Offline Web Apps") }
                         }
@@ -1278,13 +2720,14 @@ private struct RootWorkspaceView: View {
     private var runtime: some View {
         let system = model.snapshot?.systemInfo
         let serverInfo = model.snapshot?.serverInfo
+        let failedDownloads = (model.snapshot?.downloads ?? []).filter { $0.status == "failed" }
 
         return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
+                    responsiveBar {
                         RoachSectionHeader("Runtime", title: "Contained and recoverable.", detail: "One local gateway in front, support services quietly doing their job behind it.")
-                        Spacer()
+                    } actions: {
                         Button(model.isLoading ? "Refreshing..." : "Refresh Runtime") {
                             Task { await model.refreshRuntimeState() }
                         }
@@ -1298,22 +2741,71 @@ private struct RootWorkspaceView: View {
 
                     VStack(spacing: 12) {
                         RoachStatusRow(title: "Install Root", value: model.installPath, accent: RoachPalette.green)
-                        RoachStatusRow(title: "Server Target", value: serverInfo?.target ?? "Loading", accent: RoachPalette.green)
-                        RoachStatusRow(title: "Host", value: system?.os.hostname ?? "Loading", accent: RoachPalette.green)
+                        RoachStatusRow(title: "Storage Root", value: model.storagePath, accent: RoachPalette.green)
+                        RoachStatusRow(title: "Server Target", value: runtimeTargetLabel(serverInfo?.target), accent: RoachPalette.green)
+                        RoachStatusRow(title: "Host", value: hostLabel(system?.os.hostname), accent: RoachPalette.green)
+                    }
+
+                    if !activeDownloads.isEmpty {
+                        downloadsPanel(title: "Active Jobs", jobs: activeDownloads)
+                    }
+
+                    if !failedDownloads.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            RoachNotice(
+                                title: "Download history contains failures",
+                                detail: "\(failedDownloads.count) failed jobs are still in the local queue history and can be cleared without touching installed content.",
+                                accent: RoachPalette.warning
+                            )
+
+                            Button("Clear Failed Jobs") {
+                                Task { await model.clearFailedDownloads() }
+                            }
+                            .buttonStyle(RoachSecondaryButtonStyle())
+                        }
                     }
                 }
             }
 
+            RoachInsetPanel {
+                VStack(alignment: .leading, spacing: 14) {
+                    responsiveBar {
+                        RoachSectionHeader("Storage", title: "Keep content where you want it.", detail: "RoachNet can move the local content library to another folder without editing config files by hand.")
+                    } actions: {
+                        Button("Open Folder") {
+                            model.openStorageInFinder()
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+                        Button(model.isRelocatingStorage ? "Moving..." : "Move Library") {
+                            Task { await model.promptForStorageRelocation() }
+                        }
+                        .buttonStyle(RoachPrimaryButtonStyle())
+                        .disabled(model.isRelocatingStorage)
+                    }
+
+                    RoachStatusRow(title: "Current Path", value: model.storagePath, accent: RoachPalette.green)
+                    Text("Maps, Wikipedia packages, archives, and other local content now follow this shared storage root.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(RoachPalette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
-                RoachMetricCard(label: "CPU", value: system?.cpu.brand ?? "Loading", detail: "Apple Silicon optimized path")
-                RoachMetricCard(label: "Memory", value: memoryLabel(system?.mem.total), detail: system?.hardwareProfile.memoryTier.capitalized ?? "Memory tier")
-                RoachMetricCard(label: "Logs", value: serverInfo?.logPath ?? "Loading", detail: "Runtime log location")
+                RoachMetricCard(label: "CPU", value: runtimeCPUValue(system), detail: runtimeCPUDetail(system))
+                RoachMetricCard(label: "Memory", value: memoryLabel(system?.mem.total), detail: memoryDetail(system))
+                RoachMetricCard(label: "Logs", value: logPathValue(serverInfo), detail: "Runtime log location")
+                RoachMetricCard(
+                    label: "Providers",
+                    value: providerSummary,
+                    detail: "Ollama and OpenClaw state from the shared AI runtime layer."
+                )
             }
         }
     }
 
     private var summaryColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 220), spacing: 16, alignment: .top)]
+        [GridItem(.adaptive(minimum: 176), spacing: 16, alignment: .top)]
     }
 
     private var homeGridItems: [CommandGridItem] {
@@ -1324,7 +2816,8 @@ private struct RootWorkspaceView: View {
                 detail: "View offline maps.",
                 badge: "Core Capability",
                 systemImage: "map.fill",
-                routePath: "/maps"
+                routePath: "/maps",
+                isInstalled: true
             ),
             CommandGridItem(
                 id: "ai-control",
@@ -1332,7 +2825,8 @@ private struct RootWorkspaceView: View {
                 detail: "Link Ollama and OpenClaw runtimes, verify endpoints, and tune local AI access.",
                 badge: "Runtime",
                 systemImage: "cpu.fill",
-                routePath: "/settings/ai"
+                routePath: "/settings/ai",
+                isInstalled: true
             ),
             CommandGridItem(
                 id: "easy-setup",
@@ -1340,7 +2834,8 @@ private struct RootWorkspaceView: View {
                 detail: "Use the guided setup flow to connect runtimes, download content, and stage your offline toolkit.",
                 badge: setupBadge,
                 systemImage: "bolt.fill",
-                routePath: "/easy-setup"
+                routePath: "/easy-setup",
+                isInstalled: true
             ),
             CommandGridItem(
                 id: "offline-web",
@@ -1348,7 +2843,8 @@ private struct RootWorkspaceView: View {
                 detail: "Mirror standard websites into browseable offline local web apps.",
                 badge: "Archived",
                 systemImage: "globe.badge.chevron.backward",
-                routePath: "/site-archives"
+                routePath: "/site-archives",
+                isInstalled: true
             ),
             CommandGridItem(
                 id: "install-apps",
@@ -1356,7 +2852,8 @@ private struct RootWorkspaceView: View {
                 detail: "Browse RoachNet modules, stage upstream tools, and make them feel local.",
                 badge: "App Store",
                 systemImage: "square.grid.2x2.fill",
-                routePath: "/settings/apps"
+                routePath: "/settings/apps",
+                isInstalled: true
             ),
             CommandGridItem(
                 id: "docs",
@@ -1364,7 +2861,8 @@ private struct RootWorkspaceView: View {
                 detail: "Read RoachNet manuals, deployment notes, and field references.",
                 badge: "Local Reference",
                 systemImage: "doc.text.fill",
-                routePath: "/docs/home"
+                routePath: "/docs/home",
+                isInstalled: true
             ),
             CommandGridItem(
                 id: "settings",
@@ -1372,57 +2870,333 @@ private struct RootWorkspaceView: View {
                 detail: "Tune RoachNet, providers, storage paths, and local services.",
                 badge: "System",
                 systemImage: "gearshape.fill",
-                routePath: "/settings/system"
+                routePath: "/settings/system",
+                isInstalled: true
             ),
         ]
     }
 
     private var serviceGridItems: [CommandGridItem] {
-        let services = model.snapshot?.services ?? []
-
-        return services
-            .filter { ($0.installed ?? false) && !($0.ui_location ?? "").isEmpty }
+        serviceCatalogServices
             .sorted {
                 ($0.display_order ?? 10_000, $0.friendly_name ?? $0.service_name)
                     < ($1.display_order ?? 10_000, $1.friendly_name ?? $1.service_name)
             }
             .map { service in
                 let descriptor = brandedServiceDescriptor(for: service)
+                let isInstalled = service.installed ?? false
 
                 return CommandGridItem(
                     id: service.service_name,
                     title: descriptor.title,
                     detail: descriptor.detail,
-                    badge: descriptor.badge,
+                    badge: isInstalled
+                        ? descriptor.badge
+                        : (service.installation_status == "error" ? "Retry install" : "Available to install"),
                     systemImage: descriptor.systemImage,
-                    routePath: service.ui_location ?? ""
+                    routePath: service.ui_location ?? "",
+                    isInstalled: isInstalled
                 )
             }
     }
 
+    private var commandPaletteEntries: [CommandPaletteEntry] {
+        let paneEntries = visiblePanes.map { pane in
+            CommandPaletteEntry(
+                id: "pane-\(pane.rawValue)",
+                title: pane.rawValue,
+                detail: pane.subtitle,
+                systemImage: pane.icon,
+                target: .pane(pane)
+            )
+        }
+
+        let routeEntries = homeGridItems.map { item in
+            CommandPaletteEntry(
+                id: "route-\(item.id)",
+                title: item.title,
+                detail: item.detail,
+                systemImage: item.systemImage,
+                target: .route(title: item.title, path: item.routePath)
+            )
+        }
+
+        let serviceEntries = serviceGridItems.map { item in
+            CommandPaletteEntry(
+                id: "service-\(item.id)",
+                title: item.title,
+                detail: item.detail,
+                systemImage: item.systemImage,
+                target: .service(serviceName: item.id)
+            )
+        }
+
+        return paneEntries
+            + routeEntries
+            + serviceEntries
+            + [
+                CommandPaletteEntry(
+                    id: "action-refresh-runtime",
+                    title: "Refresh Runtime",
+                    detail: "Pull a fresh native snapshot and recheck the local services.",
+                    systemImage: "arrow.clockwise",
+                    target: .refreshRuntime
+                ),
+                CommandPaletteEntry(
+                    id: "action-launch-guide",
+                    title: "Open Guided Tour",
+                    detail: "Replay the first-launch walkthrough for the command deck.",
+                    systemImage: "play.rectangle.fill",
+                    target: .launchGuide
+                ),
+            ]
+    }
+
+    private func performCommand(_ entry: CommandPaletteEntry) {
+        showCommandPalette = false
+
+        switch entry.target {
+        case let .pane(pane):
+            model.selectedPane = pane
+        case let .route(title, path):
+            Task { await model.openRoute(path, title: title) }
+        case let .service(serviceName):
+            Task {
+                if let service = model.snapshot?.services.first(where: { $0.service_name == serviceName }) {
+                    if service.installed ?? false {
+                        await model.openService(service)
+                    } else {
+                        await model.installService(service)
+                    }
+                }
+            }
+        case .refreshRuntime:
+            Task { await model.refreshRuntimeState() }
+        case .launchGuide:
+            showLaunchGuide = true
+        }
+    }
+
     private var providerSummary: String {
+        guard model.snapshot != nil else {
+            return "Warming up"
+        }
+
         guard let providers = model.snapshot?.providers.providers else {
-            return "Loading"
+            return "Unavailable"
         }
 
         let available = providers.values.filter(\.available).count
         return "\(available) Active"
     }
 
+    private var activeDownloads: [ManagedDownloadJob] {
+        (model.snapshot?.downloads ?? []).filter { $0.status == "active" }
+    }
+
+    private var visiblePanes: [WorkspacePane] {
+        WorkspacePane.allCases.filter { $0 != .suite }
+    }
+
+    private var readinessSteps: [ReadinessStep] {
+        let snapshot = model.snapshot
+        let wikipediaSelected = snapshot?.wikipediaState.currentSelection?.optionId != nil
+        let mapCount = snapshot?.mapCollections.count ?? 0
+        let providerReady = snapshot?.roachClaw.ollama.available == true || snapshot?.roachClaw.openclaw.available == true
+        let moduleCount = serviceCatalogServices.filter { $0.installed ?? false }.count
+
+        return [
+            ReadinessStep(
+                id: "runtime",
+                title: "Local runtime",
+                detail: "Keep the local gateway, settings, and command surfaces reachable from the native shell.",
+                status: snapshot == nil ? "Needs attention" : "Ready",
+                systemImage: "server.rack",
+                accent: snapshot == nil ? RoachPalette.warning : RoachPalette.green,
+                routePath: "/settings/system",
+                isReady: snapshot != nil
+            ),
+            ReadinessStep(
+                id: "providers",
+                title: "AI providers",
+                detail: "Link Ollama and OpenClaw so RoachClaw has a live lane instead of a placeholder.",
+                status: providerReady ? "Ready" : "Link AI",
+                systemImage: "cpu.fill",
+                accent: providerReady ? RoachPalette.green : RoachPalette.warning,
+                routePath: "/settings/ai",
+                isReady: providerReady
+            ),
+            ReadinessStep(
+                id: "maps",
+                title: "Offline maps",
+                detail: "Stage at least one map collection so the field lane is not empty on first use.",
+                status: mapCount > 0 ? "\(mapCount) ready" : "Install maps",
+                systemImage: "map.fill",
+                accent: mapCount > 0 ? RoachPalette.green : RoachPalette.warning,
+                routePath: "/maps",
+                isReady: mapCount > 0
+            ),
+            ReadinessStep(
+                id: "wikipedia",
+                title: "Wikipedia bundle",
+                detail: "Pick a Wikipedia package so the education lane has a real offline reference shelf.",
+                status: wikipediaSelected ? "Selected" : "Choose one",
+                systemImage: "books.vertical.fill",
+                accent: wikipediaSelected ? RoachPalette.green : RoachPalette.warning,
+                routePath: "/easy-setup",
+                isReady: wikipediaSelected
+            ),
+            ReadinessStep(
+                id: "modules",
+                title: "Installed modules",
+                detail: "Bring in the command-grid modules you actually want so the native shell opens meaningful lanes.",
+                status: moduleCount > 0 ? "\(moduleCount) installed" : "Install modules",
+                systemImage: "square.grid.2x2.fill",
+                accent: moduleCount > 0 ? RoachPalette.green : RoachPalette.warning,
+                routePath: "/settings/apps",
+                isReady: moduleCount > 0
+            ),
+        ]
+    }
+
     private func providerValue(_ provider: AIRuntimeStatusResponse?) -> String {
-        guard let provider else { return "Loading" }
-        return provider.available ? (provider.source.capitalized) : "Unavailable"
+        guard let provider else {
+            return model.snapshot == nil ? "Warming up" : "Unavailable"
+        }
+
+        if provider.available {
+            return provider.source.capitalized
+        }
+
+        if provider.source == "configured" {
+            return "Configured"
+        }
+
+        return "Unavailable"
     }
 
     private func memoryLabel(_ bytes: UInt64?) -> String {
-        guard let bytes else { return "Loading" }
+        guard let bytes, bytes > 0 else {
+            if let system = model.snapshot?.systemInfo {
+                return "\(system.hardwareProfile.memoryTier.capitalized) tier"
+            }
+            return model.snapshot == nil ? "Warming up" : "Unavailable"
+        }
+
         let gigabytes = Double(bytes) / 1_073_741_824
         return "\(Int(gigabytes.rounded())) GB"
     }
 
+    private func aiRuntimeStatusLabel(_ roachClaw: RoachClawStatusResponse?) -> String {
+        guard let roachClaw else {
+            return model.snapshot == nil ? "Warming up" : "Not linked"
+        }
+
+        if roachClaw.ollama.available {
+            return "Connected"
+        }
+
+        if roachClaw.openclaw.available {
+            return "OpenClaw linked"
+        }
+
+        return "Not linked"
+    }
+
+    private func aiRuntimeStatusAccent(_ roachClaw: RoachClawStatusResponse?) -> Color {
+        guard let roachClaw else {
+            return model.snapshot == nil ? RoachPalette.muted : RoachPalette.warning
+        }
+
+        return (roachClaw.ollama.available || roachClaw.openclaw.available)
+            ? RoachPalette.green
+            : RoachPalette.warning
+    }
+
+    private func aiRuntimeDetail(_ roachClaw: RoachClawStatusResponse?) -> String {
+        guard let roachClaw else {
+            return "RoachNet is still checking the local AI lanes."
+        }
+
+        if roachClaw.ollama.available {
+            return "Connected via \(roachClaw.ollama.source) at \(roachClaw.ollama.baseUrl ?? "configured endpoint")"
+        }
+
+        if roachClaw.openclaw.available {
+            return "OpenClaw is reachable while the local Ollama lane catches up."
+        }
+
+        return "Use AI Control or Easy Setup to connect a runtime."
+    }
+
+    private func workspaceValue(_ path: String?) -> String {
+        if let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return path
+        }
+
+        return URL(fileURLWithPath: model.storagePath)
+            .appendingPathComponent("openclaw")
+            .path
+    }
+
+    private func runtimeTargetLabel(_ target: String?) -> String {
+        if let target, !target.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return target.capitalized
+        }
+
+        return model.snapshot == nil ? "Warming up" : "Native shell"
+    }
+
+    private func hostLabel(_ hostname: String?) -> String {
+        if let hostname, !hostname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return hostname
+        }
+
+        return model.snapshot == nil ? "Warming up" : "This Mac"
+    }
+
+    private func runtimeCPUValue(_ system: SystemInfoResponse?) -> String {
+        if let brand = system?.cpu.brand?.trimmingCharacters(in: .whitespacesAndNewlines), !brand.isEmpty {
+            return brand
+        }
+
+        if let platform = system?.hardwareProfile.platformLabel.trimmingCharacters(in: .whitespacesAndNewlines), !platform.isEmpty, platform != "Unavailable" {
+            return platform
+        }
+
+        return model.snapshot == nil ? "Warming up" : "Local profile"
+    }
+
+    private func runtimeCPUDetail(_ system: SystemInfoResponse?) -> String {
+        if let hardwareProfile = system?.hardwareProfile {
+            return "\(hardwareProfile.recommendedRuntime == "native_local" ? "Native" : "Managed") path for \(hardwareProfile.recommendedModelClass)"
+        }
+
+        return "Apple Silicon optimized path"
+    }
+
+    private func memoryDetail(_ system: SystemInfoResponse?) -> String {
+        if let hardwareProfile = system?.hardwareProfile {
+            return "\(hardwareProfile.memoryTier.capitalized) memory tier"
+        }
+
+        return "Memory tier"
+    }
+
+    private func logPathValue(_ serverInfo: ManagedAppServerInfo?) -> String {
+        if let logPath = serverInfo?.logPath?.trimmingCharacters(in: .whitespacesAndNewlines), !logPath.isEmpty {
+            return logPath
+        }
+
+        return model.snapshot == nil ? "Preparing logs" : "Managed by runtime"
+    }
+
     private var roachClawSummary: String {
-        let roachClaw = model.snapshot?.roachClaw
-        return roachClaw?.resolvedDefaultModel ?? roachClaw?.defaultModel ?? model.config.roachClawDefaultModel
+        model.displayedRoachClawDefaultModel
+    }
+
+    private var serviceCatalogServices: [ManagedSystemService] {
+        model.snapshot?.services ?? []
     }
 
     private var educationSummary: String {
@@ -1454,7 +3228,171 @@ private struct RootWorkspaceView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RoachCardButtonStyle())
+    }
+
+    private func homeMenuStrip(installedCount: Int, availableCount: Int) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(HomeMenuSection.allCases) { section in
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            homeMenuSection = section
+                        }
+                    } label: {
+                        RoachTag(
+                            homeMenuLabel(for: section, installedCount: installedCount, availableCount: availableCount),
+                            accent: homeMenuSection == section ? RoachPalette.green : RoachPalette.muted
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func emptyHomeMenuState(title: String, detail: String) -> some View {
+        RoachInsetPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(RoachPalette.text)
+                Text(detail)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(RoachPalette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func homeMenuLabel(
+        for section: HomeMenuSection,
+        installedCount: Int,
+        availableCount: Int
+    ) -> String {
+        switch section {
+        case .commandDeck:
+            return "Command Deck"
+        case .installedModules:
+            return "Installed Modules · \(installedCount)"
+        case .availableModules:
+            return "Available Modules · \(availableCount)"
+        }
+    }
+
+    private func responsiveBar<HeaderContent: View, ActionsContent: View>(
+        @ViewBuilder header: () -> HeaderContent,
+        @ViewBuilder actions: () -> ActionsContent
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                header()
+                Spacer(minLength: 12)
+                HStack(spacing: 12) {
+                    actions()
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                header()
+                HStack(spacing: 12) {
+                    actions()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func serviceModuleSection(
+        title: String,
+        detail: String,
+        services: [ManagedSystemService]
+    ) -> some View {
+        RoachInsetPanel {
+            VStack(alignment: .leading, spacing: 16) {
+                RoachSectionHeader("Modules", title: title, detail: detail)
+
+                LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
+                    ForEach(services) { service in
+                        serviceModuleCard(service)
+                    }
+                }
+            }
+        }
+    }
+
+    private func serviceModuleCard(_ service: ManagedSystemService) -> some View {
+        let descriptor = brandedServiceDescriptor(for: service)
+        let isInstalled = service.installed ?? false
+        let actionLabel = moduleActionLabel(for: service)
+        let actionBusy = model.activeActions.contains("service-\(service.service_name)")
+        let status = moduleStatusLabel(for: service)
+        let statusAccent = moduleStatusAccent(for: service)
+
+        return RoachInsetPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    Image(systemName: descriptor.systemImage)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(isInstalled ? RoachPalette.green : RoachPalette.warning)
+                        .frame(width: 42, height: 42)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(RoachPalette.panelRaised.opacity(0.92))
+                        )
+
+                    Spacer(minLength: 10)
+
+                    RoachTag(
+                        isInstalled ? "Installed" : "Available",
+                        accent: isInstalled ? RoachPalette.green : RoachPalette.warning
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(descriptor.title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(RoachPalette.text)
+                    Text(descriptor.detail)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(RoachPalette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(spacing: 8) {
+                    RoachStatusRow(title: "Status", value: status, accent: statusAccent)
+                    RoachStatusRow(
+                        title: "Surface",
+                        value: moduleSurfaceLabel(for: service),
+                        accent: isInstalled ? RoachPalette.green : RoachPalette.muted
+                    )
+                }
+
+                HStack(spacing: 12) {
+                    if isInstalled {
+                        Button(actionBusy ? "Opening..." : actionLabel) {
+                            Task { await model.openService(service) }
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+                        .disabled(actionBusy)
+                    } else {
+                        Button(actionBusy ? "Installing..." : actionLabel) {
+                            Task { await model.installService(service) }
+                        }
+                        .buttonStyle(RoachPrimaryButtonStyle())
+                        .disabled(actionBusy || service.installation_status == "installing")
+                    }
+
+                    if let poweredBy = service.powered_by, !poweredBy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(poweredBy)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(RoachPalette.muted)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 214, alignment: .topLeading)
+        }
     }
 
     private var bundleVersion: String {
@@ -1543,15 +3481,123 @@ private struct RootWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(item.title)
-                        .font(.system(size: 21, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(RoachPalette.text)
+                        .minimumScaleFactor(0.82)
                     Text(item.detail)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                HStack {
+                    Text(item.isInstalled ? "Open module" : "Install module")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(item.isInstalled ? RoachPalette.green : RoachPalette.warning)
+                    Spacer()
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 168, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 136, alignment: .topLeading)
+        }
+    }
+
+    private func moduleStatusLabel(for service: ManagedSystemService) -> String {
+        if service.installed == true {
+            return service.status?.capitalized ?? "Installed"
+        }
+
+        switch service.installation_status {
+        case "installing":
+            return "Installing"
+        case "error":
+            return "Needs retry"
+        default:
+            return "Available"
+        }
+    }
+
+    private func moduleStatusAccent(for service: ManagedSystemService) -> Color {
+        if service.installed == true {
+            return RoachPalette.green
+        }
+
+        switch service.installation_status {
+        case "installing":
+            return RoachPalette.cyan
+        case "error":
+            return RoachPalette.warning
+        default:
+            return RoachPalette.muted
+        }
+    }
+
+    private func moduleSurfaceLabel(for service: ManagedSystemService) -> String {
+        guard let location = service.ui_location, !location.isEmpty else {
+            return "Native only"
+        }
+
+        return location.hasPrefix("/") ? location : "Port \(location)"
+    }
+
+    private func moduleActionLabel(for service: ManagedSystemService) -> String {
+        if service.installed == true {
+            return "Open Module"
+        }
+
+        if service.installation_status == "installing" {
+            return "Installing..."
+        }
+
+        if service.installation_status == "error" {
+            return "Retry Install"
+        }
+
+        return "Install Module"
+    }
+
+    private func readinessCard(_ step: ReadinessStep) -> some View {
+        RoachInsetPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    Image(systemName: step.systemImage)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(step.accent)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(RoachPalette.panelRaised.opacity(0.92))
+                        )
+
+                    Spacer(minLength: 12)
+
+                    RoachTag(step.status, accent: step.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(step.title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(RoachPalette.text)
+                    Text(step.detail)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(RoachPalette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let routePath = step.routePath {
+                    if step.isReady {
+                        Button("Review") {
+                            Task { await model.openRoute(routePath, title: step.title) }
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+                    } else {
+                        Button("Fix This") {
+                            Task { await model.openRoute(routePath, title: step.title) }
+                        }
+                        .buttonStyle(RoachPrimaryButtonStyle())
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 172, alignment: .topLeading)
         }
     }
 
@@ -1610,12 +3656,37 @@ private struct RootWorkspaceView: View {
     }
 }
 final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
+    weak var model: WorkspaceModel?
+    private var isHandlingTermination = false
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
+        true
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model else {
+            return .terminateNow
+        }
+
+        guard !isHandlingTermination else {
+            return .terminateLater
+        }
+
+        isHandlingTermination = true
+
+        Task {
+            await model.shutdownRuntime()
+            await MainActor.run {
+                self.isHandlingTermination = false
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+        }
+
+        return .terminateLater
     }
 }
 

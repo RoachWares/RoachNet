@@ -179,8 +179,13 @@ export class OpenClawService {
       candidates.push({ baseUrl: normalizedBaseUrl, source })
     }
 
-    addCandidate(settingUrl, 'configured')
-    addCandidate(configuredUrl, 'configured')
+    if (process.env.ROACHNET_NATIVE_ONLY === '1') {
+      addCandidate(configuredUrl, 'configured')
+      addCandidate(settingUrl, 'configured')
+    } else {
+      addCandidate(settingUrl, 'configured')
+      addCandidate(configuredUrl, 'configured')
+    }
     addCandidate('http://127.0.0.1:3001', 'local')
     addCandidate('http://localhost:3001', 'local')
 
@@ -257,7 +262,11 @@ export class OpenClawService {
   private async getWorkspacePath(): Promise<string> {
     const settingPath = (await KVStore.getValue('ai.openclawWorkspacePath'))?.trim()
     const configuredPath = env.get('OPENCLAW_WORKSPACE_PATH')?.trim()
-    return path.resolve(settingPath || configuredPath || DEFAULT_OPENCLAW_WORKSPACE_PATH)
+    const preferredPath =
+      process.env.ROACHNET_NATIVE_ONLY === '1'
+        ? configuredPath || settingPath
+        : settingPath || configuredPath
+    return path.resolve(preferredPath || DEFAULT_OPENCLAW_WORKSPACE_PATH)
   }
 
   private getNpxBinary(): string {

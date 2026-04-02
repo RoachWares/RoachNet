@@ -12,6 +12,8 @@ import {
   deleteFileIfExists,
   getFile,
   ensureDirectoryExists,
+  MAPS_STORAGE_PATH,
+  resolveStoragePath,
 } from '../utils/fs.js'
 import { join, resolve, sep } from 'path'
 import urlJoin from 'url-join'
@@ -36,11 +38,11 @@ interface IMapService {
 }
 
 export class MapService implements IMapService {
-  private readonly mapStoragePath = join('storage', 'maps')
+  private readonly mapStoragePath = MAPS_STORAGE_PATH
   private readonly baseStylesFile = 'nomad-base-styles.json'
   private readonly basemapsAssetsDir = 'basemaps-assets'
   private readonly baseAssetsTarFile = 'base-assets.tar.gz'
-  private readonly baseDirPath = join(process.cwd(), this.mapStoragePath)
+  private readonly baseDirPath = resolveStoragePath(this.mapStoragePath)
   private baseAssetsExistCache: boolean | null = null
 
   async listRegions() {
@@ -78,7 +80,7 @@ export class MapService implements IMapService {
     }
 
     await extract({
-      cwd: join(process.cwd(), this.mapStoragePath),
+      cwd: this.baseDirPath,
       file: tempTarPath,
       strip: 1,
     })
@@ -122,7 +124,7 @@ export class MapService implements IMapService {
       }
 
       downloadFilenames.push(filename)
-      const filepath = join(process.cwd(), this.mapStoragePath, 'pmtiles', filename)
+      const filepath = join(this.baseDirPath, 'pmtiles', filename)
 
       await RunDownloadJob.dispatch({
         url: resource.url,
@@ -151,7 +153,7 @@ export class MapService implements IMapService {
       const parsed = CollectionManifestService.parseMapFilename(filename)
       if (!parsed) continue
 
-      const filepath = join(process.cwd(), this.mapStoragePath, 'pmtiles', filename)
+      const filepath = join(this.baseDirPath, 'pmtiles', filename)
       const stats = await getFileStatsIfExists(filepath)
 
       try {
@@ -189,7 +191,7 @@ export class MapService implements IMapService {
       throw new Error('Could not determine filename from URL')
     }
 
-    const filepath = join(process.cwd(), this.mapStoragePath, 'pmtiles', filename)
+    const filepath = join(this.baseDirPath, 'pmtiles', filename)
 
 
     // First, ensure base assets are present - regions depend on them

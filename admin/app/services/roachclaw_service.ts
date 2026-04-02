@@ -17,6 +17,8 @@ import { getErrorMessage } from '../utils/errors.js'
 import { findCommandPath } from '../utils/process.js'
 import { PREFERRED_ROACHCLAW_MODELS } from '../../constants/ollama.js'
 
+const ROACHCLAW_OPENCLAW_STATE_DIRNAME = '.openclaw-runtime'
+
 @inject()
 export class RoachClawService {
   constructor(
@@ -24,6 +26,23 @@ export class RoachClawService {
     private ollamaService: OllamaService,
     private openClawService: OpenClawService
   ) {}
+
+  private async withTimeout<T>(work: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+    let timeoutHandle: NodeJS.Timeout | undefined
+
+    try {
+      return await Promise.race([
+        work,
+        new Promise<T>((resolve) => {
+          timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs)
+        }),
+      ])
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
+      }
+    }
+  }
 
   public async getStatus(): Promise<RoachClawStatusResponse> {
     const [ollama, openclaw, cliStatus, defaultModel] = await Promise.all([
@@ -36,7 +55,7 @@ export class RoachClawService {
     let installedModels: string[] = []
     if (ollama.available) {
       try {
-        installedModels = (await this.ollamaService.getModels())
+        installedModels = (await this.withTimeout(this.ollamaService.getModels(), 2_500, []))
           .map((model) => model.name)
           .filter((modelName) => !modelName.endsWith(':cloud'))
       } catch {
@@ -85,15 +104,18 @@ export class RoachClawService {
         env.get('OPENCLAW_WORKSPACE_PATH') ||
         path.join(process.cwd(), 'storage', 'openclaw')
     )
+    const preferNativeManagedLane = process.env.ROACHNET_NATIVE_ONLY === '1'
     const ollamaBaseUrl =
       payload.ollamaBaseUrl?.trim() ||
-      ((await KVStore.getValue('ai.ollamaBaseUrl')) as string | null) ||
-      env.get('OLLAMA_BASE_URL') ||
+      (preferNativeManagedLane
+        ? env.get('OLLAMA_BASE_URL') || ((await KVStore.getValue('ai.ollamaBaseUrl')) as string | null)
+        : ((await KVStore.getValue('ai.ollamaBaseUrl')) as string | null) || env.get('OLLAMA_BASE_URL')) ||
       'http://127.0.0.1:11434'
     const openclawBaseUrl =
       payload.openclawBaseUrl?.trim() ||
-      ((await KVStore.getValue('ai.openclawBaseUrl')) as string | null) ||
-      env.get('OPENCLAW_BASE_URL') ||
+      (preferNativeManagedLane
+        ? env.get('OPENCLAW_BASE_URL') || ((await KVStore.getValue('ai.openclawBaseUrl')) as string | null)
+        : ((await KVStore.getValue('ai.openclawBaseUrl')) as string | null) || env.get('OPENCLAW_BASE_URL')) ||
       'http://127.0.0.1:3001'
 
     await mkdir(workspacePath, { recursive: true })
@@ -110,31 +132,7 @@ export class RoachClawService {
       KVStore.setValue('ai.roachclawDefaultModel', normalizedModel),
     ])
 
-    let configFilePath: string | null = null
-    let message = `RoachClaw saved ${normalizedModel} as the default local model.`
-
-    try {
-      const cliConfigResult = await this.applyOpenClawCliConfig(
-        workspacePath,
-        normalizedModel,
-        ollamaBaseUrl
-      )
-      configFilePath = await this.tryGetOpenClawConfigPath(workspacePath)
-      if (cliConfigResult.failures.length === 0) {
-        message =
-          `RoachClaw configured OpenClaw to default to ollama/${normalizedModel} ` +
-          `and set the workspace to ${workspacePath}.`
-      } else {
-        message =
-          `RoachClaw saved the local defaults and applied OpenClaw CLI settings with ` +
-          `${cliConfigResult.failures.length} non-fatal issue(s). Check the server logs if a CLI value did not stick yet.`
-      }
-    } catch (error) {
-      logger.warn(
-        `[RoachClawService] OpenClaw CLI configuration did not finish cleanly: ${getErrorMessage(error)}`
-      )
-      message += ' OpenClaw CLI config did not finish cleanly, so only the RoachNet-side defaults were guaranteed.'
-    }
+    const configFilePath = await this.tryGetOpenClawConfigPath(workspacePath)
 
     await this.writeRoachClawProfile({
       workspacePath,
@@ -144,9 +142,21 @@ export class RoachClawService {
       configFilePath,
     })
 
+    // Do not block the first-boot UX on OpenClaw CLI reconciliation. The
+    // contained Ollama download queue is the critical path; the CLI settings can
+    // converge in the background once the local lane is staged.
+    void this.reconcileOpenClawCliConfig({
+      workspacePath,
+      model: normalizedModel,
+      ollamaBaseUrl,
+      openclawBaseUrl,
+    })
+
     return {
       success: true,
-      message,
+      message:
+        `RoachClaw saved ${normalizedModel} as the contained default model and ` +
+        `queued any missing local download. OpenClaw is reconciling in the background.`,
       model: normalizedModel,
       workspacePath,
       configFilePath,
@@ -199,19 +209,28 @@ export class RoachClawService {
 
   private async runOpenClawCommand(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
     await mkdir(cwd, { recursive: true })
+    const openclawEnv = await this.getOpenClawProcessEnv(cwd)
 
     if (await this.commandExists(this.getOpenClawBinary())) {
-      return this.runCommand(this.getOpenClawBinary(), args, cwd)
+      return this.runCommand(this.getOpenClawBinary(), args, cwd, openclawEnv)
     }
 
-    return this.runCommand(this.getNpxBinary(), ['-y', 'openclaw', ...args], cwd)
+    return this.runCommand(this.getNpxBinary(), ['-y', 'openclaw', ...args], cwd, openclawEnv)
   }
 
-  private async runCommand(binary: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+  private async runCommand(
+    binary: string,
+    args: string[],
+    cwd: string,
+    envOverrides: NodeJS.ProcessEnv = {}
+  ): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       const child = spawn(binary, args, {
         cwd,
-        env: process.env,
+        env: {
+          ...process.env,
+          ...envOverrides,
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
 
@@ -336,6 +355,20 @@ export class RoachClawService {
     }
   }
 
+  private async getOpenClawProcessEnv(workspacePath: string): Promise<NodeJS.ProcessEnv> {
+    const normalizedWorkspacePath = path.resolve(workspacePath)
+    const runtimeStateDir = path.join(normalizedWorkspacePath, ROACHCLAW_OPENCLAW_STATE_DIRNAME)
+    const configPath = path.join(runtimeStateDir, 'openclaw.json')
+
+    await mkdir(runtimeStateDir, { recursive: true })
+
+    return {
+      OPENCLAW_WORKSPACE_PATH: normalizedWorkspacePath,
+      OPENCLAW_STATE_DIR: runtimeStateDir,
+      OPENCLAW_CONFIG_PATH: configPath,
+    }
+  }
+
   private async writeRoachClawProfile(input: {
     workspacePath: string
     model: string
@@ -360,5 +393,39 @@ export class RoachClawService {
       ) + '\n',
       'utf8'
     )
+  }
+
+  private async reconcileOpenClawCliConfig(input: {
+    workspacePath: string
+    model: string
+    ollamaBaseUrl: string
+    openclawBaseUrl: string
+  }) {
+    try {
+      const cliConfigResult = await this.applyOpenClawCliConfig(
+        input.workspacePath,
+        input.model,
+        input.ollamaBaseUrl
+      )
+      const configFilePath = await this.tryGetOpenClawConfigPath(input.workspacePath)
+
+      await this.writeRoachClawProfile({
+        workspacePath: input.workspacePath,
+        model: input.model,
+        ollamaBaseUrl: input.ollamaBaseUrl,
+        openclawBaseUrl: input.openclawBaseUrl,
+        configFilePath,
+      })
+
+      if (cliConfigResult.failures.length > 0) {
+        logger.warn(
+          `[RoachClawService] OpenClaw CLI finished with ${cliConfigResult.failures.length} non-fatal issue(s).`
+        )
+      }
+    } catch (error) {
+      logger.warn(
+        `[RoachClawService] Background OpenClaw reconciliation did not finish cleanly: ${getErrorMessage(error)}`
+      )
+    }
   }
 }

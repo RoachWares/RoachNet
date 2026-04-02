@@ -11,6 +11,8 @@
 import router from '@adonisjs/core/services/router'
 import server from '@adonisjs/core/services/server'
 
+const nativeOnly = process.env.ROACHNET_NATIVE_ONLY === '1'
+
 /**
  * The error handler is used to convert an exception
  * to an HTTP response.
@@ -25,10 +27,10 @@ server.errorHandler(() => import('#exceptions/handler'))
 server.use([
   () => import('#middleware/container_bindings_middleware'),
   () => import('@adonisjs/cors/cors_middleware'),
-  () => import('@adonisjs/vite/vite_middleware'),
-  () => import('@adonisjs/inertia/inertia_middleware'),
-  () => import('@adonisjs/static/static_middleware'),
-  () => import('#middleware/maps_static_middleware')
+  ...(nativeOnly ? [] : [() => import('@adonisjs/vite/vite_middleware')]),
+  ...(nativeOnly ? [] : [() => import('@adonisjs/inertia/inertia_middleware')]),
+  ...(nativeOnly ? [] : [() => import('@adonisjs/static/static_middleware')]),
+  ...(nativeOnly ? [] : [() => import('#middleware/maps_static_middleware')]),
 ])
 
 /**
@@ -36,9 +38,10 @@ server.use([
  * requests with a registered route.
  */
 router.use([
+  ...(nativeOnly ? [() => import('#middleware/native_request_probe_middleware')] : []),
   () => import('@adonisjs/core/bodyparser_middleware'),
   // () => import('@adonisjs/session/session_middleware'),
-  () => import('@adonisjs/shield/shield_middleware'),
+  ...(nativeOnly ? [] : [() => import('@adonisjs/shield/shield_middleware')]),
 ])
 
 /**

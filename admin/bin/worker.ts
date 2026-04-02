@@ -118,7 +118,7 @@ function getWorkerDefinitions(): Promise<WorkerRecord[]> {
 
 const ignitor = new Ignitor(APP_ROOT, { importer: IMPORTER })
 
-ignitor.tap((app) => {
+ignitor.tap((app: any) => {
   app.booting(async () => {
     bootDebug('app:booting:start')
     await import('#start/env')

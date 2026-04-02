@@ -280,6 +280,8 @@ public actor ManagedAppRuntimeBridge {
         environment["ROACHNET_NO_BROWSER"] = "1"
         environment["ROACHNET_SERVER_INFO_FILE"] = infoURL.path
         environment["ROACHNET_REPO_ROOT"] = repoRoot.path
+        environment["ROACHNET_RUNTIME_STATE_ROOT"] = RoachNetRepositoryLocator.defaultRuntimeStatePath()
+        environment["ROACHNET_ROACHCLAW_DEFAULT_MODEL"] = config.roachClawDefaultModel
         process.environment = environment
 
         try process.run()
@@ -431,6 +433,46 @@ public actor ManagedAppRuntimeBridge {
         let _: EmptyOKResponse = try await post("/api/roachclaw/apply", baseURL: baseURL, body: payload)
     }
 
+    public func installService(
+        using config: RoachNetInstallerConfig,
+        serviceName: String
+    ) async throws -> String {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+
+        struct Payload: Encodable {
+            let service_name: String
+        }
+
+        let response: ActionResponse = try await post(
+            "/api/system/services/install",
+            baseURL: baseURL,
+            body: Payload(service_name: serviceName)
+        )
+        return response.message ?? "Service install queued."
+    }
+
+    public func affectService(
+        using config: RoachNetInstallerConfig,
+        serviceName: String,
+        action: String
+    ) async throws -> String {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+
+        struct Payload: Encodable {
+            let service_name: String
+            let action: String
+        }
+
+        let response: ActionResponse = try await post(
+            "/api/system/services/affect",
+            baseURL: baseURL,
+            body: Payload(service_name: serviceName, action: action)
+        )
+        return response.message ?? "Service action queued."
+    }
+
     public func downloadBaseMapAssets(using config: RoachNetInstallerConfig) async throws -> String {
         let serverInfo = try await ensureRunning(using: config)
         let baseURL = try runtimeBaseURL(from: serverInfo)
@@ -498,6 +540,15 @@ public actor ManagedAppRuntimeBridge {
         return response.message ?? "Wikipedia selection updated."
     }
 
+    public func removeDownloadJob(
+        using config: RoachNetInstallerConfig,
+        jobId: String
+    ) async throws {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+        let _: EmptyOKResponse = try await delete("/api/downloads/jobs/\(jobId)", baseURL: baseURL)
+    }
+
     public func resolveRouteURL(using config: RoachNetInstallerConfig, path: String) async throws -> URL {
         let serverInfo = try await ensureRunning(using: config)
         let baseURLString = serverInfo.webUrl ?? serverInfo.healthUrl
@@ -522,7 +573,8 @@ public actor ManagedAppRuntimeBridge {
     public func sendChat(
         using config: RoachNetInstallerConfig,
         model: String,
-        prompt: String
+        prompt: String,
+        timeout: TimeInterval = 120
     ) async throws -> String {
         let serverInfo = try await ensureRunning(using: config)
         let baseURL = try runtimeBaseURL(from: serverInfo)
@@ -546,8 +598,51 @@ public actor ManagedAppRuntimeBridge {
             messages: [.init(role: "user", content: prompt)]
         )
 
-        let response: OllamaChatResponse = try await post("/api/ollama/chat", baseURL: baseURL, body: payload)
+        let response: OllamaChatResponse = try await post(
+            "/api/ollama/chat",
+            baseURL: baseURL,
+            body: payload,
+            timeoutInterval: timeout
+        )
         return response.message?.content ?? ""
+    }
+
+    public func stopRuntime(using config: RoachNetInstallerConfig) async {
+        let repoRoot = resolveRuntimeRoot(from: config)
+        let scriptURL = repoRoot.appendingPathComponent("scripts/run-roachnet.mjs")
+
+        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+            cachedServerInfo = nil
+            process = nil
+            return
+        }
+
+        let node = RoachNetRepositoryLocator.preferredNodeBinary()
+        let stopProcess = Process()
+        stopProcess.currentDirectoryURL = repoRoot
+        stopProcess.executableURL = URL(fileURLWithPath: node)
+        stopProcess.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path, "--stop"] : [scriptURL.path, "--stop"]
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["ROACHNET_NO_BROWSER"] = "1"
+        environment["ROACHNET_REPO_ROOT"] = repoRoot.path
+        environment["ROACHNET_RUNTIME_STATE_ROOT"] = RoachNetRepositoryLocator.defaultRuntimeStatePath()
+        stopProcess.environment = environment
+
+        do {
+            try stopProcess.run()
+            stopProcess.waitUntilExit()
+        } catch {
+            NSLog("[ManagedAppRuntimeBridge] Failed to stop runtime: %@", error.localizedDescription)
+        }
+
+        cachedServerInfo = nil
+        process = nil
+        serverInfoURL = nil
+    }
+
+    public func stopRuntime() async {
+        await stopRuntime(using: RoachNetRepositoryLocator.readConfig())
     }
 
     private func resolveRuntimeRoot(from config: RoachNetInstallerConfig) -> URL {
@@ -580,8 +675,11 @@ public actor ManagedAppRuntimeBridge {
     }
 
     private func defaultWorkspacePath(from config: RoachNetInstallerConfig) -> String {
-        URL(fileURLWithPath: config.installPath)
-            .appendingPathComponent("storage")
+        let storageRoot = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+
+        return URL(fileURLWithPath: storageRoot)
             .appendingPathComponent("openclaw")
             .path
     }
@@ -707,10 +805,15 @@ public actor ManagedAppRuntimeBridge {
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
-    private func post<Response: Decodable>(_ path: String, baseURL: URL, body: some Encodable) async throws -> Response {
+    private func post<Response: Decodable>(
+        _ path: String,
+        baseURL: URL,
+        body: some Encodable,
+        timeoutInterval: TimeInterval = 120
+    ) async throws -> Response {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "POST"
-        request.timeoutInterval = 120
+        request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(AnyEncodable(body))
 
@@ -721,6 +824,27 @@ public actor ManagedAppRuntimeBridge {
             throw NSError(domain: "RoachNetRuntime", code: status, userInfo: [
                 NSLocalizedDescriptionKey: "POST \(path) failed with status \(status)."
             ])
+        }
+
+        return try JSONDecoder().decode(Response.self, from: data)
+    }
+
+    private func delete<Response: Decodable>(_ path: String, baseURL: URL) async throws -> Response {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 60
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+
+        guard (200..<300).contains(status) else {
+            throw NSError(domain: "RoachNetRuntime", code: status, userInfo: [
+                NSLocalizedDescriptionKey: "DELETE \(path) failed with status \(status)."
+            ])
+        }
+
+        if data.isEmpty {
+            return EmptyOKResponse(success: true, ok: true, message: nil) as! Response
         }
 
         return try JSONDecoder().decode(Response.self, from: data)

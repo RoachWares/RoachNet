@@ -1,9 +1,10 @@
 import Service from '#models/service'
+import KVStore from '#models/kv_store'
 import { inject } from '@adonisjs/core'
-import { DockerService } from '#services/docker_service'
-import { ServiceSlim } from '../../types/services.js'
 import logger from '@adonisjs/core/services/logger'
-import si from 'systeminformation'
+import { DockerService } from '#services/docker_service'
+import { SERVICE_NAMES } from '../../constants/service_names.js'
+import { ServiceSlim } from '../../types/services.js'
 import {
   GpuHealthStatus,
   HardwareMemoryTier,
@@ -12,126 +13,128 @@ import {
   NomadDiskInfoRaw,
   SystemInformationResponse,
 } from '../../types/system.js'
-import { SERVICE_NAMES } from '../../constants/service_names.js'
-import { readFileSync } from 'fs'
-import path, { join } from 'path'
+import { KV_STORE_SCHEMA, KVStoreKey } from '../../types/kv_store.js'
 import { getAllFilesystems, getFile } from '../utils/fs.js'
+import { isNewerVersion } from '../utils/version.js'
 import axios from 'axios'
 import env from '#start/env'
-import KVStore from '#models/kv_store'
-import { KV_STORE_SCHEMA, KVStoreKey } from '../../types/kv_store.js'
-import { isNewerVersion } from '../utils/version.js'
-
+import { readFileSync } from 'fs'
+import path, { join } from 'path'
+import si from 'systeminformation'
 
 @inject()
 export class SystemService {
   private static appVersion: string | null = null
-  private static diskInfoFile = '/storage/nomad-disk-info.json'
+  private static readonly diskInfoFile = '/storage/nomad-disk-info.json'
+  private static internetStatusCache:
+    | { value: boolean; expiresAt: number }
+    | null = null
   private static systemInfoCache:
     | { value: SystemInformationResponse; expiresAt: number }
     | null = null
-  private static readonly SYSTEM_INFO_CACHE_TTL_MS = 10000
+  private static servicesCache:
+    | { value: ServiceSlim[]; expiresAt: number }
+    | null = null
+  private static servicesInflight: Promise<ServiceSlim[]> | null = null
+  private static repairSweepPromise: Promise<void> | null = null
+  private static readonly INTERNET_STATUS_CACHE_TTL_MS = 15_000
+  private static readonly SYSTEM_INFO_CACHE_TTL_MS = 10_000
+  private static readonly SERVICES_CACHE_TTL_MS = 5_000
 
-  constructor(private dockerService: DockerService) { }
+  constructor(private dockerService: DockerService) {}
 
   async checkServiceInstalled(serviceName: string): Promise<boolean> {
-    const services = await this.getServices({ installedOnly: true });
-    return services.some(service => service.service_name === serviceName);
+    const services = await this.getServices({ installedOnly: true })
+    return services.some((service) => service.service_name === serviceName)
   }
 
   async getInternetStatus(): Promise<boolean> {
-    const DEFAULT_TEST_URL = 'https://1.1.1.1/cdn-cgi/trace'
-    const MAX_ATTEMPTS = 3
-
-    let testUrl = DEFAULT_TEST_URL
-    let customTestUrl = env.get('INTERNET_STATUS_TEST_URL')?.trim()
-
-    // check that customTestUrl is a valid URL, if provided
-    if (customTestUrl && customTestUrl !== '') {
-      try {
-        new URL(customTestUrl)
-        testUrl = customTestUrl
-      } catch (error) {
-        logger.warn(
-          `Invalid INTERNET_STATUS_TEST_URL: ${customTestUrl}. Falling back to default URL.`
-        )
-      }
+    const now = Date.now()
+    if (SystemService.internetStatusCache && SystemService.internetStatusCache.expiresAt > now) {
+      return SystemService.internetStatusCache.value
     }
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const testUrl = this.getInternetTestUrl()
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const res = await axios.get(testUrl, { timeout: 5000 })
-        return res.status === 200
+        const response = await axios.get(testUrl, { timeout: 5000 })
+        const connected = response.status === 200
+        SystemService.internetStatusCache = {
+          value: connected,
+          expiresAt: now + SystemService.INTERNET_STATUS_CACHE_TTL_MS,
+        }
+        return connected
       } catch (error) {
         logger.warn(
-          `Internet status check attempt ${attempt}/${MAX_ATTEMPTS} failed: ${error instanceof Error ? error.message : error}`
+          `Internet status check attempt ${attempt}/3 failed: ${error instanceof Error ? error.message : error}`
         )
-
-        if (attempt < MAX_ATTEMPTS) {
-          // delay before next attempt
+        if (attempt < 3) {
           await new Promise((resolve) => setTimeout(resolve, 1000))
         }
       }
     }
 
-    logger.warn('All internet status check attempts failed.')
+    SystemService.internetStatusCache = {
+      value: false,
+      expiresAt: now + SystemService.INTERNET_STATUS_CACHE_TTL_MS,
+    }
     return false
   }
 
-  async getNvidiaSmiInfo(): Promise<Array<{ vendor: string; model: string; vram: number; }> | { error: string } | 'OLLAMA_NOT_FOUND' | 'BAD_RESPONSE' | 'UNKNOWN_ERROR'> {
+  async getNvidiaSmiInfo(): Promise<
+    Array<{ vendor: string; model: string; vram: number }> |
+    { error: string } |
+    'OLLAMA_NOT_FOUND' |
+    'BAD_RESPONSE' |
+    'UNKNOWN_ERROR'
+  > {
     try {
       const containers = await this.dockerService.docker.listContainers({ all: false })
-      const ollamaContainer = containers.find((c) =>
-        c.Names.includes(`/${SERVICE_NAMES.OLLAMA}`)
+      const ollamaContainer = containers.find((container) =>
+        container.Names.includes(`/${SERVICE_NAMES.OLLAMA}`)
       )
       if (!ollamaContainer) {
-        logger.info('Ollama container not found for nvidia-smi info retrieval. This is expected if Ollama is not installed.')
         return 'OLLAMA_NOT_FOUND'
       }
 
-      // Execute nvidia-smi inside the Ollama container to get GPU info
-      const container = this.dockerService.docker.getContainer(ollamaContainer.Id)
-      const exec = await container.exec({
+      const exec = await this.dockerService.docker.getContainer(ollamaContainer.Id).exec({
         Cmd: ['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'],
         AttachStdout: true,
         AttachStderr: true,
         Tty: true,
       })
-
-      // Read the output stream with a timeout to prevent hanging if nvidia-smi fails
       const stream = await exec.start({ Tty: true })
       const output = await new Promise<string>((resolve) => {
         let data = ''
         const timeout = setTimeout(() => resolve(data), 5000)
-        stream.on('data', (chunk: Buffer) => { data += chunk.toString() })
-        stream.on('end', () => { clearTimeout(timeout); resolve(data) })
+        stream.on('data', (chunk: Buffer) => {
+          data += chunk.toString()
+        })
+        stream.on('end', () => {
+          clearTimeout(timeout)
+          resolve(data)
+        })
       })
 
-      // Remove any non-printable characters and trim the output
       const cleaned = output.replace(/[\x00-\x08]/g, '').trim()
-      if (cleaned && !cleaned.toLowerCase().includes('error') && !cleaned.toLowerCase().includes('not found')) {
-        // Split by newlines to handle multiple GPUs installed
-        const lines = cleaned.split('\n').filter(line => line.trim())
-
-        // Map each line out to a useful structure for us
-        const gpus = lines.map(line => {
-          const parts = line.split(',').map((s) => s.trim())
-          return {
-            vendor: 'NVIDIA',
-            model: parts[0] || 'NVIDIA GPU',
-            vram: parts[1] ? parseInt(parts[1], 10) : 0,
-          }
-        })
-
-        return gpus.length > 0 ? gpus : 'BAD_RESPONSE'
+      if (!cleaned || cleaned.toLowerCase().includes('error') || cleaned.toLowerCase().includes('not found')) {
+        return 'BAD_RESPONSE'
       }
 
-      // If we got output but looks like an error, consider it a bad response from nvidia-smi
-      return 'BAD_RESPONSE'
-    }
-    catch (error) {
+      return cleaned
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => {
+          const [model, rawVram] = line.split(',').map((entry) => entry.trim())
+          return {
+            vendor: 'NVIDIA',
+            model: model || 'NVIDIA GPU',
+            vram: rawVram ? parseInt(rawVram, 10) : 0,
+          }
+        })
+    } catch (error) {
       logger.error('Error getting nvidia-smi info:', error)
-      if (error instanceof Error && error.message) {
+      if (error instanceof Error) {
         return { error: error.message }
       }
       return 'UNKNOWN_ERROR'
@@ -139,102 +142,26 @@ export class SystemService {
   }
 
   async getServices({ installedOnly = true }: { installedOnly?: boolean }): Promise<ServiceSlim[]> {
-    await this._syncContainersWithDatabase() // Sync up before fetching to ensure we have the latest status
-
-    const query = Service.query()
-      .orderBy('display_order', 'asc')
-      .orderBy('friendly_name', 'asc')
-      .select(
-        'id',
-        'service_name',
-        'installed',
-        'installation_status',
-        'ui_location',
-        'friendly_name',
-        'description',
-        'icon',
-        'powered_by',
-        'display_order',
-        'container_image',
-        'available_update_version'
-      )
-      .where('is_dependency_service', false)
-    if (installedOnly) {
-      query.where('installed', true)
+    const now = Date.now()
+    if (SystemService.servicesCache && SystemService.servicesCache.expiresAt > now) {
+      return this.filterServices(SystemService.servicesCache.value, installedOnly)
     }
 
-    const services = await query
-    if (!services || services.length === 0) {
-      return []
+    if (!SystemService.servicesInflight) {
+      SystemService.servicesInflight = this.buildServicesSnapshot()
+        .then((services) => {
+          SystemService.servicesCache = {
+            value: services,
+            expiresAt: Date.now() + SystemService.SERVICES_CACHE_TTL_MS,
+          }
+          return services
+        })
+        .finally(() => {
+          SystemService.servicesInflight = null
+        })
     }
 
-    const statuses = await this.dockerService.getServicesStatus()
-
-    const toReturn: ServiceSlim[] = []
-
-    for (const service of services) {
-      const status = statuses.find((s) => s.service_name === service.service_name)
-      const branded = this.getBrandedServiceMetadata(service.service_name)
-      toReturn.push({
-        id: service.id,
-        service_name: service.service_name,
-        friendly_name: branded.friendly_name ?? service.friendly_name,
-        description: branded.description ?? service.description,
-        icon: service.icon,
-        installed: service.installed,
-        installation_status: service.installation_status,
-        status: status ? status.status : 'unknown',
-        ui_location: service.ui_location || '',
-        powered_by: branded.powered_by ?? service.powered_by,
-        display_order: service.display_order,
-        container_image: service.container_image,
-        available_update_version: service.available_update_version,
-      })
-    }
-
-    return toReturn
-  }
-
-  private getBrandedServiceMetadata(serviceName: string): Partial<ServiceSlim> {
-    switch (serviceName) {
-      case SERVICE_NAMES.KIWIX:
-        return {
-          friendly_name: 'RoachNet Library',
-          description:
-            'Offline encyclopedias, field manuals, and reference archives staged inside RoachNet.',
-          powered_by: 'Kiwix',
-        }
-      case SERVICE_NAMES.OLLAMA:
-        return {
-          friendly_name: 'RoachNet Chat',
-          description:
-            'Local AI chat and model tooling managed from the RoachNet command grid.',
-          powered_by: 'Ollama',
-        }
-      case SERVICE_NAMES.CYBERCHEF:
-        return {
-          friendly_name: 'RoachNet Data Lab',
-          description:
-            'Encoding, decoding, and analysis tools adapted for RoachNet field workflows.',
-          powered_by: 'CyberChef',
-        }
-      case SERVICE_NAMES.FLATNOTES:
-        return {
-          friendly_name: 'RoachNet Notes',
-          description:
-            'Fast local notes for fragments, checklists, and working references on the same machine.',
-          powered_by: 'FlatNotes',
-        }
-      case SERVICE_NAMES.KOLIBRI:
-        return {
-          friendly_name: 'RoachNet Academy',
-          description:
-            'Structured offline education content and coursework surfaced through RoachNet.',
-          powered_by: 'Kolibri',
-        }
-      default:
-        return {}
-    }
+    return this.filterServices(await SystemService.servicesInflight, installedOnly)
   }
 
   static getAppVersion(): string {
@@ -243,19 +170,14 @@ export class SystemService {
         return this.appVersion
       }
 
-      // Return 'dev' for development environment (version.json won't exist)
       if (process.env.NODE_ENV === 'development') {
         this.appVersion = 'dev'
         return 'dev'
       }
 
-      const packageJson = readFileSync(join(process.cwd(), 'version.json'), 'utf-8')
-      const packageData = JSON.parse(packageJson)
-
-      const version = packageData.version || '0.0.0'
-
-      this.appVersion = version
-      return version
+      const versionData = JSON.parse(readFileSync(join(process.cwd(), 'version.json'), 'utf-8'))
+      this.appVersion = versionData.version || '0.0.0'
+      return this.appVersion
     } catch (error) {
       logger.error('Error getting app version:', error)
       return '0.0.0'
@@ -265,79 +187,103 @@ export class SystemService {
   async getSystemInfo(): Promise<SystemInformationResponse | undefined> {
     try {
       const now = Date.now()
-      if (
-        SystemService.systemInfoCache &&
-        SystemService.systemInfoCache.expiresAt > now
-      ) {
+      if (SystemService.systemInfoCache && SystemService.systemInfoCache.expiresAt > now) {
         return SystemService.systemInfoCache.value
       }
 
+      const fallbackCpu = {
+        manufacturer: 'Unknown',
+        brand: 'Unavailable',
+        physicalCores: 0,
+        cores: 0,
+      } as SystemInformationResponse['cpu']
+      const fallbackMem = {
+        total: 0,
+        available: 0,
+        swapused: 0,
+      } as SystemInformationResponse['mem']
+      const fallbackOs = {
+        hostname: 'roachnet',
+        arch: process.arch,
+        distro: 'Unavailable',
+      } as SystemInformationResponse['os']
+      const fallbackCurrentLoad = {
+        currentLoad: 0,
+      } as SystemInformationResponse['currentLoad']
+      const fallbackUptime = {
+        uptime: 0,
+      } as SystemInformationResponse['uptime']
+      const fallbackGraphics = {
+        controllers: [],
+        displays: [],
+      } as SystemInformationResponse['graphics']
+
       const [cpu, mem, os, currentLoad, fsSize, uptime, graphics] = await Promise.all([
-        si.cpu(),
-        si.mem(),
-        si.osInfo(),
-        si.currentLoad(),
-        si.fsSize(),
-        si.time(),
-        si.graphics(),
+        this.withTimeout('systeminformation.cpu', () => si.cpu(), fallbackCpu, 2000),
+        this.withTimeout('systeminformation.mem', () => si.mem(), fallbackMem, 2000),
+        this.withTimeout('systeminformation.osInfo', () => si.osInfo(), fallbackOs, 2000),
+        this.withTimeout(
+          'systeminformation.currentLoad',
+          () => si.currentLoad(),
+          fallbackCurrentLoad,
+          2000
+        ),
+        this.withTimeout('systeminformation.fsSize', () => si.fsSize(), [], 2000),
+        this.withTimeout('systeminformation.time', () => si.time(), fallbackUptime, 2000),
+        this.withTimeout('systeminformation.graphics', () => si.graphics(), fallbackGraphics, 2500),
       ])
 
-      let diskInfo: NomadDiskInfoRaw | undefined
       let disk: NomadDiskInfo[] = []
-
       try {
         const diskInfoRawString = await getFile(
           path.join(process.cwd(), SystemService.diskInfoFile),
           'string'
         )
-
-        diskInfo = (
+        const diskInfo = (
           diskInfoRawString
             ? JSON.parse(diskInfoRawString.toString())
             : { diskLayout: { blockdevices: [] }, fsSize: [] }
         ) as NomadDiskInfoRaw
-
         disk = this.calculateDiskUsage(diskInfo)
       } catch (error) {
         logger.error('Error reading disk info file:', error)
       }
 
-      // GPU health tracking — detect when host has NVIDIA GPU but Ollama can't access it
-      let gpuHealth: GpuHealthStatus = {
+      const gpuHealth: GpuHealthStatus = {
         status: 'no_gpu',
         hasNvidiaRuntime: false,
         ollamaGpuAccessible: false,
       }
 
-      // Query Docker API for host-level info (hostname, OS, GPU runtime)
-      // si.osInfo() returns the container's info inside Docker, not the host's
       try {
-        const dockerInfo = await this.dockerService.docker.info()
+        const dockerInfo = await this.withTimeout<any>(
+          'docker.info',
+          () => this.dockerService.docker.info(),
+          null,
+          1500
+        )
 
-        if (dockerInfo.Name) {
-          os.hostname = dockerInfo.Name
-        }
-        if (dockerInfo.OperatingSystem) {
-          os.distro = dockerInfo.OperatingSystem
-        }
-        if (dockerInfo.KernelVersion) {
-          os.kernel = dockerInfo.KernelVersion
-        }
+        if (dockerInfo) {
+          if (dockerInfo.Name) os.hostname = dockerInfo.Name
+          if (dockerInfo.OperatingSystem) os.distro = dockerInfo.OperatingSystem
+          if (dockerInfo.KernelVersion) os.kernel = dockerInfo.KernelVersion
 
-        // If si.graphics() returned no controllers (common inside Docker),
-        // fall back to nvidia runtime + nvidia-smi detection
-        if (!graphics.controllers || graphics.controllers.length === 0) {
-          const runtimes = dockerInfo.Runtimes || {}
-          if ('nvidia' in runtimes) {
+          if ((!graphics.controllers || graphics.controllers.length === 0) && dockerInfo.Runtimes?.nvidia) {
             gpuHealth.hasNvidiaRuntime = true
-            const nvidiaInfo = await this.getNvidiaSmiInfo()
+            const nvidiaInfo = await this.withTimeout(
+              'nvidia-smi probe',
+              () => this.getNvidiaSmiInfo(),
+              'BAD_RESPONSE' as Awaited<ReturnType<SystemService['getNvidiaSmiInfo']>>,
+              2500
+            )
+
             if (Array.isArray(nvidiaInfo)) {
               graphics.controllers = nvidiaInfo.map((gpu) => ({
                 model: gpu.model,
                 vendor: gpu.vendor,
-                bus: "",
+                bus: '',
                 vram: gpu.vram,
-                vramDynamic: false, // assume false here, we don't actually use this field for our purposes.
+                vramDynamic: false,
               }))
               gpuHealth.status = 'ok'
               gpuHealth.ollamaGpuAccessible = true
@@ -345,26 +291,17 @@ export class SystemService {
               gpuHealth.status = 'ollama_not_installed'
             } else {
               gpuHealth.status = 'passthrough_failed'
-              logger.warn(`NVIDIA runtime detected but GPU passthrough failed: ${typeof nvidiaInfo === 'string' ? nvidiaInfo : JSON.stringify(nvidiaInfo)}`)
             }
+          } else if (graphics.controllers && graphics.controllers.length > 0) {
+            gpuHealth.status = 'ok'
+            gpuHealth.ollamaGpuAccessible = true
           }
-        } else {
-          // si.graphics() returned controllers (host install, not Docker) — GPU is working
-          gpuHealth.status = 'ok'
-          gpuHealth.ollamaGpuAccessible = true
         }
       } catch {
-        // Docker info query failed, skip host-level enrichment
+        // best-effort enrichment only
       }
 
-      const hardwareProfile = this.buildHardwareProfile({
-        cpu,
-        mem,
-        os,
-        currentLoad,
-      })
-
-      const systemInfo = {
+      const systemInfo: SystemInformationResponse = {
         cpu,
         mem,
         os,
@@ -374,7 +311,7 @@ export class SystemService {
         uptime,
         graphics,
         gpuHealth,
-        hardwareProfile,
+        hardwareProfile: this.buildHardwareProfile({ cpu, mem, os, currentLoad }),
       }
 
       SystemService.systemInfoCache = {
@@ -404,56 +341,30 @@ export class SystemService {
     const isAppleSilicon =
       os.arch === 'arm64' &&
       (cpuSignature.includes('apple') || /\bm[1-9]\b/.test(cpuSignature))
-
     const memoryTier = this.getMemoryTier(mem.total)
     const notes: string[] = []
     const warnings: string[] = []
 
     if (isAppleSilicon) {
       notes.push('Prefer host-native Ollama or OpenClaw endpoints over Docker-managed AI containers on Apple Silicon.')
-      notes.push('Use arm64-native binaries with Metal acceleration and avoid Rosetta when possible.')
       notes.push('Keep only the models you need loaded so unified memory stays available for maps, archives, and the UI.')
     } else if (os.arch === 'arm64') {
       notes.push('Prefer arm64-native builds and lighter quantized models to keep latency and thermals under control.')
-      notes.push('Local runtimes usually outperform containerized AI stacks on smaller ARM systems.')
     } else {
-      notes.push('Local runtimes still reduce orchestration overhead, but Docker-managed services remain acceptable on x86-64 hosts.')
-      notes.push('Use benchmark results to decide whether a larger model tier is worth the memory cost.')
+      notes.push('Local runtimes reduce orchestration overhead, but Docker-managed services remain acceptable on x86-64 hosts.')
     }
 
-    switch (memoryTier) {
-      case 'compact':
-        notes.push('Start with 4B to 8B quantized models and light embedding workloads.')
-        break
-      case 'balanced':
-        notes.push('7B to 14B quantized models are the safest default for day-to-day offline use.')
-        break
-      case 'creator':
-        notes.push('14B to 32B class models are realistic if you avoid stacking too many other heavy local services.')
-        break
-      case 'workstation':
-        notes.push('This machine has enough headroom for larger local models, retrieval pipelines, and concurrent content services.')
-        break
-    }
+    if (memoryTier === 'compact') notes.push('Start with 4B to 8B quantized models.')
+    if (memoryTier === 'balanced') notes.push('7B to 14B quantized models are the safest default.')
+    if (memoryTier === 'creator') notes.push('14B to 32B class models are realistic if you avoid stacking too many other heavy services.')
+    if (memoryTier === 'workstation') notes.push('This machine has enough headroom for larger local models and concurrent content services.')
 
-    const memoryPressure = mem.total > 0
-      ? ((mem.total - mem.available) / mem.total) * 100
-      : 0
-
-    if (memoryPressure >= 80) {
-      warnings.push('Memory pressure is already high. Unload large models or reduce background services before running benchmarks or batch ingestion jobs.')
-    }
-
-    if (mem.swapused > 0) {
-      warnings.push('Swap is active. On Apple Silicon that usually means unified memory is oversubscribed and model latency will rise.')
-    }
-
-    if (currentLoad.currentLoad >= 85) {
-      warnings.push('CPU load is elevated. Schedule large downloads, indexing jobs, or benchmarks after the current workload settles.')
-    }
-
+    const memoryPressure = mem.total > 0 ? ((mem.total - mem.available) / mem.total) * 100 : 0
+    if (memoryPressure >= 80) warnings.push('Memory pressure is already high.')
+    if (mem.swapused > 0) warnings.push('Swap is active and model latency will rise.')
+    if (currentLoad.currentLoad >= 85) warnings.push('CPU load is elevated.')
     if (isAppleSilicon && mem.total < 16 * 1024 * 1024 * 1024) {
-      warnings.push('Unified memory is limited for Apple Silicon AI work. Stay with smaller quantized models and keep browser tabs to a minimum.')
+      warnings.push('Unified memory is limited for Apple Silicon AI work.')
     }
 
     return {
@@ -470,26 +381,13 @@ export class SystemService {
 
   private getMemoryTier(totalBytes: number): HardwareMemoryTier {
     const totalGb = totalBytes / (1024 * 1024 * 1024)
-
-    if (totalGb < 16) {
-      return 'compact'
-    }
-
-    if (totalGb < 32) {
-      return 'balanced'
-    }
-
-    if (totalGb < 64) {
-      return 'creator'
-    }
-
+    if (totalGb < 16) return 'compact'
+    if (totalGb < 32) return 'balanced'
+    if (totalGb < 64) return 'creator'
     return 'workstation'
   }
 
-  private getRecommendedModelClass(
-    memoryTier: HardwareMemoryTier,
-    isAppleSilicon: boolean
-  ): string {
+  private getRecommendedModelClass(memoryTier: HardwareMemoryTier, isAppleSilicon: boolean): string {
     switch (memoryTier) {
       case 'compact':
         return isAppleSilicon ? '4B to 8B quantized models' : 'Small quantized models'
@@ -514,8 +412,6 @@ export class SystemService {
       const cachedUpdateAvailable = await KVStore.getValue('system.updateAvailable')
       const cachedLatestVersion = await KVStore.getValue('system.latestVersion')
 
-      // Use cached values if not forcing a fresh check.
-      // the CheckUpdateJob will update these values every 12 hours
       if (!force) {
         return {
           success: true,
@@ -526,31 +422,24 @@ export class SystemService {
       }
 
       const earlyAccess = (await KVStore.getValue('system.earlyAccess')) ?? false
-
-      let latestVersion: string
-      if (earlyAccess) {
-        const response = await axios.get(
-          'https://api.github.com/repos/Crosstalk-Solutions/project-nomad/releases',
-          { headers: { Accept: 'application/vnd.github+json' }, timeout: 5000 }
-        )
-        if (!response?.data?.length) throw new Error('No releases found')
-        latestVersion = response.data[0].tag_name.replace(/^v/, '').trim()
-      } else {
-        const response = await axios.get(
-          'https://api.github.com/repos/Crosstalk-Solutions/project-nomad/releases/latest',
-          { headers: { Accept: 'application/vnd.github+json' }, timeout: 5000 }
-        )
-        if (!response?.data?.tag_name) throw new Error('Invalid response from GitHub API')
-        latestVersion = response.data.tag_name.replace(/^v/, '').trim()
+      const githubUrl = earlyAccess
+        ? 'https://api.github.com/repos/Crosstalk-Solutions/project-nomad/releases'
+        : 'https://api.github.com/repos/Crosstalk-Solutions/project-nomad/releases/latest'
+      const response = await axios.get(githubUrl, {
+        headers: { Accept: 'application/vnd.github+json' },
+        timeout: 5000,
+      })
+      const latestVersion = earlyAccess
+        ? response.data?.[0]?.tag_name?.replace(/^v/, '').trim()
+        : response.data?.tag_name?.replace(/^v/, '').trim()
+      if (!latestVersion) {
+        throw new Error('Invalid response from GitHub API')
       }
-
-      logger.info(`Current version: ${currentVersion}, Latest version: ${latestVersion}`)
 
       const updateAvailable = process.env.NODE_ENV === 'development'
         ? false
         : isNewerVersion(latestVersion, currentVersion.trim(), earlyAccess)
 
-      // Cache the results in KVStore for frontend checks
       await KVStore.setValue('system.updateAvailable', updateAvailable)
       await KVStore.setValue('system.latestVersion', latestVersion)
 
@@ -581,10 +470,7 @@ export class SystemService {
       )
 
       if (response.status === 200) {
-        return {
-          success: true,
-          message: 'Successfully subscribed to release notes',
-        }
+        return { success: true, message: 'Successfully subscribed to release notes' }
       }
 
       return {
@@ -603,7 +489,6 @@ export class SystemService {
   async getDebugInfo(): Promise<string> {
     const appVersion = SystemService.getAppVersion()
     const environment = process.env.NODE_ENV || 'unknown'
-
     const [systemInfo, services, internetStatus, versionCheck] = await Promise.all([
       this.getSystemInfo(),
       this.getServices({ installedOnly: false }),
@@ -619,96 +504,45 @@ export class SystemService {
     ]
 
     if (systemInfo) {
-      const { cpu, mem, os, disk, fsSize, uptime, graphics } = systemInfo
-
-      lines.push('')
-      lines.push('System:')
-      if (os.distro) lines.push(`  OS: ${os.distro}`)
-      if (os.hostname) lines.push(`  Hostname: ${os.hostname}`)
-      if (os.kernel) lines.push(`  Kernel: ${os.kernel}`)
-      if (os.arch) lines.push(`  Architecture: ${os.arch}`)
-      if (uptime?.uptime) lines.push(`  Uptime: ${this._formatUptime(uptime.uptime)}`)
-
-      lines.push('')
-      lines.push('Hardware:')
-      if (cpu.brand) {
-        lines.push(`  CPU: ${cpu.brand} (${cpu.cores} cores)`)
+      lines.push('', 'System:')
+      if (systemInfo.os.distro) lines.push(`  OS: ${systemInfo.os.distro}`)
+      if (systemInfo.os.hostname) lines.push(`  Hostname: ${systemInfo.os.hostname}`)
+      if (systemInfo.os.kernel) lines.push(`  Kernel: ${systemInfo.os.kernel}`)
+      if (systemInfo.os.arch) lines.push(`  Architecture: ${systemInfo.os.arch}`)
+      if (systemInfo.uptime?.uptime) lines.push(`  Uptime: ${this.formatUptime(systemInfo.uptime.uptime)}`)
+      lines.push('', 'Hardware:')
+      if (systemInfo.cpu.brand) lines.push(`  CPU: ${systemInfo.cpu.brand} (${systemInfo.cpu.cores} cores)`)
+      if (systemInfo.mem.total) {
+        lines.push(
+          `  RAM: ${this.formatBytes(systemInfo.mem.total)} total, ${this.formatBytes(systemInfo.mem.total - (systemInfo.mem.available || 0))} used, ${this.formatBytes(systemInfo.mem.available || 0)} available`
+        )
       }
-      if (mem.total) {
-        const total = this._formatBytes(mem.total)
-        const used = this._formatBytes(mem.total - (mem.available || 0))
-        const available = this._formatBytes(mem.available || 0)
-        lines.push(`  RAM: ${total} total, ${used} used, ${available} available`)
-      }
-      if (graphics.controllers && graphics.controllers.length > 0) {
-        for (const gpu of graphics.controllers) {
-          const vram = gpu.vram ? ` (${gpu.vram} MB VRAM)` : ''
-          lines.push(`  GPU: ${gpu.model}${vram}`)
+      if (systemInfo.graphics.controllers.length > 0) {
+        for (const gpu of systemInfo.graphics.controllers) {
+          lines.push(`  GPU: ${gpu.model}${gpu.vram ? ` (${gpu.vram} MB VRAM)` : ''}`)
         }
       } else {
         lines.push('  GPU: None detected')
       }
-
-      // Disk info — try disk array first, fall back to fsSize
-      const diskEntries = disk.filter((d) => d.totalSize > 0)
-      if (diskEntries.length > 0) {
-        for (const d of diskEntries) {
-          const size = this._formatBytes(d.totalSize)
-          const type = d.tran?.toUpperCase() || (d.rota ? 'HDD' : 'SSD')
-          lines.push(`  Disk: ${size}, ${Math.round(d.percentUsed)}% used, ${type}`)
-        }
-      } else if (fsSize.length > 0) {
-        const realFs = fsSize.filter((f) => f.fs.startsWith('/dev/'))
-        const seen = new Set<number>()
-        for (const f of realFs) {
-          if (seen.has(f.size)) continue
-          seen.add(f.size)
-          lines.push(`  Disk: ${this._formatBytes(f.size)}, ${Math.round(f.use)}% used`)
-        }
-      }
     }
 
-    const installed = services.filter((s) => s.installed)
-    lines.push('')
-    if (installed.length > 0) {
-      lines.push('Installed Services:')
-      for (const svc of installed) {
-        lines.push(`  ${svc.friendly_name} (${svc.service_name}): ${svc.status}`)
-      }
-    } else {
-      lines.push('Installed Services: None')
+    const installed = services.filter((service) => service.installed)
+    lines.push('', installed.length > 0 ? 'Installed Services:' : 'Installed Services: None')
+    for (const service of installed) {
+      lines.push(`  ${service.friendly_name} (${service.service_name}): ${service.status}`)
     }
 
     if (internetStatus !== null) {
-      lines.push('')
-      lines.push(`Internet Status: ${internetStatus ? 'Online' : 'Offline'}`)
+      lines.push('', `Internet Status: ${internetStatus ? 'Online' : 'Offline'}`)
     }
 
     if (versionCheck?.success) {
-      const updateMsg = versionCheck.updateAvailable
-        ? `Yes (${versionCheck.latestVersion} available)`
-        : `No (${versionCheck.currentVersion} is latest)`
-      lines.push(`Update Available: ${updateMsg}`)
+      lines.push(
+        `Update Available: ${versionCheck.updateAvailable ? `Yes (${versionCheck.latestVersion} available)` : `No (${versionCheck.currentVersion} is latest)`}`
+      )
     }
 
     return lines.join('\n')
-  }
-
-  private _formatUptime(seconds: number): string {
-    const days = Math.floor(seconds / 86400)
-    const hours = Math.floor((seconds % 86400) / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    if (days > 0) return `${days}d ${hours}h ${minutes}m`
-    if (hours > 0) return `${hours}h ${minutes}m`
-    return `${minutes}m`
-  }
-
-  private _formatBytes(bytes: number, decimals = 1): string {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
   }
 
   async updateSetting(key: KVStoreKey, value: any): Promise<void> {
@@ -719,58 +553,174 @@ export class SystemService {
     }
   }
 
-  /**
-   * Checks the current state of Docker containers against the database records and updates the database accordingly.
-   * It will mark services as not installed if their corresponding containers do not exist, regardless of their running state.
-   * Handles cases where a container might have been manually removed, ensuring the database reflects the actual existence of containers.
-   * Containers that exist but are stopped, paused, or restarting will still be considered installed.
-   */
-  private async _syncContainersWithDatabase() {
+  private async buildServicesSnapshot(): Promise<ServiceSlim[]> {
+    const statuses = await this.withTimeout(
+      'docker service status',
+      () => this.dockerService.getServicesStatus(),
+      [] as Array<{ service_name: string; status: string }>,
+      2000
+    )
+
+    await this.syncContainersWithDatabase(statuses)
+
+    const services = await Service.query()
+      .orderBy('display_order', 'asc')
+      .orderBy('friendly_name', 'asc')
+      .select(
+        'id',
+        'service_name',
+        'installed',
+        'installation_status',
+        'ui_location',
+        'friendly_name',
+        'description',
+        'icon',
+        'powered_by',
+        'display_order',
+        'container_image',
+        'available_update_version'
+      )
+      .where('is_dependency_service', false)
+
+    const launcherManagedOllama =
+      process.env.ROACHNET_NATIVE_ONLY === '1' &&
+      process.env.OLLAMA_BASE_URL?.includes(':36434') === true
+
+    return services.map((service) => {
+      const branded = this.getBrandedServiceMetadata(service.service_name)
+      const status = statuses.find((entry) => entry.service_name === service.service_name)
+      const isLauncherManagedOllama =
+        launcherManagedOllama && service.service_name === SERVICE_NAMES.OLLAMA
+
+      return {
+        id: service.id,
+        service_name: service.service_name,
+        friendly_name: branded.friendly_name ?? service.friendly_name,
+        description: branded.description ?? service.description,
+        icon: service.icon,
+        installed: isLauncherManagedOllama || Boolean(service.installed),
+        installation_status: service.installation_status,
+        status: isLauncherManagedOllama ? 'running' : status ? status.status : 'unknown',
+        ui_location: service.ui_location || '',
+        powered_by: branded.powered_by ?? service.powered_by,
+        display_order: service.display_order,
+        container_image: service.container_image,
+        available_update_version: service.available_update_version,
+      }
+    })
+  }
+
+  private filterServices(services: ServiceSlim[], installedOnly: boolean): ServiceSlim[] {
+    return installedOnly ? services.filter((service) => service.installed) : services
+  }
+
+  private getBrandedServiceMetadata(serviceName: string): Partial<ServiceSlim> {
+    switch (serviceName) {
+      case SERVICE_NAMES.KIWIX:
+        return {
+          friendly_name: 'RoachNet Library',
+          description: 'Offline encyclopedias, field manuals, and reference archives staged inside RoachNet.',
+          powered_by: 'Kiwix',
+        }
+      case SERVICE_NAMES.OLLAMA:
+        return {
+          friendly_name: 'RoachNet Chat',
+          description: 'Local AI chat and model tooling managed from the RoachNet command grid.',
+          powered_by: 'Ollama',
+        }
+      case SERVICE_NAMES.CYBERCHEF:
+        return {
+          friendly_name: 'RoachNet Data Lab',
+          description: 'Encoding, decoding, and analysis tools adapted for RoachNet field workflows.',
+          powered_by: 'CyberChef + Jam',
+        }
+      case SERVICE_NAMES.FLATNOTES:
+        return {
+          friendly_name: 'RoachNet Notes',
+          description: 'Fast local notes for fragments, checklists, and working references on the same machine.',
+          powered_by: 'FlatNotes',
+        }
+      case SERVICE_NAMES.KOLIBRI:
+        return {
+          friendly_name: 'RoachNet Academy',
+          description: 'Structured offline education content and coursework surfaced through RoachNet.',
+          powered_by: 'Kolibri',
+        }
+      default:
+        return {}
+    }
+  }
+
+  private async syncContainersWithDatabase(serviceStatusList: Array<{ service_name: string; status: string }>) {
     try {
       const allServices = await Service.all()
-      const serviceStatusList = await this.dockerService.getServicesStatus()
+      const repairTargets: Service[] = []
+      const pendingSaves: Promise<unknown>[] = []
 
       for (const service of allServices) {
-        const containerExists = serviceStatusList.find(
-          (s) => s.service_name === service.service_name
-        )
+        const containerExists = serviceStatusList.find((entry) => entry.service_name === service.service_name)
+        if (service.installed && !containerExists) {
+          service.installed = false
+          service.installation_status = 'idle'
+          pendingSaves.push(service.save())
+        } else if (!service.installed && containerExists) {
+          service.installed = true
+          service.installation_status = 'idle'
+          pendingSaves.push(service.save())
+        }
 
-        if (service.installed) {
-          // If marked as installed but container doesn't exist, mark as not installed
-          if (!containerExists) {
-            logger.warn(
-              `Service ${service.service_name} is marked as installed but container does not exist. Marking as not installed.`
-            )
-            service.installed = false
-            service.installation_status = 'idle'
-            await service.save()
-          }
-        } else {
-          // If marked as not installed but container exists (any state), mark as installed
-          if (containerExists) {
-            logger.warn(
-              `Service ${service.service_name} is marked as not installed but container exists. Marking as installed.`
-            )
-            service.installed = true
-            service.installation_status = 'idle'
-            await service.save()
-          }
+        if (containerExists && service.installed) {
+          repairTargets.push(service)
         }
       }
+
+      if (pendingSaves.length > 0) {
+        await Promise.allSettled(pendingSaves)
+      }
+
+      this.scheduleLegacyRepairSweep(repairTargets)
     } catch (error) {
       logger.error('Error syncing containers with database:', error)
     }
   }
 
+  private scheduleLegacyRepairSweep(services: Service[]) {
+    if (services.length === 0 || SystemService.repairSweepPromise) {
+      return
+    }
+
+    SystemService.repairSweepPromise = (async () => {
+      for (const service of services) {
+        await this.dockerService.repairLegacyContainerIfNeeded(service)
+      }
+    })().finally(() => {
+      SystemService.repairSweepPromise = null
+    })
+  }
+
+  private formatUptime(seconds: number): string {
+    const days = Math.floor(seconds / 86400)
+    const hours = Math.floor((seconds % 86400) / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`
+    if (hours > 0) return `${hours}h ${minutes}m`
+    return `${minutes}m`
+  }
+
+  private formatBytes(bytes: number, decimals = 1): string {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`
+  }
+
   private calculateDiskUsage(diskInfo: NomadDiskInfoRaw): NomadDiskInfo[] {
     const { diskLayout, fsSize } = diskInfo
-
     if (!diskLayout?.blockdevices || !fsSize) {
       return []
     }
 
-    // Deduplicate: same device path mounted in multiple places (Docker bind-mounts)
-    // Keep the entry with the largest size — that's the real partition
     const deduped = new Map<string, NomadDiskInfoRaw['fsSize'][0]>()
     for (const entry of fsSize) {
       const existing = deduped.get(entry.fs)
@@ -778,37 +728,70 @@ export class SystemService {
         deduped.set(entry.fs, entry)
       }
     }
-    const dedupedFsSize = Array.from(deduped.values())
 
     return diskLayout.blockdevices
-      .filter((disk) => disk.type === 'disk') // Only physical disks
+      .filter((disk) => disk.type === 'disk')
       .map((disk) => {
-        const filesystems = getAllFilesystems(disk, dedupedFsSize)
-
-        // Across all partitions
-        const totalUsed = filesystems.reduce((sum, p) => sum + (p.used || 0), 0)
-        const totalSize = filesystems.reduce((sum, p) => sum + (p.size || 0), 0)
-        const percentUsed = totalSize > 0 ? (totalUsed / totalSize) * 100 : 0
-
+        const filesystems = getAllFilesystems(disk, Array.from(deduped.values()))
+        const totalUsed = filesystems.reduce((sum, filesystem) => sum + (filesystem.used || 0), 0)
+        const totalSize = filesystems.reduce((sum, filesystem) => sum + (filesystem.size || 0), 0)
         return {
           name: disk.name,
           model: disk.model || 'Unknown',
-          vendor: disk.vendor || '',
-          rota: disk.rota || false,
+          vendor: disk.vendor || 'Unknown',
+          rota: Boolean(disk.rota),
           tran: disk.tran || '',
-          size: disk.size,
+          size: disk.size || `${Math.round(totalSize / (1024 * 1024 * 1024))}G`,
           totalUsed,
           totalSize,
-          percentUsed: Math.round(percentUsed * 100) / 100,
-          filesystems: filesystems.map((p) => ({
-            fs: p.fs,
-            mount: p.mount,
-            used: p.used,
-            size: p.size,
-            percentUsed: p.use,
+          percentUsed: totalSize > 0 ? (totalUsed / totalSize) * 100 : 0,
+          filesystems: filesystems.map((filesystem) => ({
+            fs: filesystem.fs,
+            mount: filesystem.mount,
+            used: filesystem.used || 0,
+            size: filesystem.size || 0,
+            percentUsed: filesystem.size > 0 ? ((filesystem.used || 0) / filesystem.size) * 100 : 0,
           })),
         }
       })
   }
 
+  private getInternetTestUrl(): string {
+    const customTestUrl = env.get('INTERNET_STATUS_TEST_URL')?.trim()
+    if (!customTestUrl) {
+      return 'https://1.1.1.1/cdn-cgi/trace'
+    }
+
+    try {
+      new URL(customTestUrl)
+      return customTestUrl
+    } catch {
+      logger.warn(`Invalid INTERNET_STATUS_TEST_URL: ${customTestUrl}. Falling back to default URL.`)
+      return 'https://1.1.1.1/cdn-cgi/trace'
+    }
+  }
+
+  private async withTimeout<T>(label: string, operation: () => Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<T>((resolve) => {
+          timeoutHandle = setTimeout(() => {
+            logger.warn(`[SystemService] Timed out while resolving ${label}; using fallback.`)
+            resolve(fallback)
+          }, timeoutMs)
+        }),
+      ])
+    } catch (error) {
+      logger.warn(
+        `[SystemService] Failed while resolving ${label}; using fallback: ${error instanceof Error ? error.message : error}`
+      )
+      return fallback
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
+      }
+    }
+  }
 }

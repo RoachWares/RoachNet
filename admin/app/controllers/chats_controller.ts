@@ -7,6 +7,12 @@ import { AIRuntimeService } from '#services/ai_runtime_service'
 
 @inject()
 export default class ChatsController {
+  private static readonly FALLBACK_SUGGESTIONS = [
+    'Show me what is installed and what still needs setup',
+    'Help me choose the best local RoachClaw model for this machine',
+    'What content packs should I download first for offline use',
+  ]
+
   constructor(private chatService: ChatService, private aiRuntimeService: AIRuntimeService) {}
 
   async inertia({ inertia, response }: HttpContext) {
@@ -53,7 +59,12 @@ export default class ChatsController {
   async suggestions({ response }: HttpContext) {
     try {
       const suggestions = await this.chatService.getChatSuggestions()
-      return response.status(200).json({ suggestions })
+      return response.status(200).json({
+        suggestions:
+          Array.isArray(suggestions) && suggestions.length > 0
+            ? suggestions
+            : ChatsController.FALLBACK_SUGGESTIONS,
+      })
     } catch (error) {
       return response.status(500).json({
         error: error instanceof Error ? error.message : 'Failed to get suggestions',

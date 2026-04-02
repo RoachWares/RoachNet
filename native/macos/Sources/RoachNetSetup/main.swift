@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 import RoachNetCore
 import RoachNetDesign
 
@@ -53,10 +54,13 @@ final class SetupController: ObservableObject {
     @Published var isBooting = true
     @Published var isBusy = false
 
+    private var allowAutomaticFinishAdvance = true
     private var process: Process?
     private var readyFileURL: URL?
     private var serverURL: URL?
     private var pollTask: Task<Void, Never>?
+    private var stdoutPipe: Pipe?
+    private var stderrPipe: Pipe?
 
     var stageTitles: [String] { SetupStage.allCases.map(\.title) }
     var canGoBack: Bool { stage != .welcome && !isBusy }
@@ -68,6 +72,15 @@ final class SetupController: ObservableObject {
     }
 
     deinit {
+        pollTask?.cancel()
+        process?.terminate()
+
+        if let readyFileURL {
+            try? FileManager.default.removeItem(at: readyFileURL)
+        }
+    }
+
+    func shutdown() {
         pollTask?.cancel()
         process?.terminate()
 
@@ -96,10 +109,12 @@ final class SetupController: ObservableObject {
 
     func back() {
         guard let previous = SetupStage(rawValue: stage.rawValue - 1) else { return }
+        allowAutomaticFinishAdvance = false
         stage = previous
     }
 
     func primaryAction() async {
+        allowAutomaticFinishAdvance = true
         switch stage {
         case .welcome:
             stage = .machine
@@ -123,6 +138,29 @@ final class SetupController: ObservableObject {
         } catch {
             errorLine = describe(error)
         }
+    }
+
+    func chooseStorageFolder() {
+        let currentPath = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+
+        let panel = NSOpenPanel()
+        panel.title = "Choose RoachNet Content Folder"
+        panel.message = "Pick the folder RoachNet should use for maps, archives, downloads, and local content."
+        panel.prompt = "Use Folder"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: currentPath).deletingLastPathComponent()
+
+        guard panel.runModal() == .OK, let selectedPath = panel.url?.path else {
+            return
+        }
+
+        config.storagePath = selectedPath
+        statusLine = "Content folder updated."
     }
 
     func startRuntimeAction() async {
@@ -230,11 +268,16 @@ final class SetupController: ObservableObject {
             isBusy = false
         }
 
-        if let completed = state.lastCompletedTask, completed.status == "completed" {
+        let installCompleted =
+            state.lastCompletedTask?.status == "completed"
+            || state.nativeApp.installed
+            || state.config.setupCompletedAt != nil
+
+        if installCompleted, allowAutomaticFinishAdvance {
             stage = .finish
-            statusLine = "Install complete."
-        } else if state.installLooksReady || state.config.setupCompletedAt != nil {
-            stage = .finish
+            if state.lastCompletedTask?.status == "completed" {
+                statusLine = "Install complete."
+            }
         }
     }
 
@@ -267,16 +310,19 @@ final class SetupController: ObservableObject {
 
         let node = RoachNetRepositoryLocator.preferredNodeBinary()
         let process = Process()
-        process.currentDirectoryURL = repoRoot
-        process.executableURL = URL(fileURLWithPath: node)
-        process.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path] : [scriptURL.path]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-lc", "exec \"$ROACHNET_NODE_BINARY\" \"$ROACHNET_SCRIPT_PATH\""]
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
 
         var environment = ProcessInfo.processInfo.environment
+        environment["ROACHNET_NODE_BINARY"] = node == "/usr/bin/env" ? "node" : node
         environment["ROACHNET_SETUP_NO_BROWSER"] = "1"
         environment["ROACHNET_SETUP_READY_FILE"] = readyFileURL.path
         environment["ROACHNET_REPO_ROOT"] = repoRoot.path
+        environment["ROACHNET_SCRIPT_PATH"] = scriptURL.path
         if let installerAssets = RoachNetRepositoryLocator.bundledInstallerAssetsDirectory() {
             environment["ROACHNET_SETUP_APP_BUNDLE"] = installerAssets
                 .appendingPathComponent("setup-assets.marker")
@@ -286,8 +332,10 @@ final class SetupController: ObservableObject {
 
         try process.run()
         self.process = process
+        self.stdoutPipe = stdoutPipe
+        self.stderrPipe = stderrPipe
 
-        let deadline = Date().addingTimeInterval(15)
+        let deadline = Date().addingTimeInterval(45)
         while Date() < deadline {
             if
                 let data = try? Data(contentsOf: readyFileURL),
@@ -298,11 +346,23 @@ final class SetupController: ObservableObject {
                 return
             }
 
+            if !process.isRunning {
+                throw NSError(domain: "RoachNetSetup", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: makeBackendBootFailureMessage(
+                        fallback: "The native installer could not keep the setup backend running.",
+                        includePipeOutput: true
+                    )
+                ])
+            }
+
             try await Task.sleep(for: .milliseconds(250))
         }
 
         throw NSError(domain: "RoachNetSetup", code: 3, userInfo: [
-            NSLocalizedDescriptionKey: "The native installer could not boot the setup backend."
+            NSLocalizedDescriptionKey: makeBackendBootFailureMessage(
+                fallback: "The native installer could not boot the setup backend before the local timeout.",
+                includePipeOutput: false
+            )
         ])
     }
 
@@ -385,6 +445,27 @@ final class SetupController: ObservableObject {
 
         return description
     }
+
+    private func makeBackendBootFailureMessage(fallback: String, includePipeOutput: Bool) -> String {
+        guard includePipeOutput else {
+            return fallback
+        }
+
+        let details = [
+            stderrPipe.map(Self.readPipeOutput(from:)),
+            stdoutPipe.map(Self.readPipeOutput(from:)),
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first(where: { !$0.isEmpty })
+
+        return details.map { "\(fallback) \($0)" } ?? fallback
+    }
+
+    private static func readPipeOutput(from pipe: Pipe) -> String {
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard !data.isEmpty else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
 }
 
 private struct SimpleOKResponse: Decodable {
@@ -418,14 +499,31 @@ private struct AnyEncodable: Encodable {
 
 @main
 struct RoachNetSetupApp: App {
+    @NSApplicationDelegateAdaptor(RoachNetSetupAppDelegate.self) private var appDelegate
     @StateObject private var controller = SetupController()
 
     var body: some Scene {
         WindowGroup("RoachNet Setup") {
             SetupRootView(controller: controller)
-                .frame(minWidth: 960, idealWidth: 1120, minHeight: 760, idealHeight: 820)
+                .frame(minWidth: 760, idealWidth: 980, minHeight: 580, idealHeight: 740)
+                .onAppear {
+                    appDelegate.controller = controller
+                }
         }
         .windowStyle(.hiddenTitleBar)
+    }
+}
+
+final class RoachNetSetupAppDelegate: NSObject, NSApplicationDelegate {
+    weak var controller: SetupController?
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        controller?.shutdown()
+        return .terminateNow
     }
 }
 
@@ -433,54 +531,96 @@ private struct SetupRootView: View {
     @ObservedObject var controller: SetupController
 
     var body: some View {
-        ZStack {
-            RoachBackground()
+        GeometryReader { proxy in
+            let horizontalPadding = proxy.size.width < 920 ? 14.0 : 20.0
+            let verticalPadding = proxy.size.height < 720 ? 18.0 : 30.0
 
-            VStack(spacing: 20) {
-                chromeBar
-                mainCard
+            ZStack {
+                RoachBackground()
+
+                VStack(spacing: 18) {
+                    chromeBar(width: proxy.size.width - (horizontalPadding * 2))
+                    mainCard
+                }
+                .frame(maxWidth: 1120, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, verticalPadding)
+                .padding(.bottom, 18)
             }
-            .padding(24)
         }
     }
 
-    private var chromeBar: some View {
-        HStack {
-            HStack(spacing: 12) {
-                RoachOrbitMark()
-                    .frame(width: 54, height: 54)
+    private func chromeBar(width: CGFloat) -> some View {
+        ViewThatFits(in: .horizontal) {
+            ZStack {
+                HStack {
+                    Spacer()
+                    RoachTag("Apple Silicon", accent: RoachPalette.magenta)
+                }
 
-                VStack(alignment: .leading, spacing: 2) {
+                setupTitleLockup
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, width < 920 ? 64 : 112)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 12) {
+                setupTitleLockup
+                RoachTag("Apple Silicon", accent: RoachPalette.magenta)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var mainCard: some View {
+        RoachPanel {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    progressHeader
+                    stageHero
+                    stageContent
+
+                    if showStatusSection {
+                        statusSection
+                    }
+
+                    footer
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var setupTitleLockup: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                RoachOrbitMark()
+                    .frame(width: 88, height: 88)
+
+                VStack(alignment: .leading, spacing: 3) {
                     Text("RoachNet Setup")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(RoachPalette.text)
+                    Text("A calmer way to get set up")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(RoachPalette.muted)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                RoachOrbitMark()
+                    .frame(width: 72, height: 72)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("RoachNet Setup")
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(RoachPalette.text)
                     Text("A calmer way to get set up")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
-
-            Spacer()
-
-            RoachTag("Apple Silicon", accent: RoachPalette.magenta)
         }
-    }
-
-    private var mainCard: some View {
-        RoachPanel {
-            VStack(alignment: .leading, spacing: 24) {
-                progressHeader
-                stageHero
-                stageContent
-
-                if showStatusSection {
-                    statusSection
-                }
-
-                footer
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var progressHeader: some View {
@@ -498,29 +638,33 @@ private struct SetupRootView: View {
                     .foregroundStyle(RoachPalette.muted)
             }
 
-            RoachStageStrip(titles: controller.stageTitles, activeIndex: controller.stage.rawValue)
+            ScrollView(.horizontal, showsIndicators: false) {
+                RoachStageStrip(titles: controller.stageTitles, activeIndex: controller.stage.rawValue)
+            }
         }
     }
 
     private var stageHero: some View {
-        HStack(alignment: .top, spacing: 18) {
-            VStack(alignment: .leading, spacing: 12) {
-                RoachKicker(controller.stage.title)
-                Text(controller.stage.headline)
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundStyle(RoachPalette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(controller.stage.detail)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(RoachPalette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 18) {
+                stageHeroCopy
+
+                Spacer(minLength: 0)
+
+                if controller.stage == .welcome || controller.stage == .finish {
+                    RoachOrbitMark()
+                        .frame(width: 108, height: 108)
+                }
             }
 
-            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 18) {
+                stageHeroCopy
 
-            if controller.stage == .welcome || controller.stage == .finish {
-                RoachOrbitMark()
-                    .frame(width: 108, height: 108)
+                if controller.stage == .welcome || controller.stage == .finish {
+                    RoachOrbitMark()
+                        .frame(width: 92, height: 92)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
@@ -540,11 +684,36 @@ private struct SetupRootView: View {
         case .machine:
             VStack(alignment: .leading, spacing: 16) {
                 LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
-                ForEach(machineRows, id: \.title) { row in
+                    RoachInfoPill(title: "Install Root", value: controller.config.installPath)
+                    RoachInfoPill(title: "App Target", value: controller.config.installedAppPath)
+                    RoachInfoPill(
+                        title: "Content Folder",
+                        value: controller.config.storagePath.isEmpty
+                            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: controller.config.installPath)
+                            : controller.config.storagePath
+                    )
+                }
+
+                LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
+                    ForEach(machineRows, id: \.title) { row in
                         RoachInsetPanel {
                             RoachStatusRow(title: row.title, value: row.value, accent: row.accent)
                         }
+                    }
                 }
+
+                responsiveBar {
+                    EmptyView()
+                } actions: {
+                    Button("Choose Content Folder") {
+                        controller.chooseStorageFolder()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+
+                    Text("You can change this later from RoachNet Runtime too.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(RoachPalette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -553,7 +722,12 @@ private struct SetupRootView: View {
                 LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
                     RoachInfoPill(title: "Container Runtime", value: runtimeValue)
                     RoachInfoPill(title: "Services", value: servicesValue)
-                    RoachInfoPill(title: "Storage", value: "Contained")
+                    RoachInfoPill(
+                        title: "Storage",
+                        value: controller.config.storagePath.isEmpty
+                            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: controller.config.installPath)
+                            : controller.config.storagePath
+                    )
                 }
 
                 Button("Start Runtime Now") {
@@ -565,7 +739,7 @@ private struct SetupRootView: View {
 
         case .roachClaw:
             VStack(alignment: .leading, spacing: 16) {
-                RoachInlineField(title: "Default model", value: $controller.config.roachClawDefaultModel, placeholder: "qwen2.5-coder:7b")
+                RoachInlineField(title: "Default model", value: $controller.config.roachClawDefaultModel, placeholder: "qwen2.5-coder:1.5b")
 
                 RoachInsetPanel {
                     Toggle(isOn: $controller.config.installRoachClaw) {
@@ -584,10 +758,19 @@ private struct SetupRootView: View {
 
         case .finish:
             VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 12) {
-                    RoachTag("RoachNet ready")
-                    if controller.config.installRoachClaw {
-                        RoachTag(controller.config.roachClawDefaultModel, accent: RoachPalette.magenta)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        RoachTag("RoachNet ready")
+                        if controller.config.installRoachClaw {
+                            RoachTag(controller.config.roachClawDefaultModel, accent: RoachPalette.magenta)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        RoachTag("RoachNet ready")
+                        if controller.config.installRoachClaw {
+                            RoachTag(controller.config.roachClawDefaultModel, accent: RoachPalette.magenta)
+                        }
                     }
                 }
 
@@ -628,15 +811,13 @@ private struct SetupRootView: View {
     }
 
     private var footer: some View {
-        HStack {
+        responsiveBar {
             Button("Back") {
                 controller.back()
             }
             .buttonStyle(RoachSecondaryButtonStyle())
             .disabled(!controller.canGoBack)
-
-            Spacer()
-
+        } actions: {
             Button(primaryTitle) {
                 Task { await controller.primaryAction() }
             }
@@ -682,8 +863,8 @@ private struct SetupRootView: View {
 
         if dependencies.isEmpty {
             return [
-                ("Install Root", controller.config.installPath, RoachPalette.green),
-                ("App Target", controller.config.installedAppPath, RoachPalette.green),
+                ("Container Runtime", runtimeValue, RoachPalette.green),
+                ("Services", servicesValue, controller.setupState?.installLooksReady == true ? RoachPalette.green : RoachPalette.warning),
             ]
         }
 
@@ -715,6 +896,43 @@ private struct SetupRootView: View {
     }
 
     private var summaryColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 220), spacing: 12, alignment: .top)]
+        [GridItem(.adaptive(minimum: 176), spacing: 12, alignment: .top)]
+    }
+
+    private var stageHeroCopy: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RoachKicker(controller.stage.title)
+            Text(controller.stage.headline)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(RoachPalette.text)
+                .minimumScaleFactor(0.80)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(controller.stage.detail)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(RoachPalette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func responsiveBar<HeaderContent: View, ActionsContent: View>(
+        @ViewBuilder header: () -> HeaderContent,
+        @ViewBuilder actions: () -> ActionsContent
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                header()
+                Spacer(minLength: 12)
+                HStack(spacing: 12) {
+                    actions()
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                header()
+                HStack(spacing: 12) {
+                    actions()
+                }
+            }
+        }
     }
 }

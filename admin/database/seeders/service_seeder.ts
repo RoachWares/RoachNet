@@ -90,7 +90,7 @@ export default class ServiceSeeder extends BaseSeeder {
     {
       service_name: SERVICE_NAMES.CYBERCHEF,
       friendly_name: 'RoachNet Data Lab',
-      powered_by: 'CyberChef',
+      powered_by: 'CyberChef + Jam',
       display_order: 11,
       description: 'Encoding, decoding, and analysis tools adapted for RoachNet field workflows',
       icon: 'IconChefHat',
@@ -162,8 +162,25 @@ export default class ServiceSeeder extends BaseSeeder {
   ]
 
   async run() {
-    const existingServices = await Service.query().select('service_name')
+    const existingServices = await Service.all()
     const existingServiceNames = new Set(existingServices.map((service) => service.service_name))
+    const defaultsByName = new Map(
+      ServiceSeeder.DEFAULT_SERVICES.map((service) => [service.service_name, service])
+    )
+
+    for (const service of existingServices) {
+      const defaults = defaultsByName.get(service.service_name)
+      if (!defaults) {
+        continue
+      }
+
+      service.merge({
+        ...defaults,
+        installed: service.installed,
+        installation_status: service.installation_status,
+      })
+      await service.save()
+    }
 
     const newServices = ServiceSeeder.DEFAULT_SERVICES.filter(
       (service) => !existingServiceNames.has(service.service_name)

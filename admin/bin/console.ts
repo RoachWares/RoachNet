@@ -69,7 +69,7 @@ bootDebug('bootstrap:start', {
 
 const ignitor = new Ignitor(APP_ROOT, { importer: IMPORTER })
 
-ignitor.tap((app) => {
+ignitor.tap((app: any) => {
   bootDebug('ignitor:tap')
   app.booting(async () => {
     bootDebug('app:booting:start')
@@ -97,7 +97,7 @@ async function bootstrapAce() {
   bootDebug('ace:kernel:created')
   app.container.bindValue('ace', kernel)
 
-  kernel.loading(async (metaData) => {
+  kernel.loading(async (metaData: any) => {
     bootDebug('ace:kernel:loading', {
       commandName: metaData.commandName,
       startApp: metaData.options.startApp,

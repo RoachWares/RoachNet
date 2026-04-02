@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RoachNet App Store</title>
+    <meta
+      name="description"
+      content="The RoachNet App Store catalog for mirrored maps, archives, model packs, and contained downloads backed by roachnet.org."
+    />
+    <meta name="theme-color" content="#0b1016" />
+    <link rel="canonical" href="https://roachnet.org/app-store.html" />
+    <link rel="icon" type="image/png" href="/assets/roachnet-logo.png" />
+    <link rel="apple-touch-icon" href="/assets/roachnet-logo.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="RoachNet App Store" />
+    <meta
+      property="og:description"
+      content="Mirror-backed content and contained downloads for the RoachNet native app."
+    />
+    <meta property="og:url" content="https://roachnet.org/app-store.html" />
+    <meta property="og:image" content="https://roachnet.org/assets/screens/roachnet-native-home.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="RoachNet App Store" />
+    <meta
+      name="twitter:description"
+      content="Mirror-backed maps, archives, tools, and model packs for the RoachNet native app."
+    />
+    <meta name="twitter:image" content="https://roachnet.org/assets/screens/roachnet-native-home.png" />
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="bg-glow bg-glow--blue" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow--green" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand-lockup" href="./index.html" aria-label="RoachNet home">
+        <img class="brand-mark" src="./assets/roachnet-logo.png" alt="RoachNet logo" />
+        <div class="brand-copy">
+          <span class="brand-kicker">Mirror-backed content lane</span>
+          <strong>RoachNet App Store</strong>
+        </div>
+      </a>
+
+      <nav class="site-nav" aria-label="Primary">
+        <a href="./index.html">Home</a>
+        <a href="#catalog">Catalog</a>
+        <a href="#native">Native installs</a>
+        <a href="#downloads">Downloads</a>
+        <a href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top" class="page-shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">RoachNet App Store</p>
+          <h1>One catalog for the native app and the web.</h1>
+          <p class="hero-body">
+            RoachNet is moving extra content behind its own manifests so the app can install maps, archives, toolkits, and model packs without depending on scattered upstream links.
+          </p>
+
+          <div class="hero-actions">
+            <button class="cta cta--primary" id="primary-download" type="button">Download RoachNet for macOS</button>
+            <a class="cta cta--ghost" href="./index.html#screens">See actual app screens</a>
+          </div>
+
+          <p class="hero-footnote">The native app uses the same manifest lane served from <code>roachnet.org/collections</code>.</p>
+          <p class="download-meta" id="download-meta">Starts with RoachNet Setup · RoachNet-Setup-macOS.dmg</p>
+
+          <div class="hero-status" aria-label="RoachNet status row">
+            <span data-hero-time>--:-- --</span>
+            <span class="hero-status__pill" data-hero-connectivity data-state="pending">Checking link</span>
+            <span data-hero-storage>Storage estimate pending</span>
+          </div>
+          <p class="hero-status__note">Local time updates in-browser. Storage uses a browser-side estimate until the native app is installed.</p>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="screen-frame screen-frame--hero">
+            <img
+              class="screen-frame__image"
+              src="./assets/screens/roachnet-native-roachclaw.png"
+              alt="RoachNet native RoachClaw workbench"
+            />
+          </div>
+          <div class="screen-chip-row">
+            <span class="screen-chip">Contained AI</span>
+            <span class="screen-chip">Mirror Catalog</span>
+            <span class="screen-chip">RoachClaw</span>
+            <span class="screen-chip">Downloads</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" id="catalog">
+        <div class="section-head">
+          <p class="eyebrow">Catalog</p>
+          <h2>Manifest-backed content lanes.</h2>
+          <p>The public catalog below is the same direction the native app is wired toward: RoachNet-owned manifests, resumable downloads, and contained installs instead of live upstream dependency drift.</p>
+        </div>
+
+        <div class="split-highlight split-highlight--store">
+          <article class="spotlight-card">
+            <strong>Install from the native app or pull directly from the site.</strong>
+            <p>The website exposes the manifests and primary downloads, while the native app uses the same backend to recommend packs, install them into the right lane, and keep the local workspace aligned.</p>
+            <div class="app-store-meta">
+              <span class="app-store-meta__pill" id="app-store-updated">Checking catalog…</span>
+              <span>Designed for mirrored maps, archives, toolkits, and model packs.</span>
+            </div>
+          </article>
+
+          <div class="app-store-grid" id="app-store-grid" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="content-section" id="native">
+        <div class="section-head">
+          <p class="eyebrow">Native install path</p>
+          <h2>The app should treat the website like a catalog backend, not a marketing page.</h2>
+          <p>RoachNet’s native install flow can use these manifests to surface recommended content, local model packs, and mirrored downloads based on runtime health and the user’s machine profile.</p>
+        </div>
+
+        <div class="card-grid card-grid--three">
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Maps & archives</span>
+            <h3>Install verified packs into the right lane.</h3>
+            <p>Regional maps, curated ZIM sets, and field references resolve through stable RoachNet manifests instead of live upstream pages that change underneath the app.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Local AI</span>
+            <h3>Recommend models from machine specs.</h3>
+            <p>The app can recommend RoachClaw-ready local models based on available RAM, CPU/GPU headroom, and still keep a cloud lane available for the fastest first boot.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-card__eyebrow">Portable installs</span>
+            <h3>Keep the stack grouped together.</h3>
+            <p>Contained downloads stay grouped with the RoachNet workspace so the user can move, back up, or wipe the install without hunting across the host OS.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section content-section--downloads" id="downloads">
+        <div class="section-head">
+          <p class="eyebrow">Download</p>
+          <h2>Start with the native installer.</h2>
+          <p>The macOS build carries the setup app, fix helper, contained runtime, and the current native shell surfaces shown on the landing page.</p>
+        </div>
+
+        <div class="downloads-actions">
+          <button class="cta cta--primary" id="downloads-primary" type="button">Download RoachNet for macOS</button>
+          <a class="cta cta--ghost" href="https://github.com/AHGRoach/RoachNet/releases/latest" target="_blank" rel="noreferrer">Open latest release</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__copy">
+        <strong>RoachNet App Store</strong>
+        <span>One catalog backend for the native app, the mirror, and direct downloads.</span>
+      </div>
+      <nav class="site-footer__nav" aria-label="Footer">
+        <a href="./index.html">Home</a>
+        <a href="#catalog">Catalog</a>
+        <a href="#native">Native installs</a>
+        <a href="#downloads">Downloads</a>
+        <a href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="mailto:contact@ahgrecords.com">contact@ahgrecords.com</a>
+      </nav>
+      <div class="site-footer__meta">
+        <a href="https://github.com/AHGRoach/RoachNet/releases/latest" target="_blank" rel="noreferrer">Latest release</a>
+        <a
+          class="netlify-badge"
+          href="https://www.netlify.com"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Proudly powered by Netlify"
+        >
+          <span>Proudly powered by Netlify</span>
+          <img
+            src="https://www.netlify.com/assets/badges/netlify-badge-color-accent.svg"
+            alt="Netlify"
+            loading="lazy"
+          />
+        </a>
+      </div>
+    </footer>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

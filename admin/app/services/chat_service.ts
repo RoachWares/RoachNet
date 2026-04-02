@@ -10,6 +10,28 @@ import { toTitleCase } from '../utils/misc.js'
 @inject()
 export class ChatService {
   constructor(private ollamaService: OllamaService) {}
+  private static readonly FALLBACK_SUGGESTIONS = [
+    'Show me what is installed and what still needs setup',
+    'Help me choose the best local RoachClaw model for this machine',
+    'What content packs should I download first for offline use',
+  ]
+
+  private async withTimeout<T>(work: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeoutHandle: NodeJS.Timeout | undefined
+
+    try {
+      return await Promise.race([
+        work,
+        new Promise<T>((_, reject) => {
+          timeoutHandle = setTimeout(() => reject(new Error(message)), timeoutMs)
+        }),
+      ])
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
+      }
+    }
+  }
 
   async getAllSessions() {
     try {
@@ -31,42 +53,47 @@ export class ChatService {
 
   async getChatSuggestions() {
     try {
+      if (process.env.ROACHNET_NATIVE_ONLY === '1') {
+        return ChatService.FALLBACK_SUGGESTIONS
+      }
+
       const models = await this.ollamaService.getModels()
       if (!models || models.length === 0) {
-        return [] // If no models are available, return empty suggestions
+        return ChatService.FALLBACK_SUGGESTIONS
       }
 
+      const cloudModel = models.find((model) => model.name.endsWith(':cloud'))
       const localModels = models.filter((model) => !model.name.endsWith(':cloud'))
-      if (localModels.length === 0) {
-        return []
-      }
-
-      // Larger local models generally give better results for suggestion generation.
       const sizedLocalModels = localModels.filter(
         (model) => typeof model.size === 'number' && model.size > 0
       )
-      const candidateModels = sizedLocalModels.length > 0 ? sizedLocalModels : localModels
-      const largestModel = candidateModels.reduce((prev, current) =>
-        (prev.size ?? -1) > (current.size ?? -1) ? prev : current
-      )
+      const largestLocalModel =
+        (sizedLocalModels.length > 0 ? sizedLocalModels : localModels).reduce?.((prev, current) =>
+          (prev.size ?? -1) > (current.size ?? -1) ? prev : current
+        ) ?? null
+      const suggestionModel = cloudModel ?? largestLocalModel
 
-      if (!largestModel) {
-        return []
+      if (!suggestionModel) {
+        return ChatService.FALLBACK_SUGGESTIONS
       }
 
-      const response = await this.ollamaService.chat({
-        model: largestModel.name,
-        messages: [
-          {
-            role: 'user',
-            content: SYSTEM_PROMPTS.chat_suggestions,
-          }
-        ],
-        stream: false,
-      })
+      const response = await this.withTimeout(
+        this.ollamaService.chat({
+          model: suggestionModel.name,
+          messages: [
+            {
+              role: 'user',
+              content: SYSTEM_PROMPTS.chat_suggestions,
+            }
+          ],
+          stream: false,
+        }),
+        cloudModel ? 20_000 : 12_000,
+        `Suggestion generation timed out for ${suggestionModel.name}`
+      )
 
-      if (response && response.message && response.message.content) {
-        const content = response.message.content.trim()
+        if (response && response.message && response.message.content) {
+            const content = response.message.content.trim()
 
         const suggestions = content
           .split(/\r?\n/)
@@ -77,9 +104,13 @@ export class ChatService {
           .filter((s) => s.length > 0)
 
         const uniqueSuggestions = Array.from(new Set(suggestions)).slice(0, 3)
-        return uniqueSuggestions.map((s) => toTitleCase(s))
+        if (uniqueSuggestions.length > 0) {
+          return uniqueSuggestions.map((s) => toTitleCase(s))
+        }
+
+        return ChatService.FALLBACK_SUGGESTIONS
       } else {
-        return []
+        return ChatService.FALLBACK_SUGGESTIONS
       }
     } catch (error) {
       logger.error(
@@ -87,7 +118,7 @@ export class ChatService {
           error instanceof Error ? error.message : error
         }`
       )
-      return []
+      return ChatService.FALLBACK_SUGGESTIONS
     }
   }
 

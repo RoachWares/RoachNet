@@ -12,7 +12,10 @@ export class DownloadService {
   async listDownloadJobs(filetype?: string): Promise<DownloadJobWithProgress[]> {
     // Get regular file download jobs (zim, map, etc.)
     const queue = this.queueService.getQueue(RunDownloadJob.queue)
-    const fileJobs = await queue.getJobs(['waiting', 'active', 'delayed', 'failed'])
+    const fileJobs = await this.withTimeout(
+      () => queue.getJobs(['waiting', 'active', 'delayed', 'failed']),
+      []
+    )
 
     const fileDownloads = fileJobs.map((job) => ({
       jobId: job.id!.toString(),
@@ -26,7 +29,10 @@ export class DownloadService {
 
     // Get Ollama model download jobs
     const modelQueue = this.queueService.getQueue(DownloadModelJob.queue)
-    const modelJobs = await modelQueue.getJobs(['waiting', 'active', 'delayed', 'failed'])
+    const modelJobs = await this.withTimeout(
+      () => modelQueue.getJobs(['waiting', 'active', 'delayed', 'failed']),
+      []
+    )
 
     const modelDownloads = modelJobs.map((job) => ({
       jobId: job.id!.toString(),
@@ -58,6 +64,25 @@ export class DownloadService {
       if (job) {
         await job.remove()
         return
+      }
+    }
+  }
+
+  private async withTimeout<T>(operation: () => Promise<T>, fallback: T, timeoutMs = 2000): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<T>((resolve) => {
+          timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs)
+        }),
+      ])
+    } catch {
+      return fallback
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
       }
     }
   }

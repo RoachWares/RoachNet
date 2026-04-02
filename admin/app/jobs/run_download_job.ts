@@ -1,7 +1,7 @@
 import { Job } from 'bullmq'
 import { RunDownloadJobParams } from '../../types/downloads.js'
 import { QueueService } from '#services/queue_service'
-import { doResumableDownload } from '../utils/downloads.js'
+import { doResumableDownloadWithRetry } from '../utils/downloads.js'
 import { createHash } from 'crypto'
 import { DockerService } from '#services/docker_service'
 import { ZimService } from '#services/zim_service'
@@ -25,15 +25,20 @@ export class RunDownloadJob {
     const { url, filepath, timeout, allowedMimeTypes, forceNew, filetype, resourceMetadata } =
       job.data as RunDownloadJobParams
 
-    await doResumableDownload({
+    await doResumableDownloadWithRetry({
       url,
       filepath,
       timeout,
       allowedMimeTypes,
       forceNew,
+      max_retries: 4,
+      retry_delay: 3000,
       onProgress(progress) {
         const progressPercent = (progress.downloadedBytes / (progress.totalBytes || 1)) * 100
         job.updateProgress(Math.floor(progressPercent))
+      },
+      onAttemptError(error, attempt) {
+        console.warn(`[RunDownloadJob] Download attempt ${attempt} failed for ${url}:`, error)
       },
       async onComplete(url) {
         try {
@@ -140,7 +145,8 @@ export class RunDownloadJob {
         message: `Dispatched download job for URL ${params.url}`,
       }
     } catch (error) {
-      if (error.message.includes('job already exists')) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('job already exists')) {
         const existing = await queue.getJob(jobId)
         return {
           job: existing,

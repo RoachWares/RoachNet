@@ -4,7 +4,23 @@ import { FileEntry } from '../../types/files.js'
 import { createReadStream } from 'fs'
 import { LSBlockDevice, NomadDiskInfoRaw } from '../../types/system.js'
 
-export const ZIM_STORAGE_PATH = '/storage/zim'
+export const ZIM_STORAGE_PATH = 'zim'
+export const MAPS_STORAGE_PATH = 'maps'
+export const KB_UPLOADS_STORAGE_PATH = 'kb_uploads'
+
+export function getStorageRoot(): string {
+  const configured = process.env.NOMAD_STORAGE_PATH?.trim()
+  if (configured) {
+    return path.resolve(configured)
+  }
+
+  return path.resolve(process.cwd(), 'storage')
+}
+
+export function resolveStoragePath(...segments: string[]): string {
+  const normalizedSegments = segments.map((segment) => segment.replace(/^[/\\]+/, ''))
+  return path.resolve(getStorageRoot(), ...normalizedSegments)
+}
 
 export async function listDirectoryContents(path: string): Promise<FileEntry[]> {
   const entries = await readdir(path, { withFileTypes: true })

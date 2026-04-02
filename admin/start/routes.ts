@@ -6,30 +6,34 @@
 | The routes file is used for defining the HTTP routes.
 |
 */
-import BenchmarkController from '#controllers/benchmark_controller'
-import ChatsController from '#controllers/chats_controller'
-import DocsController from '#controllers/docs_controller'
-import DownloadsController from '#controllers/downloads_controller'
-import EasySetupController from '#controllers/easy_setup_controller'
-import HomeController from '#controllers/home_controller'
-import MapsController from '#controllers/maps_controller'
-import OpenClawController from '#controllers/openclaw_controller'
-import OllamaController from '#controllers/ollama_controller'
-import RagController from '#controllers/rag_controller'
-import RoachClawController from '#controllers/roachclaw_controller'
-import SettingsController from '#controllers/settings_controller'
-import SiteArchivesController from '#controllers/site_archives_controller'
-import SystemController from '#controllers/system_controller'
-import CollectionUpdatesController from '#controllers/collection_updates_controller'
-import ZimController from '#controllers/zim_controller'
 import router from '@adonisjs/core/services/router'
-import transmit from '@adonisjs/transmit/services/main'
+import type { HttpContext } from '@adonisjs/core/http'
 
-transmit.registerRoutes()
+const BenchmarkController = () => import('#controllers/benchmark_controller')
+const ChatsController = () => import('#controllers/chats_controller')
+const CollectionUpdatesController = () => import('#controllers/collection_updates_controller')
+const DocsController = () => import('#controllers/docs_controller')
+const DownloadsController = () => import('#controllers/downloads_controller')
+const EasySetupController = () => import('#controllers/easy_setup_controller')
+const HomeController = () => import('#controllers/home_controller')
+const MapsController = () => import('#controllers/maps_controller')
+const OllamaController = () => import('#controllers/ollama_controller')
+const OpenClawController = () => import('#controllers/openclaw_controller')
+const RagController = () => import('#controllers/rag_controller')
+const RoachClawController = () => import('#controllers/roachclaw_controller')
+const SettingsController = () => import('#controllers/settings_controller')
+const SiteArchivesController = () => import('#controllers/site_archives_controller')
+const SystemController = () => import('#controllers/system_controller')
+const ZimController = () => import('#controllers/zim_controller')
+
+if (process.env.ROACHNET_DISABLE_TRANSMIT !== '1') {
+  const { default: transmit } = await import('@adonisjs/transmit/services/main')
+  transmit.registerRoutes()
+}
 
 router.get('/', [HomeController, 'index'])
 router.get('/home', [HomeController, 'home'])
-router.on('/about').renderInertia('about')
+router.get('/about', async ({ inertia }: HttpContext) => inertia.render('about'))
 router.get('/chat', [ChatsController, 'inertia'])
 router.get('/maps', [MapsController, 'index'])
 router.get('/site-archives', [SiteArchivesController, 'index'])
@@ -103,6 +107,10 @@ router
   .prefix('/api/downloads')
 
 router.get('/api/health', () => {
+  if (process.env.ROACHNET_TRACE_REQUESTS === '1') {
+    console.error('[roachnet:req] health:handler')
+  }
+
   return { status: 'ok' }
 })
 
@@ -172,6 +180,7 @@ router
     router.get('/internet-status', [SystemController, 'getInternetStatus'])
     router.get('/services', [SystemController, 'getServices'])
     router.get('/ai/providers', [SystemController, 'getAIRuntimeProviders'])
+    router.get('/native-snapshot', [SystemController, 'getNativeSnapshot'])
     router.post('/services/affect', [SystemController, 'affectService'])
     router.post('/services/install', [SystemController, 'installService'])
     router.post('/services/force-reinstall', [SystemController, 'forceReinstallService'])

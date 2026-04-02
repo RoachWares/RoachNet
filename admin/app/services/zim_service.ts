@@ -7,6 +7,7 @@ import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 import { isRawListRemoteZimFilesResponse, isRawRemoteZimFileEntry } from '../../util/zim.js'
 import logger from '@adonisjs/core/services/logger'
+import env from '#start/env'
 import { DockerService } from './docker_service.js'
 import { inject } from '@adonisjs/core'
 import {
@@ -14,6 +15,7 @@ import {
   ensureDirectoryExists,
   getFileStatsIfExists,
   listDirectoryContents,
+  resolveStoragePath,
   ZIM_STORAGE_PATH,
 } from '../utils/fs.js'
 import { join, resolve, sep } from 'path'
@@ -34,8 +36,20 @@ const WIKIPEDIA_OPTIONS_URL = 'https://raw.githubusercontent.com/Crosstalk-Solut
 export class ZimService {
   constructor(private dockerService: DockerService) { }
 
+  private getWikipediaOptionsUrls(): string[] {
+    const customBase = env.get('ROACHNET_MANIFESTS_BASE_URL')?.trim()
+    const sources: string[] = []
+
+    if (customBase) {
+      sources.push(`${customBase.replace(/\/$/, '')}/wikipedia.json`)
+    }
+
+    sources.push(WIKIPEDIA_OPTIONS_URL)
+    return Array.from(new Set(sources))
+  }
+
   async list() {
-    const dirPath = join(process.cwd(), ZIM_STORAGE_PATH)
+    const dirPath = resolveStoragePath(ZIM_STORAGE_PATH)
     await ensureDirectoryExists(dirPath)
 
     const all = await listDirectoryContents(dirPath)
@@ -154,7 +168,7 @@ export class ZimService {
       throw new Error('Could not determine filename from URL')
     }
 
-    const filepath = join(process.cwd(), ZIM_STORAGE_PATH, filename)
+    const filepath = resolveStoragePath(ZIM_STORAGE_PATH, filename)
 
     // Parse resource metadata for the download job
     const parsedFilename = CollectionManifestService.parseZimFilename(filename)
@@ -229,7 +243,7 @@ export class ZimService {
       if (!filename) continue
 
       downloadFilenames.push(filename)
-      const filepath = join(process.cwd(), ZIM_STORAGE_PATH, filename)
+      const filepath = resolveStoragePath(ZIM_STORAGE_PATH, filename)
 
       await RunDownloadJob.dispatch({
         url: resource.url,
@@ -304,7 +318,7 @@ export class ZimService {
       const parsed = CollectionManifestService.parseZimFilename(filename)
       if (!parsed) continue
 
-      const filepath = join(process.cwd(), ZIM_STORAGE_PATH, filename)
+      const filepath = resolveStoragePath(ZIM_STORAGE_PATH, filename)
       const stats = await getFileStatsIfExists(filepath)
 
       try {
@@ -332,7 +346,7 @@ export class ZimService {
       fileName += '.zim'
     }
 
-    const basePath = resolve(join(process.cwd(), ZIM_STORAGE_PATH))
+    const basePath = resolveStoragePath(ZIM_STORAGE_PATH)
     const fullPath = resolve(join(basePath, fileName))
 
     // Prevent path traversal — resolved path must stay within the storage directory
@@ -361,20 +375,29 @@ export class ZimService {
   // Wikipedia selector methods
 
   async getWikipediaOptions(): Promise<WikipediaOption[]> {
-    try {
-      const response = await axios.get(WIKIPEDIA_OPTIONS_URL)
-      const data = response.data
+    let lastError: unknown = null
 
-      const validated = await vine.validate({
-        schema: wikipediaOptionsFileSchema,
-        data,
-      })
+    for (const source of this.getWikipediaOptionsUrls()) {
+      try {
+        const response = await axios.get(source, { timeout: 15000 })
+        const validated = await vine.validate({
+          schema: wikipediaOptionsFileSchema,
+          data: response.data,
+        })
 
-      return validated.options
-    } catch (error) {
-      logger.error(`[ZimService] Failed to fetch Wikipedia options:`, error)
-      throw new Error('Failed to fetch Wikipedia options')
+        return validated.options
+      } catch (error) {
+        lastError = error
+        logger.warn(
+          `[ZimService] Failed to fetch Wikipedia options from ${source}: ${
+            error instanceof Error ? error.message : error
+          }`
+        )
+      }
     }
+
+    logger.error(`[ZimService] Failed to fetch Wikipedia options from all sources:`, lastError)
+    throw new Error('Failed to fetch Wikipedia options')
   }
 
   async getWikipediaSelection(): Promise<WikipediaSelection | null> {
@@ -469,7 +492,7 @@ export class ZimService {
       throw new Error('Could not determine filename from URL')
     }
 
-    const filepath = join(process.cwd(), ZIM_STORAGE_PATH, filename)
+    const filepath = resolveStoragePath(ZIM_STORAGE_PATH, filename)
 
     // Update or create selection record to show downloading status
     let selection: WikipediaSelection

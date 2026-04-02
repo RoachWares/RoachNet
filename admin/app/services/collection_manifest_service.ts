@@ -1,6 +1,7 @@
 import axios from 'axios'
 import vine from '@vinejs/vine'
 import logger from '@adonisjs/core/services/logger'
+import env from '#start/env'
 import { DateTime } from 'luxon'
 import { join } from 'path'
 import CollectionManifest from '#models/collection_manifest'
@@ -10,6 +11,8 @@ import {
   ensureDirectoryExists,
   listDirectoryContents,
   getFileStatsIfExists,
+  MAPS_STORAGE_PATH,
+  resolveStoragePath,
   ZIM_STORAGE_PATH,
 } from '../utils/fs.js'
 import type {
@@ -22,7 +25,13 @@ import type {
   SpecTier,
 } from '../../types/collections.js'
 
-const SPEC_URLS: Record<ManifestType, string> = {
+const SPEC_FILENAMES: Record<ManifestType, string> = {
+  zim_categories: 'kiwix-categories.json',
+  maps: 'maps.json',
+  wikipedia: 'wikipedia.json',
+}
+
+const UPSTREAM_SPEC_URLS: Record<ManifestType, string> = {
   zim_categories: 'https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/collections/kiwix-categories.json',
   maps: 'https://github.com/Crosstalk-Solutions/project-nomad/raw/refs/heads/main/collections/maps.json',
   wikipedia: 'https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/collections/wikipedia.json',
@@ -35,43 +44,69 @@ const VALIDATORS: Record<ManifestType, any> = {
 }
 
 export class CollectionManifestService {
-  private readonly mapStoragePath = join('storage', 'maps')
+  private readonly mapStoragePath = MAPS_STORAGE_PATH
+
+  private getSpecSources(type: ManifestType): string[] {
+    const customBase = env.get('ROACHNET_MANIFESTS_BASE_URL')?.trim()
+    const sources: string[] = []
+
+    if (customBase) {
+      sources.push(`${customBase.replace(/\/$/, '')}/${SPEC_FILENAMES[type]}`)
+    }
+
+    sources.push(UPSTREAM_SPEC_URLS[type])
+    return Array.from(new Set(sources))
+  }
 
   // ---- Spec management ----
 
   async fetchAndCacheSpec(type: ManifestType): Promise<boolean> {
-    try {
-      const response = await axios.get(SPEC_URLS[type], { timeout: 15000 })
+    const sources = this.getSpecSources(type)
+    let lastError: unknown = null
 
-      const validated = await vine.validate({
-        schema: VALIDATORS[type],
-        data: response.data,
-      })
+    for (const source of sources) {
+      try {
+        const response = await axios.get(source, { timeout: 15000 })
 
-      const existing = await CollectionManifest.find(type)
-      const specVersion = validated.spec_version
+        const validated = await vine.validate({
+          schema: VALIDATORS[type],
+          data: response.data,
+        })
 
-      if (existing) {
-        const changed = existing.spec_version !== specVersion
-        existing.spec_version = specVersion
-        existing.spec_data = validated
-        existing.fetched_at = DateTime.now()
-        await existing.save()
-        return changed
+        const existing = await CollectionManifest.find(type)
+        const specVersion = validated.spec_version
+
+        if (existing) {
+          const changed = existing.spec_version !== specVersion
+          existing.spec_version = specVersion
+          existing.spec_data = validated
+          existing.fetched_at = DateTime.now()
+          await existing.save()
+          return changed
+        }
+
+        await CollectionManifest.create({
+          type,
+          spec_version: specVersion,
+          spec_data: validated,
+          fetched_at: DateTime.now(),
+        })
+
+        return true
+      } catch (error) {
+        lastError = error
+        logger.warn(
+          `[CollectionManifestService] Failed to fetch spec for ${type} from ${source}: ${error instanceof Error ? error.message : error}`
+        )
       }
-
-      await CollectionManifest.create({
-        type,
-        spec_version: specVersion,
-        spec_data: validated,
-        fetched_at: DateTime.now(),
-      })
-
-      return true
-    } catch (error) {
-      logger.error(`[CollectionManifestService] Failed to fetch spec for ${type}:`, error?.message || error)
-      return false
     }
+
+    logger.error(
+      `[CollectionManifestService] Failed to fetch spec for ${type} from all sources: ${
+        lastError instanceof Error ? lastError.message : lastError
+      }`
+    )
+    return false
   }
 
   async getCachedSpec<T>(type: ManifestType): Promise<T | null> {
@@ -196,7 +231,7 @@ export class CollectionManifestService {
 
     // Reconcile ZIM files
     try {
-      const zimDir = join(process.cwd(), ZIM_STORAGE_PATH)
+      const zimDir = resolveStoragePath(ZIM_STORAGE_PATH)
       await ensureDirectoryExists(zimDir)
       const zimItems = await listDirectoryContents(zimDir)
       const zimFiles = zimItems.filter((f) => f.name.endsWith('.zim'))
@@ -259,7 +294,7 @@ export class CollectionManifestService {
 
     // Reconcile map files
     try {
-      const mapDir = join(process.cwd(), this.mapStoragePath, 'pmtiles')
+      const mapDir = resolveStoragePath(this.mapStoragePath, 'pmtiles')
       await ensureDirectoryExists(mapDir)
       const mapItems = await listDirectoryContents(mapDir)
       const mapFiles = mapItems.filter((f) => f.name.endsWith('.pmtiles'))

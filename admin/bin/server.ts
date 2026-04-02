@@ -10,6 +10,7 @@
 */
 
 import { createServer } from 'node:http'
+import { appendFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -21,8 +22,22 @@ const ignitorModuleUrl = pathToFileURL(
   path.join(adonisCoreRoot, 'build', 'src', 'ignitor', 'main.js')
 ).href
 const { Ignitor } = await import(ignitorModuleUrl)
+const bootTraceStartedAt = Date.now()
+
+function writeBootTrace(stage: string, details?: Record<string, unknown>) {
+  const outputPath = process.env.ROACHNET_BOOT_TRACE_FILE
+  if (!outputPath) {
+    return
+  }
+
+  const elapsedMs = Date.now() - bootTraceStartedAt
+  const payload = details ? ` ${JSON.stringify(details)}` : ''
+  appendFileSync(outputPath, `[roachnet:bootfile +${elapsedMs}ms] ${stage}${payload}\n`, 'utf8')
+}
 
 function bootDebug(stage: string, details?: Record<string, unknown>) {
+  writeBootTrace(stage, details)
+
   if (process.env.ROACHNET_DEBUG_BOOT !== '1') {
     return
   }
@@ -70,6 +85,12 @@ const IMPORTER = (filePath: string) => {
   return import(filePath)
 }
 
+writeBootTrace('module:loaded', {
+  appRoot: APP_ROOT.href,
+  cwd: process.cwd(),
+  nodeEnv: process.env.NODE_ENV,
+})
+
 bootDebug('bootstrap:start', {
   appRoot: APP_ROOT.href,
   cwd: process.cwd(),
@@ -79,7 +100,7 @@ bootDebug('bootstrap:start', {
 const ignitor = new Ignitor(APP_ROOT, { importer: IMPORTER })
 
 ignitor
-  .tap((app) => {
+  .tap((app: any) => {
     bootDebug('ignitor:tap')
     app.booting(async () => {
       bootDebug('app:booting:start')
@@ -90,14 +111,23 @@ ignitor
     app.listenIf(app.managedByPm2, 'SIGINT', () => app.terminate())
     app.ready(async () => {
       bootDebug('app:ready:start')
-      try {
-        const collectionManifestService = new (await import('#services/collection_manifest_service')).CollectionManifestService()
-        await collectionManifestService.reconcileFromFilesystem()
-        bootDebug('app:ready:manifests-reconciled')
-      } catch (error) {
-        // Catch and log any errors during reconciliation to prevent the server from crashing
-        console.error('Error during collection manifest reconciliation:', error)
+      if (process.env.ROACHNET_RECONCILE_ON_STARTUP === '0') {
+        bootDebug('app:ready:manifests-skipped')
+        return
       }
+
+      setTimeout(() => {
+        void (async () => {
+          try {
+            const collectionManifestService = new (await import('#services/collection_manifest_service')).CollectionManifestService()
+            await collectionManifestService.reconcileFromFilesystem()
+            bootDebug('app:ready:manifests-reconciled')
+          } catch (error) {
+            // Catch and log any errors during reconciliation to prevent the server from crashing
+            console.error('Error during collection manifest reconciliation:', error)
+          }
+        })()
+      }, 0)
     })
   })
 async function startHttpServer() {

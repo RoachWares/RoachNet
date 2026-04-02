@@ -45,6 +45,7 @@
       <nav class="site-nav" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#screens">Screens</a>
+        <a href="./app-store.html">App Store</a>
         <a href="#downloads">Downloads</a>
         <a href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">GitHub</a>
       </nav>
@@ -60,26 +61,27 @@
           </p>
 
           <div class="hero-actions">
-            <button class="cta cta--primary" id="primary-download" type="button">Download RoachNet for macOS</button>
+            <button class="cta cta--primary" id="primary-download" type="button">Download RoachNet 1.30.5 for macOS</button>
             <a class="cta cta--ghost" href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">View on GitHub</a>
           </div>
 
           <p class="hero-footnote">Built for Apple Silicon, Windows 11, and Linux desktops.</p>
-          <p class="download-meta" id="download-meta">Starts with RoachNet Setup · RoachNet-Setup-macOS.dmg</p>
+          <p class="download-meta" id="download-meta">Starts with RoachNet Setup v1.30.5 · RoachNet-Setup-macOS.dmg</p>
 
           <div class="hero-status" aria-label="RoachNet status row">
-            <span>04:20 PM</span>
-            <span class="hero-status__pill">Offline Ready</span>
-            <span>18 GB free</span>
+            <span data-hero-time>--:-- --</span>
+            <span class="hero-status__pill" data-hero-connectivity data-state="pending">Checking link</span>
+            <span data-hero-storage>Storage estimate pending</span>
           </div>
+          <p class="hero-status__note">Local time updates in-browser. Storage uses a browser-side estimate until the native app is installed.</p>
         </div>
 
         <div class="hero-visual" aria-hidden="true">
           <div class="screen-frame screen-frame--hero">
             <img
               class="screen-frame__image"
-              src="./assets/screens/roachnet-home-view.svg"
-              alt="RoachNet home command grid view"
+              src="./assets/screens/roachnet-native-home.png"
+              alt="RoachNet native home command grid"
             />
           </div>
           <div class="screen-chip-row">
@@ -135,53 +137,66 @@
         <div class="section-head">
           <p class="eyebrow">Screens</p>
           <h2>What life with RoachNet actually looks like.</h2>
-          <p>Three main views hold your world together when the network stops pretending to be reliable.</p>
+          <p>These are direct captures from the native shell and setup flow, not dressed-up SVG mockups.</p>
         </div>
 
         <div class="story-stack">
           <article class="story-band">
             <div class="story-band__visual app-screen-shot">
-              <img src="./assets/screens/roachnet-home-view.svg" alt="RoachNet Home command grid" />
+              <img src="./assets/screens/roachnet-native-home.png" alt="RoachNet native home command grid" />
             </div>
             <div class="story-band__copy">
               <span class="feature-card__eyebrow">Home</span>
               <h3>The actual command grid.</h3>
-              <p>Home is the first pane in the native shell, with the same command bar, metric cards, and launch grid you see in the app itself.</p>
+              <p>Home is the first pane in the native shell, with the same command bar, metric cards, and launch grid the user lands in after setup.</p>
             </div>
           </article>
 
           <article class="story-band story-band--reverse">
             <div class="story-band__visual app-screen-shot">
-              <img src="./assets/screens/roachnet-roachclaw-view.svg" alt="RoachNet RoachClaw pane" />
+              <img src="./assets/screens/roachnet-native-roachclaw.png" alt="RoachNet native RoachClaw workbench" />
             </div>
             <div class="story-band__copy">
               <span class="feature-card__eyebrow">RoachClaw</span>
               <h3>The local AI workbench.</h3>
-              <p>The native app exposes the same model status, skill list, workspace lane, and prompt workbench that RoachNet uses to keep local AI close to the machine.</p>
+              <p>The RoachClaw lane surfaces model state, skill installation, the OpenClaw workspace, and the first-boot alignment flow for the contained local stack.</p>
             </div>
           </article>
 
           <article class="story-band">
             <div class="story-band__visual app-screen-shot">
-              <img src="./assets/screens/roachnet-maps-view.svg" alt="RoachNet Maps and education content pane" />
+              <img src="./assets/screens/roachnet-native-setup.png" alt="RoachNet native setup launch step" />
             </div>
             <div class="story-band__copy">
-              <span class="feature-card__eyebrow">Maps &amp; Education</span>
-              <h3>Stage the field content from one lane.</h3>
-              <p>Maps, Wikipedia, and curated education tiers are all staged through the native shell, with download progress and the next action visible in one place.</p>
+              <span class="feature-card__eyebrow">Setup</span>
+              <h3>The installer hands off to the real shell.</h3>
+              <p>The setup app checks runtime health, contained services, and RoachClaw alignment before sending the user into the main command deck.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section" id="app-store">
+        <div class="section-head">
+          <p class="eyebrow">App Store</p>
+          <h2>A mirror-backed content lane, not a pile of dead upstream links.</h2>
+          <p>The RoachNet App Store is moving toward a practical catalog model: synced upstream manifests, mirrored artifacts on <code>roachnet.org</code>, and direct install lanes inside the native app.</p>
+        </div>
+
+        <div class="split-highlight split-highlight--store">
+          <article class="spotlight-card">
+            <strong>Mirror first, upstream second.</strong>
+            <p>Large education packs, field maps, archives, model bundles, and toolkits should resolve through RoachNet-owned URLs first, with upstream only used by the sync pipeline.</p>
+            <div class="app-store-meta">
+              <span class="app-store-meta__pill" id="app-store-updated">Checking catalog…</span>
+              <span>Manifest-driven catalog with resumable downloads, integrity checks, and native install hooks.</span>
+            </div>
+            <div class="hero-actions">
+              <a class="cta cta--ghost" href="./app-store.html">Open the full App Store page</a>
             </div>
           </article>
 
-          <article class="story-band story-band--reverse">
-            <div class="story-band__visual app-screen-shot">
-              <img src="./assets/screens/roachnet-runtime-view.svg" alt="RoachNet Runtime pane" />
-            </div>
-            <div class="story-band__copy">
-              <span class="feature-card__eyebrow">Runtime</span>
-              <h3>Contained, inspectable, recoverable.</h3>
-              <p>The runtime pane is where RoachNet surfaces install roots, server targets, hardware context, and the diagnostics lane when something needs attention.</p>
-            </div>
-          </article>
+          <div class="app-store-grid" id="app-store-grid" aria-live="polite"></div>
         </div>
       </section>
 
@@ -269,7 +284,7 @@
         </div>
 
         <div class="downloads-actions">
-          <button class="cta cta--primary" id="downloads-primary" type="button">Download RoachNet for macOS</button>
+          <button class="cta cta--primary" id="downloads-primary" type="button">Download RoachNet 1.30.5 for macOS</button>
           <a class="cta cta--ghost" href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">View on GitHub</a>
         </div>
       </section>
@@ -283,6 +298,7 @@
       <nav class="site-footer__nav" aria-label="Footer">
         <a href="#features">Features</a>
         <a href="#screens">Screens</a>
+        <a href="./app-store.html">App Store</a>
         <a href="#downloads">Downloads</a>
         <a href="https://github.com/AHGRoach/RoachNet" target="_blank" rel="noreferrer">GitHub</a>
         <a href="mailto:contact@ahgrecords.com">contact@ahgrecords.com</a>

@@ -31,6 +31,7 @@ export default class OllamaController {
 
   async chat({ request, response }: HttpContext) {
     const reqData = await request.validateUsing(chatSchema)
+    const isCloudModel = this.ollamaService.isCloudModel(reqData.model)
     const writeSSE = (event: string, payload: Record<string, unknown>) => {
       response.response.write(`event: ${event}\n`)
       response.response.write(`data: ${JSON.stringify(payload)}\n\n`)
@@ -59,16 +60,16 @@ export default class OllamaController {
 
       // Query rewriting for better RAG retrieval with manageable context
       // Will return user's latest message if no rewriting is needed
-      if (reqData.stream && this.shouldRewriteQuery(reqData.messages)) {
+      if (!isCloudModel && reqData.stream && this.shouldRewriteQuery(reqData.messages)) {
         writeSSE('status', {
           status: 'enhancing-query',
           message: 'Enhancing query...',
         })
       }
-      const rewrittenQuery = await this.rewriteQueryWithContext(reqData.messages)
+      const rewrittenQuery = isCloudModel ? null : await this.rewriteQueryWithContext(reqData.messages)
 
       logger.debug(`[OllamaController] Rewritten query for RAG: "${rewrittenQuery}"`)
-      if (rewrittenQuery) {
+      if (!isCloudModel && rewrittenQuery) {
         if (reqData.stream) {
           writeSSE('status', {
             status: 'searching-knowledge',
@@ -248,7 +249,14 @@ export default class OllamaController {
   }
 
   async installedModels({ }: HttpContext) {
-    return await this.ollamaService.getModels()
+    try {
+      return await this.ollamaService.getModels()
+    } catch (error) {
+      logger.warn(
+        `[OllamaController] Falling back to an empty model list: ${error instanceof Error ? error.message : error}`
+      )
+      return []
+    }
   }
 
   /**

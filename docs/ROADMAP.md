@@ -48,6 +48,27 @@ The imported base stack already covers offline content, maps, and Ollama-backed 
 - add tools that help a user operate during power, network, or service disruption
 - prefer local processing and self-hosted dependencies wherever practical
 
+### 7. Ship A Native Secrets Manager
+
+- move runtime bootstrap secrets out of repo `.env` files and into native-managed secure storage
+- use Keychain on macOS as the canonical device-local secret store
+- adopt Infisical as the canonical hosted secret manager for Netlify, GitHub releases, and site infrastructure
+- make secret export, import, and rotation explicit user actions instead of hidden file copying
+
+### 8. Build The RoachNet App Store Mirror
+
+- stop relying on upstream content availability during end-user installs
+- host public catalog manifests on `roachnet.org`
+- mirror large downloadable content into RoachNet-controlled object storage behind first-party URLs
+- keep upstream sync credentials and signing material outside the repo in the hosted secrets manager
+
+### 9. Add A Native Development Workspace
+
+- ship a RoachNet-owned terminal surface inspired by Ghostty, not a handoff to an external app
+- add a RoachNet code editor for projects stored in the user vault instead of embedding or launching VS Code directly
+- expose AI-assisted coding flows inside that editor surface using the same RoachClaw/runtime model-routing stack
+- keep the development workspace optional and sandboxed from the main offline/content experience
+
 ## First Technical Targets
 
 Start with these files and surfaces:
@@ -68,3 +89,6 @@ Start with these files and surfaces:
 4. Ship the first OpenClaw settings and health-check flow
 5. Extend onboarding to cover provider setup and validation
 6. Build the first user-manageable agent and skill screens
+7. Move runtime secrets into native-managed secure storage
+8. Bring up the first RoachNet-controlled App Store mirror path
+9. Ship the first native development workspace surfaces

@@ -27,18 +27,18 @@ export class DownloadModelJob {
     logger.info(`[DownloadModelJob] Attempting to download model: ${modelName}`)
 
     const ollamaService = new OllamaService()
-
-    // Even if no models are installed, this should return an empty array if ready
-    const existingModels = await ollamaService.getModels()
-    if (!existingModels) {
+    const runtimeStatus = await ollamaService.getRuntimeStatus()
+    if (!runtimeStatus.available) {
       logger.warn(
-        `[DownloadModelJob] Ollama service not ready yet for model ${modelName}. Will retry...`
+        `[DownloadModelJob] Ollama runtime not ready yet for model ${modelName}. Will retry: ${
+          runtimeStatus.error || 'runtime unavailable'
+        }`
       )
-      throw new Error('Ollama service not ready yet')
+      throw new Error(runtimeStatus.error || 'Ollama runtime not ready yet')
     }
 
     logger.info(
-      `[DownloadModelJob] Ollama service is ready. Initiating download for ${modelName}`
+      `[DownloadModelJob] Ollama service is reachable at ${runtimeStatus.baseUrl}. Initiating download for ${modelName}`
     )
 
     // Services are ready, initiate the download with progress tracking

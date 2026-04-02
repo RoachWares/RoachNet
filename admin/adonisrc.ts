@@ -1,6 +1,23 @@
 import { defineConfig } from '@adonisjs/core/app'
+import { appendFileSync } from 'node:fs'
+
+const nativeOnly = process.env.ROACHNET_NATIVE_ONLY === '1'
+const bootTraceStartedAt = Date.now()
+
+function writeBootTrace(stage: string, details?: Record<string, unknown>) {
+  const outputPath = process.env.ROACHNET_BOOT_TRACE_FILE
+  if (!outputPath) {
+    return
+  }
+
+  const elapsedMs = Date.now() - bootTraceStartedAt
+  const payload = details ? ` ${JSON.stringify(details)}` : ''
+  appendFileSync(outputPath, `[roachnet:adonisrc +${elapsedMs}ms] ${stage}${payload}\n`, 'utf8')
+}
 
 function debugImport(filePath: string) {
+  writeBootTrace('import', { filePath })
+
   if (process.env.ROACHNET_DEBUG_BOOT === '1') {
     console.log(`[roachnet:provider] ${filePath}`)
   }
@@ -8,7 +25,9 @@ function debugImport(filePath: string) {
   return import(filePath)
 }
 
-export default defineConfig({
+writeBootTrace('module:loaded', { nativeOnly })
+
+const config = defineConfig({
   /*
   |--------------------------------------------------------------------------
   | Experimental flags
@@ -33,7 +52,7 @@ export default defineConfig({
   | will be scanned automatically from the "./commands" directory.
   |
   */
-  commands: [() => import('@adonisjs/core/commands'), () => import('@adonisjs/lucid/commands')],
+  commands: [() => debugImport('@adonisjs/core/commands'), () => debugImport('@adonisjs/lucid/commands')],
 
   /*
   |--------------------------------------------------------------------------
@@ -52,16 +71,18 @@ export default defineConfig({
       environment: ['repl', 'test'],
     },
     () => debugImport('@adonisjs/core/providers/vinejs_provider'),
-    () => debugImport('@adonisjs/core/providers/edge_provider'),
-    () => debugImport('@adonisjs/session/session_provider'),
-    () => debugImport('@adonisjs/vite/vite_provider'),
-    () => debugImport('@adonisjs/shield/shield_provider'),
-    () => debugImport('@adonisjs/static/static_provider'),
+    ...(nativeOnly ? [] : [() => debugImport('@adonisjs/core/providers/edge_provider')]),
+    ...(nativeOnly ? [] : [() => debugImport('@adonisjs/session/session_provider')]),
+    ...(nativeOnly ? [] : [() => debugImport('@adonisjs/vite/vite_provider')]),
+    ...(nativeOnly ? [] : [() => debugImport('@adonisjs/shield/shield_provider')]),
+    ...(nativeOnly ? [] : [() => debugImport('@adonisjs/static/static_provider')]),
     () => debugImport('@adonisjs/cors/cors_provider'),
     () => debugImport('@adonisjs/lucid/database_provider'),
-    () => debugImport('@adonisjs/inertia/inertia_provider'),
-    () => debugImport('@adonisjs/transmit/transmit_provider'),
-    () => debugImport('#providers/map_static_provider')
+    ...(nativeOnly ? [] : [() => debugImport('@adonisjs/inertia/inertia_provider')]),
+    ...(process.env.ROACHNET_DISABLE_TRANSMIT === '1'
+      ? []
+      : [() => debugImport('@adonisjs/transmit/transmit_provider')]),
+    ...(nativeOnly ? [] : [() => debugImport('#providers/map_static_provider')])
   ],
 
   /*
@@ -124,6 +145,10 @@ export default defineConfig({
 
   assetsBundler: false,
   hooks: {
-    onBuildStarting: [() => import('@adonisjs/vite/build_hook')],
+    onBuildStarting: [() => debugImport('@adonisjs/vite/build_hook')],
   },
 })
+
+writeBootTrace('config:defined', { nativeOnly })
+
+export default config

@@ -1,5 +1,5 @@
 import { inject } from '@adonisjs/core'
-import { ChatRequest, Ollama } from 'ollama'
+import { ChatRequest, Ollama, type ListResponse } from 'ollama'
 import { NomadOllamaModel } from '../../types/ollama.js'
 import { FALLBACK_RECOMMENDED_OLLAMA_MODELS } from '../../constants/ollama.js'
 import fs from 'node:fs/promises'
@@ -8,27 +8,187 @@ import logger from '@adonisjs/core/services/logger'
 import axios from 'axios'
 import { DownloadModelJob } from '#jobs/download_model_job'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
-import transmit from '@adonisjs/transmit/services/main'
 import Fuse, { IFuseOptions } from 'fuse.js'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import env from '#start/env'
 import { NOMAD_API_DEFAULT_BASE_URL } from '../../constants/misc.js'
 import type { AIRuntimeSource, AIRuntimeStatus } from '../../types/ai.js'
 import KVStore from '#models/kv_store'
+import { broadcastTransmit } from '#services/transmit_bridge'
 
 const NOMAD_MODELS_API_PATH = '/api/v1/ollama/models'
 const MODELS_CACHE_FILE = path.join(process.cwd(), 'storage', 'ollama-models-cache.json')
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
 const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
+const DEFAULT_DASHSCOPE_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+
+type CloudChatResponse = {
+  id?: string
+  created?: number
+  choices?: Array<{
+    message?: {
+      role?: string
+      content?: string
+    }
+  }>
+}
+
+class CloudInferenceService {
+  private static readonly SYNTHETIC_MODELS = [
+    {
+      alias: 'qwen-plus:cloud',
+      providerModel: 'qwen-plus',
+      size: 0,
+    },
+  ] as const
+  private availabilityCache: { value: boolean; expiresAt: number } | null = null
+
+  public isCloudModel(modelName: string): boolean {
+    return modelName.trim().toLowerCase().endsWith(':cloud')
+  }
+
+  public async listModels(): Promise<ListResponse['models']> {
+    if (!(await this.isAvailable())) {
+      return []
+    }
+
+    return CloudInferenceService.SYNTHETIC_MODELS.map((entry) => ({
+      name: entry.alias,
+      model: entry.alias,
+      size: entry.size,
+      digest: 'cloud',
+      modified_at: new Date(0).toISOString(),
+      details: {
+        family: 'cloud',
+        families: ['cloud'],
+        format: 'remote',
+        parameter_size: 'cloud',
+        quantization_level: 'remote',
+      },
+      expires_at: new Date(0).toISOString(),
+      size_vram: 0,
+    })) as ListResponse['models']
+  }
+
+  public async chat(chatRequest: ChatRequest & { stream?: boolean }) {
+    if (!(await this.isAvailable())) {
+      throw new Error('RoachNet cloud chat is not configured.')
+    }
+
+    const resolvedModel = this.resolveModelAlias(chatRequest.model)
+    if (!resolvedModel) {
+      throw new Error(`Unsupported RoachNet cloud model: ${chatRequest.model}`)
+    }
+
+    const response = await axios.post<CloudChatResponse>(
+      `${this.getBaseUrl()}/chat/completions`,
+      {
+        model: resolvedModel.providerModel,
+        messages: chatRequest.messages,
+        stream: false,
+      },
+      {
+        timeout: 45_000,
+        headers: {
+          Authorization: `Bearer ${this.getApiKey()}`,
+          'Content-Type': 'application/json',
+        },
+        validateStatus: () => true,
+      }
+    )
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`RoachNet cloud chat returned HTTP ${response.status}.`)
+    }
+
+    const content = response.data?.choices?.[0]?.message?.content?.trim()
+    if (!content) {
+      throw new Error('RoachNet cloud chat returned an empty response.')
+    }
+
+    return {
+      model: chatRequest.model,
+      created_at: new Date(
+        typeof response.data?.created === 'number' ? response.data.created * 1000 : Date.now()
+      ).toISOString(),
+      message: {
+        role: response.data?.choices?.[0]?.message?.role ?? 'assistant',
+        content,
+      },
+      done: true,
+    }
+  }
+
+  private resolveModelAlias(modelName: string) {
+    return CloudInferenceService.SYNTHETIC_MODELS.find((entry) => entry.alias === modelName.trim())
+  }
+
+  private async isAvailable(): Promise<boolean> {
+    const apiKey = this.getApiKey()
+    if (!apiKey) {
+      return false
+    }
+
+    const now = Date.now()
+    if (this.availabilityCache && this.availabilityCache.expiresAt > now) {
+      return this.availabilityCache.value
+    }
+
+    try {
+      const response = await axios.get(`${this.getBaseUrl()}/models`, {
+        timeout: 6_000,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        validateStatus: () => true,
+      })
+
+      const isHealthy = response.status >= 200 && response.status < 300
+      this.availabilityCache = {
+        value: isHealthy,
+        expiresAt: now + 60_000,
+      }
+      return isHealthy
+    } catch {
+      this.availabilityCache = {
+        value: false,
+        expiresAt: now + 30_000,
+      }
+      return false
+    }
+  }
+
+  private getApiKey(): string {
+    return process.env.DASHSCOPE_API_KEY?.trim() || ''
+  }
+
+  private getBaseUrl(): string {
+    return process.env.DASHSCOPE_BASE_URL?.trim() || DEFAULT_DASHSCOPE_BASE_URL
+  }
+}
 
 @inject()
 export class OllamaService {
+  private static runtimeStatusCache:
+    | { value: AIRuntimeStatus; expiresAt: number }
+    | null = null
+  private static runtimeStatusInflight: Promise<AIRuntimeStatus> | null = null
+  private static modelsCache = new Map<string, { value: Awaited<ReturnType<OllamaService['getModels']>>; expiresAt: number }>()
+  private static modelsInflight = new Map<string, Promise<Awaited<ReturnType<OllamaService['getModels']>>>>()
+  private static readonly RUNTIME_STATUS_CACHE_TTL_MS = 3000
+  private static readonly MODELS_CACHE_TTL_MS = 5000
+  private static readonly RUNTIME_PROBE_TIMEOUT_MS = 1500
   private ollama: Ollama | null = null
   private ollamaInitPromise: Promise<void> | null = null
   private ollamaHost: string | null = null
   private ollamaConfigFingerprint: string | null = null
+  private cloudInference = new CloudInferenceService()
 
   constructor() { }
+
+  private getModelsListTimeoutMs(): number {
+    return process.env.ROACHNET_NATIVE_ONLY === '1' ? 4_000 : 12_000
+  }
 
   private async _initializeOllamaClient() {
     if (!this.ollamaInitPromise) {
@@ -61,6 +221,7 @@ export class OllamaService {
       this.ollamaHost = null
       this.ollamaInitPromise = null
       this.ollamaConfigFingerprint = null
+      this.clearRuntimeCaches()
     }
 
     if (!this.ollama) {
@@ -71,7 +232,17 @@ export class OllamaService {
   private async getConfigFingerprint(): Promise<string> {
     const settingUrl = (await KVStore.getValue('ai.ollamaBaseUrl'))?.trim()
     const configuredUrl = env.get('OLLAMA_BASE_URL')?.trim()
-    return this.normalizeBaseUrl(settingUrl || configuredUrl || '__auto__')
+    const preferredUrl =
+      process.env.ROACHNET_NATIVE_ONLY === '1'
+        ? configuredUrl || settingUrl || '__auto__'
+        : settingUrl || configuredUrl || '__auto__'
+    return this.normalizeBaseUrl(preferredUrl)
+  }
+
+  private clearRuntimeCaches() {
+    OllamaService.runtimeStatusCache = null
+    OllamaService.modelsCache.clear()
+    OllamaService.modelsInflight.clear()
   }
 
   /**
@@ -87,11 +258,19 @@ export class OllamaService {
         throw new Error('Ollama client is not initialized.')
       }
 
-      // See if model is already installed
-      const installedModels = await this.getModels()
-      if (installedModels && installedModels.some((m) => m.name === model)) {
-        logger.info(`[OllamaService] Model "${model}" is already installed.`)
-        return { success: true, message: 'Model is already installed.' }
+      // Try to avoid duplicate pulls, but don't abort first-boot onboarding if listing is still warming up.
+      try {
+        const installedModels = await this.getModels()
+        if (installedModels.some((m) => m.name === model)) {
+          logger.info(`[OllamaService] Model "${model}" is already installed.`)
+          return { success: true, message: 'Model is already installed.' }
+        }
+      } catch (error) {
+        logger.warn(
+          `[OllamaService] Continuing with pull for "${model}" after model list probe failed: ${
+            error instanceof Error ? error.message : error
+          }`
+        )
       }
 
       // Returns AbortableAsyncIterator<ProgressResponse>
@@ -113,6 +292,7 @@ export class OllamaService {
       }
 
       logger.info(`[OllamaService] Model "${model}" downloaded successfully.`)
+      this.clearRuntimeCaches()
       return { success: true, message: 'Model downloaded successfully.' }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -163,6 +343,34 @@ export class OllamaService {
   }
 
   public async getRuntimeStatus(): Promise<AIRuntimeStatus> {
+    const now = Date.now()
+    if (
+      OllamaService.runtimeStatusCache &&
+      OllamaService.runtimeStatusCache.expiresAt > now
+    ) {
+      return OllamaService.runtimeStatusCache.value
+    }
+
+    if (OllamaService.runtimeStatusInflight) {
+      return OllamaService.runtimeStatusInflight
+    }
+
+    OllamaService.runtimeStatusInflight = this.resolveRuntimeStatus()
+      .then((runtimeStatus) => {
+        OllamaService.runtimeStatusCache = {
+          value: runtimeStatus,
+          expiresAt: Date.now() + OllamaService.RUNTIME_STATUS_CACHE_TTL_MS,
+        }
+        return runtimeStatus
+      })
+      .finally(() => {
+        OllamaService.runtimeStatusInflight = null
+      })
+
+    return OllamaService.runtimeStatusInflight
+  }
+
+  private async resolveRuntimeStatus(): Promise<AIRuntimeStatus> {
     let lastRuntimeStatus: AIRuntimeStatus | null = null
     let preferredOfflineStatus: AIRuntimeStatus | null = null
 
@@ -211,6 +419,10 @@ export class OllamaService {
   }
 
   public async chat(chatRequest: ChatRequest & { stream?: boolean }) {
+    if (this.isCloudModel(chatRequest.model)) {
+      return await this.cloudInference.chat(chatRequest)
+    }
+
     await this._ensureDependencies()
     if (!this.ollama) {
       throw new Error('Ollama client is not initialized.')
@@ -222,6 +434,10 @@ export class OllamaService {
   }
 
   public async chatStream(chatRequest: ChatRequest) {
+    if (this.isCloudModel(chatRequest.model)) {
+      throw new Error('Streaming is not available for RoachNet cloud chat yet.')
+    }
+
     await this._ensureDependencies()
     if (!this.ollama) {
       throw new Error('Ollama client is not initialized.')
@@ -251,22 +467,142 @@ export class OllamaService {
       throw new Error('Ollama client is not initialized.')
     }
 
-    return await this.ollama.delete({
+    const result = await this.ollama.delete({
       model: modelName,
     })
+    this.clearRuntimeCaches()
+    return result
   }
 
   public async getModels(includeEmbeddings = false) {
-    await this._ensureDependencies()
-    if (!this.ollama) {
-      throw new Error('Ollama client is not initialized.')
+    const cacheKey = includeEmbeddings ? 'all' : 'default'
+    const now = Date.now()
+    const cachedEntry = OllamaService.modelsCache.get(cacheKey)
+    if (cachedEntry && cachedEntry.expiresAt > now) {
+      return cachedEntry.value
     }
-    const response = await this.ollama.list()
+
+    const inflightEntry = OllamaService.modelsInflight.get(cacheKey)
+    if (inflightEntry) {
+      return inflightEntry
+    }
+
+    const promise = this.fetchModels(includeEmbeddings)
+      .then((models) => {
+        OllamaService.modelsCache.set(cacheKey, {
+          value: models,
+          expiresAt: Date.now() + OllamaService.MODELS_CACHE_TTL_MS,
+        })
+        return models
+      })
+      .finally(() => {
+        OllamaService.modelsInflight.delete(cacheKey)
+      })
+
+    OllamaService.modelsInflight.set(cacheKey, promise)
+    return promise
+  }
+
+  private async fetchModels(includeEmbeddings: boolean) {
+    const cloudModels = await this.cloudInference.listModels()
+    let models: ListResponse['models'] = []
+    let localError: unknown = null
+
+    try {
+      await this._ensureDependencies()
+      if (!this.ollama) {
+        throw new Error('Ollama client is not initialized.')
+      }
+
+      const runtimeStatus = await this.getRuntimeStatus()
+      const shouldPreferHttpListing =
+        runtimeStatus.available &&
+        (process.env.ROACHNET_NATIVE_ONLY === '1' ||
+          runtimeStatus.source === 'configured' ||
+          runtimeStatus.source === 'docker')
+
+      if (shouldPreferHttpListing) {
+        try {
+          models = await this.fetchModelsViaHttp(runtimeStatus)
+        } catch (error) {
+          logger.warn(
+            `[OllamaService] Falling back to ollama.list after direct /api/tags lookup failed: ${
+              error instanceof Error ? error.message : error
+            }`
+          )
+          const response = await this.withTimeout(
+            'ollama.list',
+            () => this.ollama!.list(),
+            this.getModelsListTimeoutMs()
+          )
+          models = response.models
+        }
+      } else {
+        try {
+          const response = await this.withTimeout(
+            'ollama.list',
+            () => this.ollama!.list(),
+            this.getModelsListTimeoutMs()
+          )
+          models = response.models
+        } catch (error) {
+          logger.warn(
+            `[OllamaService] Falling back to direct /api/tags lookup after ollama.list failed: ${
+              error instanceof Error ? error.message : error
+            }`
+          )
+          models = await this.fetchModelsViaHttp(runtimeStatus)
+        }
+      }
+    } catch (error) {
+      localError = error
+      logger.warn(
+        `[OllamaService] Falling back to the RoachNet cloud catalog after local model discovery failed: ${
+          error instanceof Error ? error.message : error
+        }`
+      )
+    }
+
+    if (cloudModels.length > 0) {
+      const knownModels = new Set(models.map((model) => model.name))
+      for (const cloudModel of cloudModels) {
+        if (!knownModels.has(cloudModel.name)) {
+          models.push(cloudModel)
+        }
+      }
+    }
+
+    if (models.length === 0 && localError) {
+      throw localError
+    }
+
     if (includeEmbeddings) {
-      return response.models
+      return models
     }
-    // Filter out embedding models
-    return response.models.filter((model) => !model.name.includes('embed'))
+
+    return models.filter((model) => !model.name.includes('embed'))
+  }
+
+  private async fetchModelsViaHttp(runtimeStatus?: AIRuntimeStatus): Promise<ListResponse['models']> {
+    const resolvedRuntimeStatus = runtimeStatus ?? await this.getRuntimeStatus()
+    if (!resolvedRuntimeStatus.available || !resolvedRuntimeStatus.baseUrl) {
+      throw new Error(resolvedRuntimeStatus.error || 'Ollama runtime is not available.')
+    }
+
+    const response = await axios.get(this.buildRuntimeUrl(resolvedRuntimeStatus.baseUrl, '/api/tags'), {
+      timeout: this.getModelsListTimeoutMs(),
+      validateStatus: () => true,
+    })
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`Ollama runtime at ${resolvedRuntimeStatus.baseUrl} returned HTTP ${response.status}.`)
+    }
+
+    if (!response.data || !Array.isArray(response.data.models)) {
+      throw new Error('Ollama runtime returned an invalid model list payload.')
+    }
+
+    return response.data.models as ListResponse['models']
   }
 
   async getAvailableModels(
@@ -441,8 +777,13 @@ export class OllamaService {
       candidates.push({ baseUrl: normalizedBaseUrl, source })
     }
 
-    addCandidate(settingUrl, 'configured')
-    addCandidate(configuredUrl, 'configured')
+    if (process.env.ROACHNET_NATIVE_ONLY === '1') {
+      addCandidate(configuredUrl, 'configured')
+      addCandidate(settingUrl, 'configured')
+    } else {
+      addCandidate(settingUrl, 'configured')
+      addCandidate(configuredUrl, 'configured')
+    }
     addCandidate(DEFAULT_OLLAMA_BASE_URL, 'local')
 
     return candidates
@@ -473,7 +814,9 @@ export class OllamaService {
     source: AIRuntimeSource
   ): Promise<AIRuntimeStatus> {
     try {
-      await axios.get(this.buildRuntimeUrl(baseUrl, '/api/version'), { timeout: 10000 })
+      await axios.get(this.buildRuntimeUrl(baseUrl, '/api/version'), {
+        timeout: OllamaService.RUNTIME_PROBE_TIMEOUT_MS,
+      })
 
       return {
         provider: 'ollama',
@@ -518,6 +861,33 @@ export class OllamaService {
     }
 
     return `Ollama runtime at ${baseUrl} is not reachable.`
+  }
+
+  public isCloudModel(modelName: string): boolean {
+    return this.cloudInference.isCloudModel(modelName)
+  }
+
+  private async withTimeout<T>(
+    label: string,
+    operation: () => Promise<T>,
+    timeoutMs: number
+  ): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<T>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(new Error(`[OllamaService] Timed out while resolving ${label}`))
+          }, timeoutMs)
+        }),
+      ])
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
+      }
+    }
   }
 
   private sortModels(models: NomadOllamaModel[], sort?: 'pulls' | 'name'): NomadOllamaModel[] {
@@ -566,7 +936,7 @@ export class OllamaService {
   }
 
   private broadcastDownloadError(model: string, error: string) {
-    transmit.broadcast(BROADCAST_CHANNELS.OLLAMA_MODEL_DOWNLOAD, {
+    void broadcastTransmit(BROADCAST_CHANNELS.OLLAMA_MODEL_DOWNLOAD, {
       model,
       percent: -1,
       error,
@@ -575,7 +945,7 @@ export class OllamaService {
   }
 
   private broadcastDownloadProgress(model: string, percent: number) {
-    transmit.broadcast(BROADCAST_CHANNELS.OLLAMA_MODEL_DOWNLOAD, {
+    void broadcastTransmit(BROADCAST_CHANNELS.OLLAMA_MODEL_DOWNLOAD, {
       model,
       percent,
       timestamp: new Date().toISOString(),

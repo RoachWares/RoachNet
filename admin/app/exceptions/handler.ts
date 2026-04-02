@@ -10,15 +10,13 @@ export default class HttpExceptionHandler extends ExceptionHandler {
   protected debug = !app.inProduction
 
   /**
-   * Status pages are used to display a custom HTML pages for certain error
-   * codes. You might want to enable them in production only, but feel
-   * free to enable them in development as well.
+   * RoachNet is now primarily a native app, so production API errors should not
+   * attempt to render Inertia status pages.
    */
-  protected renderStatusPages = app.inProduction
+  protected renderStatusPages = false
 
   /**
-   * Status pages is a collection of error code range and a callback
-   * to return the HTML contents to send as a response.
+   * Status pages are retained for any future HTML flows, but are disabled above.
    */
   protected statusPages: Record<StatusPageRange, StatusPageRenderer> = {
     '404': (error, { inertia }) => inertia.render('errors/not_found', { error }),
@@ -30,6 +28,22 @@ export default class HttpExceptionHandler extends ExceptionHandler {
    * response to the client
    */
   async handle(error: unknown, ctx: HttpContext) {
+    const status =
+      error && typeof error === 'object' && 'status' in error && typeof error.status === 'number'
+        ? error.status
+        : 500
+    const message =
+      error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : 'Unexpected server error'
+    const expectsJson =
+      ctx.request.url().startsWith('/api') || ctx.request.accepts(['html', 'json']) === 'json'
+
+    if (expectsJson) {
+      ctx.response.status(status).send({ error: message })
+      return
+    }
+
     if (!app.inProduction) {
       const details =
         error && typeof error === 'object'
@@ -53,7 +67,8 @@ export default class HttpExceptionHandler extends ExceptionHandler {
       })
     }
 
-    return super.handle(error, ctx)
+    ctx.response.status(status).send(message)
+    return
   }
 
   /**

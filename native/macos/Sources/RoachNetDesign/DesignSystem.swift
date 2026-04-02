@@ -97,7 +97,7 @@ public struct RoachPanel<Content: View>: View {
 
     public var body: some View {
         content
-            .padding(24)
+            .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .background(
@@ -145,6 +145,31 @@ public struct RoachPrimaryButtonStyle: ButtonStyle {
     public init() {}
 
     public func makeBody(configuration: Configuration) -> some View {
+        RoachPrimaryButtonBody(configuration: configuration)
+    }
+}
+
+public struct RoachSecondaryButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        RoachSecondaryButtonBody(configuration: configuration)
+    }
+}
+
+public struct RoachCardButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        RoachCardButtonBody(configuration: configuration)
+    }
+}
+
+private struct RoachPrimaryButtonBody: View {
+    let configuration: ButtonStyle.Configuration
+    @State private var hovered = false
+
+    var body: some View {
         configuration.label
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(RoachPalette.text)
@@ -153,16 +178,20 @@ public struct RoachPrimaryButtonStyle: ButtonStyle {
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(RoachPalette.panelSoft.opacity(configuration.isPressed ? 0.72 : 0.84))
+                        .fill(
+                            RoachPalette.panelSoft.opacity(
+                                configuration.isPressed ? 0.72 : (hovered ? 0.92 : 0.84)
+                            )
+                        )
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(
                             LinearGradient(
                                 colors: [
-                                    RoachPalette.green.opacity(0.70),
-                                    RoachPalette.magenta.opacity(0.44),
-                                    Color.white.opacity(0.16),
+                                    RoachPalette.green.opacity(hovered ? 0.82 : 0.70),
+                                    RoachPalette.magenta.opacity(hovered ? 0.54 : 0.44),
+                                    Color.white.opacity(hovered ? 0.22 : 0.16),
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
@@ -171,16 +200,22 @@ public struct RoachPrimaryButtonStyle: ButtonStyle {
                         )
                 }
             )
-            .shadow(color: RoachPalette.green.opacity(configuration.isPressed ? 0.10 : 0.16), radius: 24, y: 12)
-            .scaleEffect(configuration.isPressed ? 0.988 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.84), value: configuration.isPressed)
+            .shadow(color: RoachPalette.green.opacity(configuration.isPressed ? 0.10 : (hovered ? 0.22 : 0.16)), radius: hovered ? 28 : 24, y: hovered ? 16 : 12)
+            .scaleEffect(configuration.isPressed ? 0.982 : (hovered ? 1.018 : 1.0))
+            .offset(y: configuration.isPressed ? 1 : (hovered ? -1 : 0))
+            .onHover { inside in
+                hovered = inside
+            }
+            .animation(.spring(response: 0.30, dampingFraction: 0.82), value: configuration.isPressed)
+            .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hovered)
     }
 }
 
-public struct RoachSecondaryButtonStyle: ButtonStyle {
-    public init() {}
+private struct RoachSecondaryButtonBody: View {
+    let configuration: ButtonStyle.Configuration
+    @State private var hovered = false
 
-    public func makeBody(configuration: Configuration) -> some View {
+    var body: some View {
         configuration.label
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(RoachPalette.text)
@@ -188,15 +223,46 @@ public struct RoachSecondaryButtonStyle: ButtonStyle {
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(RoachPalette.panelRaised.opacity(configuration.isPressed ? 0.62 : 0.74))
+                    .fill(
+                        RoachPalette.panelRaised.opacity(
+                            configuration.isPressed ? 0.62 : (hovered ? 0.82 : 0.74)
+                        )
+                    )
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(RoachPalette.border, lineWidth: 1)
+                    .stroke(hovered ? RoachPalette.green.opacity(0.16) : RoachPalette.border, lineWidth: 1)
             )
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.84), value: configuration.isPressed)
+            .shadow(color: hovered ? RoachPalette.green.opacity(0.08) : .clear, radius: hovered ? 18 : 0, y: hovered ? 10 : 0)
+            .scaleEffect(configuration.isPressed ? 0.984 : (hovered ? 1.012 : 1.0))
+            .offset(y: configuration.isPressed ? 1 : (hovered ? -1 : 0))
+            .onHover { inside in
+                hovered = inside
+            }
+            .animation(.spring(response: 0.30, dampingFraction: 0.82), value: configuration.isPressed)
+            .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hovered)
+    }
+}
+
+private struct RoachCardButtonBody: View {
+    let configuration: ButtonStyle.Configuration
+    @State private var hovered = false
+
+    var body: some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.986 : (hovered ? 1.012 : 1.0))
+            .offset(y: configuration.isPressed ? 1 : (hovered ? -2 : 0))
+            .shadow(
+                color: RoachPalette.green.opacity(configuration.isPressed ? 0.04 : (hovered ? 0.12 : 0.05)),
+                radius: hovered ? 22 : 14,
+                y: hovered ? 14 : 8
+            )
+            .onHover { inside in
+                hovered = inside
+            }
+            .animation(.spring(response: 0.28, dampingFraction: 0.82), value: configuration.isPressed)
+            .animation(.spring(response: 0.28, dampingFraction: 0.82), value: hovered)
     }
 }
 
@@ -314,9 +380,9 @@ public struct RoachOrbitMark: View {
     public var body: some View {
         GeometryReader { proxy in
             let size = min(proxy.size.width, proxy.size.height)
-            let plaqueSize = size * 0.80
-            let iconSize = size * 0.54
-            let radius = max(16, plaqueSize * 0.24)
+            let plaqueSize = size * 0.94
+            let iconSize = size * 0.76
+            let radius = max(16, plaqueSize * 0.22)
 
             ZStack {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -332,7 +398,7 @@ public struct RoachOrbitMark: View {
                         )
                     )
                     .frame(width: plaqueSize, height: plaqueSize)
-                    .blur(radius: size * 0.14)
+                    .blur(radius: size * 0.11)
                     .scaleEffect(breathe ? 1.06 : 0.96)
 
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -394,7 +460,7 @@ public struct RoachSectionHeader: View {
         VStack(alignment: .leading, spacing: 8) {
             RoachKicker(kicker)
             Text(title)
-                .font(.system(size: 32, weight: .bold))
+                .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(RoachPalette.text)
             if let detail, !detail.isEmpty {
                 Text(detail)
@@ -501,7 +567,7 @@ public struct RoachCommandTray: View {
                 Text(prompt)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(RoachPalette.text)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
 
             Spacer()
@@ -539,48 +605,84 @@ public struct RoachSidebarTile: View {
     private let subtitle: String
     private let isSelected: Bool
     private let systemName: String
+    private let isCompact: Bool
+    @State private var hovered = false
 
-    public init(title: String, subtitle: String, systemName: String, isSelected: Bool) {
+    public init(title: String, subtitle: String, systemName: String, isSelected: Bool, isCompact: Bool = false) {
         self.title = title
         self.subtitle = subtitle
         self.systemName = systemName
         self.isSelected = isSelected
+        self.isCompact = isCompact
     }
 
     public var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemName)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isSelected ? RoachPalette.green : RoachPalette.muted)
-                .frame(width: 28, height: 28)
+        Group {
+            if isCompact {
+                Image(systemName: systemName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isSelected ? RoachPalette.green : RoachPalette.muted)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(
+                                isSelected
+                                    ? RoachPalette.panelSoft.opacity(hovered ? 0.84 : 0.72)
+                                    : RoachPalette.panelRaised.opacity(hovered ? 0.68 : 0.52)
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(isSelected ? RoachPalette.green.opacity(0.24) : (hovered ? RoachPalette.green.opacity(0.12) : RoachPalette.border), lineWidth: 1)
+                    )
+                    .shadow(color: isSelected ? RoachPalette.green.opacity(hovered ? 0.18 : 0.12) : .clear, radius: hovered ? 22 : 18, y: hovered ? 10 : 8)
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: systemName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(isSelected ? RoachPalette.green : RoachPalette.muted)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(RoachPalette.panelGlass)
+                        )
+                        .shadow(color: isSelected ? RoachPalette.green.opacity(0.16) : .clear, radius: 18, y: 8)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(RoachPalette.text)
+                        Text(subtitle)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(RoachPalette.muted)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(RoachPalette.panelGlass)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            isSelected
+                                ? RoachPalette.panelSoft.opacity(hovered ? 0.78 : 0.66)
+                                : RoachPalette.panel.opacity(hovered ? 0.44 : 0.30)
+                        )
                 )
-                .shadow(color: isSelected ? RoachPalette.green.opacity(0.16) : .clear, radius: 18, y: 8)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(RoachPalette.text)
-                Text(subtitle)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(RoachPalette.muted)
-                    .lineLimit(1)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(isSelected ? RoachPalette.green.opacity(0.20) : (hovered ? RoachPalette.green.opacity(0.10) : RoachPalette.border), lineWidth: 1)
+                )
+                .shadow(color: isSelected ? RoachPalette.green.opacity(hovered ? 0.16 : 0.10) : .clear, radius: hovered ? 24 : 20, y: hovered ? 12 : 10)
             }
-
-            Spacer()
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(isSelected ? RoachPalette.panelSoft.opacity(0.66) : RoachPalette.panel.opacity(0.30))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(isSelected ? RoachPalette.green.opacity(0.20) : RoachPalette.border, lineWidth: 1)
-        )
-        .shadow(color: isSelected ? RoachPalette.green.opacity(0.10) : .clear, radius: 20, y: 10)
+        .scaleEffect(isCompact ? (hovered ? 1.05 : 1.0) : (hovered ? 1.012 : 1.0))
+        .offset(y: hovered ? -1 : 0)
+        .onHover { inside in
+            hovered = inside
+        }
+        .animation(.spring(response: 0.26, dampingFraction: 0.84), value: hovered)
     }
 }
 
@@ -602,7 +704,7 @@ public struct RoachMetricCard: View {
                 .tracking(1.2)
                 .foregroundStyle(RoachPalette.muted)
             Text(value)
-                .font(.system(size: 20, weight: .bold))
+                .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(RoachPalette.text)
                 .lineLimit(2)
                 .minimumScaleFactor(0.82)
@@ -633,7 +735,7 @@ public struct RoachInsetPanel<Content: View>: View {
 
     public var body: some View {
         content
-            .padding(18)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)

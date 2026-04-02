@@ -262,6 +262,7 @@ button {
 .hero-status {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 18px;
   min-height: 38px;
@@ -288,6 +289,30 @@ button {
   background: rgba(92, 141, 255, 0.14);
   color: #d7e4ff;
   border: 1px solid rgba(92, 141, 255, 0.22);
+}
+
+.hero-status__pill[data-state="online"] {
+  background: rgba(50, 255, 126, 0.14);
+  color: #cbffe1;
+  border-color: rgba(50, 255, 126, 0.22);
+}
+
+.hero-status__pill[data-state="offline"] {
+  background: rgba(92, 141, 255, 0.14);
+  color: #d7e4ff;
+  border-color: rgba(92, 141, 255, 0.22);
+}
+
+.hero-status__pill[data-state="pending"] {
+  background: rgba(255, 194, 92, 0.12);
+  color: #ffd79a;
+  border-color: rgba(255, 194, 92, 0.18);
+}
+
+.hero-status__note {
+  margin-top: 10px;
+  color: var(--rn-text-dim);
+  font-size: 0.84rem;
 }
 
 .cta {
@@ -781,6 +806,95 @@ button {
 .story-band__copy h3 {
   font-size: clamp(1.5rem, 2.2vw, 2.2rem);
   line-height: 1.02;
+}
+
+.split-highlight--store {
+  align-items: stretch;
+}
+
+.app-store-meta {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.app-store-meta__pill,
+.app-store-card__status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(92, 141, 255, 0.12);
+  border: 1px solid rgba(92, 141, 255, 0.18);
+  color: #d7e4ff;
+  font-size: 0.82rem;
+  font-family:
+    "JetBrains Mono",
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    monospace;
+}
+
+.app-store-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.app-store-card {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--rn-radius-md);
+  background:
+    radial-gradient(circle at top right, rgba(92, 141, 255, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--rn-shadow-md);
+}
+
+.app-store-card h3,
+.app-store-card p {
+  margin: 0;
+}
+
+.app-store-card__meta,
+.app-store-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app-store-card__footer {
+  color: var(--rn-text-dim);
+  font-size: 0.84rem;
+  font-family:
+    "JetBrains Mono",
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    monospace;
+}
+
+.app-store-card__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(92, 141, 255, 0.16), rgba(50, 255, 126, 0.12)),
+    rgba(20, 22, 26, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: var(--rn-text);
+  text-decoration: none;
+  font-weight: 700;
 }
 
 .app-screen-shot {
