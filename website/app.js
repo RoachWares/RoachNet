@@ -28,11 +28,15 @@ const appStoreFilterBar = document.querySelector('#app-store-filter-bar')
 const appStoreSearchInput = document.querySelector('#app-store-search')
 const appStoreResults = document.querySelector('#app-store-results')
 const appStoreFeatured = document.querySelector('#app-store-featured')
+const appStoreCurated = document.querySelector('#app-store-curated')
 const appStoreGrid = document.querySelector('#app-store-grid')
 const appStoreUpdated = document.querySelector('#app-store-updated')
 const appDetailOverlay = document.querySelector('#app-detail-overlay')
 const appDetailContent = document.querySelector('#app-detail-content')
 const appDetailClose = document.querySelector('#app-detail-close')
+const appsCountStat = document.querySelector('#apps-count')
+const appsSectionsCountStat = document.querySelector('#apps-sections-count')
+const appsToolbarStats = document.querySelector('#apps-toolbar-stats')
 
 const platformPresets = {
   mac: {
@@ -60,6 +64,57 @@ let featuredRotationTimer = null
 let featuredRotationItems = []
 let featuredRotationIndex = 0
 let storeRevealObserver = null
+
+const storeSectionMeta = {
+  'Map Regions': {
+    eyebrow: 'Offline atlas',
+    blurb: 'Regional packs that keep the field map lane useful when the network is gone.',
+  },
+  Medicine: {
+    eyebrow: 'Care library',
+    blurb: 'Medical references and quick-response libraries you can keep close on the machine.',
+  },
+  'Survival & Preparedness': {
+    eyebrow: 'Field guides',
+    blurb: 'Preparedness manuals, survival references, and practical offline field material.',
+  },
+  'Education & Reference': {
+    eyebrow: 'Reference shelf',
+    blurb: 'Course material and reference libraries curated into installable study packs.',
+  },
+  'DIY & Repair': {
+    eyebrow: 'Repair shelf',
+    blurb: 'Fix guides, repair notes, and hands-on practical references for the real world.',
+  },
+  'Agriculture & Food': {
+    eyebrow: 'Grow & cook',
+    blurb: 'Food, growing, and practical production references mirrored into the RoachNet vault.',
+  },
+  'Software Development': {
+    eyebrow: 'Dev courses',
+    blurb: 'Focused software-development installs that land in the Education and Dev lanes cleanly.',
+  },
+  'Machine Learning & Data Science': {
+    eyebrow: 'ML packs',
+    blurb: 'Modeling, data-science, and ML course packs that stay available offline.',
+  },
+  'Music Production & Audio': {
+    eyebrow: 'Audio craft',
+    blurb: 'Production, sound-design, and audio-engineering material for studio sessions.',
+  },
+  'IT & Infrastructure': {
+    eyebrow: 'Infra shelf',
+    blurb: 'Networking, systems, and infrastructure learning packs for operators and builders.',
+  },
+  Wikipedia: {
+    eyebrow: 'Quick reference',
+    blurb: 'Wikipedia snapshots trimmed into practical install targets instead of giant archives.',
+  },
+  'Model Packs': {
+    eyebrow: 'RoachClaw models',
+    blurb: 'Contained RoachClaw-ready model installs for the native AI lane.',
+  },
+}
 
 const fallbackCatalog = {
   updatedAt: '2026-04-03T14:45:00-04:00',
@@ -467,13 +522,73 @@ function deriveIconMonogram(item) {
   return words.join('').replace(/[^a-z0-9]/gi, '').slice(0, 3).toUpperCase() || 'RN'
 }
 
+function deriveIconFamily(item) {
+  const haystack = normalizeCatalogValue([item?.section, item?.category, item?.title].join(' '))
+
+  if (haystack.includes('map')) return 'maps'
+  if (haystack.includes('medicine')) return 'medicine'
+  if (haystack.includes('survival') || haystack.includes('preparedness')) return 'survival'
+  if (haystack.includes('education') || haystack.includes('reference')) return 'education'
+  if (haystack.includes('repair') || haystack.includes('diy')) return 'repair'
+  if (haystack.includes('agriculture') || haystack.includes('food')) return 'agriculture'
+  if (haystack.includes('software development') || haystack.includes('dev')) return 'development'
+  if (haystack.includes('machine learning') || haystack.includes('data science')) return 'ml'
+  if (haystack.includes('audio') || haystack.includes('music')) return 'audio'
+  if (haystack.includes('infrastructure') || haystack.includes('it ')) return 'infrastructure'
+  if (haystack.includes('wikipedia')) return 'wikipedia'
+  if (haystack.includes('model')) return 'models'
+  return 'general'
+}
+
+function deriveIconGlyph(item, family = deriveIconFamily(item)) {
+  switch (family) {
+    case 'maps':
+      return 'GRID'
+    case 'medicine':
+      return 'MED'
+    case 'survival':
+      return 'FIELD'
+    case 'education':
+      return 'READ'
+    case 'repair':
+      return 'FIX'
+    case 'agriculture':
+      return 'ROOT'
+    case 'development':
+      return 'DEV'
+    case 'ml':
+      return 'ML'
+    case 'audio':
+      return 'AUDIO'
+    case 'infrastructure':
+      return 'NET'
+    case 'wikipedia':
+      return 'WIKI'
+    case 'models':
+      return 'AI'
+    default:
+      return 'RN'
+  }
+}
+
 function renderStoreIcon(item, variant = 'card') {
   if (item?.icon) {
     return `<img src="${item.icon}" alt="${escapeHtml(item.title)} icon" loading="lazy" />`
   }
 
+  const family = deriveIconFamily(item)
+  const glyph = deriveIconGlyph(item, family)
+
   return `
-    <div class="store-generated-icon store-generated-icon--${variant}" role="img" aria-label="${escapeHtml(item.title)} icon">
+    <div
+      class="store-generated-icon store-generated-icon--${variant}"
+      data-icon-family="${family}"
+      data-accent="${item?.accent || 'blue'}"
+      role="img"
+      aria-label="${escapeHtml(item.title)} icon"
+    >
+      <span class="store-generated-icon__mesh" aria-hidden="true"></span>
+      <span class="store-generated-icon__glyph" aria-hidden="true">${escapeHtml(glyph)}</span>
       <span class="store-generated-icon__band">${escapeHtml(item.iconBand || item.category || 'RoachNet')}</span>
       <strong class="store-generated-icon__mono">${escapeHtml(deriveIconMonogram(item))}</strong>
     </div>
@@ -579,6 +694,39 @@ function getVisibleCatalogItems(catalog = appStoreCatalog) {
   })
 }
 
+function updateAppStoreSummary(items) {
+  if (appsCountStat) {
+    appsCountStat.textContent = String(items.length)
+  }
+
+  if (appsSectionsCountStat) {
+    appsSectionsCountStat.textContent = String(new Set(items.map((item) => item.section || 'Catalog')).size)
+  }
+
+  if (!appsToolbarStats) {
+    return
+  }
+
+  const topSections = [...items.reduce((map, item) => {
+    const key = item.section || 'Catalog'
+    map.set(key, (map.get(key) || 0) + 1)
+    return map
+  }, new Map()).entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 4)
+
+  appsToolbarStats.innerHTML = topSections
+    .map(
+      ([section, count]) => `
+        <article class="apps-toolbar__stat">
+          <strong>${count}</strong>
+          <span>${section}</span>
+        </article>
+      `
+    )
+    .join('')
+}
+
 function renderAppStoreFilters(items) {
   if (!appStoreFilterBar) {
     return
@@ -600,6 +748,114 @@ function renderAppStoreFilters(items) {
       `
     )
     .join('')
+}
+
+function pickCuratedItems(visibleItems, primaryFeatured) {
+  const picks = []
+  const seenSections = new Set()
+
+  visibleItems.forEach((item) => {
+    if (primaryFeatured && item.id === primaryFeatured.id) {
+      return
+    }
+
+    const section = item.section || 'Catalog'
+    if (seenSections.has(section)) {
+      return
+    }
+
+    picks.push(item)
+    seenSections.add(section)
+  })
+
+  return picks.slice(0, 4)
+}
+
+function pickFeaturedRotationItems(visibleItems, primaryFeatured) {
+  if (!primaryFeatured) {
+    return visibleItems.slice(0, 6)
+  }
+
+  const picks = [primaryFeatured]
+  const seenSections = new Set([primaryFeatured.section || 'Catalog'])
+
+  visibleItems.forEach((item) => {
+    if (item.id === primaryFeatured.id || picks.length >= 6) {
+      return
+    }
+
+    const section = item.section || 'Catalog'
+    if (seenSections.has(section)) {
+      return
+    }
+
+    picks.push(item)
+    seenSections.add(section)
+  })
+
+  if (picks.length < Math.min(6, visibleItems.length)) {
+    visibleItems.forEach((item) => {
+      if (item.id === primaryFeatured.id || picks.length >= 6 || picks.some((candidate) => candidate.id === item.id)) {
+        return
+      }
+      picks.push(item)
+    })
+  }
+
+  return picks
+}
+
+function renderCuratedStoreStrip(visibleItems, primaryFeatured) {
+  if (!appStoreCurated) {
+    return
+  }
+
+  const picks = pickCuratedItems(visibleItems, primaryFeatured)
+  if (!picks.length) {
+    appStoreCurated.innerHTML = ''
+    return
+  }
+
+  appStoreCurated.innerHTML = `
+    <section class="app-store-curated__section" data-reveal>
+      <div class="app-store-curated__head">
+        <div>
+          <p class="app-store-curated__eyebrow">Quick installs</p>
+          <h3>Install-ready picks from around the RoachNet shelf.</h3>
+        </div>
+        <span class="app-store-curated__note">Each button hands the selected pack straight into the native app.</span>
+      </div>
+      <div class="app-store-curated__grid">
+        ${picks
+          .map((item) => {
+            const installUrl = buildInstallUrl(item)
+            return `
+              <article class="store-quick-card" data-accent="${item.accent || 'blue'}">
+                <div class="store-quick-card__top">
+                  <div class="store-quick-card__icon">
+                    ${renderStoreIcon(item, 'mini')}
+                  </div>
+                  <div class="store-quick-card__copy">
+                    <span class="store-quick-card__section">${item.section}</span>
+                    <h4>${item.title}</h4>
+                    <p>${item.subtitle || item.source}</p>
+                  </div>
+                </div>
+                <div class="store-quick-card__actions">
+                  ${
+                    installUrl
+                      ? `<a class="store-quick-card__get" href="${installUrl}">${item.installLabel || 'Install to RoachNet'}</a>`
+                      : ''
+                  }
+                  <button class="store-quick-card__preview" type="button" data-preview-id="${item.id}">Preview</button>
+                </div>
+              </article>
+            `
+          })
+          .join('')}
+      </div>
+    </section>
+  `
 }
 
 function renderStoreActionButtons(item, { compact = false, featured = false } = {}) {
@@ -808,6 +1064,9 @@ function renderEmptyCatalogState() {
   if (appStoreFeatured) {
     appStoreFeatured.innerHTML = ''
   }
+  if (appStoreCurated) {
+    appStoreCurated.innerHTML = ''
+  }
   stopFeaturedRotation()
   observeStoreReveals()
 }
@@ -820,6 +1079,8 @@ function renderAppStoreCatalog(catalog) {
   appStoreCatalog = catalog
   const items = getCatalogItems(catalog)
   const storeMode = appStoreGrid.dataset.storeMode || 'full'
+
+  updateAppStoreSummary(items)
 
   renderAppStoreFilters(items)
 
@@ -835,12 +1096,14 @@ function renderAppStoreCatalog(catalog) {
     visibleItems.find((item) => item.id === catalog?.featuredId) ||
     visibleItems.find((item) => item.featured) ||
     visibleItems[0]
-  featuredRotationItems = [primaryFeatured, ...visibleItems.filter((item) => item.id !== primaryFeatured.id)]
+  featuredRotationItems = pickFeaturedRotationItems(visibleItems, primaryFeatured)
   featuredRotationIndex = Math.min(featuredRotationIndex, Math.max(0, featuredRotationItems.length - 1))
 
   if (appStoreFeatured) {
     renderFeaturedStoreCard(featuredRotationItems[featuredRotationIndex], featuredRotationItems)
   }
+
+  renderCuratedStoreStrip(visibleItems, featuredRotationItems[featuredRotationIndex])
 
   if (storeMode === 'compact') {
     appStoreGrid.innerHTML = visibleItems
@@ -856,13 +1119,18 @@ function renderAppStoreCatalog(catalog) {
         const sectionItems = (shelfItems.length ? shelfItems : visibleItems).filter(
           (item) => (item.section || 'Catalog') === section
         )
+        const sectionMeta = storeSectionMeta[section] || {
+          eyebrow: 'Install shelf',
+          blurb: 'Install-ready content packs mirrored into the native RoachNet app.',
+        }
 
         return `
           <section class="app-store-shelf" data-reveal>
             <div class="app-store-shelf__head">
               <div>
-                <p class="app-store-shelf__eyebrow">${section}</p>
-                <h3>${sectionItems.length} install-ready apps</h3>
+                <p class="app-store-shelf__eyebrow">${sectionMeta.eyebrow}</p>
+                <h3>${section}</h3>
+                <p class="app-store-shelf__summary">${sectionMeta.blurb}</p>
               </div>
               <span class="app-store-shelf__count">${sectionItems.length} picks</span>
             </div>
@@ -947,6 +1215,7 @@ function openAppDetail(id) {
   }
 
   appDetailContent.innerHTML = renderAppDetailSheet(item)
+  appDetailOverlay.dataset.state = 'closed'
   appDetailOverlay.hidden = false
   requestAnimationFrame(() => {
     appDetailOverlay.dataset.state = 'open'
@@ -961,6 +1230,9 @@ function closeAppDetail() {
 
   appDetailOverlay.dataset.state = 'closed'
   appDetailOverlay.hidden = true
+  if (appDetailContent) {
+    appDetailContent.innerHTML = ''
+  }
   document.body.classList.remove('app-detail-open')
 }
 
@@ -1233,6 +1505,8 @@ appStoreGrid?.addEventListener('click', handleAppStoreInteraction)
 appStoreFeatured?.addEventListener('click', handleAppStoreInteraction)
 appStoreFeatured?.addEventListener('mouseenter', stopFeaturedRotation)
 appStoreFeatured?.addEventListener('mouseleave', startFeaturedRotation)
+appStoreFeatured?.addEventListener('focusin', stopFeaturedRotation)
+appStoreFeatured?.addEventListener('focusout', startFeaturedRotation)
 
 appDetailClose?.addEventListener('click', closeAppDetail)
 appDetailOverlay?.addEventListener('click', (event) => {
@@ -1258,6 +1532,7 @@ document.addEventListener('keydown', (event) => {
   }
 })
 
+closeAppDetail()
 loadLatestRelease()
 startHeroTelemetry()
 loadAppStoreCatalog()

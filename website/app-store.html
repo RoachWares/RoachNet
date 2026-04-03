@@ -59,12 +59,27 @@
           <p class="eyebrow">RoachNet Apps</p>
           <h1>The app shelf for your local-first machine.</h1>
           <p class="hero-body">
-            Maps, education courses, model packs, and future tool lanes all show up here as install-ready RoachNet apps. Install to RoachNet opens the native app and queues the selection in the right module instead of dropping files in a random folder.
+            Maps, course packs, model lanes, field references, and future tool bundles all show up here as install-ready RoachNet apps. Install to RoachNet opens the native app and queues the selection in the right module instead of dropping files in a random folder.
           </p>
 
           <div class="hero-actions">
             <button class="cta cta--primary" id="primary-download" type="button">Download RoachNet 1.4 for macOS</button>
             <a class="cta cta--ghost" href="https://roachnet.org/#screens">See actual app screens</a>
+          </div>
+
+          <div class="apps-hero-ledger" aria-label="Apps store summary">
+            <article class="apps-hero-ledger__item">
+              <strong id="apps-count">0</strong>
+              <span>install-ready apps</span>
+            </article>
+            <article class="apps-hero-ledger__item">
+              <strong id="apps-sections-count">0</strong>
+              <span>curated shelves</span>
+            </article>
+            <article class="apps-hero-ledger__item">
+              <strong>Native</strong>
+              <span>handoff into RoachNet</span>
+            </article>
           </div>
 
           <p class="hero-footnote">Every app here is backed by the same RoachNet catalog lane the native shell can consume. This is a real install surface, not a loose download dump.</p>
@@ -99,7 +114,7 @@
         <div class="section-head">
           <p class="eyebrow">Catalog</p>
           <h2>Today, shelves, and install-ready detail sheets.</h2>
-          <p>The public catalog below follows the same voice as the main site: editorial enough to feel intentional, practical enough to stay useful. Every listing resolves to a real native install handoff and each course or region stands on its own as an app.</p>
+          <p>The public catalog below is the same install surface the native shell can consume. Each region, course, reference pack, and model lane stands on its own as a real RoachNet app with a direct native install handoff.</p>
         </div>
 
         <div class="apps-catalog-stage">
@@ -109,6 +124,7 @@
               <h3>Filter the RoachNet catalog like a real store shelf.</h3>
               <p>Use the section rail, search, and Preview sheet to browse before you hand installs into the native shell.</p>
             </div>
+            <div class="apps-toolbar__stats" id="apps-toolbar-stats" aria-live="polite"></div>
             <div class="app-store-meta">
               <span class="app-store-meta__pill" id="app-store-updated">Checking catalog…</span>
               <span>Install buttons open RoachNet and queue the selected pack inside the correct native lane.</span>
@@ -124,6 +140,7 @@
           <div class="app-store-catalog-shell">
             <div class="app-store-results" id="app-store-results" aria-live="polite">Loading catalog…</div>
             <div class="app-store-featured" id="app-store-featured" aria-live="polite"></div>
+            <div class="app-store-curated" id="app-store-curated" aria-live="polite"></div>
             <div class="app-store-grid" id="app-store-grid" data-store-mode="full" aria-live="polite"></div>
           </div>
         </div>
