@@ -126,12 +126,13 @@ button {
 }
 
 .brand-mark {
-  width: 54px;
-  height: 54px;
+  width: 62px;
+  height: 62px;
   object-fit: contain;
   filter:
-    drop-shadow(0 0 26px rgba(92, 141, 255, 0.18))
-    drop-shadow(0 0 16px rgba(50, 255, 126, 0.16));
+    drop-shadow(0 0 32px rgba(92, 141, 255, 0.22))
+    drop-shadow(0 0 22px rgba(50, 255, 126, 0.22))
+    drop-shadow(0 0 12px rgba(255, 255, 255, 0.10));
 }
 
 .brand-copy {

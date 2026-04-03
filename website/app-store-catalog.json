@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-04-02T17:25:00-04:00",
+  "updatedAt": "2026-04-02T22:10:00-04:00",
   "items": [
     {
       "title": "Field Maps",
@@ -28,7 +28,7 @@
       "status": "Contained first",
       "source": "Ollama + RoachNet curation",
       "summary": "Machine-aware local models recommended from the user’s specs, with contained installs and a cloud lane fallback for first boot.",
-      "primaryLabel": "Download RoachNet 1.30.6",
+      "primaryLabel": "Download RoachNet 1.30.7",
       "primaryUrl": "https://github.com/AHGRoach/RoachNet/releases/latest/download/RoachNet-Setup-macOS.dmg"
     },
     {

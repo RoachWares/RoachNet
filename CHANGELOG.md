@@ -5,6 +5,28 @@
 - Added a repo-native Apple release secret bootstrapper at `scripts/configure-apple-release-secrets.sh` plus an `npm run release:apple-secrets` wrapper so Developer ID and notarization credentials can be loaded into GitHub with one repeatable command.
 - Expanded the native macOS README with the exact environment variables and command sequence needed to wire the `Native Packages` workflow for a real Gatekeeper-safe notarized build.
 
+## v1.30.7 - 2026-04-02
+
+### Installer and first-launch hardening
+
+- Fixed the native setup app so the primary action responds reliably, the default action is keyboard-wired, and stale embedded backend helpers are torn down before a new setup pass starts.
+- Reworked the bundled `RoachNet Fix.command` helper so quarantine stripping no longer sprays `xattr` errors across missing unpacked dependency paths on macOS.
+- Tightened the setup copy so the installer now explicitly explains that RoachNet stages its own runtime prerequisites instead of presuming the machine was already prepared.
+- Added bundled-repository resolution to the managed native runtime so packaged installs can boot from the embedded source tree instead of timing out against the wrong root.
+
+### Runtime stability and contained services
+
+- Hardened contained runtime startup around per-install compose project names so one RoachNet bundle no longer collides with another machine-local runtime state path.
+- Split managed-service startup into blocking core lanes and non-blocking secondary AI lanes so MySQL and Redis can gate first boot without making Ollama or Qdrant hold the whole app hostage.
+- Added competing-project shutdown and listener cleanup for the managed runtime so quitting or stopping the app is more likely to clear the ports it claimed on the host.
+- Extended the setup backend to mark required dependencies against the active install mode so RoachNet can pull what the local install still needs instead of relying on a lucky preinstalled toolchain.
+
+### Brand polish and website screens
+
+- Removed the square-backed RoachNet mark treatment in favor of the transparent logo itself, with a stronger glow treatment across the native shell, admin web surfaces, and the public site.
+- Added the new RoachClaw logo asset, kept it monochrome and size-matched in inactive navigation states, and surfaced the full-color mark when the RoachClaw pane is active.
+- Replaced the website’s native screen gallery with new compact captures from the real 1.30.7 packaged shell and setup app.
+
 ## v1.30.6 - 2026-04-02
 
 ### Native developer surfaces

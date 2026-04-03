@@ -190,43 +190,24 @@ body::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem;
-  border-radius: 1.75rem;
-  background: var(--color-brand-shell-background);
-  border: 1px solid var(--color-brand-shell-border);
-  box-shadow: var(--color-brand-shell-shadow);
+  padding: 0.1rem;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .roachnet-brand-mark-shell::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  background: conic-gradient(
-    from 180deg,
-    rgba(109, 255, 83, 0.28),
-    rgba(255, 0, 255, 0.24),
-    rgba(207, 154, 88, 0.22),
-    rgba(109, 255, 83, 0.28)
-  );
-  opacity: 0.75;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  padding: 1.5px;
+  display: none;
 }
 
 .roachnet-brand-mark {
   position: relative;
   z-index: 1;
   filter:
-    drop-shadow(0 0 14px rgba(109, 255, 83, 0.22))
-    drop-shadow(0 0 28px rgba(255, 0, 255, 0.08));
+    drop-shadow(0 0 18px rgba(109, 255, 83, 0.28))
+    drop-shadow(0 0 34px rgba(255, 0, 255, 0.12))
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.08));
 }
 
 .roachnet-button {

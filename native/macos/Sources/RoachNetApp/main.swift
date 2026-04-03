@@ -32,6 +32,15 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
         }
     }
 
+    var assetName: String? {
+        switch self {
+        case .roachClaw:
+            return "roachclaw-logo.png"
+        default:
+            return nil
+        }
+    }
+
     var subtitle: String {
         switch self {
         case .suite: return "App surfaces"
@@ -1711,6 +1720,7 @@ private struct RootWorkspaceView: View {
                                         title: pane.rawValue,
                                         subtitle: pane.subtitle,
                                         systemName: pane.icon,
+                                        assetName: pane.assetName,
                                         isSelected: activePane == pane,
                                         isCompact: true
                                     )
@@ -1780,6 +1790,7 @@ private struct RootWorkspaceView: View {
                                         title: pane.rawValue,
                                         subtitle: pane.subtitle,
                                         systemName: pane.icon,
+                                        assetName: pane.assetName,
                                         isSelected: activePane == pane
                                     )
                                 }
@@ -1873,8 +1884,12 @@ private struct RootWorkspaceView: View {
                         model.selectedPane = pane
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: pane.icon)
-                                .font(.system(size: isTight ? 12 : 13, weight: .semibold))
+                            RoachModuleMark(
+                                systemName: pane.icon,
+                                assetName: pane.assetName,
+                                size: isTight ? 13 : 14,
+                                isSelected: activePane == pane
+                            )
                             Text(pane.rawValue)
                                 .font(.system(size: isTight ? 12 : 13, weight: .semibold))
                         }
@@ -1916,6 +1931,7 @@ private struct RootWorkspaceView: View {
                     }
 
                     commandTray(isTight: isTight)
+                    workspacePulse
 
                     if model.setupCompleted {
                         Group {
@@ -1960,13 +1976,34 @@ private struct RootWorkspaceView: View {
         let sidebarLabel = sidebarCollapsed ? (isTight ? "Sidebar" : "Show Sidebar") : (isTight ? "Focus" : "Focus Mode")
 
         return responsiveBar {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(activePane.rawValue)
-                    .font(.system(size: isTight ? 26 : 30, weight: .bold))
-                    .foregroundStyle(RoachPalette.text)
-                Text(activePane.subtitle)
-                    .font(.system(size: isTight ? 13 : 14, weight: .regular))
-                    .foregroundStyle(RoachPalette.muted)
+            if activePane == .roachClaw {
+                HStack(alignment: .center, spacing: 14) {
+                    RoachModuleMark(
+                        systemName: activePane.icon,
+                        assetName: activePane.assetName,
+                        size: isTight ? 42 : 50,
+                        isSelected: true,
+                        glow: true
+                    )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(activePane.rawValue)
+                            .font(.system(size: isTight ? 26 : 30, weight: .bold))
+                            .foregroundStyle(RoachPalette.text)
+                        Text(activePane.subtitle)
+                            .font(.system(size: isTight ? 13 : 14, weight: .regular))
+                            .foregroundStyle(RoachPalette.muted)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(activePane.rawValue)
+                        .font(.system(size: isTight ? 26 : 30, weight: .bold))
+                        .foregroundStyle(RoachPalette.text)
+                    Text(activePane.subtitle)
+                        .font(.system(size: isTight ? 13 : 14, weight: .regular))
+                        .foregroundStyle(RoachPalette.muted)
+                }
             }
         } actions: {
             Button(commandLabel) {
@@ -2004,6 +2041,108 @@ private struct RootWorkspaceView: View {
         .buttonStyle(RoachCardButtonStyle())
         .contentShape(Rectangle())
         .keyboardShortcut("k", modifiers: [.command])
+    }
+
+    private var workspacePulse: some View {
+        RoachInsetPanel {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 14) {
+                    pulseSummary
+                    Spacer(minLength: 16)
+                    pulseChips
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    pulseSummary
+                    pulseChips
+                }
+            }
+        }
+    }
+
+    private var pulseSummary: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            RoachKicker("Workspace Pulse")
+            Text("A clean local shell with the current runtime state, AI lane, and content root surfaced up front.")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(RoachPalette.text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var pulseChips: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                workspacePulseChip(
+                    title: "Setup",
+                    value: model.setupCompleted ? "Ready" : "Locked",
+                    accent: model.setupCompleted ? RoachPalette.green : RoachPalette.warning
+                )
+                workspacePulseChip(
+                    title: "Runtime",
+                    value: model.isLoading ? "Loading" : (model.snapshot == nil ? "Waiting" : "Live"),
+                    accent: model.snapshot == nil ? RoachPalette.warning : RoachPalette.green
+                )
+                workspacePulseChip(
+                    title: "AI",
+                    value: model.displayedRoachClawDefaultModel,
+                    accent: RoachPalette.cyan
+                )
+                workspacePulseChip(
+                    title: "Storage",
+                    value: URL(fileURLWithPath: model.storagePath).lastPathComponent,
+                    accent: RoachPalette.magenta
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                workspacePulseChip(
+                    title: "Setup",
+                    value: model.setupCompleted ? "Ready" : "Locked",
+                    accent: model.setupCompleted ? RoachPalette.green : RoachPalette.warning
+                )
+                workspacePulseChip(
+                    title: "Runtime",
+                    value: model.isLoading ? "Loading" : (model.snapshot == nil ? "Waiting" : "Live"),
+                    accent: model.snapshot == nil ? RoachPalette.warning : RoachPalette.green
+                )
+                workspacePulseChip(
+                    title: "AI",
+                    value: model.displayedRoachClawDefaultModel,
+                    accent: RoachPalette.cyan
+                )
+                workspacePulseChip(
+                    title: "Storage",
+                    value: URL(fileURLWithPath: model.storagePath).lastPathComponent,
+                    accent: RoachPalette.magenta
+                )
+            }
+        }
+    }
+
+    private func workspacePulseChip(title: String, value: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .tracking(1.1)
+                .foregroundStyle(RoachPalette.muted)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(accent)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(RoachPalette.panelRaised.opacity(0.58))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(accent.opacity(0.18), lineWidth: 1)
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var suite: some View {
@@ -2243,11 +2382,21 @@ private struct RootWorkspaceView: View {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
                     responsiveBar {
-                        RoachSectionHeader(
-                            "RoachClaw",
-                            title: "Local AI, aligned.",
-                            detail: "A contained local lane first, with a cloud fallback for first boot and room to scale later."
-                        )
+                        HStack(alignment: .center, spacing: 16) {
+                            RoachModuleMark(
+                                systemName: WorkspacePane.roachClaw.icon,
+                                assetName: WorkspacePane.roachClaw.assetName,
+                                size: 56,
+                                isSelected: true,
+                                glow: true
+                            )
+
+                            RoachSectionHeader(
+                                "RoachClaw",
+                                title: "Local AI, aligned.",
+                                detail: "A contained local lane first, with a cloud fallback for first boot and room to scale later."
+                            )
+                        }
                     } actions: {
                         Button("Open AI Control") {
                             Task { await model.openRoute("/settings/ai", title: "AI Control") }

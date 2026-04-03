@@ -658,6 +658,10 @@ public actor ManagedAppRuntimeBridge {
     }
 
     private func resolveRuntimeRoot(from config: RoachNetInstallerConfig) -> URL {
+        if let bundledRoot = RoachNetRepositoryLocator.bundledRepositoryRoot() {
+            return bundledRoot
+        }
+
         let configuredRoot = URL(fileURLWithPath: config.installPath)
         let configuredScript = configuredRoot.appendingPathComponent("scripts/run-roachnet.mjs")
 

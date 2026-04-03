@@ -30,7 +30,7 @@ public struct RoachBackground: View {
             LinearGradient(
                 colors: [
                     RoachPalette.background,
-                    Color(red: 0.05, green: 0.05, blue: 0.065),
+                    Color(red: 0.045, green: 0.048, blue: 0.060),
                     RoachPalette.background,
                 ],
                 startPoint: .topLeading,
@@ -38,22 +38,22 @@ public struct RoachBackground: View {
             )
 
             Circle()
-                .fill(RoachPalette.green.opacity(0.075))
-                .frame(width: 420, height: 420)
-                .blur(radius: 118)
-                .offset(x: drift ? -10 : -110, y: drift ? -60 : -130)
+                .fill(RoachPalette.green.opacity(0.085))
+                .frame(width: 440, height: 440)
+                .blur(radius: 126)
+                .offset(x: drift ? -18 : -122, y: drift ? -52 : -136)
 
             Circle()
-                .fill(RoachPalette.magenta.opacity(0.085))
-                .frame(width: 390, height: 390)
-                .blur(radius: 108)
-                .offset(x: drift ? 130 : 80, y: drift ? -100 : -60)
+                .fill(RoachPalette.magenta.opacity(0.092))
+                .frame(width: 410, height: 410)
+                .blur(radius: 116)
+                .offset(x: drift ? 138 : 88, y: drift ? -106 : -68)
 
             Circle()
-                .fill(RoachPalette.cyan.opacity(0.035))
+                .fill(RoachPalette.cyan.opacity(0.045))
                 .frame(width: 240, height: 240)
-                .blur(radius: 90)
-                .offset(x: drift ? -120 : -70, y: drift ? 195 : 245)
+                .blur(radius: 96)
+                .offset(x: drift ? -132 : -78, y: drift ? 182 : 236)
 
             LinearGradient(
                 colors: [
@@ -69,9 +69,9 @@ public struct RoachBackground: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(0.015),
+                            Color.white.opacity(0.02),
                             Color.clear,
-                            Color.white.opacity(0.012),
+                            Color.white.opacity(0.016),
                             Color.clear,
                         ],
                         startPoint: .top,
@@ -79,7 +79,18 @@ public struct RoachBackground: View {
                     )
                 )
                 .blendMode(.screen)
-                .opacity(0.10)
+                .opacity(0.12)
+
+            RadialGradient(
+                colors: [
+                    Color.clear,
+                    Color.black.opacity(0.10),
+                    Color.black.opacity(0.24),
+                ],
+                center: .center,
+                startRadius: 120,
+                endRadius: 780
+            )
 
             Canvas { context, size in
                 let cell: CGFloat = 36
@@ -93,7 +104,7 @@ public struct RoachBackground: View {
                     path.addLine(to: CGPoint(x: size.width, y: y))
                     context.stroke(
                         path,
-                        with: .color(Color.white.opacity(row.isMultiple(of: 2) ? 0.012 : 0.006)),
+                        with: .color(Color.white.opacity(row.isMultiple(of: 2) ? 0.01 : 0.004)),
                         lineWidth: 1
                     )
                 }
@@ -105,12 +116,12 @@ public struct RoachBackground: View {
                     path.addLine(to: CGPoint(x: x, y: size.height))
                     context.stroke(
                         path,
-                        with: .color(Color.white.opacity(column.isMultiple(of: 2) ? 0.008 : 0.004)),
+                        with: .color(Color.white.opacity(column.isMultiple(of: 2) ? 0.006 : 0.003)),
                         lineWidth: 1
                     )
                 }
             }
-            .opacity(0.15)
+            .opacity(0.11)
             .blendMode(.overlay)
         }
         .ignoresSafeArea()
@@ -131,16 +142,16 @@ public struct RoachPanel<Content: View>: View {
 
     public var body: some View {
         content
-            .padding(22)
+            .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
             .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
-                                RoachPalette.panel.opacity(0.94),
-                                RoachPalette.panelRaised.opacity(0.88),
+                                RoachPalette.panel.opacity(0.92),
+                                RoachPalette.panelRaised.opacity(0.86),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -148,11 +159,11 @@ public struct RoachPanel<Content: View>: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .stroke(RoachPalette.borderStrong, lineWidth: 1)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -167,11 +178,11 @@ public struct RoachPanel<Content: View>: View {
                     .blendMode(.screen)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .inset(by: 1)
                     .stroke(Color.white.opacity(0.025), lineWidth: 1)
             )
-            .shadow(color: RoachPalette.shadow, radius: 34, x: 0, y: 18)
+            .shadow(color: RoachPalette.shadow.opacity(0.88), radius: 30, x: 0, y: 16)
     }
 }
 
@@ -431,6 +442,100 @@ public struct RoachStatusRow: View {
     }
 }
 
+private func roachRuntimeImage(named name: String) -> NSImage? {
+    let resourceName = (name as NSString).deletingPathExtension
+    let resourceExtension = (name as NSString).pathExtension
+    let bundles = [Bundle.main] + Bundle.allBundles + Bundle.allFrameworks
+
+    for bundle in bundles {
+        if let url = bundle.url(
+            forResource: resourceName,
+            withExtension: resourceExtension.isEmpty ? nil : resourceExtension
+        ), let image = NSImage(contentsOf: url) {
+            return image
+        }
+
+        if let directResource = bundle.resourceURL?.appendingPathComponent(name),
+           let image = NSImage(contentsOf: directResource) {
+            return image
+        }
+    }
+
+    let candidates = [
+        Bundle.main.resourceURL?.appendingPathComponent(name),
+        Bundle.main.resourceURL?.appendingPathComponent("RoachNetMac_RoachNetApp.bundle/\(name)"),
+        Bundle.main.resourceURL?.appendingPathComponent("RoachNetMac_RoachNetSetup.bundle/\(name)"),
+        Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/\(name)"),
+    ].compactMap { $0 }
+
+    for candidate in candidates {
+        if let image = NSImage(contentsOf: candidate) {
+            return image
+        }
+    }
+
+    return nil
+}
+
+private func roachTemplateImage(from image: NSImage) -> NSImage {
+    let template = (image.copy() as? NSImage) ?? image
+    template.isTemplate = true
+    return template
+}
+
+public struct RoachModuleMark: View {
+    private let systemName: String
+    private let assetName: String?
+    private let size: CGFloat
+    private let isSelected: Bool
+    private let glow: Bool
+
+    public init(
+        systemName: String,
+        assetName: String? = nil,
+        size: CGFloat,
+        isSelected: Bool = false,
+        glow: Bool = false
+    ) {
+        self.systemName = systemName
+        self.assetName = assetName
+        self.size = size
+        self.isSelected = isSelected
+        self.glow = glow
+    }
+
+    public var body: some View {
+        Group {
+            if let assetName, let image = roachRuntimeImage(named: assetName) {
+                if glow || isSelected {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: size, height: size)
+                        .shadow(
+                            color: RoachPalette.magenta.opacity(glow ? 0.24 : 0.14),
+                            radius: glow ? size * 0.52 : size * 0.18,
+                            y: glow ? size * 0.09 : size * 0.04
+                        )
+                } else {
+                    Image(nsImage: roachTemplateImage(from: image))
+                        .renderingMode(.template)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: size, height: size)
+                        .foregroundStyle(RoachPalette.muted)
+                }
+            } else {
+                Image(systemName: systemName)
+                    .font(.system(size: size, weight: .semibold))
+                    .foregroundStyle(isSelected ? RoachPalette.green : RoachPalette.muted)
+            }
+        }
+    }
+}
+
 public struct RoachOrbitMark: View {
     @State private var breathe = false
 
@@ -439,42 +544,36 @@ public struct RoachOrbitMark: View {
     public var body: some View {
         GeometryReader { proxy in
             let size = min(proxy.size.width, proxy.size.height)
-            let plaqueSize = size * 0.94
-            let iconSize = size * 0.76
-            let radius = max(16, plaqueSize * 0.22)
+            let haloSize = size * 0.96
+            let iconSize = size * 0.90
 
             ZStack {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                RoachPalette.green.opacity(0.18),
-                                RoachPalette.magenta.opacity(0.16),
-                                Color.clear,
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: plaqueSize, height: plaqueSize)
-                    .blur(radius: size * 0.11)
-                    .scaleEffect(breathe ? 1.06 : 0.96)
+                Circle()
+                    .fill(RoachPalette.green.opacity(0.20))
+                    .frame(width: haloSize, height: haloSize)
+                    .blur(radius: size * 0.18)
+                    .offset(x: breathe ? -size * 0.04 : -size * 0.11, y: breathe ? -size * 0.05 : -size * 0.13)
 
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .frame(width: plaqueSize, height: plaqueSize)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: radius, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
+                Circle()
+                    .fill(RoachPalette.magenta.opacity(0.22))
+                    .frame(width: haloSize * 0.88, height: haloSize * 0.88)
+                    .blur(radius: size * 0.18)
+                    .offset(x: breathe ? size * 0.08 : size * 0.04, y: breathe ? size * 0.08 : size * 0.03)
 
-                if let iconImage = NSImage(contentsOf: Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/RoachNet.icns")) {
+                Circle()
+                    .fill(RoachPalette.cyan.opacity(0.08))
+                    .frame(width: haloSize * 0.64, height: haloSize * 0.64)
+                    .blur(radius: size * 0.12)
+                    .offset(y: size * 0.03)
+
+                if let iconImage = roachRuntimeImage(named: "RoachNet.icns") {
                     Image(nsImage: iconImage)
                         .resizable()
                         .interpolation(.high)
                         .scaledToFit()
                         .frame(width: iconSize, height: iconSize)
-                        .shadow(color: RoachPalette.green.opacity(0.12), radius: size * 0.12, y: size * 0.05)
+                        .shadow(color: RoachPalette.green.opacity(0.18), radius: size * 0.16, y: size * 0.05)
+                        .shadow(color: RoachPalette.magenta.opacity(0.14), radius: size * 0.18, y: size * 0.04)
                 } else {
                     VStack(spacing: size * 0.04) {
                         Image(systemName: "ant.fill")
@@ -519,8 +618,9 @@ public struct RoachSectionHeader: View {
         VStack(alignment: .leading, spacing: 8) {
             RoachKicker(kicker)
             Text(title)
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundStyle(RoachPalette.text)
+                .lineSpacing(1.1)
             if let detail, !detail.isEmpty {
                 Text(detail)
                     .font(.system(size: 14, weight: .regular))
@@ -620,27 +720,28 @@ public struct RoachCommandTray: View {
     }
 
     public var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(RoachPalette.green)
-                .frame(width: 32, height: 32)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [RoachPalette.panelGlass, Color.white.opacity(0.02)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [RoachPalette.panelGlass, Color.white.opacity(0.02)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(RoachPalette.borderStrong, lineWidth: 1)
-                )
+                    )
 
-            VStack(alignment: .leading, spacing: 3) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(RoachPalette.green)
+            }
+            .frame(width: 36, height: 36)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(RoachPalette.borderStrong, lineWidth: 1)
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
                 Text(label.uppercased())
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .tracking(1.1)
@@ -673,15 +774,15 @@ public struct RoachCommandTray: View {
                         .stroke(RoachPalette.borderStrong, lineWidth: 1)
                 )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 13)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            RoachPalette.panelRaised.opacity(0.80),
-                            RoachPalette.panel.opacity(0.72),
+                            RoachPalette.panelRaised.opacity(0.78),
+                            RoachPalette.panel.opacity(0.70),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -689,10 +790,10 @@ public struct RoachCommandTray: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(RoachPalette.borderStrong, lineWidth: 1)
         )
-        .shadow(color: RoachPalette.shadow.opacity(0.18), radius: 28, x: 0, y: 14)
+        .shadow(color: RoachPalette.shadow.opacity(0.16), radius: 24, x: 0, y: 12)
     }
 }
 
@@ -701,13 +802,22 @@ public struct RoachSidebarTile: View {
     private let subtitle: String
     private let isSelected: Bool
     private let systemName: String
+    private let assetName: String?
     private let isCompact: Bool
     @State private var hovered = false
 
-    public init(title: String, subtitle: String, systemName: String, isSelected: Bool, isCompact: Bool = false) {
+    public init(
+        title: String,
+        subtitle: String,
+        systemName: String,
+        assetName: String? = nil,
+        isSelected: Bool,
+        isCompact: Bool = false
+    ) {
         self.title = title
         self.subtitle = subtitle
         self.systemName = systemName
+        self.assetName = assetName
         self.isSelected = isSelected
         self.isCompact = isCompact
     }
@@ -715,9 +825,12 @@ public struct RoachSidebarTile: View {
     public var body: some View {
         Group {
             if isCompact {
-                    Image(systemName: systemName)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(isSelected ? RoachPalette.green : RoachPalette.muted)
+                    RoachModuleMark(
+                        systemName: systemName,
+                        assetName: assetName,
+                        size: assetName == nil ? 16 : 18,
+                        isSelected: isSelected
+                    )
                         .frame(width: 48, height: 48)
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -734,9 +847,12 @@ public struct RoachSidebarTile: View {
                         .shadow(color: isSelected ? RoachPalette.green.opacity(hovered ? 0.16 : 0.10) : .clear, radius: hovered ? 18 : 14, x: 0, y: hovered ? 10 : 8)
             } else {
                 HStack(spacing: 12) {
-                    Image(systemName: systemName)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(isSelected ? RoachPalette.green : RoachPalette.muted)
+                    RoachModuleMark(
+                        systemName: systemName,
+                        assetName: assetName,
+                        size: assetName == nil ? 15 : 16,
+                        isSelected: isSelected
+                    )
                         .frame(width: 28, height: 28)
                         .background(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -795,6 +911,15 @@ public struct RoachMetricCard: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [RoachPalette.green.opacity(0.92), RoachPalette.magenta.opacity(0.72)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: 42, height: 4)
             Text(label.uppercased())
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .tracking(1.3)
@@ -812,12 +937,12 @@ public struct RoachMetricCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            RoachPalette.panelRaised.opacity(0.74),
-                            RoachPalette.panelSoft.opacity(0.60),
+                            RoachPalette.panelRaised.opacity(0.72),
+                            RoachPalette.panelSoft.opacity(0.56),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -825,10 +950,10 @@ public struct RoachMetricCard: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(RoachPalette.borderStrong, lineWidth: 1)
         )
-        .shadow(color: RoachPalette.shadow.opacity(0.18), radius: 18, x: 0, y: 10)
+        .shadow(color: RoachPalette.shadow.opacity(0.16), radius: 16, x: 0, y: 8)
     }
 }
 
@@ -844,12 +969,12 @@ public struct RoachInsetPanel<Content: View>: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            RoachPalette.panelRaised.opacity(0.86),
-                            RoachPalette.panel.opacity(0.84),
+                            RoachPalette.panelRaised.opacity(0.84),
+                            RoachPalette.panel.opacity(0.80),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -857,10 +982,10 @@ public struct RoachInsetPanel<Content: View>: View {
                 )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(RoachPalette.borderStrong, lineWidth: 1)
             )
-            .shadow(color: RoachPalette.shadow.opacity(0.16), radius: 18, x: 0, y: 10)
+            .shadow(color: RoachPalette.shadow.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 }
 
@@ -878,33 +1003,34 @@ public struct RoachNotice: View {
     }
 
     public var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 14) {
             Image(systemName: systemName)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(accent)
-                .frame(width: 32, height: 32)
+                .frame(width: 34, height: 34)
                 .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [accent.opacity(0.15), accent.opacity(0.07)],
+                                colors: [accent.opacity(0.16), accent.opacity(0.08)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(accent.opacity(0.16), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(accent.opacity(0.18), lineWidth: 1)
                 )
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(RoachPalette.text)
                 Text(detail)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(RoachPalette.muted)
+                    .lineSpacing(1.5)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -913,19 +1039,19 @@ public struct RoachNotice: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [RoachPalette.panelRaised.opacity(0.78), RoachPalette.panel.opacity(0.70)],
+                        colors: [RoachPalette.panelRaised.opacity(0.76), RoachPalette.panel.opacity(0.68)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(accent.opacity(0.24), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(accent.opacity(0.22), lineWidth: 1)
         )
-        .shadow(color: RoachPalette.shadow.opacity(0.16), radius: 18, x: 0, y: 10)
+        .shadow(color: RoachPalette.shadow.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 }

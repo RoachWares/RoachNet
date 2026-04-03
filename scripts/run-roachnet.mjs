@@ -45,11 +45,13 @@ const BUILD_RUNTIME_REDIS_PORT = '36379'
 const BUILD_RUNTIME_QDRANT_PORT = '36333'
 const BUILD_RUNTIME_OLLAMA_PORT = '36434'
 const BUILD_RUNTIME_OPENCLAW_PORT = '13001'
+const MANAGED_PORT_FALLBACKS = ['8080', BUILD_RUNTIME_OPENCLAW_PORT]
 const MANAGED_RUNTIME_DB_USER = 'nomad_user'
 const MANAGED_RUNTIME_SECRETS_FILENAME = 'roachnet-managed-runtime-secrets.json'
 const MANAGED_RUNTIME_DB_DATABASE = 'nomad'
 const LEGACY_MANAGED_RUNTIME_DB_PASSWORD = '7154b9bbb511df8d89c1e1417d8427e3'
 const LEGACY_MANAGED_RUNTIME_DB_ROOT_PASSWORD = '00e17487a0231b35b6030087ecb9aaf5'
+const MANAGED_COMPOSE_SERVICE_NAMES = new Set(['mysql', 'redis', 'qdrant', 'ollama'])
 
 function parseEnvFile(content) {
   const values = {}
@@ -312,6 +314,14 @@ function getManagedRuntimeStateRoot(envValues) {
   return path.join(getRuntimeEnvValues(envValues).NOMAD_STORAGE_PATH, 'runtime-state')
 }
 
+function getManagedComposeInstallKey(envValues) {
+  return getManagedRuntimeStateRoot(envValues)
+}
+
+function getManagedComposeProjectName(envValues) {
+  return getRoachNetComposeProjectName(getManagedComposeInstallKey(envValues))
+}
+
 function getManagedRuntimeSecretsPath(envValues) {
   return path.join(getManagedRuntimeStateRoot(envValues), MANAGED_RUNTIME_SECRETS_FILENAME)
 }
@@ -560,7 +570,7 @@ async function repairManagedRuntimeDatabaseUser(envValues) {
     [
       'compose',
       '-p',
-      getRoachNetComposeProjectName(repoRoot),
+      getRoachNetComposeProjectName(getManagedComposeInstallKey(managedEnv)),
       '-f',
       managementComposePath,
       'exec',
@@ -736,6 +746,160 @@ function terminateManagedPid(pid, signal) {
   }
 }
 
+async function listActiveManagedComposeProjects() {
+  let output = ''
+  try {
+    const result = await runCommand(
+      'docker',
+      [
+        'ps',
+        '--filter',
+        'label=com.docker.compose.project',
+        '--format',
+        '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Label "com.docker.compose.project.config_files"}}',
+      ],
+      {
+        cwd: repoRoot,
+        env: process.env,
+      }
+    )
+    output = result.stdout
+  } catch {
+    return []
+  }
+
+  const discoveredProjects = new Set()
+
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line) {
+      continue
+    }
+
+    const [projectName = '', serviceName = '', configFiles = ''] = line.split('\t')
+    if (!projectName.startsWith('roachnet-')) {
+      continue
+    }
+
+    if (!MANAGED_COMPOSE_SERVICE_NAMES.has(serviceName)) {
+      continue
+    }
+
+    if (!configFiles.includes('roachnet-management.compose.yml')) {
+      continue
+    }
+
+    discoveredProjects.add(projectName)
+  }
+
+  return [...discoveredProjects]
+}
+
+async function stopManagedComposeProjects(projectNames, envValues) {
+  if (!existsSync(managementComposePath)) {
+    return
+  }
+
+  const managedEnv = getManagedRuntimeEnvValues(envValues)
+  const uniqueProjectNames = [...new Set(projectNames.filter(Boolean).map((projectName) => projectName.trim()))]
+
+  for (const projectName of uniqueProjectNames) {
+    try {
+      await composeDownRoachNetServices({
+        composeFiles: [managementComposePath],
+        cwd: repoRoot,
+        installPath: getManagedComposeInstallKey(envValues),
+        projectName,
+        runProcess: runCommand,
+        env: managedEnv,
+      })
+    } catch {
+      // Containers may already be down or belong to an older bundle path.
+    }
+  }
+}
+
+async function stopCompetingManagedComposeProjects(envValues) {
+  const currentProjectName = getManagedComposeProjectName(envValues)
+  const competingProjectNames = (await listActiveManagedComposeProjects()).filter(
+    (projectName) => projectName !== currentProjectName
+  )
+
+  if (!competingProjectNames.length) {
+    return
+  }
+
+  debugBoot('managed-support:stop-competing-projects', {
+    currentProjectName,
+    competingProjectNames,
+  })
+
+  await stopManagedComposeProjects(competingProjectNames, envValues)
+}
+
+async function listListeningPids(port) {
+  try {
+    const result = await runCommand('lsof', ['-tiTCP:' + String(port), '-sTCP:LISTEN'], {
+      cwd: repoRoot,
+      env: process.env,
+    })
+
+    return result.stdout
+      .split(/\r?\n/)
+      .map((line) => Number(line.trim()))
+      .filter((pid) => Number.isInteger(pid) && pid > 0)
+  } catch {
+    return []
+  }
+}
+
+async function getParentPid(pid) {
+  try {
+    const result = await runCommand('ps', ['-o', 'ppid=', '-p', String(pid)], {
+      cwd: repoRoot,
+      env: process.env,
+    })
+    const parentPid = Number(result.stdout.trim())
+    return Number.isInteger(parentPid) && parentPid > 1 ? parentPid : null
+  } catch {
+    return null
+  }
+}
+
+async function terminateManagedPortListeners(ports = MANAGED_PORT_FALLBACKS) {
+  const uniquePids = new Set()
+
+  for (const port of ports) {
+    const listeningPids = await listListeningPids(port)
+    for (const pid of listeningPids) {
+      uniquePids.add(pid)
+
+      if (String(port) === BUILD_RUNTIME_OPENCLAW_PORT) {
+        const parentPid = await getParentPid(pid)
+        if (parentPid) {
+          uniquePids.add(parentPid)
+        }
+      }
+    }
+  }
+
+  if (!uniquePids.size) {
+    return
+  }
+
+  for (const pid of uniquePids) {
+    terminateManagedPid(pid, 'SIGTERM')
+  }
+
+  await delay(500)
+
+  for (const pid of uniquePids) {
+    if (isPidRunning(pid)) {
+      terminateManagedPid(pid, 'SIGKILL')
+    }
+  }
+}
+
 async function terminateManagedRuntimeProcesses(extraPids = []) {
   const discoveredProcesses = await listManagedRuntimeProcesses()
   const allPids = [
@@ -848,15 +1012,34 @@ async function ensureManagedSupportServices(envValues, timeoutMs) {
     env: process.env,
   })
 
+  await stopCompetingManagedComposeProjects(envValues)
+
   await composeUpRoachNetServices({
     composeFiles: [managementComposePath],
     cwd: repoRoot,
-    installPath: repoRoot,
+    installPath: getManagedComposeInstallKey(envValues),
     runProcess: runCommand,
     env: getManagedRuntimeEnvValues(envValues),
     waitTimeoutMs: timeoutMs,
-    services: ['mysql', 'redis', 'qdrant', 'ollama'],
+    services: ['mysql', 'redis'],
   })
+
+  try {
+    await composeUpRoachNetServices({
+      composeFiles: [managementComposePath],
+      cwd: repoRoot,
+      installPath: getManagedComposeInstallKey(envValues),
+      runProcess: runCommand,
+      env: getManagedRuntimeEnvValues(envValues),
+      services: ['qdrant', 'ollama'],
+      wait: false,
+    })
+  } catch (error) {
+    console.warn(
+      'Contained qdrant/ollama did not fully start during the non-blocking boot phase. ' +
+        `RoachNet will continue booting and retry those lanes later. ${error.message}`
+    )
+  }
 
   const ollamaReady = await waitForHttpEndpoint(
     `http://127.0.0.1:${BUILD_RUNTIME_OLLAMA_PORT}/api/version`,
@@ -885,21 +1068,18 @@ async function stopManagedRuntime(envValues) {
   ])
 
   if (!existsSync(managementComposePath)) {
+    await terminateManagedPortListeners()
     clearRuntimeProcessInfo()
     return
   }
 
-  try {
-    await composeDownRoachNetServices({
-      composeFiles: [managementComposePath],
-      cwd: repoRoot,
-      installPath: repoRoot,
-      runProcess: runCommand,
-      env: getManagedRuntimeEnvValues(envValues),
-    })
-  } catch {
-    // Containers may already be down.
-  }
+  const activeProjectNames = await listActiveManagedComposeProjects()
+  await stopManagedComposeProjects(
+    [getManagedComposeProjectName(envValues), ...activeProjectNames],
+    envValues
+  )
+
+  await terminateManagedPortListeners()
 
   clearRuntimeProcessInfo()
 }
@@ -1301,7 +1481,7 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
     await composeUpRoachNetServices({
       composeFiles: [target.entrypoint],
       cwd: target.cwd,
-      installPath: repoRoot,
+      installPath: getManagedComposeInstallKey(envValues),
       runProcess: runCommand,
       env: process.env,
       waitTimeoutMs: timeoutMs,

@@ -47,8 +47,14 @@ sudo rm -rf "$TARGET_APP"
 sudo ditto "$SOURCE_APP" "$TARGET_APP"
 
 echo "Clearing quarantine metadata..."
-sudo xattr -cr "$TARGET_APP" || true
-sudo xattr -dr com.apple.quarantine "$TARGET_APP" || true
+sudo /bin/sh <<EOF
+if [ -e "$TARGET_APP" ]; then
+  xattr -d com.apple.quarantine "$TARGET_APP" >/dev/null 2>&1 || true
+  find "$TARGET_APP" -type d -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
+  find "$TARGET_APP" -type f -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
+  find "$TARGET_APP" -type l -print0 2>/dev/null | xargs -0 -n 64 xattr -h -d com.apple.quarantine >/dev/null 2>&1 || true
+fi
+EOF
 
 echo "Opening $APP_NAME..."
 open "$TARGET_APP"

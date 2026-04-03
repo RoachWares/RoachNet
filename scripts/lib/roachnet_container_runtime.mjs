@@ -21,6 +21,14 @@ export function getRoachNetComposeProjectName(installPath) {
   return `roachnet-${hashValue(installPath).slice(0, 10)}`
 }
 
+function resolveComposeProjectName({ projectName, installPath }) {
+  if (projectName?.trim()) {
+    return projectName.trim()
+  }
+
+  return getRoachNetComposeProjectName(installPath)
+}
+
 function parseDesktopStatusOutput(raw) {
   if (!raw) {
     return 'unknown'
@@ -174,6 +182,7 @@ export async function composeUpRoachNetServices({
   composeFiles,
   cwd,
   installPath,
+  projectName,
   runProcess,
   env = process.env,
   onStdout,
@@ -182,9 +191,10 @@ export async function composeUpRoachNetServices({
   services = [],
   dryRun = false,
   build = false,
+  wait = true,
 }) {
   const args = buildComposeArgs({
-    projectName: getRoachNetComposeProjectName(installPath),
+    projectName: resolveComposeProjectName({ projectName, installPath }),
     composeFiles,
     commandArgs: [
       ...(dryRun ? ['--dry-run'] : []),
@@ -192,9 +202,13 @@ export async function composeUpRoachNetServices({
       '-d',
       ...(build ? ['--build'] : []),
       '--remove-orphans',
-      '--wait',
-      '--wait-timeout',
-      String(Math.max(30, Math.ceil(waitTimeoutMs / 1000))),
+      ...(wait
+        ? [
+            '--wait',
+            '--wait-timeout',
+            String(Math.max(30, Math.ceil(waitTimeoutMs / 1000))),
+          ]
+        : []),
       ...services,
     ],
   })
@@ -211,6 +225,7 @@ export async function composeDownRoachNetServices({
   composeFiles,
   cwd,
   installPath,
+  projectName,
   runProcess,
   env = process.env,
   onStdout,
@@ -218,7 +233,7 @@ export async function composeDownRoachNetServices({
   removeOrphans = true,
 }) {
   const args = buildComposeArgs({
-    projectName: getRoachNetComposeProjectName(installPath),
+    projectName: resolveComposeProjectName({ projectName, installPath }),
     composeFiles,
     commandArgs: [
       'down',
@@ -238,6 +253,7 @@ export async function composePreviewRoachNetServices({
   composeFiles,
   cwd,
   installPath,
+  projectName,
   runProcess,
   env = process.env,
   onStdout,
@@ -248,6 +264,7 @@ export async function composePreviewRoachNetServices({
     composeFiles,
     cwd,
     installPath,
+    projectName,
     runProcess,
     env,
     onStdout,

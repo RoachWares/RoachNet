@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Darwin
 import RoachNetCore
 import RoachNetDesign
 
@@ -61,6 +62,7 @@ final class SetupController: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
+    private var backendScriptURL: URL?
 
     var stageTitles: [String] { SetupStage.allCases.map(\.title) }
     var canGoBack: Bool { stage != .welcome && !isBusy }
@@ -71,18 +73,9 @@ final class SetupController: ObservableObject {
         }
     }
 
-    deinit {
-        pollTask?.cancel()
-        process?.terminate()
-
-        if let readyFileURL {
-            try? FileManager.default.removeItem(at: readyFileURL)
-        }
-    }
-
     func shutdown() {
         pollTask?.cancel()
-        process?.terminate()
+        terminateBackendProcess()
 
         if let readyFileURL {
             try? FileManager.default.removeItem(at: readyFileURL)
@@ -303,6 +296,8 @@ final class SetupController: ObservableObject {
                 NSLocalizedDescriptionKey: "Missing setup backend at \(scriptURL.path)."
             ])
         }
+        backendScriptURL = scriptURL
+        Self.terminateSetupBackends(scriptURL: scriptURL)
 
         let readyFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("roachnet-setup-\(UUID().uuidString).json")
@@ -364,6 +359,90 @@ final class SetupController: ObservableObject {
                 includePipeOutput: false
             )
         ])
+    }
+
+    private func terminateBackendProcess() {
+        let childPid = process?.processIdentifier
+
+        if let process, process.isRunning {
+            process.terminate()
+            let deadline = Date().addingTimeInterval(2.5)
+
+            while process.isRunning && Date() < deadline {
+                usleep(100_000)
+            }
+
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
+
+        if let backendScriptURL {
+            Self.terminateSetupBackends(scriptURL: backendScriptURL, excluding: childPid)
+        }
+
+        process = nil
+        stdoutPipe = nil
+        stderrPipe = nil
+        serverURL = nil
+    }
+
+    private static func terminateSetupBackends(scriptURL: URL, excluding excludedPid: Int32? = nil) {
+        let scriptName = scriptURL.lastPathComponent
+        let outputPipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["axww", "-o", "pid=,command="]
+        process.standardOutput = outputPipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+        } catch {
+            return
+        }
+
+        process.waitUntilExit()
+
+        let rawOutput = String(decoding: outputPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let matchingPids = rawOutput
+            .split(separator: "\n")
+            .compactMap { line -> Int32? in
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                guard
+                    trimmedLine.contains(scriptName),
+                    trimmedLine.localizedCaseInsensitiveContains("roachnet")
+                else {
+                    return nil
+                }
+
+                let parts = trimmedLine.split(maxSplits: 1, whereSeparator: \.isWhitespace)
+                guard let firstPart = parts.first, let pid = Int32(firstPart) else {
+                    return nil
+                }
+
+                if pid == ProcessInfo.processInfo.processIdentifier || pid == excludedPid {
+                    return nil
+                }
+
+                return pid
+            }
+
+        guard !matchingPids.isEmpty else {
+            return
+        }
+
+        for pid in matchingPids {
+            kill(pid, SIGTERM)
+        }
+
+        usleep(300_000)
+
+        for pid in matchingPids {
+            if kill(pid, 0) == 0 {
+                kill(pid, SIGKILL)
+            }
+        }
     }
 
     private func request<Response: Decodable>(
@@ -505,6 +584,7 @@ struct RoachNetSetupApp: App {
     var body: some Scene {
         WindowGroup("RoachNet Setup") {
             SetupRootView(controller: controller)
+                .background(SetupWindowConfigurator())
                 .frame(minWidth: 760, idealWidth: 980, minHeight: 580, idealHeight: 740)
                 .onAppear {
                     appDelegate.controller = controller
@@ -675,9 +755,9 @@ private struct SetupRootView: View {
         case .welcome:
             VStack(alignment: .leading, spacing: 18) {
                 LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
-                    welcomeCard(title: "Check this Mac", detail: "See what’s already here and what still needs a hand.")
-                    welcomeCard(title: "Stage the runtime", detail: "Prepare the local stack without a pile of manual steps.")
-                    welcomeCard(title: "Open RoachNet", detail: "Move straight into the app when everything is ready.")
+                    welcomeCard(title: "Check this Mac", detail: "RoachNet checks what is already present and only pulls in what this install still needs.")
+                    welcomeCard(title: "Stage the runtime", detail: "The setup flow handles the local runtime and container services instead of expecting a prepped machine.")
+                    welcomeCard(title: "Open RoachNet", detail: "Move straight into the app when setup, storage, and the first local lanes are aligned.")
                 }
             }
 
@@ -822,6 +902,7 @@ private struct SetupRootView: View {
                 Task { await controller.primaryAction() }
             }
             .buttonStyle(RoachPrimaryButtonStyle())
+            .keyboardShortcut(.defaultAction)
             .disabled(controller.isBooting || controller.isBusy)
         }
     }
@@ -935,4 +1016,39 @@ private struct SetupRootView: View {
             }
         }
     }
+}
+
+private struct SetupWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+
+            let minimumSize = NSSize(width: 760, height: 580)
+            let preferredSize = NSSize(width: 980, height: 740)
+            window.minSize = minimumSize
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.tabbingMode = .disallowed
+            window.isMovableByWindowBackground = true
+            window.isRestorable = false
+
+            let currentSize = window.frame.size
+            if currentSize.width < minimumSize.width || currentSize.height < minimumSize.height {
+                var frame = window.frame
+                frame.size.width = max(preferredSize.width, minimumSize.width)
+                frame.size.height = max(preferredSize.height, minimumSize.height)
+                if let screenFrame = window.screen?.visibleFrame {
+                    frame.origin.x = screenFrame.midX - (frame.size.width / 2)
+                    frame.origin.y = screenFrame.midY - (frame.size.height / 2)
+                }
+                window.setFrame(frame, display: true, animate: false)
+            }
+        }
+
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

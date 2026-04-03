@@ -1,6 +1,6 @@
 const owner = 'AHGRoach'
 const repo = 'RoachNet'
-const releaseVersion = '1.30.6'
+const releaseVersion = '1.30.7'
 const latestReleaseApi = `https://api.github.com/repos/${owner}/${repo}/releases/latest`
 const latestReleasePage = `https://github.com/${owner}/${repo}/releases/latest`
 const latestDownloadBase = `https://github.com/${owner}/${repo}/releases/latest/download`
@@ -48,7 +48,7 @@ let selectedCommandIndex = -1
 let timeTicker = null
 
 const fallbackCatalog = {
-  updatedAt: '2026-04-02T17:25:00-04:00',
+  updatedAt: '2026-04-02T22:10:00-04:00',
   items: [
     {
       title: 'Field Maps',

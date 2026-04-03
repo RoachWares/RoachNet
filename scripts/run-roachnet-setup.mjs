@@ -404,10 +404,17 @@ async function clearMacQuarantine(targetPath) {
     return
   }
 
-  await runProcess('xattr', ['-cr', targetPath], { env: getShellEnv() }).catch(() => {})
-  await runProcess('xattr', ['-dr', 'com.apple.quarantine', targetPath], {
-    env: getShellEnv(),
-  }).catch(() => {})
+  const shellTargetPath = escapeForSingleQuotedShell(targetPath)
+  const clearCommand = `
+if [ -e '${shellTargetPath}' ]; then
+  xattr -d com.apple.quarantine '${shellTargetPath}' >/dev/null 2>&1 || true
+  find '${shellTargetPath}' -type d -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
+  find '${shellTargetPath}' -type f -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
+  find '${shellTargetPath}' -type l -print0 2>/dev/null | xargs -0 -n 64 xattr -h -d com.apple.quarantine >/dev/null 2>&1 || true
+fi
+`.trim()
+
+  await runShell(clearCommand, { env: getShellEnv() }).catch(() => {})
 }
 
 async function resolveLocalNativeAppSource(config, task) {
@@ -969,6 +976,35 @@ async function detectDependencies() {
   }
 }
 
+function getEffectiveSourceMode(config = {}) {
+  const explicitSourceMode = typeof config.sourceMode === 'string' ? config.sourceMode.trim() : ''
+  return explicitSourceMode || getDefaultConfig().sourceMode
+}
+
+function getRequiredDependencyIds(config = {}) {
+  const requiredIds = ['docker']
+
+  if (getEffectiveSourceMode(config) === 'clone') {
+    requiredIds.unshift('git')
+  }
+
+  return requiredIds
+}
+
+function applyDependencyRequirements(dependencies, config = {}) {
+  const requiredIds = new Set(getRequiredDependencyIds(config))
+
+  return Object.fromEntries(
+    Object.entries(dependencies).map(([dependencyId, dependency]) => [
+      dependencyId,
+      {
+        ...dependency,
+        required: requiredIds.has(dependencyId),
+      },
+    ])
+  )
+}
+
 function getDependencyInstallCommand(packageManagerId, dependencyId) {
   const commands = {
     brew: {
@@ -1050,6 +1086,10 @@ function dependencyInstallNeedsPrivileges(packageManagerId, dependencyId) {
 }
 
 function getDependencyNotes(packageManagerId, dependencyId) {
+  if (process.platform === 'darwin' && packageManagerId === 'none' && dependencyId === 'docker') {
+    return 'RoachNet Setup will bootstrap Homebrew first when Docker still needs to be installed on macOS.'
+  }
+
   if (dependencyId === 'docker') {
     if (process.platform === 'darwin' || process.platform === 'win32') {
       return 'RoachNet can start Docker Desktop automatically when the Docker CLI desktop integration is available.'
@@ -1224,6 +1264,8 @@ function getShellEnv() {
   return {
     ...process.env,
     PATH: [
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
       '/opt/homebrew/opt/node@22/bin',
       '/usr/local/opt/node@22/bin',
       process.env.PATH || '',
@@ -1260,10 +1302,50 @@ async function ensureDirectory(directoryPath) {
 }
 
 async function ensureRequiredDependencies(config, task, packageManager, dependencies) {
-  const requiredIds = ['git', 'node', 'docker']
+  const requiredIds = getRequiredDependencyIds(config)
+  let activePackageManager = packageManager
+  let activeDependencies = applyDependencyRequirements(dependencies, config)
+
+  const hasMissingRequiredDependency = requiredIds.some((dependencyId) => {
+    const dependency = activeDependencies[dependencyId]
+    return !dependency?.available || dependency?.needsUpdate
+  })
+
+  if (
+    process.platform === 'darwin' &&
+    activePackageManager.id === 'none' &&
+    hasMissingRequiredDependency &&
+    config.autoInstallDependencies
+  ) {
+    appendTaskLog(task, 'Homebrew was not detected. Bootstrapping Homebrew so RoachNet can install what this Mac still needs...')
+
+    await runShell(
+      'NONINTERACTIVE=1 CI=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+      {
+        env: getShellEnv(),
+        onStdout(text) {
+          for (const line of text.split(/\r?\n/).filter(Boolean)) {
+            appendTaskLog(task, line)
+          }
+        },
+        onStderr(text) {
+          for (const line of text.split(/\r?\n/).filter(Boolean)) {
+            appendTaskLog(task, line)
+          }
+        },
+      }
+    )
+
+    activePackageManager = await detectPackageManager()
+    activeDependencies = applyDependencyRequirements(await detectDependencies(), config)
+
+    if (activePackageManager.id === 'none') {
+      throw new Error('Homebrew did not finish installing, so RoachNet Setup cannot continue installing required dependencies on macOS.')
+    }
+  }
 
   for (const dependencyId of requiredIds) {
-    const dependency = dependencies[dependencyId]
+    const dependency = activeDependencies[dependencyId]
 
     if (dependency?.available && !dependency?.needsUpdate) {
       appendTaskLog(
@@ -1277,19 +1359,19 @@ async function ensureRequiredDependencies(config, task, packageManager, dependen
       throw new Error(`${dependency.label} is missing and automatic dependency installation is disabled.`)
     }
 
-    const installCommand = getDependencyInstallCommand(packageManager.id, dependencyId)
+    const installCommand = getDependencyInstallCommand(activePackageManager.id, dependencyId)
 
     if (!installCommand) {
       throw new Error(
-        `${dependency.label} is missing and RoachNet Setup does not have an automatic install command for ${packageManager.label}.`
+        `${dependency.label} is missing and RoachNet Setup does not have an automatic install command for ${activePackageManager.label}.`
       )
     }
 
     appendTaskLog(
       task,
-      `${dependency?.available ? 'Updating' : 'Installing'} ${dependency.label} using ${packageManager.label}...`
+      `${dependency?.available ? 'Updating' : 'Installing'} ${dependency.label} using ${activePackageManager.label}...`
     )
-    const runner = dependencyInstallNeedsPrivileges(packageManager.id, dependencyId)
+    const runner = dependencyInstallNeedsPrivileges(activePackageManager.id, dependencyId)
       ? runPrivilegedShell
       : runShell
 
@@ -1770,7 +1852,7 @@ async function runInstallWorkflow(config) {
 
     setPhase('Inspecting system')
     const packageManager = await detectPackageManager()
-    const dependencies = await detectDependencies()
+    const dependencies = applyDependencyRequirements(await detectDependencies(), normalizedConfig)
 
     appendTaskLog(task, `Detected ${describePlatform().osLabel} ${process.arch}.`)
     appendTaskLog(task, `Detected package manager: ${packageManager.label}.`)
@@ -1870,7 +1952,7 @@ async function getInstallerState(searchParams = new URLSearchParams()) {
   })
 
   const packageManager = await detectPackageManager()
-  const dependencies = await detectDependencies()
+  const dependencies = applyDependencyRequirements(await detectDependencies(), mergedConfig)
   const containerRuntime = await detectRoachNetContainerRuntime({
     commandPath,
     commandExists,

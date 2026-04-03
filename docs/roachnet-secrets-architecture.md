@@ -72,7 +72,7 @@ That keeps:
 - lower AI-agent exposure
 - less secret sprawl across cloned repos
 
-Current v1.30.6 runtime behavior:
+Current v1.30.7 runtime behavior:
 
 - `scripts/run-roachnet.mjs` now creates a local-only managed runtime secret file under the runtime-state root.
 - The tracked compose file and generated setup compose file interpolate `APP_KEY`, `DB_PASSWORD`, and `ROACHNET_DB_ROOT_PASSWORD` from the launch environment instead of hardcoding them.
@@ -128,7 +128,7 @@ Future portability upgrade:
 - encrypted secret export/import with a user passphrase
 - optional sync bridge to Infisical or another hosted/open-source secret manager
 
-## v1.30.6 implementation slice
+## v1.30.7 implementation slice
 
 This slice adds:
 
