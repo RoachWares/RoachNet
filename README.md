@@ -6,6 +6,7 @@ RoachNet is a local-first command center for offline maps, local AI, education, 
 
 [roachnet.org](https://roachnet.org)  
 [GitHub Releases](https://github.com/AHGRoach/RoachNet/releases)
+[Support AHG Records LLC and RoachNet](https://www.paypal.com/donate/?hosted_button_id=ZV8RL9DWQXHGE)
 
 ## What You Get
 
@@ -31,6 +32,13 @@ The installer checks the machine, prepares the local runtime, aligns RoachClaw, 
 - Website: [roachnet.org](https://roachnet.org)
 - macOS installer: [RoachNet-Setup-macOS.dmg](https://roachnet.org/downloads/RoachNet-Setup-macOS.dmg)
 - Releases: [github.com/AHGRoach/RoachNet/releases](https://github.com/AHGRoach/RoachNet/releases)
+
+## Support
+
+GitHub does not allow the hosted PayPal button script that powers the support section on [roachnet.org](https://roachnet.org/#support), so the repo uses direct support links instead.
+
+- [Donate to AHG Records LLC](https://www.paypal.com/donate/?hosted_button_id=ZV8RL9DWQXHGE)
+- [Support RoachNet development](https://www.paypal.com/donate/?hosted_button_id=ZV8RL9DWQXHGE)
 
 ## Current Product Direction
 

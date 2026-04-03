@@ -204,7 +204,7 @@ function getCurrentAppVersion() {
     return packagedVersion
   }
 
-  return readJsonFile(path.join(repoRoot, 'package.json'))?.version || '1.30.5'
+  return readJsonFile(path.join(repoRoot, 'package.json'))?.version || '1.30.8'
 }
 
 function parseGitHubRepo(sourceRepoUrl = DEFAULT_SOURCE_REPO_URL) {
@@ -382,10 +382,16 @@ async function extractArchive(archivePath, destinationPath) {
 async function installDirectoryArtifact(sourcePath, targetPath) {
   await rm(targetPath, { recursive: true, force: true }).catch(() => {})
   await ensureDirectory(path.dirname(targetPath))
-  await cp(sourcePath, targetPath, {
-    recursive: true,
-    force: true,
-  })
+  if (process.platform === 'darwin') {
+    await runProcess('ditto', ['--noqtn', sourcePath, targetPath], {
+      env: getShellEnv(),
+    })
+  } else {
+    await cp(sourcePath, targetPath, {
+      recursive: true,
+      force: true,
+    })
+  }
   await clearMacQuarantine(targetPath)
 }
 
@@ -407,10 +413,7 @@ async function clearMacQuarantine(targetPath) {
   const shellTargetPath = escapeForSingleQuotedShell(targetPath)
   const clearCommand = `
 if [ -e '${shellTargetPath}' ]; then
-  xattr -d com.apple.quarantine '${shellTargetPath}' >/dev/null 2>&1 || true
-  find '${shellTargetPath}' -type d -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
-  find '${shellTargetPath}' -type f -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
-  find '${shellTargetPath}' -type l -print0 2>/dev/null | xargs -0 -n 64 xattr -h -d com.apple.quarantine >/dev/null 2>&1 || true
+  xattr -cr '${shellTargetPath}' >/dev/null 2>&1 || true
 fi
 `.trim()
 
@@ -661,6 +664,7 @@ async function runProcess(binary, args = [], options = {}) {
     shell = false,
     onStdout,
     onStderr,
+    timeoutMs = 0,
   } = options
 
   return new Promise((resolve, reject) => {
@@ -673,6 +677,14 @@ async function runProcess(binary, args = [], options = {}) {
 
     let stdout = ''
     let stderr = ''
+    let timedOut = false
+    const timeoutHandle =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true
+            child.kill('SIGKILL')
+          }, timeoutMs)
+        : null
 
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString()
@@ -688,6 +700,21 @@ async function runProcess(binary, args = [], options = {}) {
 
     child.on('error', reject)
     child.on('close', (code) => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
+      }
+
+      if (timedOut) {
+        reject(
+          new Error(
+            `${binary}${args.length ? ` ${args.join(' ')}` : ''} timed out after ${timeoutMs}ms\n${
+              stderr.trim() || stdout.trim()
+            }`
+          )
+        )
+        return
+      }
+
       if (code === 0) {
         resolve({ code, stdout, stderr })
         return
@@ -763,7 +790,10 @@ async function runPrivilegedShell(command, options = {}) {
 async function commandPath(command) {
   try {
     const binary = process.platform === 'win32' ? 'where' : 'which'
-    const result = await runProcess(binary, [command], {})
+    const result = await runProcess(binary, [command], {
+      env: getShellEnv(),
+      timeoutMs: 1_500,
+    })
     return result.stdout.split(/\r?\n/).find(Boolean)?.trim() || null
   } catch {
     return null
@@ -776,7 +806,10 @@ async function commandExists(command, args = ['--version']) {
 
 async function commandResponds(command, args = ['--version']) {
   try {
-    await runProcess(command, args, {})
+    await runProcess(command, args, {
+      env: getShellEnv(),
+      timeoutMs: 4_000,
+    })
     return true
   } catch {
     return false
@@ -854,11 +887,28 @@ function compareVersions(left, right) {
 
 async function detectCommandVersion(command, args = ['--version']) {
   try {
-    const result = await runProcess(command, args, {})
+    const result = await runProcess(command, args, {
+      env: getShellEnv(),
+      timeoutMs: 4_000,
+    })
     return parseVersionNumber(result.stdout || result.stderr)
   } catch {
     return null
   }
+}
+
+async function detectContainerRuntime(options = {}) {
+  return detectRoachNetContainerRuntime({
+    commandPath,
+    commandExists: commandResponds,
+    runProcess(binary, args = [], runOptions = {}) {
+      return runProcess(binary, args, {
+        timeoutMs: 4_000,
+        ...runOptions,
+      })
+    },
+    ...options,
+  })
 }
 
 function describePlatform() {
@@ -877,16 +927,20 @@ function describePlatform() {
   }
 }
 
-async function detectDependencies() {
+async function detectDependencies({ containerRuntime } = {}) {
   const gitPath = await commandPath('git')
-  const nodePath = await commandPath('node')
-  const npmPath = await commandPath(process.platform === 'win32' ? 'npm.cmd' : 'npm')
+  const bundledNodePath = getPreferredNodeBinary()
+  const bundledNpmPath = getPreferredNpmBinary(bundledNodePath)
+  const nodePath = (await commandPath('node')) || (existsSync(bundledNodePath) ? bundledNodePath : null)
+  const npmPath =
+    (await commandPath(process.platform === 'win32' ? 'npm.cmd' : 'npm')) ||
+    ((!bundledNpmPath.includes(path.sep) || existsSync(bundledNpmPath)) ? bundledNpmPath : null)
   const openclawPath = await commandPath(process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw')
-  const containerRuntime = await detectRoachNetContainerRuntime({
-    commandPath,
-    commandExists: commandResponds,
-    runProcess,
-  })
+  const resolvedContainerRuntime =
+    containerRuntime ||
+    (await detectContainerRuntime({
+      commandExists: commandResponds,
+    }))
   const gitVersion = gitPath ? await detectCommandVersion('git', ['--version']) : null
   const nodeVersion = nodePath ? await detectCommandVersion('node', ['--version']) : null
   const npmVersion = npmPath
@@ -938,9 +992,9 @@ async function detectDependencies() {
       id: 'docker',
       label: 'Docker',
       required: true,
-      available: Boolean(containerRuntime.dockerCliPath),
-      path: containerRuntime.dockerCliPath,
-      daemonRunning: containerRuntime.daemonRunning,
+      available: Boolean(resolvedContainerRuntime.dockerCliPath),
+      path: resolvedContainerRuntime.dockerCliPath,
+      daemonRunning: resolvedContainerRuntime.daemonRunning,
       version: null,
       minimumVersion: null,
       needsUpdate: false,
@@ -949,7 +1003,7 @@ async function detectDependencies() {
       id: 'dockerCompose',
       label: 'Docker Compose',
       required: true,
-      available: containerRuntime.composeAvailable,
+      available: resolvedContainerRuntime.composeAvailable,
       version: null,
       minimumVersion: '2.x',
       needsUpdate: false,
@@ -1239,9 +1293,9 @@ async function waitForPorts(ports, log) {
 
 function getPreferredNodeBinary() {
   const candidates = [
+    process.execPath,
     '/opt/homebrew/opt/node@22/bin/node',
     '/usr/local/opt/node@22/bin/node',
-    process.execPath,
     'node',
   ]
 
@@ -1261,9 +1315,15 @@ function getPreferredNpmBinary(nodeBinary) {
 }
 
 function getShellEnv() {
+  const preferredNodeBinary = getPreferredNodeBinary()
+  const preferredNodeBin = preferredNodeBinary.includes(path.sep)
+    ? path.dirname(preferredNodeBinary)
+    : null
+
   return {
     ...process.env,
     PATH: [
+      preferredNodeBin,
       '/opt/homebrew/bin',
       '/usr/local/bin',
       '/opt/homebrew/opt/node@22/bin',
@@ -1337,7 +1397,11 @@ async function ensureRequiredDependencies(config, task, packageManager, dependen
     )
 
     activePackageManager = await detectPackageManager()
-    activeDependencies = applyDependencyRequirements(await detectDependencies(), config)
+    const refreshedContainerRuntime = await detectContainerRuntime()
+    activeDependencies = applyDependencyRequirements(
+      await detectDependencies({ containerRuntime: refreshedContainerRuntime }),
+      config
+    )
 
     if (activePackageManager.id === 'none') {
       throw new Error('Homebrew did not finish installing, so RoachNet Setup cannot continue installing required dependencies on macOS.')
@@ -1401,12 +1465,7 @@ async function ensureRequiredDependencies(config, task, packageManager, dependen
 async function ensureDockerReady(task) {
   await startRoachNetContainerRuntime({
     commandExists,
-    detectRuntime: () =>
-      detectRoachNetContainerRuntime({
-        commandPath,
-        commandExists,
-        runProcess,
-      }),
+    detectRuntime: () => detectContainerRuntime(),
     runProcess,
     runShell,
     env: getShellEnv(),
@@ -1442,6 +1501,7 @@ function shouldIncludeBundledSourcePath(relativePath) {
 
   if (
     normalizedPath.startsWith('native/macos/.build/') ||
+    normalizedPath.startsWith('native/macos/.cache/') ||
     normalizedPath.startsWith('native/macos/dist/') ||
     normalizedPath.startsWith('native/linux/target/') ||
     normalizedPath.startsWith('native/windows/bin/') ||
@@ -1453,10 +1513,10 @@ function shouldIncludeBundledSourcePath(relativePath) {
   if (
     normalizedPath === 'admin/node_modules' ||
     normalizedPath === 'admin/storage' ||
-    normalizedPath === 'admin/build' ||
     normalizedPath.startsWith('admin/node_modules/') ||
     normalizedPath.startsWith('admin/storage/') ||
-    normalizedPath.startsWith('admin/build/') ||
+    normalizedPath === 'admin/build/node_modules' ||
+    normalizedPath.startsWith('admin/build/node_modules/') ||
     normalizedPath.startsWith('installer/node_modules/') ||
     normalizedPath.includes('/node_modules_node') ||
     normalizedPath.includes('/storage/logs/') ||
@@ -1543,6 +1603,9 @@ function buildManagementCompose({
   installPath,
   appPort,
   dbUser,
+  dbPassword,
+  dbRootPassword,
+  appKey,
   logLevel,
   publicUrl,
   storagePath,
@@ -1559,6 +1622,9 @@ function buildManagementCompose({
   const resolvedOpenClawBaseUrl = openClawBaseUrl.replace(/"/g, '\\"')
   const resolvedLogLevel = logLevel.replace(/"/g, '\\"')
   const resolvedDbUser = dbUser.replace(/"/g, '\\"')
+  const resolvedDbPassword = dbPassword.replace(/"/g, '\\"')
+  const resolvedDbRootPassword = dbRootPassword.replace(/"/g, '\\"')
+  const resolvedAppKey = appKey.replace(/"/g, '\\"')
 
   return `services:
   admin:
@@ -1581,12 +1647,12 @@ function buildManagementCompose({
       HOST: "0.0.0.0"
       URL: "${publicBaseUrl}"
       LOG_LEVEL: "${resolvedLogLevel}"
-      APP_KEY: "${APP_KEY}"
+      APP_KEY: "${resolvedAppKey}"
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_DATABASE: nomad
       DB_USER: "${resolvedDbUser}"
-      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_PASSWORD: "${resolvedDbPassword}"
       DB_SSL: "false"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
@@ -1594,7 +1660,7 @@ function buildManagementCompose({
       OPENCLAW_WORKSPACE_PATH: "${openClawWorkspaceRoot}"
       OLLAMA_BASE_URL: "${resolvedOllamaBaseUrl}"
       OPENCLAW_BASE_URL: "${resolvedOpenClawBaseUrl}"
-      ROACHNET_DB_ROOT_PASSWORD: "${ROACHNET_DB_ROOT_PASSWORD}"
+      ROACHNET_DB_ROOT_PASSWORD: "${resolvedDbRootPassword}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -1615,16 +1681,16 @@ function buildManagementCompose({
       - -c
       - rm -f /var/run/mysqld/mysqld.sock.lock /var/run/mysqld/mysqlx.sock.lock /var/run/mysqld/mysqld.sock /var/run/mysqld/mysqlx.sock && exec docker-entrypoint.sh mysqld
     environment:
-      MYSQL_ROOT_PASSWORD: "${ROACHNET_DB_ROOT_PASSWORD}"
+      MYSQL_ROOT_PASSWORD: "${resolvedDbRootPassword}"
       MYSQL_DATABASE: nomad
       MYSQL_USER: "${resolvedDbUser}"
-      MYSQL_PASSWORD: "${DB_PASSWORD}"
+      MYSQL_PASSWORD: "${resolvedDbPassword}"
     tmpfs:
       - /var/run/mysqld
     volumes:
       - "${runtimeRoot}/mysql:/var/lib/mysql"
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p\"$${ROACHNET_DB_ROOT_PASSWORD}\""]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p${resolvedDbRootPassword}"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -1851,8 +1917,12 @@ async function runInstallWorkflow(config) {
     saveInstallerConfig(normalizedConfig)
 
     setPhase('Inspecting system')
+    const containerRuntime = await detectContainerRuntime()
     const packageManager = await detectPackageManager()
-    const dependencies = applyDependencyRequirements(await detectDependencies(), normalizedConfig)
+    const dependencies = applyDependencyRequirements(
+      await detectDependencies({ containerRuntime }),
+      normalizedConfig
+    )
 
     appendTaskLog(task, `Detected ${describePlatform().osLabel} ${process.arch}.`)
     appendTaskLog(task, `Detected package manager: ${packageManager.label}.`)
@@ -1952,12 +2022,11 @@ async function getInstallerState(searchParams = new URLSearchParams()) {
   })
 
   const packageManager = await detectPackageManager()
-  const dependencies = applyDependencyRequirements(await detectDependencies(), mergedConfig)
-  const containerRuntime = await detectRoachNetContainerRuntime({
-    commandPath,
-    commandExists,
-    runProcess,
-  })
+  const containerRuntime = await detectContainerRuntime()
+  const dependencies = applyDependencyRequirements(
+    await detectDependencies({ containerRuntime }),
+    mergedConfig
+  )
   const installPath = normalizeInputPath(mergedConfig.installPath)
   const installedAppPath = normalizeInputPath(
     mergedConfig.installedAppPath || getDefaultInstalledAppPath(installPath)
@@ -1994,7 +2063,9 @@ async function getInstallerState(searchParams = new URLSearchParams()) {
     },
     installLooksReady,
     containerRuntime: {
+      available: Boolean(containerRuntime.dockerCliPath),
       ...containerRuntime,
+      detectionPending: false,
       composeProjectName: getRoachNetComposeProjectName(installPath),
       docs: DOCKER_DOCS,
     },

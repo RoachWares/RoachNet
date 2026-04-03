@@ -1,6 +1,6 @@
 {
   "name": "roachnet",
-  "version": "1.30.7",
+  "version": "1.30.8",
   "description": "RoachNet offline operations platform",
   "main": "desktop/main.cjs",
   "scripts": {

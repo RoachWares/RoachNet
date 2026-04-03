@@ -725,10 +725,15 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.card-grid--support {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .feature-card,
 .spotlight-card,
 .stack-item,
-.download-card {
+.download-card,
+.support-card {
   background:
     linear-gradient(180deg, rgba(25, 25, 28, 0.76), rgba(20, 20, 24, 0.64));
   border: 1px solid var(--rn-border);
@@ -738,7 +743,8 @@ button {
 }
 
 .feature-card,
-.download-card {
+.download-card,
+.support-card {
   display: grid;
   gap: 10px;
   padding: 22px;
@@ -747,6 +753,7 @@ button {
 
 .feature-card h3,
 .download-card strong,
+.support-card h3,
 .spotlight-card strong,
 .stack-item strong {
   font-size: 1.06rem;
@@ -1019,6 +1026,23 @@ button {
     0 0 30px rgba(92, 141, 255, 0.08);
 }
 
+.support-card {
+  gap: 14px;
+  min-height: 100%;
+}
+
+.support-card h3,
+.support-card p {
+  margin: 0;
+}
+
+.support-card__button {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
 .downloads-actions {
   margin-top: 4px;
 }
@@ -1080,6 +1104,10 @@ button {
   .split-highlight,
   .story-band,
   .story-band--reverse {
+    grid-template-columns: 1fr;
+  }
+
+  .card-grid--support {
     grid-template-columns: 1fr;
   }
 

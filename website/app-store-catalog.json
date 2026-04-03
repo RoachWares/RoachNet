@@ -28,7 +28,7 @@
       "status": "Contained first",
       "source": "Ollama + RoachNet curation",
       "summary": "Machine-aware local models recommended from the user’s specs, with contained installs and a cloud lane fallback for first boot.",
-      "primaryLabel": "Download RoachNet 1.30.7",
+      "primaryLabel": "Download RoachNet 1.30.8",
       "primaryUrl": "https://github.com/AHGRoach/RoachNet/releases/latest/download/RoachNet-Setup-macOS.dmg"
     },
     {

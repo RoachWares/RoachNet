@@ -89,15 +89,22 @@ final class SetupController: ObservableObject {
 
         do {
             try await ensureBackend()
-            try await refreshState()
             startPolling()
-            statusLine = "Setup ready."
+            statusLine = "Setup service ready."
+            isBooting = false
+
+            do {
+                try await refreshState()
+                statusLine = "Setup ready."
+            } catch {
+                errorLine = describe(error)
+                statusLine = "Setup backend unavailable."
+            }
         } catch {
             errorLine = describe(error)
             statusLine = "Setup backend unavailable."
+            isBooting = false
         }
-
-        isBooting = false
     }
 
     func back() {
@@ -391,8 +398,8 @@ final class SetupController: ObservableObject {
         let scriptName = scriptURL.lastPathComponent
         let outputPipe = Pipe()
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["axww", "-o", "pid=,command="]
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-fal", scriptName]
         process.standardOutput = outputPipe
         process.standardError = Pipe()
 
@@ -402,9 +409,8 @@ final class SetupController: ObservableObject {
             return
         }
 
-        process.waitUntilExit()
-
         let rawOutput = String(decoding: outputPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
         let matchingPids = rawOutput
             .split(separator: "\n")
             .compactMap { line -> Int32? in
@@ -596,6 +602,18 @@ struct RoachNetSetupApp: App {
 
 final class RoachNetSetupAppDelegate: NSObject, NSApplicationDelegate {
     weak var controller: SetupController?
+
+    func applicationShouldSaveApplicationState(_ app: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldRestoreApplicationState(_ app: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        false
+    }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
@@ -950,13 +968,25 @@ private struct SetupRootView: View {
         }
 
         return dependencies.prefix(4).map { dependency in
-            let status = dependency.available ? "Ready" : (dependency.required ? "Needed" : "Optional")
-            let accent = dependency.available ? RoachPalette.success : (dependency.required ? RoachPalette.warning : RoachPalette.muted)
+            let status: String
+            let accent: Color
+
+            if dependency.detectionPending == true {
+                status = "Checking"
+                accent = RoachPalette.muted
+            } else {
+                status = dependency.available ? "Ready" : (dependency.required ? "Needed" : "Optional")
+                accent = dependency.available ? RoachPalette.success : (dependency.required ? RoachPalette.warning : RoachPalette.muted)
+            }
+
             return (dependency.label, status, accent)
         }
     }
 
     private var runtimeValue: String {
+        if controller.setupState?.containerRuntime.detectionPending == true {
+            return "Checking"
+        }
         if controller.setupState?.containerRuntime.ready == true {
             return "Ready"
         }

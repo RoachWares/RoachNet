@@ -20,7 +20,11 @@ FROM base AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules /app/node_modules
 ADD admin/ ./
-RUN node ace build
+RUN if [ -f build/ace.js ]; then \
+      echo "Using bundled prebuilt admin runtime"; \
+    else \
+      node ace build; \
+    fi
 
 # Production stage
 FROM base

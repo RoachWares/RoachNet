@@ -44,15 +44,12 @@ sudo -v
 echo
 echo "Installing $APP_NAME into /Applications..."
 sudo rm -rf "$TARGET_APP"
-sudo ditto "$SOURCE_APP" "$TARGET_APP"
+sudo ditto --noqtn "$SOURCE_APP" "$TARGET_APP"
 
 echo "Clearing quarantine metadata..."
 sudo /bin/sh <<EOF
 if [ -e "$TARGET_APP" ]; then
-  xattr -d com.apple.quarantine "$TARGET_APP" >/dev/null 2>&1 || true
-  find "$TARGET_APP" -type d -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
-  find "$TARGET_APP" -type f -print0 2>/dev/null | xargs -0 -n 64 xattr -d com.apple.quarantine >/dev/null 2>&1 || true
-  find "$TARGET_APP" -type l -print0 2>/dev/null | xargs -0 -n 64 xattr -h -d com.apple.quarantine >/dev/null 2>&1 || true
+  xattr -cr "$TARGET_APP" >/dev/null 2>&1 || true
 fi
 EOF
 

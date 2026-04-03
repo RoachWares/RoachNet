@@ -30,7 +30,8 @@ const installerHelperPath = path.join(
   'installer-support',
   'RoachNet Fix.command'
 )
-const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.30.5'
+const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.30.8'
+const bundledNodeVersion = 'v22.22.2'
 const codesignIdentity = process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || ''
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
 const notaryKeychain = process.env.ROACHNET_NOTARY_KEYCHAIN?.trim() || ''
@@ -110,6 +111,49 @@ function serializeEnvFile(values) {
 function getPreferredNodeBinary() {
   const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/node'
   return existsSync(macHomebrewNode22) ? macHomebrewNode22 : process.execPath
+}
+
+function getBundledNodePlatformTag() {
+  if (process.arch === 'arm64') {
+    return 'darwin-arm64'
+  }
+
+  if (process.arch === 'x64') {
+    return 'darwin-x64'
+  }
+
+  throw new Error(`RoachNet does not have a bundled Node runtime definition for macOS ${process.arch}.`)
+}
+
+async function ensureBundledNodeRuntime() {
+  const cacheRoot = path.join(packagePath, '.cache', 'node-runtime')
+  const platformTag = getBundledNodePlatformTag()
+  const archiveName = `node-${bundledNodeVersion}-${platformTag}.tar.gz`
+  const extractedFolderName = `node-${bundledNodeVersion}-${platformTag}`
+  const archivePath = path.join(cacheRoot, archiveName)
+  const extractedPath = path.join(cacheRoot, extractedFolderName)
+  const bundledNodeBinary = path.join(extractedPath, 'bin', 'node')
+
+  if (existsSync(bundledNodeBinary)) {
+    return extractedPath
+  }
+
+  mkdirSync(cacheRoot, { recursive: true })
+
+  if (!existsSync(archivePath)) {
+    const downloadURL = `https://nodejs.org/dist/${bundledNodeVersion}/${archiveName}`
+    console.log(`Downloading bundled Node runtime from ${downloadURL}...`)
+    await run('curl', ['-fsSLo', archivePath, downloadURL], { stdio: 'pipe' })
+  }
+
+  discardPath(extractedPath)
+  await run('tar', ['-xzf', archivePath, '-C', cacheRoot], { stdio: 'pipe' })
+
+  if (!existsSync(bundledNodeBinary)) {
+    throw new Error(`Bundled Node runtime is missing ${bundledNodeBinary} after extraction.`)
+  }
+
+  return extractedPath
 }
 
 async function signAppBundle(bundlePath) {
@@ -220,6 +264,7 @@ const bundledSourceExcludes = [
   'runtime/',
   'storage/',
   'native/macos/.build/',
+  'native/macos/.cache/',
   'native/macos/.swiftpm/',
   'native/macos/dist/',
   'native/linux/target/',
@@ -298,6 +343,7 @@ async function copyBundledSourceTree(destinationPath) {
   if (existsSync(bundledBuildNodeModulesSource)) {
     console.log(`Copying bundled runtime dependencies into ${bundledBuildNodeModulesDestination}...`)
     await copyTreeFast(bundledBuildNodeModulesSource, bundledBuildNodeModulesDestination)
+    await materializeBundledRuntimeArtifacts(bundledBuildNodeModulesDestination)
   }
 
   if (existsSync(bundledEnvSource)) {
@@ -316,6 +362,74 @@ async function copyBundledSourceTree(destinationPath) {
   }
 }
 
+async function materializeBundledRuntimeArtifacts(nodeModulesRoot) {
+  const libzimReleaseRoot = path.join(nodeModulesRoot, '@openzim', 'libzim', 'build', 'Release')
+  const libzimTargetPath = path.join(libzimReleaseRoot, 'libzim.9.dylib')
+  const libzimLinkPath = path.join(libzimReleaseRoot, 'libzim.dylib')
+
+  if (!existsSync(libzimTargetPath)) {
+    return
+  }
+
+  rmSync(libzimLinkPath, { force: true })
+  await cp(libzimTargetPath, libzimLinkPath, { force: true })
+}
+
+async function copyBundledNodeRuntime(sourcePath, resourcesPath) {
+  const destinationPath = path.join(resourcesPath, 'EmbeddedRuntime', 'node')
+  console.log(`Bundling self-contained Node runtime into ${destinationPath}...`)
+  await copyTreeFast(sourcePath, destinationPath)
+}
+
+async function detachMountedImage(imagePath) {
+  let stdout = ''
+
+  try {
+    ;({ stdout } = await run('hdiutil', ['info'], { stdio: 'pipe' }))
+  } catch {
+    return
+  }
+
+  const normalizedPath = path.resolve(imagePath)
+  const rootDisks = new Set()
+  let sectionMatches = false
+
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim()
+
+    if (trimmed.startsWith('image-path')) {
+      const currentPath = trimmed.slice(trimmed.indexOf(':') + 1).trim()
+      sectionMatches = path.resolve(currentPath) === normalizedPath
+      continue
+    }
+
+    if (!sectionMatches) {
+      continue
+    }
+
+    const diskMatch = trimmed.match(/^(\/dev\/disk\d+)/)
+    if (diskMatch) {
+      rootDisks.add(diskMatch[1])
+    }
+  }
+
+  const disks = [...rootDisks].sort((left, right) => {
+    const leftNumber = Number.parseInt(left.replace(/\D/g, ''), 10)
+    const rightNumber = Number.parseInt(right.replace(/\D/g, ''), 10)
+    return rightNumber - leftNumber
+  })
+
+  for (const disk of disks) {
+    try {
+      await run('hdiutil', ['detach', disk], { stdio: 'pipe' })
+    } catch {
+      try {
+        await run('hdiutil', ['detach', '-force', disk], { stdio: 'pipe' })
+      } catch {}
+    }
+  }
+}
+
 async function createSetupDmg(setupAppBundlePath) {
   const dmgPath = path.join(distPath, 'RoachNet-Setup-macOS.dmg')
   const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-dmg-staging-'))
@@ -323,6 +437,7 @@ async function createSetupDmg(setupAppBundlePath) {
   const stagedSetupAppPath = path.join(stagingFolder, path.basename(setupAppBundlePath))
   const stagedHelperPath = path.join(stagingFolder, 'RoachNet Fix.command')
 
+  await detachMountedImage(dmgPath)
   rmSync(dmgPath, { force: true })
 
   mkdirSync(stagingFolder, { recursive: true })
@@ -465,6 +580,7 @@ async function main() {
   await buildAdminRuntime()
   const binPath = await buildSwiftPackage()
   const iconPath = await buildIcns()
+  const bundledNodeRuntimePath = await ensureBundledNodeRuntime()
   const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
 
   const apps = [
@@ -473,6 +589,7 @@ async function main() {
       executable: path.join(binPath, 'RoachNetApp'),
       identifier: 'com.roachwares.roachnet',
       prepareResources: async ({ resourcesPath }) => {
+        await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
         const bundledSourcePath = path.join(resourcesPath, 'RoachNetSource')
         await copyBundledSourceTree(bundledSourcePath)
       },
@@ -482,6 +599,7 @@ async function main() {
       executable: path.join(binPath, 'RoachNetSetup'),
       identifier: 'com.roachwares.roachnet.setup',
       prepareResources: async ({ resourcesPath }) => {
+        await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
         const bundledSourcePath = path.join(resourcesPath, 'RoachNetSource')
         const installerAssetsPath = path.join(resourcesPath, 'InstallerAssets')
 

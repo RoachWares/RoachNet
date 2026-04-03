@@ -50,6 +50,7 @@ admin/node_modules_node25_partial_20260327
 # Native macOS build output
 native/macos/.build
 native/macos/.swiftpm
+native/macos/.cache
 
 # Local Netlify folder
 .netlify

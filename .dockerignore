@@ -5,7 +5,6 @@ node_modules
 *.log
 admin/storage
 admin/node_modules
-admin/build
 admin/.runtime-build-cache
 runtime
 storage

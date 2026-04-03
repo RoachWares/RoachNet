@@ -9,15 +9,15 @@ mkdir -p /app/storage/logs /app/storage/kb_uploads
 
 # Run AdonisJS migrations
 echo "Running AdonisJS migrations..."
-node ace migration:run --force
+node bin/console.js migration:run --force
 
 # Seed the database if needed
 echo "Seeding the database..."
-node ace db:seed
+node bin/console.js db:seed
 
 # Start background workers for all queues
 echo "Starting background workers for all queues..."
-node ace queue:work --all &
+node bin/console.js queue:work --all &
 
 # Start the AdonisJS application
 echo "Starting AdonisJS application..."

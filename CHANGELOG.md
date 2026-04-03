@@ -5,6 +5,18 @@
 - Added a repo-native Apple release secret bootstrapper at `scripts/configure-apple-release-secrets.sh` plus an `npm run release:apple-secrets` wrapper so Developer ID and notarization credentials can be loaded into GitHub with one repeatable command.
 - Expanded the native macOS README with the exact environment variables and command sequence needed to wire the `Native Packages` workflow for a real Gatekeeper-safe notarized build.
 
+## v1.30.8 - 2026-04-02
+
+### Setup app hotfix
+
+- Bundled an official self-contained Node.js 22 runtime into both native macOS app bundles so `RoachNet Setup.app` and the main `RoachNet.app` no longer rely on a preinstalled host Node runtime to boot on a clean Apple Silicon Mac.
+- Reworked packaged repository lookup so installed app bundles prefer their own embedded `RoachNetSource` tree instead of accidentally binding to whatever local checkout happened to match the current shell environment.
+- Trimmed duplicate setup-time container runtime probing and added short command timeouts so the first installer state checks come back faster and stop feeling hung on launch.
+- Updated the setup shell to unlock the flow as soon as the local setup service is live instead of forcing the user to wait for a full machine scan before the app becomes responsive.
+- Fixed a native setup-app startup deadlock in packaged builds by replacing the broad process-table scan that could block the main thread before the bundled installer backend ever launched.
+- Disabled saved-window restoration for `RoachNet Setup.app` so stale AppKit restore state can no longer beachball the installer on reopen instead of starting a fresh setup session.
+- Finished the clean-machine packaged install path by teaching the bundled admin image to reuse the embedded prebuilt runtime, switching container startup to `node bin/console.js`, and verifying the packaged setup app can install RoachNet end to end on an Apple Silicon Mac with no prior RoachNet prerequisites.
+
 ## v1.30.7 - 2026-04-02
 
 ### Installer and first-launch hardening

@@ -168,6 +168,7 @@ public struct RoachNetSetupState: Decodable {
         public let daemonRunning: Bool?
         public let composeAvailable: Bool?
         public let ready: Bool?
+        public let detectionPending: Bool?
         public let type: String?
         public let docs: Docs?
     }
@@ -180,6 +181,7 @@ public struct RoachNetSetupState: Decodable {
         public let version: String?
         public let minimumVersion: String?
         public let needsUpdate: Bool
+        public let detectionPending: Bool?
         public let notes: String?
     }
 
@@ -211,9 +213,58 @@ public struct RoachNetSetupState: Decodable {
 }
 
 public enum RoachNetRepositoryLocator {
+    public static func embeddedNodeRoot() -> URL? {
+        guard let resourceURL = Bundle.main.resourceURL else {
+            return nil
+        }
+
+        let candidate = resourceURL
+            .appendingPathComponent("EmbeddedRuntime", isDirectory: true)
+            .appendingPathComponent("node", isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return nil
+        }
+
+        return candidate
+    }
+
+    public static func embeddedNodeBinary() -> String? {
+        guard let root = embeddedNodeRoot() else {
+            return nil
+        }
+
+        let binaryPath = root
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("node")
+            .path
+
+        return FileManager.default.isExecutableFile(atPath: binaryPath) ? binaryPath : nil
+    }
+
+    public static func embeddedNodeBinDirectory() -> String? {
+        guard let root = embeddedNodeRoot() else {
+            return nil
+        }
+
+        let binPath = root.appendingPathComponent("bin", isDirectory: true).path
+        return FileManager.default.fileExists(atPath: binPath) ? binPath : nil
+    }
+
     public static func repositoryRoot() -> URL? {
+        if
+            let explicitOverride = ProcessInfo.processInfo.environment["ROACHNET_REPO_ROOT"],
+            !explicitOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            let root = ascendForRepoRoot(from: URL(fileURLWithPath: explicitOverride))
+        {
+            return root
+        }
+
+        if let bundledRoot = bundledRepositoryRoot() {
+            return bundledRoot
+        }
+
         let envCandidates = [
-            ProcessInfo.processInfo.environment["ROACHNET_REPO_ROOT"],
             ProcessInfo.processInfo.environment["PWD"],
         ]
         .compactMap { $0 }
@@ -230,10 +281,6 @@ public enum RoachNetRepositoryLocator {
             if let root = ascendForRepoRoot(from: candidate) {
                 return root
             }
-        }
-
-        if let bundledRoot = bundledRepositoryRoot() {
-            return bundledRoot
         }
 
         return nil
@@ -317,6 +364,7 @@ public enum RoachNetRepositoryLocator {
 
     public static func preferredNodeBinary() -> String {
         let candidates = [
+            embeddedNodeBinary(),
             ProcessInfo.processInfo.environment["ROACHNET_NODE_BINARY"],
             "/opt/homebrew/bin/node",
             "/usr/local/bin/node",
@@ -337,6 +385,7 @@ public enum RoachNetRepositoryLocator {
             .split(separator: Character(pathSeparator))
             .map(String.init)
         let preferredSegments = [
+            embeddedNodeBinDirectory(),
             "/opt/homebrew/opt/node@22/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
@@ -345,7 +394,7 @@ public enum RoachNetRepositoryLocator {
             "/bin",
             "/usr/sbin",
             "/sbin",
-        ]
+        ].compactMap { $0 }
 
         var orderedSegments: [String] = []
         var seen = Set<String>()
