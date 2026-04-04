@@ -30,7 +30,7 @@ const installerHelperPath = path.join(
   'installer-support',
   'RoachNet Fix.command'
 )
-const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.4.0'
+const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.0.0'
 const bundledNodeVersion = 'v22.22.2'
 const codesignIdentity = process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || ''
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''

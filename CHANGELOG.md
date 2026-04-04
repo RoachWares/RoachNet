@@ -4,6 +4,26 @@
 
 - No unreleased changes.
 
+## v1.0 - 2026-04-04
+
+### Contained installer and clean-machine runtime
+
+- Reworked `RoachNet Setup` around a truly contained install lane so a fresh macOS install now stages RoachNet inside the chosen install root, smoke-tests the runtime before finalization, and removes the staged tree automatically on failure.
+- Stopped the setup flow from trying to bootstrap global Homebrew/npm dependencies during the default bundled install path, keeping RoachNet from spraying files across `/opt/homebrew` or other host-managed locations.
+- Canonicalized the native app target back into the RoachNet install root so stale installer state can no longer drag the install toward external app paths or other legacy locations.
+- Rewrote the finalized environment files against the promoted install root so the installed runtime no longer points back at deleted staging paths for SQLite, OpenClaw, storage, or the local tools lane.
+
+### Runtime stability
+
+- Enabled the containerless SQLite / in-memory queue boot path in the backend config and job lane so clean installs can boot without a live MySQL or Redis dependency.
+- Rebuilt the compiled admin runtime against the contained database changes so the packaged app now reaches health from the installed tree instead of falling into the stale MySQL path from older build output.
+- Verified a clean temp install can finish setup, boot the installed runtime, answer `/api/health`, and bring RoachClaw online after the brief OpenClaw gateway warm-up.
+
+### Website refresh
+
+- Refined the public site polish pass with the updated support links, darker screenshot framing, and the current `v1.0` download/version language across `roachnet.org` and `apps.roachnet.org`.
+- Kept the AHG Records donation path intact while updating the RoachNet support CTA to the direct PayPal payment link.
+
 ## v1.4 - 2026-04-03
 
 ### Dev Studio and command bar

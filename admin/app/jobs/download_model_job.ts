@@ -1,5 +1,6 @@
 import { Job, UnrecoverableError } from 'bullmq'
 import { QueueService } from '#services/queue_service'
+import queueConfig from '#config/queue'
 import { createHash } from 'crypto'
 import logger from '@adonisjs/core/services/logger'
 import { OllamaService } from '#services/ollama_service'
@@ -109,6 +110,20 @@ export class DownloadModelJob {
         removeOnComplete: false, // Keep for status checking
         removeOnFail: false, // Keep failed jobs for debugging
       })
+
+      if (queueConfig.disabled) {
+        const runner = new DownloadModelJob()
+        void Promise.resolve().then(async () => {
+          try {
+            job.markActive?.()
+            await runner.handle(job as Job)
+            job.markCompleted?.()
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            job.markFailed?.(message)
+          }
+        })
+      }
 
       return {
         job,

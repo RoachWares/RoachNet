@@ -39,20 +39,22 @@ export default await Env.create(new URL('../', import.meta.url), {
   | Variables for configuring the database package
   |----------------------------------------------------------
   */
-  DB_HOST: Env.schema.string({ format: 'host' }),
-  DB_PORT: Env.schema.number(),
-  DB_USER: Env.schema.string(),
+  DB_CONNECTION: Env.schema.enum.optional(['mysql', 'sqlite'] as const),
+  DB_HOST: Env.schema.string.optional({ format: 'host' }),
+  DB_PORT: Env.schema.number.optional(),
+  DB_USER: Env.schema.string.optional(),
   DB_PASSWORD: Env.schema.string.optional(),
-  DB_DATABASE: Env.schema.string(),
+  DB_DATABASE: Env.schema.string.optional(),
   DB_SSL: Env.schema.boolean.optional(),
+  SQLITE_DB_PATH: Env.schema.string.optional(),
 
   /*
   |----------------------------------------------------------
   | Variables for configuring the Redis connection
   |----------------------------------------------------------
   */
-  REDIS_HOST: Env.schema.string({ format: 'host' }),
-  REDIS_PORT: Env.schema.number(),
+  REDIS_HOST: Env.schema.string.optional({ format: 'host' }),
+  REDIS_PORT: Env.schema.number.optional(),
 
   /*
   |----------------------------------------------------------

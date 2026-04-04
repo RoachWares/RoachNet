@@ -1,12 +1,10 @@
 {
   "name": "roachnet",
-  "version": "1.4.0",
+  "version": "1.0.0",
   "description": "RoachNet offline operations platform",
   "main": "desktop/main.cjs",
   "scripts": {
     "build:web": "npm --prefix admin run build",
-    "build:app-store-catalog": "node scripts/build-app-store-catalog.mjs",
-    "build:apps-site": "node scripts/build-apps-site.mjs",
     "release:apple-secrets": "bash scripts/configure-apple-release-secrets.sh",
     "setup": "node scripts/run-roachnet-setup.mjs",
     "setup:no-browser": "ROACHNET_SETUP_NO_BROWSER=1 node scripts/run-roachnet-setup.mjs",

@@ -6,7 +6,8 @@ RoachNet is a local-first command center for offline maps, local AI, education, 
 
 [roachnet.org](https://roachnet.org)  
 [GitHub Releases](https://github.com/AHGRoach/RoachNet/releases)
-[Support AHG Records LLC and RoachNet](https://www.paypal.com/donate/?hosted_button_id=ZV8RL9DWQXHGE)
+[Support AHG Records LLC and RoachNet](https://roachnet.org/#support)
+[Public Website Source](https://github.com/AHGRoach/roachnet-org)
 
 ## What You Get
 
@@ -37,8 +38,8 @@ The installer checks the machine, prepares the local runtime, aligns RoachClaw, 
 
 GitHub does not allow the hosted PayPal button script that powers the support section on [roachnet.org](https://roachnet.org/#support), so the repo uses direct support links instead.
 
-- [Donate to AHG Records LLC](https://www.paypal.com/donate/?hosted_button_id=ZV8RL9DWQXHGE)
-- [Support RoachNet development](https://www.paypal.com/donate/?hosted_button_id=ZV8RL9DWQXHGE)
+- [Donate to AHG Records LLC](https://www.paypal.com/cgi-bin/webscr?business=lesherist%40gmail.com&cmd=_donations&currency_code=USD&item_name=Donation+to+AHG+Records&return=https%3A%2F%2Fahgrecords.com%2Fhome)
+- [Support RoachNet development](https://www.paypal.com/ncp/payment/ZV8RL9DWQXHGE)
 
 ## Current Product Direction
 
@@ -72,12 +73,13 @@ For this release, RoachNet prefers `qwen2.5-coder:7b` as the default local Roach
   Local API, web admin, RoachClaw services, maps, archives, and content plumbing
 - [`native/macos/`](./native/macos)
   Native macOS app and installer
-- [`website/`](./website)
-  RoachNet.org landing page and downloadable installer assets
 - [`scripts/`](./scripts)
   Setup, runtime, native bundling, and asset preparation scripts
 - [`docs/`](./docs)
   Architecture notes, evaluations, and rewrite plans
+
+The public marketing site and Apps storefront now live in the separate
+[`AHGRoach/roachnet-org`](https://github.com/AHGRoach/roachnet-org) repository so the desktop app repo can stay focused on the native product and runtime.
 
 ## Local Development
 

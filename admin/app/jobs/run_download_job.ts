@@ -1,6 +1,7 @@
 import { Job } from 'bullmq'
 import { RunDownloadJobParams } from '../../types/downloads.js'
 import { QueueService } from '#services/queue_service'
+import queueConfig from '#config/queue'
 import { doResumableDownloadWithRetry } from '../utils/downloads.js'
 import { createHash } from 'crypto'
 import { DockerService } from '#services/docker_service'
@@ -138,6 +139,20 @@ export class RunDownloadJob {
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: true,
       })
+
+      if (queueConfig.disabled) {
+        const runner = new RunDownloadJob()
+        void Promise.resolve().then(async () => {
+          try {
+            job.markActive?.()
+            await runner.handle(job as Job)
+            job.markCompleted?.()
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            job.markFailed?.(message)
+          }
+        })
+      }
 
       return {
         job,

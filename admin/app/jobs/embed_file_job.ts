@@ -1,5 +1,6 @@
 import { Job, UnrecoverableError } from 'bullmq'
 import { QueueService } from '#services/queue_service'
+import queueConfig from '#config/queue'
 import { EmbedJobWithProgress } from '../../types/rag.js'
 import { RagService } from '#services/rag_service'
 import { DockerService } from '#services/docker_service'
@@ -208,6 +209,20 @@ export class EmbedFileJob {
         removeOnComplete: { count: 50 }, // Keep last 50 completed jobs for history
         removeOnFail: { count: 20 } // Keep last 20 failed jobs for debugging
       })
+
+      if (queueConfig.disabled) {
+        const runner = new EmbedFileJob()
+        void Promise.resolve().then(async () => {
+          try {
+            job.markActive?.()
+            await runner.handle(job as Job)
+            job.markCompleted?.()
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            job.markFailed?.(message)
+          }
+        })
+      }
 
       logger.info(`[EmbedFileJob] Dispatched embedding job for file: ${params.fileName}`)
 

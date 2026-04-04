@@ -407,14 +407,56 @@ function getRuntimeEnvValues(envValues) {
     ...envValues,
     NOMAD_STORAGE_PATH: storageRoot,
     ROACHNET_MANIFESTS_BASE_URL: manifestsBaseUrl,
+    SQLITE_DB_PATH:
+      process.env.SQLITE_DB_PATH?.trim() ||
+      envValues.SQLITE_DB_PATH?.trim() ||
+      path.join(storageRoot, 'state', 'roachnet.sqlite'),
+    ROACHNET_CONTAINERLESS_MODE:
+      process.env.ROACHNET_CONTAINERLESS_MODE?.trim() ||
+      envValues.ROACHNET_CONTAINERLESS_MODE?.trim() ||
+      '',
+    ROACHNET_DISABLE_QUEUE:
+      process.env.ROACHNET_DISABLE_QUEUE?.trim() ||
+      envValues.ROACHNET_DISABLE_QUEUE?.trim() ||
+      '',
     OPENCLAW_WORKSPACE_PATH:
       configuredOpenClawWorkspace ? path.resolve(configuredOpenClawWorkspace) : path.join(storageRoot, 'openclaw'),
   }
 }
 
+function wantsContainerlessRuntime(envValues) {
+  const rawMode =
+    process.env.ROACHNET_CONTAINERLESS_MODE?.trim() ||
+    envValues.ROACHNET_CONTAINERLESS_MODE?.trim() ||
+    ''
+
+  return ['1', 'true', 'contained', 'containerless', 'local'].includes(rawMode.toLowerCase())
+}
+
 function getBuildRuntimeEnvValues(envValues) {
   const runtimeValues = getRuntimeEnvValues(envValues)
   const runtimeSecrets = getManagedRuntimeSecrets(envValues)
+  const containerlessMode = wantsContainerlessRuntime(runtimeValues)
+
+  if (containerlessMode) {
+    return {
+      ...runtimeValues,
+      HOST: '127.0.0.1',
+      PORT: '8080',
+      URL: 'http://127.0.0.1:8080',
+      APP_KEY: runtimeSecrets.appKey,
+      DB_CONNECTION: 'sqlite',
+      SQLITE_DB_PATH: runtimeValues.SQLITE_DB_PATH,
+      REDIS_HOST: runtimeValues.REDIS_HOST || '127.0.0.1',
+      REDIS_PORT: runtimeValues.REDIS_PORT || BUILD_RUNTIME_REDIS_PORT,
+      OLLAMA_BASE_URL: runtimeValues.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
+      OPENCLAW_BASE_URL: runtimeValues.OPENCLAW_BASE_URL || `http://127.0.0.1:${BUILD_RUNTIME_OPENCLAW_PORT}`,
+      ROACHNET_DISABLE_QUEUE: '1',
+      ROACHNET_DISABLE_TRANSMIT: '1',
+      ROACHNET_NATIVE_ONLY: '1',
+      ROACHNET_RECONCILE_ON_STARTUP: '0',
+    }
+  }
 
   return {
     ...runtimeValues,
@@ -1253,6 +1295,10 @@ async function ensureBuildRuntimeDatabaseReady(runtimeRoot, runtimeEnvValues) {
     return
   }
 
+  if (runtimeEnvValues.DB_CONNECTION === 'sqlite' && runtimeEnvValues.SQLITE_DB_PATH) {
+    mkdirSync(path.dirname(runtimeEnvValues.SQLITE_DB_PATH), { recursive: true })
+  }
+
   const consoleEnv = {
     ...process.env,
     ...runtimeEnvValues,
@@ -1392,7 +1438,6 @@ function spawnDetachedNodeProcess({
 
 async function maybeSpawnOpenClawGateway({ runtimeEnvValues, logFd }) {
   const openclawBinary = await commandPath('openclaw')
-  const npxBinary = await commandPath('npx')
   const gatewayEnvValues = ensureOpenClawRuntimeConfig(runtimeEnvValues)
   const gatewayUrl = new URL(gatewayEnvValues.baseUrl)
   const port = gatewayUrl.port || BUILD_RUNTIME_OPENCLAW_PORT
@@ -1428,29 +1473,7 @@ async function maybeSpawnOpenClawGateway({ runtimeEnvValues, logFd }) {
     })
   }
 
-  if (!npxBinary) {
-    return null
-  }
-
-  return spawnDetachedProcess({
-    binary: npxBinary,
-    args: [
-      '-y',
-      'openclaw',
-      'gateway',
-      'run',
-      '--allow-unconfigured',
-      '--auth',
-      'none',
-      '--bind',
-      'loopback',
-      '--port',
-      port,
-    ],
-    cwd: repoRoot,
-    env: childEnv,
-    logFd,
-  })
+  return null
 }
 
 async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogFd) {
@@ -1499,9 +1522,28 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
   }
 
   const nodeBinary = getPreferredNodeBinary()
-  await ensureManagedSupportServices(envValues, timeoutMs)
+  const runtimeDetection = await detectRoachNetContainerRuntime({
+    commandPath,
+    commandExists: commandResponds,
+    runProcess: runCommand,
+  })
+  const useContainerlessRuntime =
+    wantsContainerlessRuntime(envValues) ||
+    !runtimeDetection.dockerCliPath ||
+    runtimeDetection.daemonRunning === false
+
+  if (useContainerlessRuntime) {
+    debugBoot('launch-server:containerless-mode', {
+      requested: wantsContainerlessRuntime(envValues),
+      dockerCliAvailable: Boolean(runtimeDetection.dockerCliPath),
+      dockerDaemonRunning: runtimeDetection.daemonRunning ?? null,
+    })
+  } else {
+    await ensureManagedSupportServices(envValues, timeoutMs)
+  }
   debugBoot('launch-server:support-ready', {
     targetKind: target.kind,
+    containerless: useContainerlessRuntime,
   })
   const resolvedTarget =
     target.kind === 'build' ? await prepareBuildRuntimeTarget(envValues) : target
@@ -1562,17 +1604,24 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
   let openclawHandle = null
 
   if (existsSync(workerEntrypoint)) {
-    debugBoot('launch-server:spawn-worker', {
-      workerEntrypoint,
-    })
-    workerHandle = spawnDetachedNodeProcess({
-      nodeBinary,
-      runtimeKind: resolvedTarget.kind,
-      entrypoint: workerEntrypoint,
-      cwd: resolvedTarget.cwd,
-      env: childEnv,
-      logFd: serverLogFd,
-    })
+    if (runtimeEnvValues.ROACHNET_DISABLE_QUEUE === '1') {
+      debugBoot('launch-server:skip-worker', {
+        workerEntrypoint,
+        reason: 'queue-disabled',
+      })
+    } else {
+      debugBoot('launch-server:spawn-worker', {
+        workerEntrypoint,
+      })
+      workerHandle = spawnDetachedNodeProcess({
+        nodeBinary,
+        runtimeKind: resolvedTarget.kind,
+        entrypoint: workerEntrypoint,
+        cwd: resolvedTarget.cwd,
+        env: childEnv,
+        logFd: serverLogFd,
+      })
+    }
   }
 
   openclawHandle = await maybeSpawnOpenClawGateway({

@@ -1,5 +1,6 @@
 import { Job } from 'bullmq'
 import { QueueService } from '#services/queue_service'
+import queueConfig from '#config/queue'
 import { BenchmarkService } from '#services/benchmark_service'
 import type { RunBenchmarkJobParams } from '../../types/benchmark.js'
 import logger from '@adonisjs/core/services/logger'
@@ -69,6 +70,20 @@ export class RunBenchmarkJob {
           count: 5, // Keep last 5 failed jobs
         },
       })
+
+      if (queueConfig.disabled) {
+        const runner = new RunBenchmarkJob()
+        void Promise.resolve().then(async () => {
+          try {
+            job.markActive?.()
+            await runner.handle(job as Job)
+            job.markCompleted?.()
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            job.markFailed?.(message)
+          }
+        })
+      }
 
       logger.info(`[RunBenchmarkJob] Dispatched benchmark job ${params.benchmark_id}`)
 
