@@ -33,6 +33,7 @@ const DOCKER_BOOT_TIMEOUT_MS = 180_000
 const PORT_WAIT_INTERVAL_MS = 1_500
 const PORT_WAIT_TIMEOUT_MS = 180_000
 const INSTALLER_DIAGNOSTICS_CACHE_TTL_MS = 30_000
+const INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS = 1_500
 const GITHUB_API_ROOT = 'https://api.github.com'
 const DEFAULT_ROACHCLAW_MODEL = 'qwen2.5-coder:1.5b'
 
@@ -43,6 +44,7 @@ const runtimeState = {
   diagnosticsCache: {
     value: null,
     expiresAt: 0,
+    refreshPromise: null,
   },
 }
 
@@ -167,6 +169,7 @@ function invalidateInstallerDiagnosticsCache() {
   runtimeState.diagnosticsCache = {
     value: null,
     expiresAt: 0,
+    refreshPromise: null,
   }
 }
 
@@ -181,12 +184,14 @@ function loadPersistedInstallerConfig() {
 
   const configPath = getInstallerConfigPath()
   const legacyConfigPath = getLegacyInstallerConfigPath()
+  const usingExplicitConfigPath = Boolean(process.env.ROACHNET_INSTALLER_CONFIG_PATH)
   const primaryConfig = readJsonFile(configPath)
-  const legacyConfig = configPath === legacyConfigPath ? null : readJsonFile(legacyConfigPath)
+  const legacyConfig =
+    usingExplicitConfigPath || configPath === legacyConfigPath ? null : readJsonFile(legacyConfigPath)
 
   runtimeState.persistedConfig = primaryConfig || legacyConfig || {}
 
-  if (!primaryConfig && legacyConfig) {
+  if (!usingExplicitConfigPath && !primaryConfig && legacyConfig) {
     mkdirSync(path.dirname(configPath), { recursive: true })
     writeFileSync(configPath, JSON.stringify(runtimeState.persistedConfig, null, 2) + '\n', 'utf8')
   }
@@ -754,6 +759,7 @@ async function runProcess(binary, args = [], options = {}) {
       cwd,
       env,
       shell,
+      detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -764,6 +770,11 @@ async function runProcess(binary, args = [], options = {}) {
       timeoutMs > 0
         ? setTimeout(() => {
             timedOut = true
+            if (process.platform !== 'win32' && child.pid) {
+              try {
+                process.kill(-child.pid, 'SIGKILL')
+              } catch {}
+            }
             child.kill('SIGKILL')
           }, timeoutMs)
         : null
@@ -890,7 +901,7 @@ async function commandResponds(command, args = ['--version']) {
   try {
     await runProcess(command, args, {
       env: getShellEnv(),
-      timeoutMs: 4_000,
+      timeoutMs: INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS,
     })
     return true
   } catch {
@@ -971,7 +982,7 @@ async function detectOutdatedPackages(packageManagerId) {
     try {
       const result = await runProcess('brew', ['outdated', '--json=v2'], {
         env: getShellEnv(),
-        timeoutMs: 4_000,
+        timeoutMs: INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS,
       })
       const parsed = JSON.parse(result.stdout || '{}')
       return new Set([
@@ -990,7 +1001,7 @@ async function detectOutdatedPackages(packageManagerId) {
         ['upgrade', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity'],
         {
           env: getShellEnv(),
-          timeoutMs: 4_000,
+          timeoutMs: INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS,
         }
       )
       const packages = new Set()
@@ -1022,7 +1033,7 @@ async function detectOutdatedPackages(packageManagerId) {
     try {
       const result = await runProcess('choco', ['outdated', '--limit-output'], {
         env: getShellEnv(),
-        timeoutMs: 4_000,
+        timeoutMs: INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS,
       })
       return new Set(
         result.stdout
@@ -1076,7 +1087,7 @@ async function detectCommandVersion(command, args = ['--version']) {
   try {
     const result = await runProcess(command, args, {
       env: getShellEnv(),
-      timeoutMs: 4_000,
+      timeoutMs: INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS,
     })
     return parseVersionNumber(result.stdout || result.stderr)
   } catch {
@@ -1092,7 +1103,7 @@ async function detectLatestNpmPackageVersion(packageName, npmBinary) {
   try {
     const result = await runProcess(npmBinary, ['view', packageName, 'version', '--json'], {
       env: getShellEnv(),
-      timeoutMs: 3_000,
+      timeoutMs: INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS,
     })
     const raw = (result.stdout || '').trim()
     if (!raw) {
@@ -1115,12 +1126,148 @@ async function detectContainerRuntime(options = {}) {
     commandExists: commandResponds,
     runProcess(binary, args = [], runOptions = {}) {
       return runProcess(binary, args, {
-        timeoutMs: 4_000,
+        timeoutMs: INSTALLER_DIAGNOSTIC_COMMAND_TIMEOUT_MS,
         ...runOptions,
       })
     },
     ...options,
   })
+}
+
+function buildPendingDependencySnapshot(config = {}) {
+  const requiredIds = new Set(getRequiredDependencyIds(config))
+  return {
+    git: {
+      id: 'git',
+      label: 'Git',
+      required: requiredIds.has('git'),
+      available: false,
+      path: null,
+      version: null,
+      minimumVersion: null,
+      needsUpdate: false,
+      detectionPending: true,
+    },
+    node: {
+      id: 'node',
+      label: 'Node.js 22+',
+      required: requiredIds.has('node'),
+      available: Boolean(getPreferredNodeBinary()),
+      path: getPreferredNodeBinary(),
+      version: null,
+      minimumVersion: '22.0.0',
+      needsUpdate: false,
+      bundled: true,
+      detectionPending: true,
+    },
+    npm: {
+      id: 'npm',
+      label: 'npm',
+      required: requiredIds.has('npm'),
+      available: Boolean(getPreferredNpmBinary(getPreferredNodeBinary())),
+      path: getPreferredNpmBinary(getPreferredNodeBinary()),
+      version: null,
+      minimumVersion: null,
+      needsUpdate: false,
+      bundled: true,
+      detectionPending: true,
+    },
+    docker: {
+      id: 'docker',
+      label: 'Docker',
+      required: requiredIds.has('docker'),
+      available: false,
+      path: null,
+      daemonRunning: false,
+      version: null,
+      minimumVersion: null,
+      needsUpdate: false,
+      detectionPending: true,
+    },
+    dockerCompose: {
+      id: 'dockerCompose',
+      label: 'Docker Compose',
+      required: requiredIds.has('dockerCompose'),
+      available: false,
+      version: null,
+      minimumVersion: '2.x',
+      needsUpdate: false,
+      detectionPending: true,
+    },
+    ollama: {
+      id: 'ollama',
+      label: 'Ollama',
+      required: false,
+      available: false,
+      version: null,
+      minimumVersion: null,
+      needsUpdate: false,
+      detectionPending: true,
+    },
+    openclaw: {
+      id: 'openclaw',
+      label: 'OpenClaw',
+      required: false,
+      available: false,
+      path: null,
+      version: null,
+      minimumVersion: null,
+      needsUpdate: false,
+      detectionPending: true,
+    },
+  }
+}
+
+function buildPendingDiagnostics(config = {}) {
+  return {
+    packageManager: {
+      id: 'checking',
+      label: 'Checking',
+    },
+    containerRuntime: {
+      integrationName: 'RoachNet Container Runtime',
+      dockerCliPath: null,
+      composeAvailable: false,
+      daemonRunning: false,
+      desktopCapable: process.platform === 'darwin' || process.platform === 'win32',
+      desktopCliAvailable: false,
+      desktopStatus: 'checking',
+      ready: false,
+      docs: DOCKER_DOCS,
+      detectionPending: true,
+    },
+    dependencies: buildPendingDependencySnapshot(config),
+  }
+}
+
+function queueInstallerDiagnosticsRefresh(config = {}) {
+  if (runtimeState.diagnosticsCache.refreshPromise) {
+    return runtimeState.diagnosticsCache.refreshPromise
+  }
+
+  runtimeState.diagnosticsCache.refreshPromise = (async () => {
+    try {
+      const packageManager = await detectPackageManager()
+      const containerRuntime = await detectContainerRuntime()
+      const dependencies = await detectDependencies({ containerRuntime, includeUpdateChecks: false })
+      runtimeState.diagnosticsCache.value = {
+        packageManager,
+        containerRuntime,
+        dependencies,
+      }
+      runtimeState.diagnosticsCache.expiresAt = Date.now() + INSTALLER_DIAGNOSTICS_CACHE_TTL_MS
+    } catch (error) {
+      if (!runtimeState.diagnosticsCache.value) {
+        runtimeState.diagnosticsCache.value = buildPendingDiagnostics(config)
+      }
+      runtimeState.diagnosticsCache.expiresAt = Date.now() + 2_000
+      console.error('[roachnet-setup] diagnostics refresh failed:', error)
+    } finally {
+      runtimeState.diagnosticsCache.refreshPromise = null
+    }
+  })()
+
+  return runtimeState.diagnosticsCache.refreshPromise
 }
 
 function describePlatform() {
@@ -1157,27 +1304,42 @@ async function detectDependencies({ containerRuntime, includeUpdateChecks = fals
     (await detectContainerRuntime({
       commandExists: commandResponds,
     }))
-  const gitVersion = gitPath ? await detectCommandVersion('git', ['--version']) : null
-  const nodeVersion = nodePath ? await detectCommandVersion('node', ['--version']) : null
-  const npmVersion = npmPath
-    ? await detectCommandVersion(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'])
-    : null
-  const ollamaAvailable = await commandExists('ollama')
-  const ollamaVersion = ollamaAvailable ? await detectCommandVersion('ollama', ['--version']) : null
-  const openclawAvailable =
-    Boolean(openclawPath) || (await commandExists('openclaw'))
-  const openclawVersion = openclawAvailable
-    ? await detectCommandVersion(process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw', ['--version'])
-    : null
-  const latestOpenclawVersion = includeUpdateChecks && openclawAvailable
-    ? await detectLatestNpmPackageVersion('openclaw', npmPath)
-    : null
-  const dockerVersion = resolvedContainerRuntime.dockerCliPath
-    ? await detectCommandVersion('docker', ['--version'])
-    : null
-  const dockerComposeVersion = resolvedContainerRuntime.composeAvailable
-    ? await detectCommandVersion('docker', ['compose', 'version'])
-    : null
+  const ollamaAvailablePromise = commandExists('ollama')
+  const openclawAvailablePromise = Boolean(openclawPath)
+    ? Promise.resolve(true)
+    : commandExists(process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw')
+  const [
+    gitVersion,
+    nodeVersion,
+    npmVersion,
+    ollamaAvailable,
+    openclawAvailable,
+    dockerVersion,
+    dockerComposeVersion,
+  ] = await Promise.all([
+    gitPath ? detectCommandVersion('git', ['--version']) : Promise.resolve(null),
+    nodePath ? detectCommandVersion('node', ['--version']) : Promise.resolve(null),
+    npmPath
+      ? detectCommandVersion(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'])
+      : Promise.resolve(null),
+    ollamaAvailablePromise,
+    openclawAvailablePromise,
+    resolvedContainerRuntime.dockerCliPath
+      ? detectCommandVersion('docker', ['--version'])
+      : Promise.resolve(null),
+    resolvedContainerRuntime.composeAvailable
+      ? detectCommandVersion('docker', ['compose', 'version'])
+      : Promise.resolve(null),
+  ])
+  const [ollamaVersion, openclawVersion, latestOpenclawVersion] = await Promise.all([
+    ollamaAvailable ? detectCommandVersion('ollama', ['--version']) : Promise.resolve(null),
+    openclawAvailable
+      ? detectCommandVersion(process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw', ['--version'])
+      : Promise.resolve(null),
+    includeUpdateChecks && openclawAvailable
+      ? detectLatestNpmPackageVersion('openclaw', npmPath)
+      : Promise.resolve(null),
+  ])
   const minimumNodeVersion = '22.0.0'
   const nodeNeedsUpdate =
     Boolean(nodeVersion) && compareVersions(nodeVersion, minimumNodeVersion) < 0
@@ -2290,18 +2452,13 @@ async function getInstallerState(searchParams = new URLSearchParams()) {
   const now = Date.now()
   let cachedDiagnostics = runtimeState.diagnosticsCache.value
 
-  if (!cachedDiagnostics || runtimeState.diagnosticsCache.expiresAt <= now) {
-    const packageManager = await detectPackageManager()
-    const containerRuntime = await detectContainerRuntime()
-    cachedDiagnostics = {
-      packageManager,
-      containerRuntime,
-      dependencies: await detectDependencies({ containerRuntime, includeUpdateChecks: false }),
-    }
-    runtimeState.diagnosticsCache = {
-      value: cachedDiagnostics,
-      expiresAt: now + INSTALLER_DIAGNOSTICS_CACHE_TTL_MS,
-    }
+  if (!cachedDiagnostics) {
+    cachedDiagnostics = buildPendingDiagnostics(mergedConfig)
+    runtimeState.diagnosticsCache.value = cachedDiagnostics
+    runtimeState.diagnosticsCache.expiresAt = 0
+    queueInstallerDiagnosticsRefresh(mergedConfig)
+  } else if (runtimeState.diagnosticsCache.expiresAt <= now && !runtimeState.diagnosticsCache.refreshPromise) {
+    queueInstallerDiagnosticsRefresh(mergedConfig)
   }
 
   const packageManager = cachedDiagnostics.packageManager
@@ -2357,7 +2514,7 @@ async function getInstallerState(searchParams = new URLSearchParams()) {
     containerRuntime: {
       available: Boolean(containerRuntime.dockerCliPath),
       ...containerRuntime,
-      detectionPending: false,
+      detectionPending: Boolean(containerRuntime.detectionPending),
       composeProjectName: getRoachNetComposeProjectName(installPath),
       docs: DOCKER_DOCS,
     },

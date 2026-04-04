@@ -1082,7 +1082,7 @@ private enum SetupNativeButtonRole {
     case secondary
 }
 
-private struct SetupNativeButton: NSViewRepresentable {
+private struct SetupNativeButton: View {
     let title: String
     let role: SetupNativeButtonRole
     var isEnabled: Bool = true
@@ -1090,48 +1090,30 @@ private struct SetupNativeButton: NSViewRepresentable {
     var minWidth: CGFloat = 112
     let action: () -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
+    var body: some View {
+        let label = Text(title)
+            .frame(minWidth: minWidth)
 
-    func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(title: title, target: context.coordinator, action: #selector(Coordinator.handlePress(_:)))
-        button.setButtonType(.momentaryPushIn)
-        button.bezelStyle = .rounded
-        button.controlSize = .large
-        button.focusRingType = .default
-        button.refusesFirstResponder = false
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: minWidth).isActive = true
-        return button
-    }
-
-    func updateNSView(_ button: NSButton, context: Context) {
-        context.coordinator.action = action
-        button.title = title
-        button.isEnabled = isEnabled
-        button.alphaValue = isEnabled ? 1.0 : 0.62
-        button.keyEquivalent = isDefaultAction ? "\r" : ""
-        button.keyEquivalentModifierMask = []
-        button.font = .systemFont(ofSize: 13, weight: role == .primary ? .semibold : .medium)
-        button.contentTintColor = role == .primary ? .white : .labelColor
-
-        if #available(macOS 11.0, *) {
-            button.bezelColor = role == .primary
-                ? NSColor.systemGreen.withAlphaComponent(0.92)
-                : NSColor.controlAccentColor.withAlphaComponent(0.18)
+        let base = Group {
+            if role == .primary {
+                Button(action: action) {
+                    label
+                }
+                .buttonStyle(RoachPrimaryButtonStyle())
+            } else {
+                Button(action: action) {
+                    label
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+            }
         }
-    }
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.62)
 
-    final class Coordinator: NSObject {
-        var action: () -> Void
-
-        init(action: @escaping () -> Void) {
-            self.action = action
-        }
-
-        @objc func handlePress(_ sender: NSButton) {
-            action()
+        if isDefaultAction {
+            base.keyboardShortcut(.defaultAction)
+        } else {
+            base
         }
     }
 }

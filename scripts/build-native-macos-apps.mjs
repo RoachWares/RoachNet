@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { cp, mkdtemp, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -47,6 +47,14 @@ function run(command, args, options = {}) {
 
     let stdout = ''
     let stderr = ''
+    let timedOut = false
+    const timeoutHandle =
+      options.timeoutMs && options.timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true
+            child.kill('SIGKILL')
+          }, options.timeoutMs)
+        : null
 
     if (options.stdio === 'pipe') {
       child.stdout?.on('data', (chunk) => {
@@ -59,6 +67,15 @@ function run(command, args, options = {}) {
 
     child.on('error', reject)
     child.on('close', (code) => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
+      }
+
+      if (timedOut) {
+        reject(new Error(`${command} ${args.join(' ')} timed out after ${options.timeoutMs}ms\n${stderr}`))
+        return
+      }
+
       if (code === 0) {
         resolve({ stdout, stderr })
       } else {
@@ -125,6 +142,39 @@ function getBundledNodePlatformTag() {
   throw new Error(`RoachNet does not have a bundled Node runtime definition for macOS ${process.arch}.`)
 }
 
+function resolveNodeRuntimeRoot(nodeBinaryPath) {
+  if (!nodeBinaryPath || !existsSync(nodeBinaryPath)) {
+    return null
+  }
+
+  try {
+    return path.dirname(path.dirname(realpathSync(nodeBinaryPath)))
+  } catch {
+    return path.dirname(path.dirname(nodeBinaryPath))
+  }
+}
+
+async function verifyNodeRuntimeRoot(runtimeRoot) {
+  if (!runtimeRoot) {
+    return false
+  }
+
+  const binaryPath = path.join(runtimeRoot, 'bin', 'node')
+  if (!existsSync(binaryPath)) {
+    return false
+  }
+
+  try {
+    await run(binaryPath, ['--version'], {
+      stdio: 'pipe',
+      timeoutMs: 4_000,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function ensureBundledNodeRuntime() {
   const cacheRoot = path.join(packagePath, '.cache', 'node-runtime')
   const platformTag = getBundledNodePlatformTag()
@@ -133,9 +183,17 @@ async function ensureBundledNodeRuntime() {
   const archivePath = path.join(cacheRoot, archiveName)
   const extractedPath = path.join(cacheRoot, extractedFolderName)
   const bundledNodeBinary = path.join(extractedPath, 'bin', 'node')
+  const candidateRoots = [
+    process.env.ROACHNET_BUNDLED_NODE_ROOT?.trim(),
+    resolveNodeRuntimeRoot(process.execPath),
+    resolveNodeRuntimeRoot(getPreferredNodeBinary()),
+    existsSync(bundledNodeBinary) ? extractedPath : null,
+  ].filter(Boolean)
 
-  if (existsSync(bundledNodeBinary)) {
-    return extractedPath
+  for (const candidateRoot of candidateRoots) {
+    if (await verifyNodeRuntimeRoot(candidateRoot)) {
+      return candidateRoot
+    }
   }
 
   mkdirSync(cacheRoot, { recursive: true })
@@ -149,8 +207,8 @@ async function ensureBundledNodeRuntime() {
   discardPath(extractedPath)
   await run('tar', ['-xzf', archivePath, '-C', cacheRoot], { stdio: 'pipe' })
 
-  if (!existsSync(bundledNodeBinary)) {
-    throw new Error(`Bundled Node runtime is missing ${bundledNodeBinary} after extraction.`)
+  if (!(await verifyNodeRuntimeRoot(extractedPath))) {
+    throw new Error(`Bundled Node runtime at ${bundledNodeBinary} could not execute after extraction.`)
   }
 
   return extractedPath
