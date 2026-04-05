@@ -16,6 +16,7 @@ on:
       - 'branding/**'
       - 'scripts/**'
       - 'admin/**'
+      - 'global.json'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/native-packages.yml'
