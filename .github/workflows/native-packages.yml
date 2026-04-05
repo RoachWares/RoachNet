@@ -142,8 +142,8 @@ jobs:
         run: |
           dotnet publish native/windows/RoachNet.Setup/RoachNet.Setup.csproj `
             -c Release `
-            -r win-x64 `
             -p:Platform=x64 `
+            -p:RuntimeIdentifierOverride=win10-x64 `
             -p:WindowsPackageType=None `
             -p:UseRidGraph=true `
             -p:EnableMsixTooling=false `
@@ -157,8 +157,8 @@ jobs:
         run: |
           dotnet publish native/windows/RoachNet.App/RoachNet.App.csproj `
             -c Release `
-            -r win-x64 `
             -p:Platform=x64 `
+            -p:RuntimeIdentifierOverride=win10-x64 `
             -p:WindowsPackageType=None `
             -p:UseRidGraph=true `
             -p:EnableMsixTooling=false `
