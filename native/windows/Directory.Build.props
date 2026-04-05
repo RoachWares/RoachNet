@@ -11,5 +11,6 @@
 
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' and '$(RuntimeIdentifierOverride)' != ''">
     <RuntimeIdentifier>$(RuntimeIdentifierOverride)</RuntimeIdentifier>
+    <RuntimeIdentifiers>$(RuntimeIdentifierOverride)</RuntimeIdentifiers>
   </PropertyGroup>
 </Project>
