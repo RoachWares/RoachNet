@@ -154,6 +154,7 @@ jobs:
       - name: Publish RoachNet Setup beta
         shell: pwsh
         run: |
+          $setupPublishDir = Join-Path $env:GITHUB_WORKSPACE "native\\windows\\dist\\setup\\"
           msbuild native/windows/RoachNet.Setup/RoachNet.Setup.csproj `
             /t:Publish `
             /p:Configuration=Release `
@@ -163,7 +164,7 @@ jobs:
             /p:WindowsAppSDKSelfContained=true `
             /p:SelfContained=true `
             /p:PublishSingleFile=false `
-            /p:PublishDir=native\\windows\\dist\\setup\\
+            /p:PublishDir=$setupPublishDir
 
       - name: Restore RoachNet App beta
         shell: pwsh
@@ -178,6 +179,7 @@ jobs:
       - name: Publish RoachNet App beta
         shell: pwsh
         run: |
+          $appPublishDir = Join-Path $env:GITHUB_WORKSPACE "native\\windows\\dist\\app\\"
           msbuild native/windows/RoachNet.App/RoachNet.App.csproj `
             /t:Publish `
             /p:Configuration=Release `
@@ -187,7 +189,7 @@ jobs:
             /p:WindowsAppSDKSelfContained=true `
             /p:SelfContained=true `
             /p:PublishSingleFile=false `
-            /p:PublishDir=native\\windows\\dist\\app\\
+            /p:PublishDir=$appPublishDir
 
       - name: Stage Windows beta bundle
         shell: pwsh
