@@ -154,7 +154,47 @@ function resolveNodeRuntimeRoot(nodeBinaryPath) {
   }
 }
 
-async function verifyNodeRuntimeRoot(runtimeRoot) {
+function isAllowedBundledLibraryPath(libraryPath, runtimeRoot) {
+  if (!libraryPath) {
+    return false
+  }
+
+  if (
+    libraryPath.startsWith('@rpath/') ||
+    libraryPath.startsWith('@loader_path/') ||
+    libraryPath.startsWith('@executable_path/')
+  ) {
+    return true
+  }
+
+  if (libraryPath.startsWith('/System/Library/') || libraryPath.startsWith('/usr/lib/')) {
+    return true
+  }
+
+  const resolvedRuntimeRoot = path.resolve(runtimeRoot)
+  return libraryPath === resolvedRuntimeRoot || libraryPath.startsWith(`${resolvedRuntimeRoot}${path.sep}`)
+}
+
+async function inspectDynamicLibraries(binaryPath) {
+  if (process.platform !== 'darwin') {
+    return []
+  }
+
+  const { stdout } = await run('otool', ['-L', binaryPath], {
+    stdio: 'pipe',
+    timeoutMs: 4_000,
+  })
+
+  return stdout
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(' (compatibility version')[0]?.trim())
+    .filter(Boolean)
+}
+
+async function verifyNodeRuntimeRoot(runtimeRoot, options = {}) {
   if (!runtimeRoot) {
     return false
   }
@@ -172,7 +212,16 @@ async function verifyNodeRuntimeRoot(runtimeRoot) {
     const resolvedVersion = stdout.trim()
     const expectedMajor = bundledNodeVersion.replace(/^v/, '').split('.')[0]
     const actualMajor = resolvedVersion.replace(/^v/, '').split('.')[0]
-    return actualMajor === expectedMajor
+    if (actualMajor !== expectedMajor) {
+      return false
+    }
+
+    if (options.requirePortable !== true || process.platform !== 'darwin') {
+      return true
+    }
+
+    const libraries = await inspectDynamicLibraries(binaryPath)
+    return libraries.every((libraryPath) => isAllowedBundledLibraryPath(libraryPath, runtimeRoot))
   } catch {
     return false
   }
@@ -188,13 +237,11 @@ async function ensureBundledNodeRuntime() {
   const bundledNodeBinary = path.join(extractedPath, 'bin', 'node')
   const candidateRoots = [
     process.env.ROACHNET_BUNDLED_NODE_ROOT?.trim(),
-    resolveNodeRuntimeRoot(getPreferredNodeBinary()),
-    resolveNodeRuntimeRoot(process.execPath),
     existsSync(bundledNodeBinary) ? extractedPath : null,
   ].filter(Boolean)
 
   for (const candidateRoot of candidateRoots) {
-    if (await verifyNodeRuntimeRoot(candidateRoot)) {
+    if (await verifyNodeRuntimeRoot(candidateRoot, { requirePortable: true })) {
       return candidateRoot
     }
   }
@@ -210,7 +257,7 @@ async function ensureBundledNodeRuntime() {
   discardPath(extractedPath)
   await run('tar', ['-xzf', archivePath, '-C', cacheRoot], { stdio: 'pipe' })
 
-  if (!(await verifyNodeRuntimeRoot(extractedPath))) {
+  if (!(await verifyNodeRuntimeRoot(extractedPath, { requirePortable: true }))) {
     throw new Error(`Bundled Node runtime at ${bundledNodeBinary} could not execute after extraction.`)
   }
 
