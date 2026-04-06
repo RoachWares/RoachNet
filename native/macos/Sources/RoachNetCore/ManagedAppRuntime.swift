@@ -280,7 +280,15 @@ public actor ManagedAppRuntimeBridge {
     public init() {}
 
     public func ensureRunning(using config: RoachNetInstallerConfig) async throws -> ManagedAppServerInfo {
+        try await ensureRunning(using: config, allowBootstrapRepair: true)
+    }
+
+    private func ensureRunning(
+        using config: RoachNetInstallerConfig,
+        allowBootstrapRepair: Bool
+    ) async throws -> ManagedAppServerInfo {
         if let cachedServerInfo, try await isHealthy(cachedServerInfo.healthUrl) {
+            persistHealthyBootstrapStateIfNeeded(using: config)
             return cachedServerInfo
         }
 
@@ -293,11 +301,16 @@ public actor ManagedAppRuntimeBridge {
             ])
         }
 
-        let infoURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("roachnet-server-\(UUID().uuidString).json")
+        let infoURL = try containedServerInfoURL()
         serverInfoURL = infoURL
 
-        let node = RoachNetRepositoryLocator.preferredNodeBinary()
+        guard let node = RoachNetRepositoryLocator.preferredPortableNodeBinary() else {
+            throw NSError(domain: "RoachNetRuntime", code: 22, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "RoachNet could not find a portable Node runtime for the contained launch lane."
+            ])
+        }
+
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -311,52 +324,12 @@ public actor ManagedAppRuntimeBridge {
             exitState.record(process)
         }
 
-        var environment = ProcessInfo.processInfo.environment
-        let normalizedStoragePath = config.storagePath.isEmpty
-            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
-            : config.storagePath
-        let normalizedInstallPath = config.installPath.isEmpty
-            ? RoachNetRepositoryLocator.defaultInstallPath()
-            : config.installPath
-        let normalizedWorkspacePath = defaultWorkspacePath(from: config)
-        let normalizedLocalBinPath = RoachNetRepositoryLocator.defaultLocalBinPath(installPath: normalizedInstallPath)
-        let normalizedOllamaModelsPath = RoachNetRepositoryLocator.defaultOllamaModelsPath(storagePath: normalizedStoragePath)
-        let normalizedContainerlessMode = config.useDockerContainerization ? "0" : "1"
-        let normalizedNodeBinary = RoachNetRepositoryLocator.preferredNodeBinary()
-        let normalizedNodeBinDirectory = normalizedNodeBinary == "/usr/bin/env"
-            ? nil
-            : URL(fileURLWithPath: normalizedNodeBinary).deletingLastPathComponent().path
-        environment["ROACHNET_NO_BROWSER"] = "1"
-        environment["ROACHNET_SERVER_INFO_FILE"] = infoURL.path
-        environment["ROACHNET_REPO_ROOT"] = repoRoot.path
-        environment["ROACHNET_RUNTIME_STATE_ROOT"] = RoachNetRepositoryLocator.defaultRuntimeStatePath()
-        environment["ROACHNET_LOCAL_BIN_PATH"] = normalizedLocalBinPath
-        environment["ROACHNET_NODE_BINARY"] = normalizedNodeBinary
-        environment["NOMAD_STORAGE_PATH"] = normalizedStoragePath
-        environment["OPENCLAW_WORKSPACE_PATH"] = normalizedWorkspacePath
-        environment["OLLAMA_MODELS"] = normalizedOllamaModelsPath
-        environment["OLLAMA_BASE_URL"] = "http://127.0.0.1:36434"
-        environment["OPENCLAW_BASE_URL"] = "http://127.0.0.1:13001"
-        environment["ROACHNET_CONTAINERLESS_MODE"] = normalizedContainerlessMode
-        environment["ROACHNET_DISABLE_QUEUE"] = normalizedContainerlessMode == "1" ? "1" : "0"
-        environment["ROACHNET_ROACHCLAW_DEFAULT_MODEL"] = config.roachClawDefaultModel
-        environment["ROACHNET_COMPANION_ENABLED"] = config.companionEnabled ? "1" : "0"
-        environment["ROACHNET_COMPANION_HOST"] = config.companionHost
-        environment["ROACHNET_COMPANION_PORT"] = String(config.companionPort)
-        environment["ROACHNET_COMPANION_TOKEN"] = config.companionToken
-        if config.companionAdvertisedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            environment.removeValue(forKey: "ROACHNET_COMPANION_ADVERTISED_URL")
-        } else {
-            environment["ROACHNET_COMPANION_ADVERTISED_URL"] = config.companionAdvertisedURL
-        }
-        environment["PATH"] = [
-            normalizedLocalBinPath,
-            normalizedNodeBinDirectory,
-            environment["PATH"],
-        ]
-        .compactMap { $0 }
-        .joined(separator: ":")
-        process.environment = environment
+        process.environment = runtimeLaunchEnvironment(
+            using: config,
+            repoRoot: repoRoot,
+            nodeBinary: node,
+            serverInfoURL: infoURL
+        )
 
         try process.run()
         self.process = process
@@ -369,6 +342,7 @@ public actor ManagedAppRuntimeBridge {
                 try await isHealthy(serverInfo.healthUrl)
             {
                 cachedServerInfo = serverInfo
+                persistHealthyBootstrapStateIfNeeded(using: config)
                 return serverInfo
             }
 
@@ -378,20 +352,32 @@ public actor ManagedAppRuntimeBridge {
                 let details = [stderr, stdout]
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .first(where: { !$0.isEmpty })
+                let startupLogsPath = runtimeLogPath(using: config)
+                let message = details.map {
+                    "RoachNet exited before it became healthy (\(exitDescription)). \($0)"
+                } ?? "RoachNet exited before it became healthy (\(exitDescription)). Check \(startupLogsPath) for startup logs."
+
+                if shouldAttemptBootstrapRepair(using: config, allowBootstrapRepair: allowBootstrapRepair) {
+                    let repairedConfig = try await repairContainedBootstrap(using: config)
+                    return try await ensureRunning(using: repairedConfig, allowBootstrapRepair: false)
+                }
 
                 throw NSError(domain: "RoachNetRuntime", code: 24, userInfo: [
-                    NSLocalizedDescriptionKey: details.map {
-                        "RoachNet exited before it became healthy (\(exitDescription)). \($0)"
-                    } ?? "RoachNet exited before it became healthy (\(exitDescription))."
+                    NSLocalizedDescriptionKey: message
                 ])
             }
 
             try await Task.sleep(for: .milliseconds(300))
         }
 
+        if shouldAttemptBootstrapRepair(using: config, allowBootstrapRepair: allowBootstrapRepair) {
+            let repairedConfig = try await repairContainedBootstrap(using: config)
+            return try await ensureRunning(using: repairedConfig, allowBootstrapRepair: false)
+        }
+
         throw NSError(domain: "RoachNetRuntime", code: 21, userInfo: [
             NSLocalizedDescriptionKey:
-                "RoachNet did not become healthy before the native timeout (\(Int(nativeStartupTimeoutSeconds)) seconds)."
+                "RoachNet did not become healthy before the native timeout (\(Int(nativeStartupTimeoutSeconds)) seconds). Check \(runtimeLogPath(using: config)) for startup logs."
         ])
     }
 
@@ -780,56 +766,16 @@ public actor ManagedAppRuntimeBridge {
             return
         }
 
-        let node = RoachNetRepositoryLocator.preferredNodeBinary()
+        let node = RoachNetRepositoryLocator.preferredPortableNodeBinary() ?? RoachNetRepositoryLocator.preferredNodeBinary()
         let stopProcess = Process()
         stopProcess.currentDirectoryURL = repoRoot
         stopProcess.executableURL = URL(fileURLWithPath: node)
         stopProcess.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path, "--stop"] : [scriptURL.path, "--stop"]
-
-        var environment = ProcessInfo.processInfo.environment
-        let normalizedStoragePath = config.storagePath.isEmpty
-            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
-            : config.storagePath
-        let normalizedInstallPath = config.installPath.isEmpty
-            ? RoachNetRepositoryLocator.defaultInstallPath()
-            : config.installPath
-        let normalizedWorkspacePath = defaultWorkspacePath(from: config)
-        let normalizedLocalBinPath = RoachNetRepositoryLocator.defaultLocalBinPath(installPath: normalizedInstallPath)
-        let normalizedOllamaModelsPath = RoachNetRepositoryLocator.defaultOllamaModelsPath(storagePath: normalizedStoragePath)
-        let normalizedContainerlessMode = config.useDockerContainerization ? "0" : "1"
-        let normalizedNodeBinary = RoachNetRepositoryLocator.preferredNodeBinary()
-        let normalizedNodeBinDirectory = normalizedNodeBinary == "/usr/bin/env"
-            ? nil
-            : URL(fileURLWithPath: normalizedNodeBinary).deletingLastPathComponent().path
-        environment["ROACHNET_NO_BROWSER"] = "1"
-        environment["ROACHNET_REPO_ROOT"] = repoRoot.path
-        environment["ROACHNET_RUNTIME_STATE_ROOT"] = RoachNetRepositoryLocator.defaultRuntimeStatePath()
-        environment["ROACHNET_LOCAL_BIN_PATH"] = normalizedLocalBinPath
-        environment["ROACHNET_NODE_BINARY"] = normalizedNodeBinary
-        environment["NOMAD_STORAGE_PATH"] = normalizedStoragePath
-        environment["OPENCLAW_WORKSPACE_PATH"] = normalizedWorkspacePath
-        environment["OLLAMA_MODELS"] = normalizedOllamaModelsPath
-        environment["OLLAMA_BASE_URL"] = "http://127.0.0.1:36434"
-        environment["OPENCLAW_BASE_URL"] = "http://127.0.0.1:13001"
-        environment["ROACHNET_CONTAINERLESS_MODE"] = normalizedContainerlessMode
-        environment["ROACHNET_DISABLE_QUEUE"] = normalizedContainerlessMode == "1" ? "1" : "0"
-        environment["ROACHNET_COMPANION_ENABLED"] = config.companionEnabled ? "1" : "0"
-        environment["ROACHNET_COMPANION_HOST"] = config.companionHost
-        environment["ROACHNET_COMPANION_PORT"] = String(config.companionPort)
-        environment["ROACHNET_COMPANION_TOKEN"] = config.companionToken
-        if config.companionAdvertisedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            environment.removeValue(forKey: "ROACHNET_COMPANION_ADVERTISED_URL")
-        } else {
-            environment["ROACHNET_COMPANION_ADVERTISED_URL"] = config.companionAdvertisedURL
-        }
-        environment["PATH"] = [
-            normalizedLocalBinPath,
-            normalizedNodeBinDirectory,
-            environment["PATH"],
-        ]
-        .compactMap { $0 }
-        .joined(separator: ":")
-        stopProcess.environment = environment
+        stopProcess.environment = runtimeLaunchEnvironment(
+            using: config,
+            repoRoot: repoRoot,
+            nodeBinary: node
+        )
 
         do {
             try stopProcess.run()
@@ -845,6 +791,170 @@ public actor ManagedAppRuntimeBridge {
 
     public func stopRuntime() async {
         await stopRuntime(using: RoachNetRepositoryLocator.readConfig())
+    }
+
+    private func runtimeLaunchEnvironment(
+        using config: RoachNetInstallerConfig,
+        repoRoot: URL,
+        nodeBinary: String,
+        serverInfoURL: URL? = nil
+    ) -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let normalizedStoragePath = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+        let normalizedInstallPath = config.installPath.isEmpty
+            ? RoachNetRepositoryLocator.defaultInstallPath()
+            : config.installPath
+        let normalizedWorkspacePath = defaultWorkspacePath(from: config)
+        let normalizedLocalBinPath = RoachNetRepositoryLocator.defaultLocalBinPath(installPath: normalizedInstallPath)
+        let normalizedOllamaModelsPath = RoachNetRepositoryLocator.defaultOllamaModelsPath(storagePath: normalizedStoragePath)
+        let normalizedContainerlessMode = config.useDockerContainerization ? "0" : "1"
+        let normalizedNodeBinDirectory = nodeBinary == "/usr/bin/env"
+            ? nil
+            : URL(fileURLWithPath: nodeBinary).deletingLastPathComponent().path
+
+        environment["ROACHNET_NO_BROWSER"] = "1"
+        environment["ROACHNET_REPO_ROOT"] = repoRoot.path
+        environment["ROACHNET_RUNTIME_STATE_ROOT"] = RoachNetRepositoryLocator.defaultRuntimeStatePath()
+        environment["ROACHNET_LOCAL_BIN_PATH"] = normalizedLocalBinPath
+        environment["ROACHNET_NODE_BINARY"] = nodeBinary
+        environment["ROACHNET_REQUIRE_PORTABLE_NODE"] = "1"
+        environment["ROACHNET_INSTALL_PROFILE"] = config.installProfile
+        environment["ROACHNET_BOOTSTRAP_PENDING"] = config.bootstrapPending ? "1" : "0"
+        environment["NOMAD_STORAGE_PATH"] = normalizedStoragePath
+        environment["OPENCLAW_WORKSPACE_PATH"] = normalizedWorkspacePath
+        environment["OLLAMA_MODELS"] = normalizedOllamaModelsPath
+        environment["OLLAMA_BASE_URL"] = "http://127.0.0.1:36434"
+        environment["OPENCLAW_BASE_URL"] = "http://127.0.0.1:13001"
+        environment["ROACHNET_CONTAINERLESS_MODE"] = normalizedContainerlessMode
+        environment["ROACHNET_DISABLE_QUEUE"] = normalizedContainerlessMode == "1" ? "1" : "0"
+        environment["ROACHNET_ROACHCLAW_DEFAULT_MODEL"] = config.roachClawDefaultModel
+        environment["ROACHNET_COMPANION_ENABLED"] = config.companionEnabled ? "1" : "0"
+        environment["ROACHNET_COMPANION_HOST"] = config.companionHost
+        environment["ROACHNET_COMPANION_PORT"] = String(config.companionPort)
+        environment["ROACHNET_COMPANION_TOKEN"] = config.companionToken
+        if let serverInfoURL {
+            environment["ROACHNET_SERVER_INFO_FILE"] = serverInfoURL.path
+        } else {
+            environment.removeValue(forKey: "ROACHNET_SERVER_INFO_FILE")
+        }
+        if config.companionAdvertisedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            environment.removeValue(forKey: "ROACHNET_COMPANION_ADVERTISED_URL")
+        } else {
+            environment["ROACHNET_COMPANION_ADVERTISED_URL"] = config.companionAdvertisedURL
+        }
+        environment["PATH"] = [
+            normalizedLocalBinPath,
+            normalizedNodeBinDirectory,
+            environment["PATH"],
+        ]
+        .compactMap { $0 }
+        .joined(separator: ":")
+
+        return environment
+    }
+
+    private func containedServerInfoURL() throws -> URL {
+        let url = URL(fileURLWithPath: RoachNetRepositoryLocator.portableRuntimeHandshakePath())
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? FileManager.default.removeItem(at: url)
+        return url
+    }
+
+    private func runtimeLogPath(using config: RoachNetInstallerConfig) -> String {
+        let normalizedStoragePath = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+        return URL(fileURLWithPath: normalizedStoragePath)
+            .appendingPathComponent("logs", isDirectory: true)
+            .appendingPathComponent("roachnet-server.log", isDirectory: false)
+            .path
+    }
+
+    private func runtimeProcessStatePath(using config: RoachNetInstallerConfig) -> String {
+        let normalizedStoragePath = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+        return URL(fileURLWithPath: normalizedStoragePath)
+            .appendingPathComponent("logs", isDirectory: true)
+            .appendingPathComponent("roachnet-runtime-processes.json", isDirectory: false)
+            .path
+    }
+
+    private func runtimeCacheRoot(using config: RoachNetInstallerConfig) -> String {
+        let normalizedStoragePath = config.storagePath.isEmpty
+            ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
+            : config.storagePath
+        return URL(fileURLWithPath: normalizedStoragePath)
+            .appendingPathComponent("state", isDirectory: true)
+            .appendingPathComponent("runtime-cache", isDirectory: true)
+            .path
+    }
+
+    private func shouldAttemptBootstrapRepair(
+        using config: RoachNetInstallerConfig,
+        allowBootstrapRepair: Bool
+    ) -> Bool {
+        allowBootstrapRepair &&
+            RoachNetRepositoryLocator.isHomebrewInstallProfile(config.installProfile) &&
+            config.bootstrapPending &&
+            config.bootstrapFailureCount < 1
+    }
+
+    private func repairContainedBootstrap(using config: RoachNetInstallerConfig) async throws -> RoachNetInstallerConfig {
+        var updatedConfig = config
+        updatedConfig.bootstrapPending = true
+        updatedConfig.bootstrapFailureCount += 1
+
+        do {
+            try RoachNetRepositoryLocator.writeConfig(updatedConfig)
+        } catch {
+            NSLog("[ManagedAppRuntimeBridge] Failed to persist bootstrap repair state: %@", error.localizedDescription)
+        }
+
+        await stopRuntime(using: updatedConfig)
+
+        let fileManager = FileManager.default
+        let runtimeCacheRoot = runtimeCacheRoot(using: updatedConfig)
+        let runtimeProcessStatePath = runtimeProcessStatePath(using: updatedConfig)
+        let handshakePath = RoachNetRepositoryLocator.portableRuntimeHandshakePath()
+
+        if fileManager.fileExists(atPath: runtimeCacheRoot) {
+            try? fileManager.removeItem(atPath: runtimeCacheRoot)
+        }
+        if fileManager.fileExists(atPath: runtimeProcessStatePath) {
+            try? fileManager.removeItem(atPath: runtimeProcessStatePath)
+        }
+        if fileManager.fileExists(atPath: handshakePath) {
+            try? fileManager.removeItem(atPath: handshakePath)
+        }
+
+        return updatedConfig
+    }
+
+    private func persistHealthyBootstrapStateIfNeeded(using config: RoachNetInstallerConfig) {
+        guard
+            config.bootstrapPending ||
+            config.bootstrapFailureCount > 0 ||
+            (RoachNetRepositoryLocator.isHomebrewInstallProfile(config.installProfile) && config.lastRuntimeHealthAt == nil)
+        else {
+            return
+        }
+
+        var updatedConfig = config
+        updatedConfig.bootstrapPending = false
+        updatedConfig.bootstrapFailureCount = 0
+        updatedConfig.lastRuntimeHealthAt = ISO8601DateFormatter().string(from: Date())
+
+        do {
+            try RoachNetRepositoryLocator.writeConfig(updatedConfig)
+        } catch {
+            NSLog("[ManagedAppRuntimeBridge] Failed to persist runtime health state: %@", error.localizedDescription)
+        }
     }
 
     private func resolveRuntimeRoot(from config: RoachNetInstallerConfig) -> URL {

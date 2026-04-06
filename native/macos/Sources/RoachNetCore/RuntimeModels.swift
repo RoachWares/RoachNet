@@ -4,6 +4,7 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
     public var installPath: String
     public var installedAppPath: String
     public var storagePath: String
+    public var installProfile: String
     public var useDockerContainerization: Bool
     public var installRoachClaw: Bool
     public var companionEnabled: Bool
@@ -19,6 +20,9 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
     public var autoLaunch: Bool
     public var releaseChannel: String
     public var setupCompletedAt: String?
+    public var bootstrapPending: Bool
+    public var bootstrapFailureCount: Int
+    public var lastRuntimeHealthAt: String?
     public var pendingLaunchIntro: Bool
     public var pendingRoachClawSetup: Bool
 
@@ -26,6 +30,7 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         installPath: String,
         installedAppPath: String,
         storagePath: String? = nil,
+        installProfile: String = "standard",
         useDockerContainerization: Bool = false,
         installRoachClaw: Bool = true,
         companionEnabled: Bool = true,
@@ -41,12 +46,16 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         autoLaunch: Bool = true,
         releaseChannel: String = "stable",
         setupCompletedAt: String? = nil,
+        bootstrapPending: Bool = false,
+        bootstrapFailureCount: Int = 0,
+        lastRuntimeHealthAt: String? = nil,
         pendingLaunchIntro: Bool = false,
         pendingRoachClawSetup: Bool = false
     ) {
         self.installPath = installPath
         self.installedAppPath = installedAppPath
         self.storagePath = storagePath ?? RoachNetRepositoryLocator.defaultStoragePath(installPath: installPath)
+        self.installProfile = installProfile
         self.useDockerContainerization = useDockerContainerization
         self.installRoachClaw = installRoachClaw
         self.companionEnabled = companionEnabled
@@ -64,6 +73,9 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         self.autoLaunch = autoLaunch
         self.releaseChannel = releaseChannel
         self.setupCompletedAt = setupCompletedAt
+        self.bootstrapPending = bootstrapPending
+        self.bootstrapFailureCount = max(0, bootstrapFailureCount)
+        self.lastRuntimeHealthAt = lastRuntimeHealthAt
         self.pendingLaunchIntro = pendingLaunchIntro
         self.pendingRoachClawSetup = pendingRoachClawSetup
     }
@@ -72,6 +84,7 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         case installPath
         case installedAppPath
         case storagePath
+        case installProfile
         case useDockerContainerization
         case installRoachClaw
         case companionEnabled
@@ -87,6 +100,9 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         case autoLaunch
         case releaseChannel
         case setupCompletedAt
+        case bootstrapPending
+        case bootstrapFailureCount
+        case lastRuntimeHealthAt
         case pendingLaunchIntro
         case pendingRoachClawSetup
     }
@@ -111,6 +127,7 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
             installPath: installPath,
             installedAppPath: installedAppPath,
             storagePath: storagePath,
+            installProfile: try container.decodeIfPresent(String.self, forKey: .installProfile) ?? "standard",
             useDockerContainerization: try container.decodeIfPresent(Bool.self, forKey: .useDockerContainerization) ?? false,
             installRoachClaw: try container.decodeIfPresent(Bool.self, forKey: .installRoachClaw) ?? true,
             companionEnabled: try container.decodeIfPresent(Bool.self, forKey: .companionEnabled) ?? true,
@@ -126,6 +143,9 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
             autoLaunch: try container.decodeIfPresent(Bool.self, forKey: .autoLaunch) ?? true,
             releaseChannel: try container.decodeIfPresent(String.self, forKey: .releaseChannel) ?? "stable",
             setupCompletedAt: try container.decodeIfPresent(String.self, forKey: .setupCompletedAt),
+            bootstrapPending: try container.decodeIfPresent(Bool.self, forKey: .bootstrapPending) ?? false,
+            bootstrapFailureCount: try container.decodeIfPresent(Int.self, forKey: .bootstrapFailureCount) ?? 0,
+            lastRuntimeHealthAt: try container.decodeIfPresent(String.self, forKey: .lastRuntimeHealthAt),
             pendingLaunchIntro: try container.decodeIfPresent(Bool.self, forKey: .pendingLaunchIntro) ?? false,
             pendingRoachClawSetup: try container.decodeIfPresent(Bool.self, forKey: .pendingRoachClawSetup) ?? false
         )
@@ -136,6 +156,7 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         try container.encode(installPath, forKey: .installPath)
         try container.encode(installedAppPath, forKey: .installedAppPath)
         try container.encode(storagePath, forKey: .storagePath)
+        try container.encode(installProfile, forKey: .installProfile)
         try container.encode(useDockerContainerization, forKey: .useDockerContainerization)
         try container.encode(installRoachClaw, forKey: .installRoachClaw)
         try container.encode(companionEnabled, forKey: .companionEnabled)
@@ -151,6 +172,9 @@ public struct RoachNetInstallerConfig: Codable, Sendable {
         try container.encode(autoLaunch, forKey: .autoLaunch)
         try container.encode(releaseChannel, forKey: .releaseChannel)
         try container.encodeIfPresent(setupCompletedAt, forKey: .setupCompletedAt)
+        try container.encode(bootstrapPending, forKey: .bootstrapPending)
+        try container.encode(bootstrapFailureCount, forKey: .bootstrapFailureCount)
+        try container.encodeIfPresent(lastRuntimeHealthAt, forKey: .lastRuntimeHealthAt)
         try container.encode(pendingLaunchIntro, forKey: .pendingLaunchIntro)
         try container.encode(pendingRoachClawSetup, forKey: .pendingRoachClawSetup)
     }
@@ -427,6 +451,84 @@ public enum RoachNetRepositoryLocator {
             .path
     }
 
+    public static func portableRuntimeHandshakePath() -> String {
+        URL(fileURLWithPath: defaultRuntimeStatePath())
+            .appendingPathComponent("native-server-info.json", isDirectory: false)
+            .path
+    }
+
+    public static func isHomebrewInstallProfile(_ profile: String) -> Bool {
+        profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "homebrew-cask"
+    }
+
+    private static func isAllowedPortableLibraryPath(_ libraryPath: String, runtimeRoot: String) -> Bool {
+        if
+            libraryPath.hasPrefix("@rpath/") ||
+            libraryPath.hasPrefix("@loader_path/") ||
+            libraryPath.hasPrefix("@executable_path/")
+        {
+            return true
+        }
+
+        if libraryPath.hasPrefix("/System/Library/") || libraryPath.hasPrefix("/usr/lib/") {
+            return true
+        }
+
+        let resolvedRuntimeRoot = URL(fileURLWithPath: runtimeRoot).standardizedFileURL.path
+        return libraryPath == resolvedRuntimeRoot || libraryPath.hasPrefix("\(resolvedRuntimeRoot)/")
+    }
+
+    private static func isPortableNodeBinary(at path: String) -> Bool {
+        let fileManager = FileManager.default
+        guard fileManager.isExecutableFile(atPath: path) else {
+            return false
+        }
+
+        #if os(macOS)
+        let process = Process()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/otool")
+        process.arguments = ["-L", path]
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return false
+        }
+
+        guard process.terminationStatus == 0,
+              let output = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+        else {
+            return false
+        }
+
+        let runtimeRoot = URL(fileURLWithPath: path)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .standardizedFileURL
+            .path
+
+        return output
+            .split(separator: "\n")
+            .dropFirst()
+            .map { line in
+                line
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .components(separatedBy: " (compatibility version")
+                    .first?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            }
+            .filter { !$0.isEmpty }
+            .allSatisfy { isAllowedPortableLibraryPath($0, runtimeRoot: runtimeRoot) }
+        #else
+        return true
+        #endif
+    }
+
     public static func preferredNodeBinary() -> String {
         let candidates = [
             embeddedNodeBinary(),
@@ -442,6 +544,18 @@ public enum RoachNetRepositoryLocator {
         }
 
         return "/usr/bin/env"
+    }
+
+    public static func preferredPortableNodeBinary() -> String? {
+        let candidates = [
+            ProcessInfo.processInfo.environment["ROACHNET_NODE_BINARY"],
+            embeddedNodeBinary(),
+            "/opt/homebrew/bin/node",
+            "/usr/local/bin/node",
+            "/usr/bin/node",
+        ].compactMap { $0 }
+
+        return candidates.first(where: { isPortableNodeBinary(at: $0) })
     }
 
     public static func preferredBinarySearchPath() -> String {

@@ -26,10 +26,6 @@ const buildPackageJsonPath = path.join(buildDir, 'package.json')
 const buildPackageLockPath = path.join(buildDir, 'package-lock.json')
 const buildAssetManifestPath = path.join(buildDir, 'public', 'assets', '.vite', 'manifest.json')
 const buildStampPath = path.join(buildDir, '.roachnet-build-stamp.json')
-const storageLogsDir = path.join(adminDir, 'storage', 'logs')
-const serverLogPath = path.join(storageLogsDir, 'roachnet-server.log')
-const launcherDebugLogPath = path.join(storageLogsDir, 'roachnet-launcher-debug.log')
-const runtimeProcessInfoPath = path.join(storageLogsDir, 'roachnet-runtime-processes.json')
 const managementComposePath = path.join(repoRoot, 'ops', 'roachnet-management.compose.yml')
 
 const SERVER_BOOT_TIMEOUT_MS = 300_000
@@ -54,6 +50,22 @@ const MANAGED_RUNTIME_DB_DATABASE = 'nomad'
 const LEGACY_MANAGED_RUNTIME_DB_PASSWORD = '7154b9bbb511df8d89c1e1417d8427e3'
 const LEGACY_MANAGED_RUNTIME_DB_ROOT_PASSWORD = '00e17487a0231b35b6030087ecb9aaf5'
 const MANAGED_COMPOSE_SERVICE_NAMES = new Set(['mysql', 'redis', 'qdrant', 'ollama'])
+
+function getStorageLogsDir(envValues = process.env) {
+  return path.join(normalizeStorageRoot(envValues?.NOMAD_STORAGE_PATH), 'logs')
+}
+
+function getServerLogPath(envValues = process.env) {
+  return path.join(getStorageLogsDir(envValues), 'roachnet-server.log')
+}
+
+function getLauncherDebugLogPath(envValues = process.env) {
+  return path.join(getStorageLogsDir(envValues), 'roachnet-launcher-debug.log')
+}
+
+function getRuntimeProcessInfoPath(envValues = process.env) {
+  return path.join(getStorageLogsDir(envValues), 'roachnet-runtime-processes.json')
+}
 
 function parseEnvFile(content) {
   const values = {}
@@ -307,6 +319,8 @@ function debugBoot(stage, details = {}) {
     return
   }
 
+  const storageLogsDir = getStorageLogsDir(process.env)
+  const launcherDebugLogPath = getLauncherDebugLogPath(process.env)
   mkdirSync(storageLogsDir, { recursive: true })
   appendFileSync(
     launcherDebugLogPath,
@@ -634,7 +648,7 @@ function getCompanionAdvertisedUrl(envValues) {
   return envValues.ROACHNET_COMPANION_ADVERTISED_URL?.trim() || getCompanionLocalUrl(envValues)
 }
 
-function readLatestSourceServerUrl(logPath = serverLogPath) {
+function readLatestSourceServerUrl(logPath = getServerLogPath(process.env)) {
   if (!existsSync(logPath)) {
     return null
   }
@@ -919,15 +933,19 @@ function writeServerInfo(info) {
     return
   }
 
+  mkdirSync(path.dirname(outputPath), { recursive: true })
   writeFileSync(outputPath, JSON.stringify(info, null, 2) + '\n', 'utf8')
 }
 
-function writeRuntimeProcessInfo(info) {
+function writeRuntimeProcessInfo(info, envValues = process.env) {
+  const storageLogsDir = getStorageLogsDir(envValues)
+  const runtimeProcessInfoPath = getRuntimeProcessInfoPath(envValues)
   mkdirSync(storageLogsDir, { recursive: true })
   writeFileSync(runtimeProcessInfoPath, JSON.stringify(info, null, 2) + '\n', 'utf8')
 }
 
-function readRuntimeProcessInfo() {
+function readRuntimeProcessInfo(envValues = process.env) {
+  const runtimeProcessInfoPath = getRuntimeProcessInfoPath(envValues)
   if (!existsSync(runtimeProcessInfoPath)) {
     return null
   }
@@ -939,7 +957,8 @@ function readRuntimeProcessInfo() {
   }
 }
 
-function clearRuntimeProcessInfo() {
+function clearRuntimeProcessInfo(envValues = process.env) {
+  const runtimeProcessInfoPath = getRuntimeProcessInfoPath(envValues)
   rmSync(runtimeProcessInfoPath, { force: true })
 }
 
@@ -1339,7 +1358,8 @@ async function ensureManagedSupportServices(envValues, timeoutMs) {
 }
 
 async function stopManagedRuntime(envValues) {
-  const trackedInfo = readRuntimeProcessInfo()
+  const runtimeEnvValues = getRuntimeEnvValues(envValues)
+  const trackedInfo = readRuntimeProcessInfo(runtimeEnvValues)
   await terminateManagedRuntimeProcesses([
     trackedInfo?.serverPid,
     trackedInfo?.workerPid,
@@ -1350,7 +1370,7 @@ async function stopManagedRuntime(envValues) {
 
   if (!existsSync(managementComposePath)) {
     await terminateManagedPortListeners()
-    clearRuntimeProcessInfo()
+    clearRuntimeProcessInfo(runtimeEnvValues)
     return
   }
 
@@ -1362,7 +1382,7 @@ async function stopManagedRuntime(envValues) {
 
   await terminateManagedPortListeners()
 
-  clearRuntimeProcessInfo()
+  clearRuntimeProcessInfo(runtimeEnvValues)
 }
 
 function getBuildRuntimeFingerprint() {
@@ -2019,7 +2039,7 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
         terminateDetachedChild(serverHandle.child)
       }
 
-      clearRuntimeProcessInfo()
+      clearRuntimeProcessInfo(runtimeEnvValues)
       throw error
     }
   }
@@ -2147,7 +2167,7 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
     terminateDetachedChild(companionHandle.child)
   }
 
-  clearRuntimeProcessInfo()
+  clearRuntimeProcessInfo(envValues)
 
   return {
     child: serverHandle.child,
@@ -2160,6 +2180,13 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
 
 async function main() {
   const envValues = await loadEnv()
+  const runtimeEnvValues = getRuntimeEnvValues(envValues)
+  process.env.NOMAD_STORAGE_PATH = runtimeEnvValues.NOMAD_STORAGE_PATH
+  process.env.OPENCLAW_WORKSPACE_PATH = runtimeEnvValues.OPENCLAW_WORKSPACE_PATH
+  process.env.OLLAMA_MODELS = runtimeEnvValues.OLLAMA_MODELS
+  process.env.ROACHNET_CONTAINERLESS_MODE = runtimeEnvValues.ROACHNET_CONTAINERLESS_MODE
+  process.env.ROACHNET_DISABLE_QUEUE = runtimeEnvValues.ROACHNET_DISABLE_QUEUE
+  process.env.ROACHNET_INSTALL_PROFILE = process.env.ROACHNET_INSTALL_PROFILE || runtimeEnvValues.ROACHNET_INSTALL_PROFILE || ''
   process.env.ROACHNET_LOCAL_BIN_PATH = envValues.ROACHNET_LOCAL_BIN_PATH || getLocalBinRoot()
   if (envValues.ROACHNET_NODE_BINARY) {
     process.env.ROACHNET_NODE_BINARY = envValues.ROACHNET_NODE_BINARY
@@ -2195,7 +2222,6 @@ async function main() {
 
   if (alreadyRunningUrl) {
     const runningHomeUrl = new URL(requestedOpenPath, alreadyRunningUrl)
-    const runtimeEnvValues = getRuntimeEnvValues(envValues)
     writeServerInfo({
       pid: null,
       healthUrl: alreadyRunningUrl.toString(),
@@ -2210,9 +2236,11 @@ async function main() {
     return
   }
 
+  const storageLogsDir = getStorageLogsDir(runtimeEnvValues)
+  const serverLogPath = getServerLogPath(runtimeEnvValues)
   mkdirSync(storageLogsDir, { recursive: true })
 
-  const trackedInfo = readRuntimeProcessInfo()
+  const trackedInfo = readRuntimeProcessInfo(runtimeEnvValues)
   await terminateManagedRuntimeProcesses([
     trackedInfo?.serverPid,
     trackedInfo?.workerPid,
@@ -2220,7 +2248,7 @@ async function main() {
     trackedInfo?.openclawPid,
     trackedInfo?.companionPid,
   ])
-  clearRuntimeProcessInfo()
+  clearRuntimeProcessInfo(runtimeEnvValues)
 
   const serverLogFd = openSync(serverLogPath, 'a')
   const preferredTarget = getServerRuntimeTarget()
