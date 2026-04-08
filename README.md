@@ -48,7 +48,6 @@ That path skips `RoachNet Setup.app` and writes the contained RoachNet config au
 The direct Homebrew lane stages its compiled runtime under `~/RoachNet/storage/state/runtime-cache`, writes launcher and server logs under `~/RoachNet/storage/logs`, uses a contained handshake file instead of `/tmp`, re-signs native runtime artifacts on macOS, and keeps the runtime/API surface aligned with the main native app once boot completes.
 
 On first boot, the Homebrew profile marks the contained runtime as pending bootstrap, does one contained self-heal pass if the first runtime handoff fails, and then records the last healthy launch timestamp once `/api/health` is up.
-
 - Website: [roachnet.org](https://roachnet.org)
 - macOS installer: [RoachNet-Setup-macOS.dmg](https://github.com/AHGRoach/RoachNet/releases/latest/download/RoachNet-Setup-macOS.dmg)
 - Windows 11 beta: [RoachNet-Setup-windows-x64-beta.exe](https://github.com/AHGRoach/RoachNet/releases/latest/download/RoachNet-Setup-windows-x64-beta.exe)
