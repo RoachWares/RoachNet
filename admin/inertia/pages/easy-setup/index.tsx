@@ -1034,8 +1034,8 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
                   description="RoachNet uses Ollama for local chat, model downloads, and the default RoachClaw model lane."
                   runtimeStatus={aiRuntimeStatus}
                   configuredValue={ollamaBaseUrl}
-                  placeholder="http://127.0.0.1:11434"
-                  helpText="Leave this blank to fall back to OLLAMA_BASE_URL, local discovery on 127.0.0.1:11434, then the managed runtime."
+                  placeholder="http://RoachNet:11434"
+                  helpText="Leave this blank to fall back to OLLAMA_BASE_URL, then the local RoachNet AI lane on RoachNet:11434, then the managed runtime."
                   onConfiguredValueChange={setOllamaBaseUrl}
                   onSave={() => {
                     setSavingSettingKey('ai.ollamaBaseUrl')
@@ -1051,7 +1051,7 @@ export default function EasySetupWizard(props: { system: { services: ServiceSlim
                   description="OpenClaw stays in the shared AI runtime layer now, so connector and skill work can be staged without inventing a separate setup flow."
                   runtimeStatus={openClawRuntimeStatus}
                   configuredValue={openClawBaseUrl}
-                  placeholder="http://127.0.0.1:3001"
+                  placeholder="http://RoachNet:3001"
                   helpText="Set the OpenClaw base URL here or provide OPENCLAW_BASE_URL. RoachNet probes /health, /api/health, and / to confirm reachability."
                   onConfiguredValueChange={setOpenClawBaseUrl}
                   onSave={() => {

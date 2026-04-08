@@ -11,6 +11,8 @@
     "start": "node scripts/run-roachnet.mjs",
     "start:no-browser": "ROACHNET_NO_BROWSER=1 node scripts/run-roachnet.mjs",
     "smoke:macos-install-lanes": "node scripts/smoke-test-macos-install-lanes.mjs",
+    "smoke:ios-companion-compat": "node scripts/smoke-test-ios-companion-compat.mjs",
+    "smoke:release-gates": "node scripts/smoke-test-release-gates.mjs",
     "desktop:assets": "node scripts/prepare-native-assets.mjs",
     "desktop:dev": "npm run desktop:assets && electron .",
     "desktop:dev:setup": "npm run desktop:assets && electron installer/main.cjs",

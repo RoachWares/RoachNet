@@ -429,7 +429,10 @@ public actor ManagedAppRuntimeBridge {
             config: config,
             serverInfo: serverInfo
         )
-        let fallbackRoachSyncStatus = self.fallbackRoachSyncStatus(config: config)
+        let fallbackRoachSyncStatus = self.fallbackRoachSyncStatus(
+            config: config,
+            serverInfo: serverInfo
+        )
 
         async let internetConnected = fetchOrFallback(
             "/api/system/internet-status",
@@ -872,6 +875,8 @@ public actor ManagedAppRuntimeBridge {
         environment["ROACHNET_CONTAINERLESS_MODE"] = normalizedContainerlessMode
         environment["ROACHNET_DISABLE_QUEUE"] = normalizedContainerlessMode == "1" ? "1" : "0"
         environment["ROACHNET_ROACHCLAW_DEFAULT_MODEL"] = config.roachClawDefaultModel
+        environment["ROACHNET_LOCAL_HOSTNAME"] =
+            ProcessInfo.processInfo.environment["ROACHNET_LOCAL_HOSTNAME"] ?? "RoachNet"
         environment["ROACHNET_COMPANION_ENABLED"] = config.companionEnabled ? "1" : "0"
         environment["ROACHNET_COMPANION_HOST"] = config.companionHost
         environment["ROACHNET_COMPANION_PORT"] = String(config.companionPort)
@@ -1150,8 +1155,16 @@ public actor ManagedAppRuntimeBridge {
         )
     }
 
-    private func fallbackRoachSyncStatus(config: RoachNetInstallerConfig) -> ManagedRoachSyncStatusResponse {
-        ManagedRoachSyncStatusResponse(
+    private func fallbackRoachSyncStatus(
+        config: RoachNetInstallerConfig,
+        serverInfo: ManagedAppServerInfo
+    ) -> ManagedRoachSyncStatusResponse {
+        let syncBaseURL = publicRoachNetURL(
+            port: "8384",
+            path: "",
+            fallback: serverInfo.webUrl
+        )
+        return ManagedRoachSyncStatusResponse(
             enabled: false,
             provider: "Syncthing",
             networkName: "RoachSync",
@@ -1160,14 +1173,38 @@ public actor ManagedAppRuntimeBridge {
             status: "idle",
             folderId: "roachnet-vault",
             folderPath: RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath),
-            guiUrl: "http://127.0.0.1:8384",
-            apiUrl: "http://127.0.0.1:8384/rest",
+            guiUrl: syncBaseURL,
+            apiUrl: "\(syncBaseURL)/rest",
             transportMode: config.companionEnabled ? "local-bridge" : "local-only",
             secureOverlay: false,
             notes: ["RoachSync has not been armed yet in this runtime configuration."],
             peers: [],
             lastUpdatedAt: nil
         )
+    }
+
+    private func publicRoachNetURL(
+        port: String,
+        path: String,
+        fallback: String?
+    ) -> String {
+        if
+            let fallback,
+            let baseURL = URL(string: fallback)
+        {
+            var components = URLComponents()
+            components.scheme = baseURL.scheme ?? "http"
+            components.host = baseURL.host ?? (ProcessInfo.processInfo.environment["ROACHNET_LOCAL_HOSTNAME"] ?? "RoachNet")
+            components.port = Int(port)
+            components.path = path
+            if let rendered = components.url?.absoluteString {
+                return rendered
+            }
+        }
+
+        let host = ProcessInfo.processInfo.environment["ROACHNET_LOCAL_HOSTNAME"] ?? "RoachNet"
+        let suffix = path.hasPrefix("/") || path.isEmpty ? path : "/\(path)"
+        return "http://\(host):\(port)\(suffix)"
     }
 
     private func fallbackRuntimeStatus(provider: String) -> AIRuntimeStatusResponse {

@@ -282,7 +282,7 @@ export default function ModelsPage(props: {
           {!runtimeStatus.available && (
             <Alert
               title={`${aiAssistantName} is not available.`}
-              message={`Start Ollama locally on ${runtimeStatus.baseUrl || 'http://127.0.0.1:11434'}, set OLLAMA_BASE_URL, or install the managed service to manage models from this page.`}
+              message={`Start Ollama locally on ${runtimeStatus.baseUrl || 'http://RoachNet:11434'}, set OLLAMA_BASE_URL, or install the managed service to manage models from this page.`}
               type="warning"
               variant="solid"
               className="!mt-6"

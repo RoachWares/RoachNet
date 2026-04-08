@@ -628,17 +628,44 @@ export default class CompanionController {
 
   private localBaseUrl(request?: HttpContext['request']) {
     if (request) {
-      return new URL(`${request.protocol()}://${request.host()}`)
+      const requestedUrl = new URL(`${request.protocol()}://${request.host()}`)
+      if (this.isLoopbackHost(requestedUrl.hostname)) {
+        return new URL(this.publicLoopbackUrl(requestedUrl.port || '8080', requestedUrl.pathname))
+      }
+      return requestedUrl
     }
 
     const origin = process.env.URL?.trim()
     if (origin) {
-      return new URL(origin)
+      const parsedOrigin = new URL(origin)
+      if (this.isLoopbackHost(parsedOrigin.hostname)) {
+        return new URL(this.publicLoopbackUrl(parsedOrigin.port || '8080', parsedOrigin.pathname))
+      }
+      return parsedOrigin
     }
 
-    const host = process.env.HOST?.trim() || '127.0.0.1'
+    const host = process.env.HOST?.trim() || this.roachNetLocalHost()
     const port = process.env.PORT?.trim() || '8080'
     return new URL(`http://${host}:${port}`)
+  }
+
+  private isLoopbackHost(host: string) {
+    const normalized = host.trim().replace(/^\[|\]$/g, '').toLowerCase()
+    return ['localhost', '127.0.0.1', '::1', '0.0.0.0', '::'].includes(normalized)
+  }
+
+  private roachNetLocalHost() {
+    return process.env.ROACHNET_LOCAL_HOSTNAME?.trim() || 'RoachNet'
+  }
+
+  private publicLoopbackUrl(port: string | number, pathname = '') {
+    const host = this.roachNetLocalHost()
+    const wrappedHost =
+      host.includes(':') && !host.startsWith('[')
+        ? `[${host}]`
+        : host
+
+    return `http://${wrappedHost}:${String(port)}${pathname}`
   }
 
   private async relayJson(pathname: string, request?: HttpContext['request'], init?: RequestInit) {
@@ -1361,8 +1388,8 @@ export default class CompanionController {
       status: 'idle',
       folderId: 'roachnet-vault',
       folderPath,
-      guiUrl: 'http://127.0.0.1:8384',
-      apiUrl: 'http://127.0.0.1:8384/rest',
+      guiUrl: this.publicLoopbackUrl(8384),
+      apiUrl: this.publicLoopbackUrl(8384, '/rest'),
       transportMode: process.env.ROACHTAIL_RELAY_HOST?.trim() ? 'tailnet-relay' : 'local-bridge',
       secureOverlay: Boolean(process.env.ROACHTAIL_RELAY_HOST?.trim()),
       notes: [
@@ -1494,16 +1521,8 @@ export default class CompanionController {
       return advertised
     }
 
-    const configuredHost = process.env.ROACHNET_COMPANION_HOST?.trim() || '127.0.0.1'
     const configuredPort = process.env.ROACHNET_COMPANION_PORT?.trim() || '38111'
-    const normalizedHost =
-      configuredHost === '0.0.0.0' || configuredHost === '::' ? '127.0.0.1' : configuredHost
-    const wrappedHost =
-      normalizedHost.includes(':') && !normalizedHost.startsWith('[')
-        ? `[${normalizedHost}]`
-        : normalizedHost
-
-    return `http://${wrappedHost}:${configuredPort}`
+    return this.publicLoopbackUrl(configuredPort)
   }
 
   private storagePath() {

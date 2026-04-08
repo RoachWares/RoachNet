@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
+import { lookup } from 'node:dns/promises'
 import { appendFileSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { cp, readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -43,6 +44,7 @@ const BUILD_RUNTIME_OLLAMA_PORT = '36434'
 const BUILD_RUNTIME_OPENCLAW_PORT = '13001'
 const DEFAULT_COMPANION_HOST = '0.0.0.0'
 const DEFAULT_COMPANION_PORT = '38111'
+const DEFAULT_ROACHNET_LOCAL_HOSTNAME = 'RoachNet'
 const MANAGED_PORT_FALLBACKS = ['8080', BUILD_RUNTIME_OPENCLAW_PORT]
 const MANAGED_RUNTIME_DB_USER = 'nomad_user'
 const MANAGED_RUNTIME_SECRETS_FILENAME = 'roachnet-managed-runtime-secrets.json'
@@ -127,6 +129,48 @@ function formatUrlHost(host) {
   }
 
   return trimmed.includes(':') && !trimmed.startsWith('[') ? `[${trimmed}]` : trimmed
+}
+
+function normalizeHostName(host) {
+  return String(host || '')
+    .trim()
+    .replace(/^\[|\]$/g, '')
+    .toLowerCase()
+}
+
+function isLoopbackHost(host) {
+  const normalizedHost = normalizeHostName(host)
+  return ['localhost', '127.0.0.1', '::1', '0.0.0.0', '::'].includes(normalizedHost)
+}
+
+function getRoachNetLocalHostname(envValues = process.env) {
+  return envValues.ROACHNET_LOCAL_HOSTNAME?.trim() || DEFAULT_ROACHNET_LOCAL_HOSTNAME
+}
+
+function getDisplayUrl(targetUrl, envValues = process.env) {
+  const parsedUrl = targetUrl instanceof URL ? new URL(targetUrl.toString()) : new URL(String(targetUrl))
+  if (!isLoopbackHost(parsedUrl.hostname)) {
+    return parsedUrl
+  }
+
+  parsedUrl.hostname = getRoachNetLocalHostname(envValues)
+  return parsedUrl
+}
+
+async function getPreferredPublicUrl(targetUrl, envValues = process.env) {
+  const parsedUrl = targetUrl instanceof URL ? new URL(targetUrl.toString()) : new URL(String(targetUrl))
+  const displayUrl = getDisplayUrl(parsedUrl, envValues)
+
+  if (displayUrl.hostname === parsedUrl.hostname) {
+    return parsedUrl
+  }
+
+  try {
+    await lookup(displayUrl.hostname)
+    return displayUrl
+  } catch {
+    return parsedUrl
+  }
 }
 
 function getBaseUrl(envValues) {
@@ -700,7 +744,12 @@ function getCompanionAdvertisedUrl(envValues) {
     return null
   }
 
-  return envValues.ROACHNET_COMPANION_ADVERTISED_URL?.trim() || getCompanionLocalUrl(envValues)
+  const explicitAdvertisedUrl = envValues.ROACHNET_COMPANION_ADVERTISED_URL?.trim()
+  if (explicitAdvertisedUrl) {
+    return explicitAdvertisedUrl
+  }
+
+  return getDisplayUrl(getCompanionLocalUrl(envValues), envValues).toString()
 }
 
 function readLatestSourceServerUrl(logPath = getServerLogPath(process.env)) {
@@ -1896,7 +1945,7 @@ async function maybeSpawnCompanionServer({
     ROACHNET_COMPANION_HOST: getCompanionListenHost(runtimeEnvValues),
     ROACHNET_COMPANION_PORT: getCompanionPort(runtimeEnvValues),
     ROACHNET_COMPANION_TOKEN: token,
-    ROACHNET_COMPANION_ADVERTISED_URL: runtimeEnvValues.ROACHNET_COMPANION_ADVERTISED_URL?.trim() || '',
+    ROACHNET_COMPANION_ADVERTISED_URL: advertisedUrl || '',
     ROACHNET_COMPANION_TARGET_URL: targetOrigin,
   }
 
@@ -2289,7 +2338,7 @@ async function main() {
   })
 
   if (alreadyRunningUrl) {
-    const runningHomeUrl = new URL(requestedOpenPath, alreadyRunningUrl)
+    const runningHomeUrl = await getPreferredPublicUrl(new URL(requestedOpenPath, alreadyRunningUrl), envValues)
     writeServerInfo({
       pid: null,
       healthUrl: alreadyRunningUrl.toString(),
@@ -2374,7 +2423,7 @@ async function main() {
     throw new Error(`${reason} Check ${serverLogPath} for startup logs.`)
   }
 
-  const homeUrl = new URL(requestedOpenPath, launchResult.healthyUrl)
+  const homeUrl = await getPreferredPublicUrl(new URL(requestedOpenPath, launchResult.healthyUrl), envValues)
 
   writeServerInfo({
     pid: launchResult.child?.pid ?? null,

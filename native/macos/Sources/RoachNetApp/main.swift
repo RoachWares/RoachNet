@@ -1227,7 +1227,7 @@ final class WorkspaceModel: ObservableObject {
                 resolvedPath = location
             } else if Int(location) != nil {
                 let homeURL = try await ManagedAppRuntimeBridge.shared.resolveRouteURL(using: config, path: "/home")
-                let host = homeURL.host ?? "127.0.0.1"
+                let host = homeURL.host ?? "RoachNet"
                 let scheme = homeURL.scheme ?? "http"
                 resolvedPath = "\(scheme)://\(host):\(location)"
             } else if location.hasPrefix("/") {
@@ -3584,7 +3584,7 @@ private struct RootWorkspaceView: View {
                                 RoachInlineField(
                                     title: "exo Base URL",
                                     value: $model.config.exoBaseUrl,
-                                    placeholder: "http://127.0.0.1:52415"
+                                    placeholder: "http://RoachNet:52415"
                                 )
                                 RoachInlineField(
                                     title: "exo Model ID",

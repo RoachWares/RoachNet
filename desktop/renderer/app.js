@@ -1703,11 +1703,11 @@ function renderRoachClawStudio() {
           </label>
           <label class="field">
             <span class="field-label">Ollama Base URL</span>
-            <input data-ai-field name="ollamaBaseUrl" value="${escapeHtml(aiDraft.ollamaBaseUrl || '')}" placeholder="http://127.0.0.1:11434" />
+            <input data-ai-field name="ollamaBaseUrl" value="${escapeHtml(aiDraft.ollamaBaseUrl || '')}" placeholder="http://RoachNet:11434" />
           </label>
           <label class="field">
             <span class="field-label">OpenClaw Base URL</span>
-            <input data-ai-field name="openclawBaseUrl" value="${escapeHtml(aiDraft.openclawBaseUrl || '')}" placeholder="http://127.0.0.1:3001" />
+            <input data-ai-field name="openclawBaseUrl" value="${escapeHtml(aiDraft.openclawBaseUrl || '')}" placeholder="http://RoachNet:3001" />
           </label>
         </div>
 
@@ -1942,7 +1942,7 @@ function renderAccelerationStudio(desktopState) {
               </label>
               <label class="field wide">
                 <span class="field-label">MLX Server Base URL</span>
-                <input data-config-field name="mlxBaseUrl" value="${escapeHtml(config.mlxBaseUrl || '')}" placeholder="http://127.0.0.1:8080" />
+                <input data-config-field name="mlxBaseUrl" value="${escapeHtml(config.mlxBaseUrl || '')}" placeholder="http://RoachNet:8080" />
               </label>
               <label class="field wide">
                 <span class="field-label">MLX Model ID</span>
@@ -2011,7 +2011,7 @@ function renderAccelerationStudio(desktopState) {
               </label>
               <label class="field wide">
                 <span class="field-label">exo Base URL</span>
-                <input data-config-field name="exoBaseUrl" value="${escapeHtml(config.exoBaseUrl || '')}" placeholder="http://127.0.0.1:52415" />
+                <input data-config-field name="exoBaseUrl" value="${escapeHtml(config.exoBaseUrl || '')}" placeholder="http://RoachNet:52415" />
               </label>
               <label class="field wide">
                 <span class="field-label">exo Model ID</span>
@@ -2830,8 +2830,8 @@ async function maybeApplyInstallerRoachClawDefaults() {
   const workspacePath =
     roachClaw?.workspacePath ||
     `${(config.installPath || '').replace(/\/+$/, '')}/storage/openclaw`
-  const ollamaBaseUrl = roachClaw?.ollama?.baseUrl || 'http://127.0.0.1:11434'
-  const openclawBaseUrl = roachClaw?.openclaw?.baseUrl || 'http://127.0.0.1:3001'
+  const ollamaBaseUrl = roachClaw?.ollama?.baseUrl || 'http://RoachNet:11434'
+  const openclawBaseUrl = roachClaw?.openclaw?.baseUrl || 'http://RoachNet:3001'
 
   try {
     await desktop.applyRoachClaw({

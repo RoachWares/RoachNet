@@ -19,6 +19,7 @@ import {
   getRoachNetComposeProjectName,
   startRoachNetContainerRuntime,
 } from './lib/roachnet_container_runtime.mjs'
+import { getRoachNetLocalHostname } from './lib/roachtail_hostname.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -447,14 +448,21 @@ async function clearMacQuarantine(targetPath) {
     return
   }
 
-  const shellTargetPath = escapeForSingleQuotedShell(targetPath)
-  const clearCommand = `
-if [ -e '${shellTargetPath}' ]; then
-  xattr -cr '${shellTargetPath}' >/dev/null 2>&1 || true
-fi
-`.trim()
+  if (!existsSync(targetPath)) {
+    return
+  }
 
-  await runShell(clearCommand, { env: getShellEnv() }).catch(() => {})
+  // Clearing the top-level bundle quarantine attribute is enough to keep the
+  // app launchable, and avoids walking the entire contained runtime tree.
+  await runProcess('xattr', ['-d', 'com.apple.quarantine', targetPath], {
+    env: getShellEnv(),
+    timeoutMs: 15_000,
+  }).catch(() => {})
+
+  await runProcess('xattr', ['-d', 'com.apple.provenance', targetPath], {
+    env: getShellEnv(),
+    timeoutMs: 15_000,
+  }).catch(() => {})
 }
 
 async function resolveLocalNativeAppSource(config, task) {
@@ -856,53 +864,40 @@ async function runShell(command, options = {}) {
   })
 }
 
-function escapeForSingleQuotedShell(value) {
-  return String(value).replace(/'/g, `'\"'\"'`)
-}
+async function provisionRoachTailLocalHostname(task) {
+  if (process.platform !== 'darwin') {
+    return
+  }
 
-function buildPrivilegedShellCommand(command) {
-  const shellCommand = `/bin/zsh -lc '${escapeForSingleQuotedShell(command)}'`
+  const hostname = getRoachNetLocalHostname(process.env)
+  const hostsFile = process.env.ROACHNET_HOSTS_FILE?.trim() || '/etc/hosts'
+  const aliasInstallerPath = path.join(repoRoot, 'scripts', 'install-roachtail-hostname.mjs')
+  const aliasInstallerArgs = ['--apply']
 
-  if (process.platform === 'darwin') {
-    const appleScript = `do shell script "${shellCommand.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}" with administrator privileges`
-    return {
-      binary: 'osascript',
-      args: ['-e', appleScript],
+  if (hostsFile === '/etc/hosts') {
+    aliasInstallerArgs.push('--interactive')
+  }
+
+  try {
+    appendTaskLog(task, `Provisioning the RoachTail local alias ${hostname} via ${hostsFile}...`)
+    await runProcess(process.execPath, [aliasInstallerPath, ...aliasInstallerArgs], {
+      env: {
+        ...getShellEnv(),
+        ROACHNET_LOCAL_HOSTNAME: hostname,
+        ROACHNET_HOSTS_FILE: hostsFile,
+      },
+      timeoutMs: 20_000,
+    })
+
+    appendTaskLog(task, `RoachTail local alias ${hostname} now points at the contained desktop lane.`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    appendTaskLog(task, `RoachTail local alias could not be provisioned automatically. ${message}`)
+
+    if (process.env.ROACHNET_REQUIRE_LOCAL_ALIAS === '1') {
+      throw error
     }
   }
-
-  if (process.platform === 'win32') {
-    return {
-      binary: 'powershell',
-      args: [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        `Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command',"${shellCommand.replaceAll('"', '`"')}"`,
-      ],
-    }
-  }
-
-  if (existsSync('/usr/bin/pkexec')) {
-    return {
-      binary: '/usr/bin/pkexec',
-      args: ['/bin/sh', '-lc', command],
-    }
-  }
-
-  return {
-    binary: '/usr/bin/sudo',
-    args: ['/bin/sh', '-lc', command],
-  }
-}
-
-async function runPrivilegedShell(command, options = {}) {
-  const privileged = buildPrivilegedShellCommand(command)
-  return runProcess(privileged.binary, privileged.args, {
-    ...options,
-    shell: false,
-  })
 }
 
 async function commandPath(command) {
@@ -2844,6 +2839,9 @@ async function runInstallWorkflow(config) {
     setPhase('Finalizing install')
     await finalizeInstallRoot(stagedConfig.installPath, normalizedConfig.installPath, task)
     const finalized = await prepareEnvironmentFiles(normalizedConfig, normalizedConfig.installPath, task)
+
+    setPhase('Arming RoachTail local alias')
+    await provisionRoachTailLocalHostname(task)
 
     if (normalizedConfig.autoLaunch) {
       setPhase('Launching RoachNet')

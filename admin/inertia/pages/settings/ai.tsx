@@ -407,8 +407,8 @@ export default function AISettingsPage(props: {
               savePending={saveSettingMutation.isPending}
               settingKey="ai.ollamaBaseUrl"
               description="RoachNet uses Ollama for local chat, model downloads, and benchmarking. You can point it at a loopback daemon, another local port, or a remote host on your network."
-              helpText="Leave this blank to fall back to OLLAMA_BASE_URL, then local discovery on 127.0.0.1:11434, then the managed Docker runtime."
-              placeholder="http://127.0.0.1:11434"
+              helpText="Leave this blank to fall back to OLLAMA_BASE_URL, then the local RoachNet AI lane on RoachNet:11434, then the managed Docker runtime."
+              placeholder="http://RoachNet:11434"
               icon={<IconWand className="size-7" />}
               footer={
                 <div className="flex flex-wrap items-center gap-3">
@@ -434,7 +434,7 @@ export default function AISettingsPage(props: {
               settingKey="ai.openclawBaseUrl"
               description="OpenClaw is tracked through the same runtime discovery layer as Ollama, so RoachNet can stage agent- and connector-ready defaults without hiding the provider behind a separate setup path."
               helpText="Set the OpenClaw base URL here or provide OPENCLAW_BASE_URL in the environment. RoachNet will probe /health, /api/health, and / to confirm reachability."
-              placeholder="http://127.0.0.1:3001"
+              placeholder="http://RoachNet:3001"
               icon={<IconShieldBolt className="size-7" />}
               footer={
                 <div className="rounded-[1.1rem] border border-border-default bg-surface-secondary/70 p-4">

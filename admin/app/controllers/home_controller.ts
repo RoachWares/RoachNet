@@ -15,6 +15,7 @@ export default class HomeController {
 
     async home({ inertia, response }: HttpContext) {
         const services = await this.systemService.getServices({ installedOnly: true });
+        const runtimeHost = process.env.ROACHNET_LOCAL_HOSTNAME?.trim() || 'RoachNet'
 
         if (inertia && typeof inertia.render === 'function') {
             return inertia.render('home', {
@@ -72,7 +73,7 @@ export default class HomeController {
     <main>
       <h1>RoachNet runtime is online.</h1>
       <p>The native app now owns the main experience. This fallback page is only here so direct browser hits to <code>/home</code> do not crash when the Inertia web shell is unavailable.</p>
-      <div class="chip">127.0.0.1:8080 · native lane</div>
+      <div class="chip">${runtimeHost}:8080 · native lane</div>
       <ul>${serviceMarkup}</ul>
     </main>
   </body>

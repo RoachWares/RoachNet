@@ -26,6 +26,11 @@ function assert(condition, message) {
   }
 }
 
+function withTaskLogs(message, task) {
+  const logs = Array.isArray(task?.logs) ? task.logs.join('\n') : ''
+  return logs ? `${message}\n\nSetup task logs:\n${logs}` : message
+}
+
 function parseEnvFile(content) {
   const values = {}
 
@@ -80,6 +85,7 @@ function getPackagedAppRuntimePaths(appBundlePath) {
   return {
     nodeBinary: path.join(appBundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node', 'bin', 'node'),
     launcherPath: path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource', 'scripts', 'run-roachnet.mjs'),
+    aliasInstallerPath: path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource', 'scripts', 'install-roachtail-hostname.mjs'),
     envPath: path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource', 'admin', '.env'),
   }
 }
@@ -346,10 +352,12 @@ async function smokeSetupLane() {
   const { nodeBinary, launcherPath } = getPackagedSetupRuntimePaths()
   const setupPort = await resolveAvailablePort()
   const setupBaseUrl = `http://127.0.0.1:${setupPort}`
+  const mockHostsPath = path.join(tempRoot, 'mock-hosts')
 
   mkdirSync(homePath, { recursive: true })
   mkdirSync(path.join(homePath, 'tmp'), { recursive: true })
   mkdirSync(path.dirname(installRoot), { recursive: true })
+  writeFileSync(mockHostsPath, '127.0.0.1 localhost\n::1 localhost\n', 'utf8')
 
   const setupProcess = spawnProcess(nodeBinary, [launcherPath], {
     cwd: path.dirname(launcherPath),
@@ -361,6 +369,8 @@ async function smokeSetupLane() {
       ROACHNET_INSTALLER_CONFIG_PATH: configPath,
       ROACHNET_SHARED_APP_DATA_DIR: sharedAppDataDir,
       ROACHNET_APP_VERSION: packageVersion,
+      ROACHNET_HOSTS_FILE: mockHostsPath,
+      ROACHNET_REQUIRE_LOCAL_ALIAS: '1',
     },
   })
 
@@ -385,6 +395,13 @@ async function smokeSetupLane() {
     assert(task.result?.appPath === installAppPath, 'Setup lane completed without the expected app target path.')
     assert(existsSync(installAppPath), `Setup lane did not install the native app at ${installAppPath}`)
     assert(existsSync(path.join(installRoot, 'scripts', 'run-roachnet.mjs')), 'Setup lane did not promote the contained runtime tree.')
+    assert(
+      readFileSync(mockHostsPath, 'utf8').includes('127.0.0.1 RoachNet'),
+      withTaskLogs(
+        'Setup lane did not provision the RoachTail local alias in the mock hosts file.',
+        task
+      )
+    )
 
     const installedRuntime = getPackagedAppRuntimePaths(installAppPath)
     const installedEnvValues = parseEnvFile(readFileSync(installedRuntime.envPath, 'utf8'))
@@ -413,11 +430,6 @@ async function smokeSetupLane() {
     try {
       const healthUrl = new URL('/api/health', installedEnvValues.URL || 'http://127.0.0.1:8080').toString()
       await waitForHttpOk(healthUrl, startupTimeoutMs)
-      await waitForPath(
-        path.join(storagePath, 'logs', 'roachnet-launcher-debug.log'),
-        10_000,
-        'the setup-installed launcher log'
-      )
       await waitForPath(
         path.join(storagePath, 'logs', 'roachnet-runtime-processes.json'),
         10_000,
@@ -474,6 +486,7 @@ async function smokeHomebrewLane() {
   const sharedAppDataDir = path.join(homePath, 'Library', 'Application Support', 'roachnet')
   const configPath = path.join(sharedAppDataDir, 'roachnet-installer.json')
   const legacyConfigPath = path.join(homePath, '.roachnet-setup.json')
+  const mockHostsPath = path.join(tempRoot, 'mock-hosts')
 
   mkdirSync(homePath, { recursive: true })
   mkdirSync(path.join(homePath, 'tmp'), { recursive: true })
@@ -481,6 +494,7 @@ async function smokeHomebrewLane() {
   mkdirSync(storagePath, { recursive: true })
   mkdirSync(path.join(installRoot, 'bin'), { recursive: true })
   mkdirSync(sharedAppDataDir, { recursive: true })
+  writeFileSync(mockHostsPath, '127.0.0.1 localhost\n::1 localhost\n', 'utf8')
 
   await cp(packagedAppBundlePath, appPath, {
     recursive: true,
@@ -518,6 +532,25 @@ async function smokeHomebrewLane() {
   writeFileSync(legacyConfigPath, JSON.stringify(config, null, 2) + '\n', 'utf8')
 
   const runtime = getPackagedAppRuntimePaths(appPath)
+  const aliasInstaller = spawnProcess(runtime.nodeBinary, [runtime.aliasInstallerPath, '--apply'], {
+    cwd: path.dirname(runtime.aliasInstallerPath),
+    env: {
+      ...baseShellEnv(homePath),
+      ROACHNET_HOSTS_FILE: mockHostsPath,
+      ROACHNET_LOCAL_HOSTNAME: 'RoachNet',
+    },
+  })
+
+  const aliasExitCode = await new Promise((resolve) => {
+    aliasInstaller.child.once('exit', (code) => resolve(code ?? 0))
+  })
+
+  assert(aliasExitCode === 0, `Homebrew alias installer failed.\n${formatProcessLogs('homebrew alias installer', aliasInstaller.getLogs())}`)
+  assert(
+    readFileSync(mockHostsPath, 'utf8').includes('127.0.0.1 RoachNet'),
+    'Homebrew lane did not provision the RoachTail local alias in the mock hosts file.'
+  )
+
   const envValues = parseEnvFile(readFileSync(runtime.envPath, 'utf8'))
   const healthUrl = new URL('/api/health', envValues.URL || 'http://127.0.0.1:8080').toString()
   const runtimeStateRoot = path.join(storagePath, 'state', 'runtime-state')
@@ -540,11 +573,6 @@ async function smokeHomebrewLane() {
 
   try {
     await waitForHttpOk(healthUrl, startupTimeoutMs)
-    await waitForPath(
-      path.join(logsPath, 'roachnet-launcher-debug.log'),
-      10_000,
-      'the Homebrew launcher log'
-    )
     await waitForPath(
       path.join(logsPath, 'roachnet-runtime-processes.json'),
       10_000,
