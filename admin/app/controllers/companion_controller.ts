@@ -123,6 +123,26 @@ type RoachSyncStateRecord = {
   lastUpdatedAt?: string | null
 }
 
+type RoachNetAccountStateRecord = {
+  linked: boolean
+  provider: string
+  portalUrl: string
+  accountId?: string | null
+  email?: string | null
+  displayName?: string | null
+  status: string
+  settingsSyncEnabled: boolean
+  savedAppsSyncEnabled: boolean
+  hostedChatEnabled: boolean
+  aliasHost: string
+  bridgeUrl?: string | null
+  runtimeOrigin?: string | null
+  linkedAt?: string | null
+  lastSeenAt?: string | null
+  lastUpdatedAt?: string | null
+  notes: string[]
+}
+
 type RoachTailActionInput = {
   action?:
     | 'enable'
@@ -144,6 +164,17 @@ type RoachTailActionInput = {
 type RoachSyncActionInput = {
   action?: 'enable' | 'disable' | 'refresh' | 'set-folder-path' | 'clear-peers'
   folderPath?: string | null
+}
+
+type RoachNetAccountActionInput = {
+  action?: 'link' | 'unlink' | 'refresh'
+  accountId?: string | null
+  email?: string | null
+  displayName?: string | null
+  portalUrl?: string | null
+  settingsSyncEnabled?: boolean
+  savedAppsSyncEnabled?: boolean
+  hostedChatEnabled?: boolean
 }
 
 type RoachTailPairInput = {
@@ -201,6 +232,10 @@ export default class CompanionController {
 
   async runtime({ request }: HttpContext) {
     return this.runtimePayload(request)
+  }
+
+  async account() {
+    return this.accountPayload()
   }
 
   async roachtail({ request }: HttpContext) {
@@ -336,6 +371,35 @@ export default class CompanionController {
     } catch (error) {
       return response.status(400).json({
         error: error instanceof Error ? error.message : 'Failed to update RoachSync state',
+      })
+    }
+  }
+
+  async affectAccount({ request, response }: HttpContext) {
+    const payload = request.body() as RoachNetAccountActionInput
+    const action = payload.action?.trim() as RoachNetAccountActionInput['action']
+
+    if (!action || !['link', 'unlink', 'refresh'].includes(action)) {
+      return response.status(400).json({
+        error: 'Account action must be link, unlink, or refresh.',
+      })
+    }
+
+    try {
+      const state = await this.mutateAccountState(action, payload)
+      return {
+        success: true,
+        message:
+          action === 'link'
+            ? 'RoachNet account linked.'
+            : action === 'unlink'
+              ? 'RoachNet account unlinked.'
+              : 'RoachNet account refreshed.',
+        state,
+      }
+    } catch (error) {
+      return response.status(400).json({
+        error: error instanceof Error ? error.message : 'Failed to update RoachNet account state',
       })
     }
   }
@@ -573,7 +637,7 @@ export default class CompanionController {
 
   private async runtimePayload(request: HttpContext['request']) {
     const issues: RelayIssue[] = []
-    const [systemInfo, providers, roachClaw, services, downloads, installedModels, roachTail, roachSync] =
+    const [systemInfo, providers, roachClaw, services, downloads, installedModels, account, roachTail, roachSync] =
       await Promise.all([
         this.relayJsonFallback('/api/system/info', request, null, issues),
         this.relayJsonFallback('/api/system/ai/providers', request, { providers: {} }, issues),
@@ -591,6 +655,7 @@ export default class CompanionController {
         this.relayJsonFallback('/api/system/services', request, [], issues),
         this.relayJsonFallback('/api/downloads/jobs', request, [], issues),
         this.relayJsonFallback('/api/ollama/installed-models', request, [], issues),
+        this.accountPayload(),
         this.roachTailPayload({
           hideJoinCode: this.isPeerRoachTailRequest(request),
         }),
@@ -601,6 +666,7 @@ export default class CompanionController {
       systemInfo,
       providers,
       roachClaw,
+      account,
       roachTail,
       roachSync,
       services,
@@ -624,6 +690,183 @@ export default class CompanionController {
       roachBrain,
       issues,
     }
+  }
+
+  private async accountPayload(): Promise<RoachNetAccountStateRecord> {
+    return this.readAccountState()
+  }
+
+  private async readAccountState(): Promise<RoachNetAccountStateRecord> {
+    const storagePath = this.storagePath()
+    const portalUrl =
+      process.env.ROACHNET_ACCOUNT_PORTAL_URL?.trim() || 'https://accounts.roachnet.org/'
+    const aliasHost = this.roachNetLocalHost()
+    const statePath = storagePath ? path.join(storagePath, 'vault', 'account', 'state.json') : null
+    const roachTail = await this.readRoachTailStateRaw()
+    const roachSync = await this.readRoachSyncState()
+    const fallback: RoachNetAccountStateRecord = {
+      linked: false,
+      provider: 'RoachNet Account',
+      portalUrl,
+      accountId: null,
+      email: null,
+      displayName: null,
+      status: 'local-only',
+      settingsSyncEnabled: roachSync.enabled,
+      savedAppsSyncEnabled: roachSync.enabled,
+      hostedChatEnabled: roachTail.enabled,
+      aliasHost,
+      bridgeUrl: this.sanitizeUserFacingUrl(
+        roachTail.runtimeTunnelUrl ?? roachTail.advertisedUrl,
+        38111
+      ),
+      runtimeOrigin: this.sanitizeUserFacingUrl(
+        roachTail.runtimeOrigin ?? this.localBaseUrl().toString(),
+        process.env.PORT?.trim() || '8080'
+      ),
+      linkedAt: null,
+      lastSeenAt: null,
+      lastUpdatedAt: new Date().toISOString(),
+      notes: [
+        'Use one RoachNet account to tie web chat, saved app picks, and future synced settings back to your devices.',
+        roachTail.enabled
+          ? 'RoachTail is already armed, so a linked account can follow the same private device lane.'
+          : 'Arm RoachTail when you want account-linked devices to stay off raw public addresses.',
+      ],
+    }
+
+    if (!statePath) {
+      return fallback
+    }
+
+    try {
+      const raw = await readFile(statePath, 'utf8')
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') {
+        return fallback
+      }
+
+      return {
+        linked: typeof parsed.linked === 'boolean' ? parsed.linked : fallback.linked,
+        provider: typeof parsed.provider === 'string' ? parsed.provider : fallback.provider,
+        portalUrl: typeof parsed.portalUrl === 'string' ? parsed.portalUrl : fallback.portalUrl,
+        accountId: typeof parsed.accountId === 'string' ? parsed.accountId : fallback.accountId,
+        email: typeof parsed.email === 'string' ? parsed.email : fallback.email,
+        displayName:
+          typeof parsed.displayName === 'string' ? parsed.displayName : fallback.displayName,
+        status: typeof parsed.status === 'string' ? parsed.status : fallback.status,
+        settingsSyncEnabled:
+          typeof parsed.settingsSyncEnabled === 'boolean'
+            ? parsed.settingsSyncEnabled
+            : fallback.settingsSyncEnabled,
+        savedAppsSyncEnabled:
+          typeof parsed.savedAppsSyncEnabled === 'boolean'
+            ? parsed.savedAppsSyncEnabled
+            : fallback.savedAppsSyncEnabled,
+        hostedChatEnabled:
+          typeof parsed.hostedChatEnabled === 'boolean'
+            ? parsed.hostedChatEnabled
+            : fallback.hostedChatEnabled,
+        aliasHost: typeof parsed.aliasHost === 'string' ? parsed.aliasHost : fallback.aliasHost,
+        bridgeUrl: this.sanitizeUserFacingUrl(
+          typeof parsed.bridgeUrl === 'string' ? parsed.bridgeUrl : fallback.bridgeUrl,
+          38111
+        ),
+        runtimeOrigin: this.sanitizeUserFacingUrl(
+          typeof parsed.runtimeOrigin === 'string' ? parsed.runtimeOrigin : fallback.runtimeOrigin,
+          process.env.PORT?.trim() || '8080'
+        ),
+        linkedAt: typeof parsed.linkedAt === 'string' ? parsed.linkedAt : fallback.linkedAt,
+        lastSeenAt:
+          typeof parsed.lastSeenAt === 'string' ? parsed.lastSeenAt : fallback.lastSeenAt,
+        lastUpdatedAt:
+          typeof parsed.lastUpdatedAt === 'string'
+            ? parsed.lastUpdatedAt
+            : fallback.lastUpdatedAt,
+        notes: Array.isArray(parsed.notes)
+          ? parsed.notes.filter((value: unknown) => typeof value === 'string')
+          : fallback.notes,
+      }
+    } catch {
+      return fallback
+    }
+  }
+
+  private async mutateAccountState(
+    action: NonNullable<RoachNetAccountActionInput['action']>,
+    payload: RoachNetAccountActionInput
+  ): Promise<RoachNetAccountStateRecord> {
+    const storagePath = this.storagePath()
+    if (!storagePath) {
+      throw new Error('RoachNet account state cannot be stored until the contained storage lane exists.')
+    }
+
+    const statePath = path.join(storagePath, 'vault', 'account', 'state.json')
+    await mkdir(path.dirname(statePath), { recursive: true })
+
+    const current = await this.readAccountState()
+    const now = new Date().toISOString()
+    const next: RoachNetAccountStateRecord = {
+      ...current,
+      portalUrl: payload.portalUrl?.trim() || current.portalUrl,
+      aliasHost: this.roachNetLocalHost(),
+      bridgeUrl: this.sanitizeUserFacingUrl(current.bridgeUrl, 38111),
+      runtimeOrigin: this.sanitizeUserFacingUrl(
+        current.runtimeOrigin ?? this.localBaseUrl().toString(),
+        process.env.PORT?.trim() || '8080'
+      ),
+      lastSeenAt: now,
+      lastUpdatedAt: now,
+      notes: [...current.notes],
+    }
+
+    switch (action) {
+      case 'link':
+        next.linked = true
+        next.status = 'linked'
+        next.accountId = payload.accountId?.trim() || current.accountId
+        next.email = payload.email?.trim() || current.email
+        next.displayName = payload.displayName?.trim() || current.displayName
+        next.settingsSyncEnabled = payload.settingsSyncEnabled ?? current.settingsSyncEnabled
+        next.savedAppsSyncEnabled = payload.savedAppsSyncEnabled ?? current.savedAppsSyncEnabled
+        next.hostedChatEnabled = payload.hostedChatEnabled ?? true
+        next.linkedAt = current.linkedAt ?? now
+        next.notes = [
+          'This device is linked to the RoachNet account lane.',
+          'Web chat, saved app picks, and future synced settings can hang off the same contained stack without exposing raw host addresses.',
+        ]
+        break
+      case 'unlink':
+        next.linked = false
+        next.status = 'local-only'
+        next.accountId = null
+        next.email = null
+        next.displayName = null
+        next.settingsSyncEnabled = false
+        next.savedAppsSyncEnabled = false
+        next.hostedChatEnabled = false
+        next.linkedAt = null
+        next.notes = [
+          'The RoachNet account link was cleared from this contained install.',
+          'RoachTail and RoachSync can still run locally until you link another account.',
+        ]
+        break
+      case 'refresh':
+        next.status = next.linked ? 'linked' : 'local-only'
+        next.notes = next.linked
+          ? [
+              'RoachNet refreshed the local account snapshot for this device.',
+              'Use the Accounts page when you want to rotate credentials or review linked devices.',
+            ]
+          : [
+              'No linked account is stored in this install yet.',
+              'Open the Accounts page when you are ready to tie web chat and device sync back to a RoachNet identity.',
+            ]
+        break
+    }
+
+    await writeFile(statePath, JSON.stringify(next, null, 2), 'utf8')
+    return next
   }
 
   private localBaseUrl(request?: HttpContext['request']) {
@@ -666,6 +909,56 @@ export default class CompanionController {
         : host
 
     return `http://${wrappedHost}:${String(port)}${pathname}`
+  }
+
+  private isIPAddress(host: string) {
+    const normalized = host.trim().replace(/^\[|\]$/g, '')
+    return (
+      /^(\d{1,3}\.){3}\d{1,3}$/.test(normalized) ||
+      /^[0-9a-f:]+$/i.test(normalized)
+    )
+  }
+
+  private sanitizeUserFacingUrl(rawValue?: string | null, fallbackPort?: string | number) {
+    const trimmed = rawValue?.trim()
+    if (!trimmed) {
+      return fallbackPort != null ? this.publicLoopbackUrl(fallbackPort) : null
+    }
+
+    try {
+      const parsed = new URL(trimmed)
+      if (this.isLoopbackHost(parsed.hostname) || this.isIPAddress(parsed.hostname)) {
+        parsed.hostname = this.roachNetLocalHost()
+      }
+      return parsed.toString()
+    } catch {
+      if (this.isLoopbackHost(trimmed) || this.isIPAddress(trimmed)) {
+        return this.publicLoopbackUrl(fallbackPort ?? '38111')
+      }
+      return trimmed
+    }
+  }
+
+  private sanitizePeerEndpoint(endpoint?: string | null) {
+    const trimmed = endpoint?.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    const aliasHost = this.roachNetLocalHost()
+
+    try {
+      const parsed = new URL(trimmed)
+      if (this.isLoopbackHost(parsed.hostname) || this.isIPAddress(parsed.hostname)) {
+        return aliasHost
+      }
+      return parsed.host || parsed.hostname
+    } catch {
+      if (this.isLoopbackHost(trimmed) || this.isIPAddress(trimmed)) {
+        return aliasHost
+      }
+      return trimmed
+    }
   }
 
   private async relayJson(pathname: string, request?: HttpContext['request'], init?: RequestInit) {
@@ -1029,6 +1322,15 @@ export default class CompanionController {
 
     return {
       ...state,
+      advertisedUrl: this.sanitizeUserFacingUrl(state.advertisedUrl, 38111),
+      runtimeOrigin: this.sanitizeUserFacingUrl(
+        state.runtimeOrigin,
+        process.env.PORT?.trim() || '8080'
+      ),
+      runtimeTunnelUrl: this.sanitizeUserFacingUrl(
+        state.runtimeTunnelUrl ?? state.advertisedUrl,
+        38111
+      ),
       joinCode: options.hideJoinCode ? null : state.joinCode ?? null,
       joinCodeIssuedAt: options.hideJoinCode ? null : state.joinCodeIssuedAt ?? null,
       joinCodeExpiresAt: options.hideJoinCode ? null : state.joinCodeExpiresAt ?? null,
@@ -1039,7 +1341,7 @@ export default class CompanionController {
         name: peer.name,
         platform: peer.platform,
         status: peer.status,
-        endpoint: peer.endpoint ?? null,
+        endpoint: this.sanitizePeerEndpoint(peer.endpoint),
         lastSeenAt: peer.lastSeenAt ?? null,
         allowsExitNode: peer.allowsExitNode ?? false,
         tags: peer.tags ?? [],
@@ -1325,6 +1627,19 @@ export default class CompanionController {
       return null
     }
 
+    const bridgeUrl = this.sanitizeUserFacingUrl(
+      state.advertisedUrl ?? this.companionBridgeURL(),
+      38111
+    )
+    const runtimeOrigin = this.sanitizeUserFacingUrl(
+      state.runtimeOrigin ?? this.localBaseUrl().toString(),
+      process.env.PORT?.trim() || '8080'
+    )
+    const runtimeTunnelUrl = this.sanitizeUserFacingUrl(
+      state.runtimeTunnelUrl ?? state.advertisedUrl ?? this.companionBridgeURL(),
+      38111
+    )
+
     return JSON.stringify({
       schema: 'roachnet.roachtail.v1',
       version: 1,
@@ -1333,9 +1648,9 @@ export default class CompanionController {
       deviceId: state.deviceId,
       joinCode: state.joinCode,
       joinCodeExpiresAt: state.joinCodeExpiresAt ?? null,
-      bridgeUrl: state.advertisedUrl ?? this.companionBridgeURL(),
-      runtimeOrigin: state.runtimeOrigin ?? this.localBaseUrl().toString(),
-      runtimeTunnelUrl: state.runtimeTunnelUrl ?? state.advertisedUrl ?? this.companionBridgeURL(),
+      bridgeUrl,
+      runtimeOrigin,
+      runtimeTunnelUrl,
       transportMode: state.transportMode,
       secureOverlay: state.secureOverlay,
     })
@@ -1388,8 +1703,8 @@ export default class CompanionController {
       status: 'idle',
       folderId: 'roachnet-vault',
       folderPath,
-      guiUrl: this.publicLoopbackUrl(8384),
-      apiUrl: this.publicLoopbackUrl(8384, '/rest'),
+      guiUrl: this.sanitizeUserFacingUrl(this.publicLoopbackUrl(8384), 8384),
+      apiUrl: this.sanitizeUserFacingUrl(this.publicLoopbackUrl(8384, '/rest'), 8384),
       transportMode: process.env.ROACHTAIL_RELAY_HOST?.trim() ? 'tailnet-relay' : 'local-bridge',
       secureOverlay: Boolean(process.env.ROACHTAIL_RELAY_HOST?.trim()),
       notes: [
@@ -1420,8 +1735,14 @@ export default class CompanionController {
         status: typeof parsed.status === 'string' ? parsed.status : fallback.status,
         folderId: typeof parsed.folderId === 'string' ? parsed.folderId : fallback.folderId,
         folderPath: typeof parsed.folderPath === 'string' ? parsed.folderPath : fallback.folderPath,
-        guiUrl: typeof parsed.guiUrl === 'string' ? parsed.guiUrl : fallback.guiUrl,
-        apiUrl: typeof parsed.apiUrl === 'string' ? parsed.apiUrl : fallback.apiUrl,
+        guiUrl: this.sanitizeUserFacingUrl(
+          typeof parsed.guiUrl === 'string' ? parsed.guiUrl : fallback.guiUrl,
+          8384
+        ),
+        apiUrl: this.sanitizeUserFacingUrl(
+          typeof parsed.apiUrl === 'string' ? parsed.apiUrl : fallback.apiUrl,
+          8384
+        ),
         transportMode:
           typeof parsed.transportMode === 'string' ? parsed.transportMode : fallback.transportMode,
         secureOverlay:
@@ -1518,11 +1839,11 @@ export default class CompanionController {
   private companionBridgeURL() {
     const advertised = process.env.ROACHNET_COMPANION_ADVERTISED_URL?.trim()
     if (advertised) {
-      return advertised
+      return this.sanitizeUserFacingUrl(advertised, process.env.ROACHNET_COMPANION_PORT?.trim() || '38111')
     }
 
     const configuredPort = process.env.ROACHNET_COMPANION_PORT?.trim() || '38111'
-    return this.publicLoopbackUrl(configuredPort)
+    return this.sanitizeUserFacingUrl(this.publicLoopbackUrl(configuredPort), configuredPort)
   }
 
   private storagePath() {

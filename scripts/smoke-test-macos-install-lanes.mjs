@@ -14,7 +14,14 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const distRoot = path.join(repoRoot, 'native', 'macos', 'dist')
 const setupBundlePath = path.join(distRoot, 'RoachNet Setup.app')
-const packagedAppBundlePath = path.join(setupBundlePath, 'Contents', 'Resources', 'InstallerAssets', 'RoachNet.app')
+const desktopAppBundlePath = path.join(distRoot, 'RoachNet.app')
+const packagedAppArchivePath = path.join(
+  setupBundlePath,
+  'Contents',
+  'Resources',
+  'InstallerAssets',
+  `RoachNet-${JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.0.0'}-mac-${process.arch}.zip`
+)
 const packageVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.0.0'
 const pollIntervalMs = 1_500
 const startupTimeoutMs = 600_000
@@ -25,6 +32,10 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message)
   }
+}
+
+function logStep(message) {
+  console.log(`[smoke] ${message}`)
 }
 
 function withTaskLogs(message, task) {
@@ -75,19 +86,27 @@ function readBundleVersion(bundlePath) {
   return readPlistStringValue(bundlePath, 'CFBundleShortVersionString')
 }
 
-function getPackagedSetupRuntimePaths(bundlePath = setupBundlePath) {
+function getBundledSourceArchivePath(bundlePath) {
+  return path.join(bundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')
+}
+
+function getPackagedSetupRuntimePaths(bundlePath = setupBundlePath, bundledSourceRoot = null) {
+  const sourceRoot =
+    bundledSourceRoot || path.join(bundlePath, 'Contents', 'Resources', 'RoachNetSource')
   return {
     nodeBinary: path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node', 'bin', 'node'),
-    launcherPath: path.join(bundlePath, 'Contents', 'Resources', 'RoachNetSource', 'scripts', 'run-roachnet-setup.mjs'),
+    launcherPath: path.join(sourceRoot, 'scripts', 'run-roachnet-setup.mjs'),
   }
 }
 
-function getPackagedAppRuntimePaths(appBundlePath) {
+function getPackagedAppRuntimePaths(appBundlePath, installRoot = null) {
+  const sourceRoot =
+    installRoot || path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource')
   return {
     nodeBinary: path.join(appBundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node', 'bin', 'node'),
-    launcherPath: path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource', 'scripts', 'run-roachnet.mjs'),
-    aliasInstallerPath: path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource', 'scripts', 'install-roachtail-hostname.mjs'),
-    envPath: path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource', 'admin', '.env'),
+    launcherPath: path.join(sourceRoot, 'scripts', 'run-roachnet.mjs'),
+    aliasInstallerPath: path.join(sourceRoot, 'scripts', 'install-roachtail-hostname.mjs'),
+    envPath: path.join(sourceRoot, 'admin', '.env'),
   }
 }
 
@@ -177,6 +196,28 @@ async function waitForHttpOk(url, timeoutMs) {
   throw new Error(`Timed out waiting for ${url}`)
 }
 
+async function waitForHttpUnavailable(url, timeoutMs) {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+      })
+
+      if (!response.ok) {
+        return
+      }
+    } catch {
+      return
+    }
+
+    await sleep(500)
+  }
+
+  throw new Error(`Timed out waiting for ${url} to stop responding`)
+}
+
 async function waitForPath(targetPath, timeoutMs, label) {
   const startedAt = Date.now()
 
@@ -189,6 +230,103 @@ async function waitForPath(targetPath, timeoutMs, label) {
   }
 
   throw new Error(`Timed out waiting for ${label || targetPath}`)
+}
+
+async function listRoachWindows() {
+  const swiftScript = `
+import Cocoa
+import CoreGraphics
+
+let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+for row in rows {
+  let owner = row[kCGWindowOwnerName as String] as? String ?? ""
+  let name = row[kCGWindowName as String] as? String ?? ""
+  if owner.localizedCaseInsensitiveContains("roach") || name.localizedCaseInsensitiveContains("roach") {
+    let id = row[kCGWindowNumber as String] as? Int ?? 0
+    let layer = row[kCGWindowLayer as String] as? Int ?? -1
+    print("\\(id)|\\(owner)|\\(name)|\\(layer)")
+  }
+}
+`.trim()
+
+  const { stdout } = await runCommand('swift', ['-e', swiftScript], {
+    stdio: 'pipe',
+    timeoutMs: 15_000,
+  })
+
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [id, owner, name, layer] = line.split('|')
+      return {
+        id: Number.parseInt(id || '0', 10),
+        owner: owner || '',
+        name: name || '',
+        layer: Number.parseInt(layer || '-1', 10),
+      }
+    })
+}
+
+async function listAutomationWindowNames(processName) {
+  const safeProcessName = String(processName || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const appleScript = `
+tell application "System Events"
+  if exists process "${safeProcessName}" then
+    tell process "${safeProcessName}"
+      return ((count of windows) as string) & "|" & (name of every window as string)
+    end tell
+  end if
+end tell
+return "0|"
+`.trim()
+
+  try {
+    const { stdout } = await runCommand('osascript', ['-e', appleScript], {
+      stdio: 'pipe',
+      timeoutMs: 15_000,
+    })
+
+    const raw = stdout.trim()
+    if (!raw) {
+      return []
+    }
+
+    const [, namesRaw = ''] = raw.split('|', 2)
+    return namesRaw
+      .split(/\s*,\s*/)
+      .map((name) => name.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+async function hasRoachWindow(ownerName, titleName = ownerName, processName = null) {
+  if (processName) {
+    const automationWindowNames = await listAutomationWindowNames(processName)
+    if (automationWindowNames.some((name) => name === titleName)) {
+      return true
+    }
+  }
+
+  const windows = await listRoachWindows()
+  return windows.some((window) => window.owner === ownerName && window.name === titleName && window.layer === 0)
+}
+
+async function waitForRoachWindow(ownerName, timeoutMs, titleName = ownerName, processName = null) {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await hasRoachWindow(ownerName, titleName, processName)) {
+      return
+    }
+
+    await sleep(750)
+  }
+
+  throw new Error(`Timed out waiting for the ${ownerName} window to appear.`)
 }
 
 async function fetchJson(url, options = {}) {
@@ -215,6 +353,56 @@ async function fetchJson(url, options = {}) {
   }
 
   return payload
+}
+
+async function verifyGuiLaunch({
+  appBundlePath,
+  appProcessName,
+  configPath = null,
+  extraEnv = {},
+  homePath,
+  healthUrl = null,
+  ownerName,
+  titleName = ownerName,
+  windowTimeoutMs = 60_000,
+}) {
+  logStep(`Launching ${ownerName} from ${appBundlePath}`)
+  const env = {
+    ...baseShellEnv(homePath),
+    ...extraEnv,
+  }
+
+  if (configPath) {
+    env.ROACHNET_INSTALLER_CONFIG_PATH = configPath
+  }
+
+  await normalizeMacBundle(appBundlePath, homePath, 120_000)
+
+  await runCommand('pkill', ['-x', appProcessName], {
+    env,
+    timeoutMs: 5_000,
+  }).catch(() => {})
+
+  await runCommand('open', ['-na', appBundlePath], {
+    env,
+    timeoutMs: 30_000,
+  })
+
+  logStep(`Waiting for ${ownerName} window`)
+  await waitForRoachWindow(ownerName, windowTimeoutMs, titleName, appProcessName)
+  if (healthUrl) {
+    logStep(`Waiting for ${ownerName} runtime health at ${healthUrl}`)
+    await waitForHttpOk(healthUrl, startupTimeoutMs)
+    await sleep(2_000)
+  }
+
+  const windowStillVisible = await hasRoachWindow(ownerName, titleName, appProcessName)
+  assert(
+    windowStillVisible,
+    healthUrl
+      ? `${ownerName} window closed after the runtime became healthy.`
+      : `${ownerName} window closed before the interface settled.`
+  )
 }
 
 function spawnProcess(command, args, options = {}) {
@@ -292,6 +480,23 @@ async function runCommand(command, args, options = {}) {
   })
 }
 
+async function terminateLingeringSmokeProcesses() {
+  const cleanupPatterns = [
+    '/native/macos/dist/.smoke-work/.*/run-roachnet-setup.mjs',
+    '/native/macos/dist/.smoke-work/.*/run-roachnet.mjs',
+    '/native/macos/dist/.smoke-work/.*/roachnet-companion-server.mjs',
+    '/native/macos/dist/.smoke-work/.*/runtime-cache/.*/bin/server.js',
+    '/native/macos/dist/.smoke-work/.*/RoachNet\\.app/Contents/MacOS/RoachNetApp',
+    '/native/macos/dist/.smoke-work/.*/RoachNet Setup\\.app/Contents/MacOS/RoachNetSetup',
+  ]
+
+  for (const pattern of cleanupPatterns) {
+    await runCommand('pkill', ['-f', pattern], {
+      timeoutMs: 5_000,
+    }).catch(() => {})
+  }
+}
+
 async function normalizeMacBundle(bundlePath, homePath, timeoutMs = startupTimeoutMs) {
   const env = baseShellEnv(homePath)
 
@@ -309,11 +514,6 @@ async function normalizeMacBundle(bundlePath, homePath, timeoutMs = startupTimeo
     env,
     timeoutMs,
   }).catch(() => {})
-
-  await runCommand('codesign', ['--force', '--deep', '--sign', '-', bundlePath], {
-    env,
-    timeoutMs,
-  })
 }
 
 function formatProcessLogs(label, logs) {
@@ -378,11 +578,41 @@ async function makeVolumeLocalTempRoot(prefix) {
   return mkdtemp(path.join(smokeWorkspaceRoot, prefix))
 }
 
+async function makeSystemTempRoot(prefix) {
+  return mkdtemp(path.join(os.tmpdir(), prefix))
+}
+
+async function extractTarArchive(archivePath, destinationPath) {
+  mkdirSync(destinationPath, { recursive: true })
+  await runCommand('tar', ['-xzf', archivePath, '-C', destinationPath], {
+    timeoutMs: startupTimeoutMs,
+  })
+}
+
+async function materializeBundledSourceTree(bundlePath, destinationRoot) {
+  const archivePath = getBundledSourceArchivePath(bundlePath)
+  assert(existsSync(archivePath), `Missing bundled source archive at ${archivePath}`)
+
+  const extractionRoot = await makeVolumeLocalTempRoot('roachnet-source-extract-')
+
+  try {
+    await extractTarArchive(archivePath, extractionRoot)
+    const extractedRoot = path.join(extractionRoot, 'RoachNetSource')
+    assert(existsSync(extractedRoot), `Bundled source archive did not unpack a RoachNetSource root from ${archivePath}`)
+    await cp(extractedRoot, destinationRoot, {
+      recursive: true,
+      force: true,
+    })
+  } finally {
+    await safeRemoveTree(extractionRoot)
+  }
+}
+
 async function verifyBundleVersions() {
+  logStep('Verifying packaged bundle versions')
   const bundles = [
     ['RoachNet', path.join(distRoot, 'RoachNet.app')],
     ['RoachNet Setup', setupBundlePath],
-    ['InstallerAssets RoachNet', packagedAppBundlePath],
   ]
 
   for (const [label, bundlePath] of bundles) {
@@ -393,6 +623,11 @@ async function verifyBundleVersions() {
       `${label} bundle version mismatch. Expected ${packageVersion}, found ${version || 'missing'} at ${bundlePath}`
     )
   }
+
+  assert(
+    existsSync(packagedAppArchivePath),
+    `Missing InstallerAssets RoachNet archive at ${packagedAppArchivePath}`
+  )
 }
 
 async function waitForSetupTask(setupBaseUrl) {
@@ -418,15 +653,73 @@ async function waitForSetupTask(setupBaseUrl) {
   throw new Error(`Timed out waiting for setup task completion at ${stateUrl}`)
 }
 
+async function stopContainedRuntime({
+  label,
+  homePath,
+  installRoot,
+  storagePath,
+  runtime,
+  config,
+  configPath,
+  runtimeStateRoot,
+  healthUrl,
+}) {
+  try {
+    const stopProcess = spawnProcess(runtime.nodeBinary, [runtime.launcherPath, '--stop'], {
+      cwd: path.dirname(runtime.launcherPath),
+      env: buildContainedRuntimeEnv({
+        homePath,
+        installRoot,
+        storagePath,
+        runtime,
+        config,
+        extra: {
+          ROACHNET_INSTALLER_CONFIG_PATH: configPath,
+          ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
+        },
+      }),
+    })
+    await Promise.race([new Promise((resolve) => stopProcess.child.once('close', resolve)), sleep(15_000)])
+    await stopChild(stopProcess.child)
+  } catch {
+    // Fall through to the more targeted cleanup below.
+  }
+
+  const cleanupPatterns = [
+    `${installRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*/run-roachnet\\.mjs`,
+    `${installRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*/roachnet-companion-server\\.mjs`,
+    `${installRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*/runtime-cache/.*/bin/server\\.js`,
+  ]
+
+  for (const pattern of cleanupPatterns) {
+    await runCommand('pkill', ['-f', pattern], {
+      env: baseShellEnv(homePath),
+      timeoutMs: 5_000,
+    }).catch(() => {})
+  }
+
+  if (healthUrl) {
+    await waitForHttpUnavailable(healthUrl, 30_000)
+  }
+
+  const processInfoPath = path.join(storagePath, 'logs', 'roachnet-runtime-processes.json')
+  if (existsSync(processInfoPath)) {
+    await sleep(1_000)
+  }
+
+  logStep(`${label} runtime stopped cleanly before the next lane`)
+}
+
 async function smokeSetupLane() {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-setup-smoke-'))
-  const homePath = path.join(tempRoot, 'home')
+  logStep('Starting setup-app install smoke')
+  const tempRoot = await makeVolumeLocalTempRoot('roachnet-setup-smoke-')
+  const homeRoot = await makeSystemTempRoot('roachnet-setup-home-')
+  const homePath = path.join(homeRoot, 'home')
   const sharedAppDataDir = path.join(homePath, 'Library', 'Application Support', 'roachnet')
   const configPath = path.join(sharedAppDataDir, 'roachnet-installer.json')
   const installRoot = path.join(tempRoot, 'installed', 'RoachNet')
   const installAppPath = path.join(installRoot, 'app', 'RoachNet.app')
   const storagePath = path.join(installRoot, 'storage')
-  const stagedSetupBundlePath = path.join(tempRoot, 'RoachNet Setup.app')
   const setupPort = await resolveAvailablePort()
   const setupBaseUrl = `http://127.0.0.1:${setupPort}`
   const mockHostsPath = path.join(tempRoot, 'mock-hosts')
@@ -436,20 +729,36 @@ async function smokeSetupLane() {
   mkdirSync(path.dirname(installRoot), { recursive: true })
   writeFileSync(mockHostsPath, '127.0.0.1 localhost\n::1 localhost\n', 'utf8')
 
-  await runCommand('ditto', ['--noqtn', setupBundlePath, stagedSetupBundlePath], {
-    env: baseShellEnv(homePath),
-    timeoutMs: startupTimeoutMs,
+  await verifyGuiLaunch({
+    appBundlePath: setupBundlePath,
+    appProcessName: 'RoachNetSetup',
+    homePath,
+    ownerName: 'RoachNet Setup',
+    windowTimeoutMs: 120_000,
   })
-  await normalizeMacBundle(stagedSetupBundlePath, homePath)
 
-  const { nodeBinary, launcherPath } = getPackagedSetupRuntimePaths(stagedSetupBundlePath)
+  logStep('Setup app window verified; switching to headless setup backend lane')
+  await runCommand('pkill', ['-x', 'RoachNetSetup'], {
+    env: baseShellEnv(homePath),
+    timeoutMs: 5_000,
+  }).catch(() => {})
+  await runCommand('pkill', ['-f', 'run-roachnet-setup.mjs'], {
+    env: baseShellEnv(homePath),
+    timeoutMs: 5_000,
+  }).catch(() => {})
+
+  const extractedSetupSourceRoot = path.join(tempRoot, 'setup-source')
+  logStep('Materializing setup bundled source tree')
+  await materializeBundledSourceTree(setupBundlePath, extractedSetupSourceRoot)
+
+  const { nodeBinary, launcherPath } = getPackagedSetupRuntimePaths(setupBundlePath, extractedSetupSourceRoot)
 
   const setupProcess = spawnProcess(nodeBinary, [launcherPath], {
     cwd: path.dirname(launcherPath),
     env: {
       ...baseShellEnv(homePath),
       ROACHNET_SETUP_NO_BROWSER: '1',
-      ROACHNET_SETUP_APP_BUNDLE: stagedSetupBundlePath,
+      ROACHNET_SETUP_APP_BUNDLE: setupBundlePath,
       ROACHNET_SETUP_PORT: String(setupPort),
       ROACHNET_INSTALLER_CONFIG_PATH: configPath,
       ROACHNET_SHARED_APP_DATA_DIR: sharedAppDataDir,
@@ -460,8 +769,10 @@ async function smokeSetupLane() {
   })
 
   try {
+    logStep(`Waiting for setup backend state at ${setupBaseUrl}/api/state`)
     await waitForHttpOk(new URL('/api/state', setupBaseUrl).toString(), startupTimeoutMs)
 
+    logStep('Submitting contained install request through setup backend')
     await fetchJson(new URL('/api/install', setupBaseUrl).toString(), {
       method: 'POST',
       body: JSON.stringify({
@@ -476,6 +787,7 @@ async function smokeSetupLane() {
       }),
     })
 
+    logStep('Waiting for setup task completion')
     const task = await waitForSetupTask(setupBaseUrl)
     assert(task.result?.appPath === installAppPath, 'Setup lane completed without the expected app target path.')
     assert(existsSync(installAppPath), `Setup lane did not install the native app at ${installAppPath}`)
@@ -488,7 +800,7 @@ async function smokeSetupLane() {
       )
     )
 
-    const installedRuntime = getPackagedAppRuntimePaths(installAppPath)
+    const installedRuntime = getPackagedAppRuntimePaths(installAppPath, installRoot)
     const installedEnvValues = parseEnvFile(readFileSync(installedRuntime.envPath, 'utf8'))
     const runtimeStateRoot = path.join(storagePath, 'state', 'runtime-state')
     const launcher = spawnProcess(installedRuntime.nodeBinary, [installedRuntime.launcherPath], {
@@ -513,6 +825,7 @@ async function smokeSetupLane() {
     })
 
     try {
+      logStep('Waiting for installed runtime health from the contained setup lane')
       const healthUrl = new URL('/api/health', installedEnvValues.URL || 'http://127.0.0.1:8080').toString()
       await waitForHttpOk(healthUrl, startupTimeoutMs)
       await waitForPath(
@@ -552,18 +865,53 @@ async function smokeSetupLane() {
 
       await stopChild(launcher.child)
     }
+
+    await verifyGuiLaunch({
+      appBundlePath: installAppPath,
+      appProcessName: 'RoachNetApp',
+      configPath,
+      homePath,
+      healthUrl: new URL('/api/health', installedEnvValues.URL || 'http://127.0.0.1:8080').toString(),
+      ownerName: 'RoachNet',
+    })
+    logStep('Installed native app stayed open after runtime became healthy')
+
+    await runCommand('pkill', ['-x', 'RoachNetApp'], {
+      env: baseShellEnv(homePath),
+      timeoutMs: 5_000,
+    }).catch(() => {})
+
+    await stopContainedRuntime({
+      label: 'Setup-installed',
+      homePath,
+      installRoot,
+      storagePath,
+      runtime: installedRuntime,
+      config: {
+        installProfile: 'setup-app',
+        useDockerContainerization: false,
+        bootstrapPending: false,
+        roachClawDefaultModel: 'qwen2.5-coder:1.5b',
+      },
+      configPath,
+      runtimeStateRoot,
+      healthUrl: new URL('/api/health', installedEnvValues.URL || 'http://127.0.0.1:8080').toString(),
+    })
   } catch (error) {
     const processLogs = formatProcessLogs('setup backend', setupProcess.getLogs())
     throw new Error([error.message, processLogs].filter(Boolean).join('\n\n'))
   } finally {
     await stopChild(setupProcess.child)
+    await safeRemoveTree(homeRoot)
     await safeRemoveTree(tempRoot)
   }
 }
 
 async function smokeHomebrewLane() {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-homebrew-smoke-'))
-  const homePath = path.join(tempRoot, 'home')
+  logStep('Starting Homebrew-style install smoke')
+  const tempRoot = await makeVolumeLocalTempRoot('roachnet-homebrew-smoke-')
+  const homeRoot = await makeSystemTempRoot('roachnet-homebrew-home-')
+  const homePath = path.join(homeRoot, 'home')
   const installRoot = path.join(homePath, 'RoachNet')
   const appPath = path.join(installRoot, 'app', 'RoachNet.app')
   const storagePath = path.join(installRoot, 'storage')
@@ -581,11 +929,13 @@ async function smokeHomebrewLane() {
   mkdirSync(sharedAppDataDir, { recursive: true })
   writeFileSync(mockHostsPath, '127.0.0.1 localhost\n::1 localhost\n', 'utf8')
 
-  await cp(packagedAppBundlePath, appPath, {
+  await cp(desktopAppBundlePath, appPath, {
     recursive: true,
     force: true,
   })
   await normalizeMacBundle(appPath, homePath)
+  await materializeBundledSourceTree(appPath, installRoot)
+  logStep('Prepared contained Homebrew install tree')
 
   const config = {
     installPath: installRoot,
@@ -617,7 +967,7 @@ async function smokeHomebrewLane() {
   writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8')
   writeFileSync(legacyConfigPath, JSON.stringify(config, null, 2) + '\n', 'utf8')
 
-  const runtime = getPackagedAppRuntimePaths(appPath)
+  const runtime = getPackagedAppRuntimePaths(appPath, installRoot)
   const aliasInstaller = spawnProcess(runtime.nodeBinary, [runtime.aliasInstallerPath, '--apply'], {
     cwd: path.dirname(runtime.aliasInstallerPath),
     env: {
@@ -658,6 +1008,7 @@ async function smokeHomebrewLane() {
   })
 
   try {
+    logStep(`Waiting for Homebrew runtime health at ${healthUrl}`)
     await waitForHttpOk(healthUrl, startupTimeoutMs)
     await waitForPath(
       path.join(logsPath, 'roachnet-runtime-processes.json'),
@@ -668,34 +1019,54 @@ async function smokeHomebrewLane() {
     const processLogs = formatProcessLogs('homebrew launcher', launcher.getLogs())
     throw new Error([error.message, processLogs].filter(Boolean).join('\n\n'))
   } finally {
-    try {
-      const stopProcess = spawnProcess(runtime.nodeBinary, [runtime.launcherPath, '--stop'], {
-        cwd: path.dirname(runtime.launcherPath),
-        env: buildContainedRuntimeEnv({
-          homePath,
-          installRoot,
-          storagePath,
-          runtime,
-          config,
-          extra: {
-            ROACHNET_INSTALLER_CONFIG_PATH: configPath,
-            ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
-          },
-        }),
-      })
-      await Promise.race([new Promise((resolve) => stopProcess.child.once('close', resolve)), sleep(15_000)])
-      await stopChild(stopProcess.child)
-    } catch {
-      // Ignore shutdown errors in cleanup.
-    }
-
+    await stopContainedRuntime({
+      label: 'Homebrew',
+      homePath,
+      installRoot,
+      storagePath,
+      runtime,
+      config,
+      configPath,
+      runtimeStateRoot,
+      healthUrl,
+    }).catch(() => {})
     await stopChild(launcher.child)
+  }
+
+  try {
+    await verifyGuiLaunch({
+      appBundlePath: appPath,
+      appProcessName: 'RoachNetApp',
+      configPath,
+      homePath,
+      healthUrl,
+      ownerName: 'RoachNet',
+    })
+    logStep('Homebrew-installed app stayed open after runtime became healthy')
+  } finally {
+    await runCommand('pkill', ['-x', 'RoachNetApp'], {
+      env: baseShellEnv(homePath),
+      timeoutMs: 5_000,
+    }).catch(() => {})
+    await stopContainedRuntime({
+      label: 'Homebrew-installed',
+      homePath,
+      installRoot,
+      storagePath,
+      runtime,
+      config,
+      configPath,
+      runtimeStateRoot,
+      healthUrl,
+    }).catch(() => {})
+    await safeRemoveTree(homeRoot)
     await safeRemoveTree(tempRoot)
   }
 }
 
 async function main() {
   assert(process.platform === 'darwin', 'This smoke test only runs on macOS.')
+  await terminateLingeringSmokeProcesses()
   await verifyBundleVersions()
   await smokeSetupLane()
   await smokeHomebrewLane()

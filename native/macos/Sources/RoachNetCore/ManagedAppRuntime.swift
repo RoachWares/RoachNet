@@ -171,6 +171,32 @@ public struct ManagedRoachSyncStatusResponse: Decodable, Sendable {
     public let lastUpdatedAt: String?
 }
 
+public struct ManagedAccountStateResponse: Decodable, Sendable {
+    public let linked: Bool
+    public let provider: String
+    public let portalUrl: String
+    public let accountId: String?
+    public let email: String?
+    public let displayName: String?
+    public let status: String
+    public let settingsSyncEnabled: Bool
+    public let savedAppsSyncEnabled: Bool
+    public let hostedChatEnabled: Bool
+    public let aliasHost: String
+    public let bridgeUrl: String?
+    public let runtimeOrigin: String?
+    public let linkedAt: String?
+    public let lastSeenAt: String?
+    public let lastUpdatedAt: String?
+    public let notes: [String]
+}
+
+public struct ManagedAccountActionResponse: Decodable, Sendable {
+    public let success: Bool?
+    public let message: String?
+    public let state: ManagedAccountStateResponse?
+}
+
 public struct OllamaInstalledModel: Decodable, Identifiable, Sendable {
     public let name: String
     public let size: Int64?
@@ -329,6 +355,7 @@ public struct ManagedAppSnapshot: Sendable {
     public let downloads: [ManagedDownloadJob]
     public let providers: AIRuntimeProvidersResponse
     public let roachClaw: RoachClawStatusResponse
+    public let account: ManagedAccountStateResponse
     public let roachTail: ManagedRoachTailStatusResponse
     public let roachSync: ManagedRoachSyncStatusResponse
     public let installedModels: [OllamaInstalledModel]
@@ -462,6 +489,10 @@ public actor ManagedAppRuntimeBridge {
             workspacePath: workspacePath,
             defaultModel: config.roachClawDefaultModel
         )
+        let fallbackAccountStatus = self.fallbackAccountStatus(
+            config: config,
+            serverInfo: serverInfo
+        )
         let fallbackRoachTailStatus = self.fallbackRoachTailStatus(
             config: config,
             serverInfo: serverInfo
@@ -500,6 +531,11 @@ public actor ManagedAppRuntimeBridge {
             "/api/roachclaw/status",
             baseURL: baseURL,
             fallback: fallbackRoachClawStatus
+        )
+        async let account = fetchOrFallback(
+            "/api/companion/account",
+            baseURL: baseURL,
+            fallback: fallbackAccountStatus
         )
         async let roachTail = fetchOrFallback(
             "/api/companion/roachtail",
@@ -555,6 +591,7 @@ public actor ManagedAppRuntimeBridge {
             downloads: await downloads,
             providers: await providers,
             roachClaw: await roachClaw,
+            account: await account,
             roachTail: await roachTail,
             roachSync: await roachSync,
             installedModels: await models,
@@ -661,6 +698,47 @@ public actor ManagedAppRuntimeBridge {
             "/api/companion/roachsync/affect",
             baseURL: baseURL,
             body: Payload(action: action, folderPath: folderPath)
+        )
+    }
+
+    public func affectAccount(
+        using config: RoachNetInstallerConfig,
+        action: String,
+        accountId: String? = nil,
+        email: String? = nil,
+        displayName: String? = nil,
+        portalUrl: String? = nil,
+        settingsSyncEnabled: Bool? = nil,
+        savedAppsSyncEnabled: Bool? = nil,
+        hostedChatEnabled: Bool? = nil
+    ) async throws -> ManagedAccountActionResponse {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+
+        struct Payload: Encodable {
+            let action: String
+            let accountId: String?
+            let email: String?
+            let displayName: String?
+            let portalUrl: String?
+            let settingsSyncEnabled: Bool?
+            let savedAppsSyncEnabled: Bool?
+            let hostedChatEnabled: Bool?
+        }
+
+        return try await post(
+            "/api/companion/account/affect",
+            baseURL: baseURL,
+            body: Payload(
+                action: action,
+                accountId: accountId,
+                email: email,
+                displayName: displayName,
+                portalUrl: portalUrl,
+                settingsSyncEnabled: settingsSyncEnabled,
+                savedAppsSyncEnabled: savedAppsSyncEnabled,
+                hostedChatEnabled: hostedChatEnabled
+            )
         )
     }
 
@@ -1088,15 +1166,15 @@ public actor ManagedAppRuntimeBridge {
     }
 
     private func resolveRuntimeRoot(from config: RoachNetInstallerConfig) -> URL {
-        if let bundledRoot = RoachNetRepositoryLocator.bundledRepositoryRoot() {
-            return bundledRoot
-        }
-
         let configuredRoot = URL(fileURLWithPath: config.installPath)
         let configuredScript = configuredRoot.appendingPathComponent("scripts/run-roachnet.mjs")
 
         if FileManager.default.fileExists(atPath: configuredScript.path) {
             return configuredRoot
+        }
+
+        if let bundledRoot = RoachNetRepositoryLocator.bundledRepositoryRoot() {
+            return bundledRoot
         }
 
         return RoachNetRepositoryLocator.repositoryRoot()
@@ -1183,6 +1261,36 @@ public actor ManagedAppRuntimeBridge {
             preferredModels: [],
             configFilePath: nil,
             portableProfile: nil
+        )
+    }
+
+    private func fallbackAccountStatus(
+        config: RoachNetInstallerConfig,
+        serverInfo: ManagedAppServerInfo
+    ) -> ManagedAccountStateResponse {
+        let portalURL = ProcessInfo.processInfo.environment["ROACHNET_ACCOUNT_PORTAL_URL"] ?? "https://accounts.roachnet.org/"
+        let aliasHost = ProcessInfo.processInfo.environment["ROACHNET_LOCAL_HOSTNAME"] ?? "RoachNet"
+        return ManagedAccountStateResponse(
+            linked: false,
+            provider: "RoachNet Account",
+            portalUrl: portalURL,
+            accountId: nil,
+            email: nil,
+            displayName: nil,
+            status: "local-only",
+            settingsSyncEnabled: false,
+            savedAppsSyncEnabled: false,
+            hostedChatEnabled: config.companionEnabled,
+            aliasHost: aliasHost,
+            bridgeUrl: serverInfo.companionAdvertisedUrl ?? serverInfo.companionUrl,
+            runtimeOrigin: serverInfo.webUrl,
+            linkedAt: nil,
+            lastSeenAt: nil,
+            lastUpdatedAt: nil,
+            notes: [
+                "Use one RoachNet account to tie web chat, saved app picks, and synced settings back to this install.",
+                "RoachTail keeps the device lane private when you link more than one box."
+            ]
         )
     }
 

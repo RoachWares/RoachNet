@@ -13,6 +13,7 @@ const targetOrigin = process.env.ROACHNET_COMPANION_TARGET_URL?.trim() || 'http:
 const storagePath =
   process.env.NOMAD_STORAGE_PATH?.trim() || process.env.ROACHNET_HOST_STORAGE_PATH?.trim() || ''
 const roachTailStatePath = storagePath ? path.join(storagePath, 'vault', 'roachtail', 'state.json') : ''
+const roachNetAliasHost = process.env.ROACHNET_LOCAL_HOSTNAME?.trim() || 'RoachNet'
 
 function writeJson(response, statusCode, payload) {
   const body = JSON.stringify(payload)
@@ -52,6 +53,36 @@ function extractToken(request) {
 
 function hashToken(value) {
   return createHash('sha256').update(value).digest('hex')
+}
+
+function isIPAddress(host) {
+  const normalized = host.trim().replace(/^\[|\]$/g, '')
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(normalized) || /^[0-9a-f:]+$/i.test(normalized)
+}
+
+function isLoopbackHost(host) {
+  const normalized = host.trim().replace(/^\[|\]$/g, '').toLowerCase()
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1' || normalized === '0.0.0.0'
+}
+
+function sanitizeUserFacingHost(rawValue) {
+  const trimmed = rawValue?.trim()
+  if (!trimmed) {
+    return roachNetAliasHost
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    if (isLoopbackHost(parsed.hostname) || isIPAddress(parsed.hostname)) {
+      return roachNetAliasHost
+    }
+    return parsed.host || parsed.hostname || roachNetAliasHost
+  } catch {
+    if (isLoopbackHost(trimmed) || isIPAddress(trimmed)) {
+      return roachNetAliasHost
+    }
+    return trimmed
+  }
 }
 
 async function resolvePeerToken(tokenValue, { allowDisabled = false } = {}) {
@@ -119,14 +150,25 @@ async function resolveAuthorization(request, pathname) {
 }
 
 function requestPeerEndpoint(request) {
+  const forwardedHost = request.headers['x-forwarded-host']
+  const forwardedHostValue = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost
+  if (forwardedHostValue?.trim()) {
+    return sanitizeUserFacingHost(forwardedHostValue)
+  }
+
   const forwardedFor = request.headers['x-forwarded-for']
   const forwardedValue = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor
   const firstForwarded = forwardedValue?.split(',')[0]?.trim()
   if (firstForwarded) {
-    return firstForwarded
+    return sanitizeUserFacingHost(firstForwarded)
   }
 
-  return request.socket.remoteAddress?.trim() || null
+  const remoteAddress = request.socket.remoteAddress?.trim()
+  if (remoteAddress) {
+    return sanitizeUserFacingHost(remoteAddress)
+  }
+
+  return roachNetAliasHost
 }
 
 async function recordPeerActivity(authContext, request) {

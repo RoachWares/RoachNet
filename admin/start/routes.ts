@@ -168,6 +168,8 @@ router
   .group(() => {
     router.get('/bootstrap', [CompanionController, 'bootstrap'])
     router.get('/runtime', [CompanionController, 'runtime'])
+    router.get('/account', [CompanionController, 'account'])
+    router.post('/account/affect', [CompanionController, 'affectAccount'])
     router.get('/roachtail', [CompanionController, 'roachtail'])
     router.post('/roachtail/pair', [CompanionController, 'pairRoachTail'])
     router.post('/roachtail/affect', [CompanionController, 'affectRoachTail'])

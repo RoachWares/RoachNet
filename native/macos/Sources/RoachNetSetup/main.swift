@@ -598,7 +598,7 @@ struct RoachNetSetupApp: App {
     @StateObject private var controller = SetupController()
 
     var body: some Scene {
-        WindowGroup("RoachNet Setup") {
+        Window("RoachNet Setup", id: "main") {
             SetupRootView(controller: controller)
                 .background(SetupWindowConfigurator())
                 .frame(minWidth: 760, idealWidth: 980, minHeight: 580, idealHeight: 740)
@@ -606,11 +606,18 @@ struct RoachNetSetupApp: App {
                     appDelegate.controller = controller
                 }
         }
+        .windowResizability(.contentSize)
     }
 }
 
 final class RoachNetSetupAppDelegate: NSObject, NSApplicationDelegate {
     weak var controller: SetupController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        clearSavedState()
+        NSApp.setActivationPolicy(.regular)
+        bringPrimaryWindowForward()
+    }
 
     func applicationShouldSaveApplicationState(_ app: NSApplication) -> Bool {
         false
@@ -625,12 +632,37 @@ final class RoachNetSetupAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        bringPrimaryWindowForward()
+        return true
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         controller?.shutdown()
         return .terminateNow
+    }
+
+    private func bringPrimaryWindowForward() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            NSApp.activate(ignoringOtherApps: true)
+            if let window = NSApp.windows.first(where: { $0.canBecomeKey }) ?? NSApp.windows.first {
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+            }
+        }
+    }
+
+    private func clearSavedState() {
+        let savedStatePath = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Saved Application State", isDirectory: true)
+            .appendingPathComponent("com.roachwares.roachnet.setup.savedState", isDirectory: true)
+            .path
+
+        try? FileManager.default.removeItem(atPath: savedStatePath)
     }
 }
 
@@ -1149,12 +1181,9 @@ private struct SetupRootView: View {
 }
 
 private struct SetupWindowConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-
-        DispatchQueue.main.async {
-            guard let window = view.window else { return }
-
+    final class Coordinator {
+        @MainActor
+        func configure(window: NSWindow) {
             let minimumSize = NSSize(width: 760, height: 580)
             let preferredSize = NSSize(width: 980, height: 740)
             window.minSize = minimumSize
@@ -1165,22 +1194,73 @@ private struct SetupWindowConfigurator: NSViewRepresentable {
             window.isRestorable = false
 
             let currentSize = window.frame.size
-            if currentSize.width < minimumSize.width || currentSize.height < minimumSize.height {
+            let screenFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+            let isOffscreen = screenFrame.map { !$0.intersects(window.frame) } ?? false
+
+            if currentSize.width < minimumSize.width || currentSize.height < minimumSize.height || isOffscreen {
                 var frame = window.frame
                 frame.size.width = max(preferredSize.width, minimumSize.width)
                 frame.size.height = max(preferredSize.height, minimumSize.height)
-                if let screenFrame = window.screen?.visibleFrame {
+                if let screenFrame {
                     frame.origin.x = screenFrame.midX - (frame.size.width / 2)
                     frame.origin.y = screenFrame.midY - (frame.size.height / 2)
                 }
                 window.setFrame(frame, display: true, animate: false)
             }
-        }
 
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = SetupWindowAttachmentView(frame: .zero)
+        view.onWindowAvailable = { window in
+            Task { @MainActor in
+                context.coordinator.configure(window: window)
+            }
+        }
+        DispatchQueue.main.async { [weak view] in
+            view?.notifyIfWindowAvailable()
+        }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let attachmentView = nsView as? SetupWindowAttachmentView else { return }
+        attachmentView.onWindowAvailable = { window in
+            Task { @MainActor in
+                context.coordinator.configure(window: window)
+            }
+        }
+        attachmentView.notifyIfWindowAvailable()
+    }
+}
+
+private final class SetupWindowAttachmentView: NSView {
+    var onWindowAvailable: ((NSWindow) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        notifyIfWindowAvailable()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        DispatchQueue.main.async { [weak self] in
+            self?.notifyIfWindowAvailable()
+        }
+    }
+
+    func notifyIfWindowAvailable() {
+        guard let window else { return }
+        onWindowAvailable?(window)
+    }
 }
 
 private enum SetupNativeButtonRole {

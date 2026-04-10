@@ -787,13 +787,16 @@ function getBuildRuntimeEnvValues(envValues, options = {}) {
   const runtimeValues = getRuntimeEnvValues(envValues)
   const runtimeSecrets = getManagedRuntimeSecrets(envValues)
   const containerlessMode = options.forceContainerless || wantsContainerlessRuntime(runtimeValues)
+  const runtimeHost = runtimeValues.HOST?.trim() || '127.0.0.1'
+  const runtimePort = String(runtimeValues.PORT?.trim() || '8080')
+  const runtimeUrl = runtimeValues.URL?.trim() || `http://${formatUrlHost(runtimeHost)}:${runtimePort}`
 
   if (containerlessMode) {
     return {
       ...runtimeValues,
-      HOST: '127.0.0.1',
-      PORT: '8080',
-      URL: 'http://127.0.0.1:8080',
+      HOST: runtimeHost,
+      PORT: runtimePort,
+      URL: runtimeUrl,
       APP_KEY: runtimeSecrets.appKey,
       DB_CONNECTION: 'sqlite',
       SQLITE_DB_PATH: runtimeValues.SQLITE_DB_PATH,
@@ -810,9 +813,9 @@ function getBuildRuntimeEnvValues(envValues, options = {}) {
 
   return {
     ...runtimeValues,
-    HOST: '127.0.0.1',
-    PORT: '8080',
-    URL: 'http://127.0.0.1:8080',
+    HOST: runtimeHost,
+    PORT: runtimePort,
+    URL: runtimeUrl,
     APP_KEY: runtimeSecrets.appKey,
     DB_HOST: '127.0.0.1',
     DB_PORT: BUILD_RUNTIME_MYSQL_PORT,

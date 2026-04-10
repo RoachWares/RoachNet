@@ -1689,8 +1689,8 @@ struct DevWorkspaceView: View {
 
                                 RoachSectionHeader(
                                     "Dev Studio",
-                                    title: "Build inside the RoachNet vault.",
-                                    detail: "Projects, shell, secrets, and AI stay in one native coding lane."
+                                    title: "Code without leaving the stack.",
+                                    detail: "Projects, shell, secrets, and RoachClaw stay in one native dev surface."
                                 )
                             }
 
@@ -1727,8 +1727,8 @@ struct DevWorkspaceView: View {
 
                                 RoachSectionHeader(
                                     "Dev Studio",
-                                    title: "Build inside the RoachNet vault.",
-                                    detail: "Projects, shell, secrets, and AI stay in one native coding lane."
+                                    title: "Code without leaving the stack.",
+                                    detail: "Projects, shell, secrets, and RoachClaw stay in one native dev surface."
                                 )
                             }
 
@@ -1841,7 +1841,7 @@ struct DevWorkspaceView: View {
             if let lastError = devModel.lastError {
                 RoachNotice(title: "Developer workspace notice", detail: lastError)
             } else {
-                RoachNotice(title: "Developer workspace", detail: devModel.importStatus)
+                RoachNotice(title: "Dev Studio", detail: devModel.importStatus)
             }
 
             HStack(alignment: .top, spacing: 16) {
@@ -1953,7 +1953,7 @@ struct DevWorkspaceView: View {
                 }
 
                 if devModel.openDocuments.isEmpty {
-                    Text("Import a project or create a scratch file to open the first editor tab. The editor keeps the focus on the file, not the chrome.")
+                    Text("Import a project or create a scratch file to open the first editor tab. The editor stays on the code instead of drowning you in chrome.")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .frame(maxWidth: .infinity, minHeight: 320, alignment: .topLeading)
@@ -2059,7 +2059,7 @@ struct DevWorkspaceView: View {
                     HStack {
                         Text("RoachClaw Assist")
                             .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(RoachPalette.text)
+                            .foregroundStyle(RoachPalette.text)
                         Spacer()
                         RoachTag(model.selectedChatModelLabel, accent: RoachPalette.green)
                     }

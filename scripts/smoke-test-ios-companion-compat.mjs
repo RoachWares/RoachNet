@@ -13,6 +13,25 @@ import { fileURLToPath } from 'node:url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
+const desktopAppBundlePath = path.join(repoRoot, 'native', 'macos', 'dist', 'RoachNet.app')
+const packagedNodeBinaryPath = path.join(
+  desktopAppBundlePath,
+  'Contents',
+  'Resources',
+  'EmbeddedRuntime',
+  'node',
+  'bin',
+  'node'
+)
+const packagedNpmBinaryPath = path.join(
+  desktopAppBundlePath,
+  'Contents',
+  'Resources',
+  'EmbeddedRuntime',
+  'node',
+  'bin',
+  'npm'
+)
 const iosRepoRoot = process.env.ROACHNET_IOS_REPO
   ? path.resolve(process.env.ROACHNET_IOS_REPO)
   : path.resolve(repoRoot, '..', 'RoachNet-iOS')
@@ -201,6 +220,8 @@ async function fetchJson(url, token, options = {}) {
 
 function buildRuntimeEnv({ homePath, storagePath, runtimePort, companionPort, companionToken }) {
   const localBinRoot = path.join(homePath, 'RoachNet', 'bin')
+  const nodeBinary = existsSync(packagedNodeBinaryPath) ? packagedNodeBinaryPath : process.execPath
+  const npmBinary = existsSync(packagedNpmBinaryPath) ? packagedNpmBinaryPath : 'npm'
 
   return {
     ...process.env,
@@ -218,6 +239,8 @@ function buildRuntimeEnv({ homePath, storagePath, runtimePort, companionPort, co
     OPENCLAW_BASE_URL: 'http://127.0.0.1:13001',
     ROACHNET_RUNTIME_STATE_ROOT: path.join(storagePath, 'state', 'runtime-state'),
     ROACHNET_LOCAL_BIN_PATH: localBinRoot,
+    ROACHNET_NODE_BINARY: nodeBinary,
+    ROACHNET_NPM_BINARY: npmBinary,
     ROACHNET_NO_BROWSER: '1',
     ROACHNET_DISABLE_QUEUE: '1',
     ROACHNET_CONTAINERLESS_MODE: '1',
@@ -386,8 +409,9 @@ async function main() {
     companionPort,
     companionToken,
   })
+  const runtimeNodeBinary = runtimeEnv.ROACHNET_NODE_BINARY || process.execPath
 
-  const runtimeHandle = spawnProcess(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet.mjs')], {
+  const runtimeHandle = spawnProcess(runtimeNodeBinary, [path.join(repoRoot, 'scripts', 'run-roachnet.mjs')], {
     cwd: repoRoot,
     env: runtimeEnv,
   })
@@ -451,7 +475,7 @@ async function main() {
     throw error
   } finally {
     try {
-      await runCommand(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet.mjs'), '--stop'], {
+      await runCommand(runtimeNodeBinary, [path.join(repoRoot, 'scripts', 'run-roachnet.mjs'), '--stop'], {
         cwd: repoRoot,
         env: runtimeEnv,
       })

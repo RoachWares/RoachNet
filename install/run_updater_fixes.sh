@@ -3,7 +3,7 @@
 # RoachNet - One-Time Updater Fix Script
 #
 # Script                | RoachNet One-Time Updater Fix Script
-# Version               | 1.0.1
+# Version               | 1.0.2
 # Author                | Crosstalk Solutions, LLC
 # Website               | https://crosstalksolutions.com
 #

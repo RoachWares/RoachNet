@@ -144,6 +144,11 @@ function serializeEnvFile(values) {
 }
 
 function getPreferredNodeBinary() {
+  const currentNodeBinary = process.execPath
+  if (currentNodeBinary && existsSync(currentNodeBinary)) {
+    return currentNodeBinary
+  }
+
   const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/node'
   return existsSync(macHomebrewNode22) ? macHomebrewNode22 : process.execPath
 }
@@ -306,21 +311,34 @@ async function verifyEmbeddedNodeBundle(bundlePath, label) {
 async function verifyBuiltArtifacts() {
   const desktopBundlePath = path.join(distPath, 'RoachNet.app')
   const setupBundlePath = path.join(distPath, 'RoachNet Setup.app')
-  const installerAssetBundlePath = path.join(
+  const installerAssetArchivePath = path.join(
     setupBundlePath,
     'Contents',
     'Resources',
     'InstallerAssets',
-    'RoachNet.app'
+    `RoachNet-${appVersion}-mac-${process.arch}.zip`
   )
 
   await verifyBundleMetadata(desktopBundlePath, appVersion, 'RoachNet')
   await verifyBundleMetadata(setupBundlePath, appVersion, 'RoachNet Setup')
-  await verifyBundleMetadata(installerAssetBundlePath, appVersion, 'InstallerAssets RoachNet')
 
   await verifyEmbeddedNodeBundle(desktopBundlePath, 'RoachNet')
   await verifyEmbeddedNodeBundle(setupBundlePath, 'RoachNet Setup')
-  await verifyEmbeddedNodeBundle(installerAssetBundlePath, 'InstallerAssets RoachNet')
+
+  const bundledSourceArchivePaths = [
+    ['RoachNet', path.join(desktopBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')],
+    ['RoachNet Setup', path.join(setupBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')],
+  ]
+
+  for (const [label, archivePath] of bundledSourceArchivePaths) {
+    if (!existsSync(archivePath)) {
+      throw new Error(`Missing bundled source archive for ${label} at ${archivePath}`)
+    }
+  }
+
+  if (!existsSync(installerAssetArchivePath)) {
+    throw new Error(`Missing installer asset archive at ${installerAssetArchivePath}`)
+  }
 }
 
 async function ensureBundledNodeRuntime() {
@@ -376,6 +394,14 @@ async function clearLaunchMetadata(targetPath, options = {}) {
   }
 
   if (options.recursive === true) {
+    await run('xattr', ['-dr', 'com.apple.provenance', targetPath], {
+      stdio: 'pipe',
+    }).catch(() => {})
+
+    await run('xattr', ['-dr', 'com.apple.quarantine', targetPath], {
+      stdio: 'pipe',
+    }).catch(() => {})
+
     await run('xattr', ['-cr', targetPath], {
       stdio: 'pipe',
     }).catch(() => {})
@@ -392,7 +418,9 @@ async function clearLaunchMetadata(targetPath, options = {}) {
 }
 
 async function clearEmbeddedRuntimeLaunchMetadata(bundlePath) {
-  await clearLaunchMetadata(bundlePath)
+  await clearLaunchMetadata(bundlePath, {
+    recursive: true,
+  })
   await clearLaunchMetadata(path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime'), {
     recursive: true,
   })
@@ -518,6 +546,24 @@ const bundledSourceExcludes = [
   '*/storage/tmp/',
 ]
 
+const bundledSourceDirectories = [
+  'scripts',
+  'setup-ui',
+  'ops',
+  'collections',
+]
+
+const bundledSourceFiles = [
+  'package.json',
+  'roachnet.upstream.json',
+]
+
+const bundledAdminFiles = [
+  'package.json',
+  'package-lock.json',
+  '.env.example',
+]
+
 async function syncTree(sourcePath, destinationPath, excludePatterns = bundledSourceExcludes) {
   mkdirSync(destinationPath, { recursive: true })
 
@@ -568,7 +614,7 @@ async function copyBundledSourceTree(destinationPath) {
 
   discardPath(destinationPath)
   console.log(`Bundling source tree into ${destinationPath}...`)
-  await syncTree(repoRoot, destinationPath)
+  await stageBundledSourcePayload(destinationPath)
 
   const bundledBuildNodeModulesSource = path.join(repoRoot, 'admin', 'build', 'node_modules')
   const bundledBuildNodeModulesDestination = path.join(destinationPath, 'admin', 'build', 'node_modules')
@@ -591,6 +637,95 @@ async function copyBundledSourceTree(destinationPath) {
     delete bundledEnvValues.NOMAD_STORAGE_PATH
     delete bundledEnvValues.OPENCLAW_WORKSPACE_PATH
     writeFileSync(bundledEnvDestination, serializeEnvFile(bundledEnvValues), 'utf8')
+  }
+}
+
+async function createBundledSourceArchive(archivePath) {
+  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-bundled-source-'))
+  const stagedSourceRoot = path.join(stagingRoot, 'RoachNetSource')
+  const bundledEnvSource = path.join(repoRoot, 'admin', '.env.example')
+  const bundledEnvDestination = path.join(stagedSourceRoot, 'admin', '.env')
+  const bundledBuildNodeModulesSource = path.join(repoRoot, 'admin', 'build', 'node_modules')
+  const bundledBuildNodeModulesDestination = path.join(stagedSourceRoot, 'admin', 'build', 'node_modules')
+
+  try {
+    console.log(`Preparing bundled source archive at ${archivePath}...`)
+    await stageBundledSourcePayload(stagedSourceRoot)
+
+    if (existsSync(bundledBuildNodeModulesSource)) {
+      console.log(`Copying bundled runtime dependencies into ${bundledBuildNodeModulesDestination}...`)
+      await copyTreeFast(bundledBuildNodeModulesSource, bundledBuildNodeModulesDestination)
+      await materializeBundledRuntimeArtifacts(bundledBuildNodeModulesDestination)
+    }
+
+    if (existsSync(bundledEnvSource)) {
+      console.log(`Copying bundled environment file into ${bundledEnvDestination}...`)
+      const bundledEnvValues = parseEnvFile(readFileSync(bundledEnvSource, 'utf8'))
+      delete bundledEnvValues.APP_KEY
+      delete bundledEnvValues.DB_PASSWORD
+      delete bundledEnvValues.ROACHNET_DB_ROOT_PASSWORD
+      delete bundledEnvValues.GITHUB_TOKEN
+      delete bundledEnvValues.NETLIFY_AUTH_TOKEN
+      delete bundledEnvValues.OPENAI_API_KEY
+      delete bundledEnvValues.ANTHROPIC_API_KEY
+      delete bundledEnvValues.NOMAD_STORAGE_PATH
+      delete bundledEnvValues.OPENCLAW_WORKSPACE_PATH
+      writeFileSync(bundledEnvDestination, serializeEnvFile(bundledEnvValues), 'utf8')
+    }
+
+    discardPath(archivePath)
+    mkdirSync(path.dirname(archivePath), { recursive: true })
+    await run('tar', ['-czf', archivePath, '-C', stagingRoot, 'RoachNetSource'], {
+      stdio: 'pipe',
+    })
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true })
+  }
+}
+
+async function stageBundledSourcePayload(destinationPath) {
+  discardPath(destinationPath)
+  mkdirSync(destinationPath, { recursive: true })
+
+  for (const relativeFilePath of bundledSourceFiles) {
+    const sourcePath = path.join(repoRoot, relativeFilePath)
+    const targetPath = path.join(destinationPath, relativeFilePath)
+    if (!existsSync(sourcePath)) {
+      continue
+    }
+
+    mkdirSync(path.dirname(targetPath), { recursive: true })
+    await cp(sourcePath, targetPath, { force: true })
+  }
+
+  for (const relativeDirectoryPath of bundledSourceDirectories) {
+    const sourcePath = path.join(repoRoot, relativeDirectoryPath)
+    const targetPath = path.join(destinationPath, relativeDirectoryPath)
+    if (!existsSync(sourcePath)) {
+      continue
+    }
+
+    await copyTreeFast(sourcePath, targetPath)
+  }
+
+  const adminRoot = path.join(destinationPath, 'admin')
+  mkdirSync(adminRoot, { recursive: true })
+
+  for (const relativeFilePath of bundledAdminFiles) {
+    const sourcePath = path.join(repoRoot, 'admin', relativeFilePath)
+    const targetPath = path.join(adminRoot, relativeFilePath)
+    if (!existsSync(sourcePath)) {
+      continue
+    }
+
+    mkdirSync(path.dirname(targetPath), { recursive: true })
+    await cp(sourcePath, targetPath, { force: true })
+  }
+
+  const adminBuildSource = path.join(repoRoot, 'admin', 'build')
+  const adminBuildDestination = path.join(adminRoot, 'build')
+  if (existsSync(adminBuildSource)) {
+    await syncTree(adminBuildSource, adminBuildDestination, ['node_modules/'])
   }
 }
 
@@ -667,6 +802,8 @@ async function createSetupDmg(setupAppBundlePath) {
   const dmgPath = path.join(distPath, 'RoachNet-Setup-macOS.dmg')
   const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-dmg-staging-'))
   const stagingFolder = path.join(stagingRoot, 'RoachNet Setup')
+  const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
+  const stagedDesktopAppPath = path.join(stagingFolder, 'RoachNet.app')
   const stagedSetupAppPath = path.join(stagingFolder, path.basename(setupAppBundlePath))
   const stagedHelperPath = path.join(stagingFolder, 'RoachNet Fix.command')
 
@@ -674,6 +811,9 @@ async function createSetupDmg(setupAppBundlePath) {
   rmSync(dmgPath, { force: true })
 
   mkdirSync(stagingFolder, { recursive: true })
+  if (existsSync(desktopAppBundlePath)) {
+    await cp(desktopAppBundlePath, stagedDesktopAppPath, { recursive: true, force: true })
+  }
   await cp(setupAppBundlePath, stagedSetupAppPath, { recursive: true, force: true })
 
   if (existsSync(installerHelperPath)) {
@@ -706,6 +846,16 @@ async function createSetupDmg(setupAppBundlePath) {
   }
 
   return dmgPath
+}
+
+async function createMacAppArchive(sourceBundlePath, destinationArchivePath) {
+  discardPath(destinationArchivePath)
+  mkdirSync(path.dirname(destinationArchivePath), { recursive: true })
+  await run(
+    'ditto',
+    ['-c', '-k', '--sequesterRsrc', '--keepParent', sourceBundlePath, destinationArchivePath],
+    { stdio: 'pipe' }
+  )
 }
 
 async function copySwiftPackageResources(executable, resourcesPath) {
@@ -843,8 +993,8 @@ async function main() {
       urlSchemes: ['roachnet'],
       prepareResources: async ({ resourcesPath }) => {
         await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
-        const bundledSourcePath = path.join(resourcesPath, 'RoachNetSource')
-        await copyBundledSourceTree(bundledSourcePath)
+        const bundledSourceArchivePath = path.join(resourcesPath, 'RoachNetSource.tar.gz')
+        await createBundledSourceArchive(bundledSourceArchivePath)
       },
     },
     {
@@ -853,15 +1003,18 @@ async function main() {
       identifier: 'com.roachwares.roachnet.setup',
       prepareResources: async ({ resourcesPath }) => {
         await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
-        const bundledSourcePath = path.join(resourcesPath, 'RoachNetSource')
+        const bundledSourceArchivePath = path.join(resourcesPath, 'RoachNetSource.tar.gz')
         const installerAssetsPath = path.join(resourcesPath, 'InstallerAssets')
 
-        await copyBundledSourceTree(bundledSourcePath)
+        await createBundledSourceArchive(bundledSourceArchivePath)
         mkdirSync(installerAssetsPath, { recursive: true })
         writeFileSync(path.join(installerAssetsPath, 'setup-assets.marker'), '', 'utf8')
 
         if (existsSync(desktopAppBundlePath)) {
-          await copyTreeFast(desktopAppBundlePath, path.join(installerAssetsPath, 'RoachNet.app'))
+          await createMacAppArchive(
+            desktopAppBundlePath,
+            path.join(installerAssetsPath, `RoachNet-${appVersion}-mac-${process.arch}.zip`)
+          )
         }
       },
     },

@@ -328,8 +328,12 @@ public enum RoachNetRepositoryLocator {
             return root
         }
 
-        if let bundledRoot = bundledRepositoryRoot() {
+        if isSetupBundle(), let bundledRoot = bundledRepositoryRoot() {
             return bundledRoot
+        }
+
+        if let configuredRoot = configuredRepositoryRoot() {
+            return configuredRoot
         }
 
         let envCandidates = [
@@ -351,6 +355,10 @@ public enum RoachNetRepositoryLocator {
             }
         }
 
+        if let bundledRoot = bundledRepositoryRoot() {
+            return bundledRoot
+        }
+
         return nil
     }
 
@@ -361,7 +369,11 @@ public enum RoachNetRepositoryLocator {
 
         let candidate = resourceURL.appendingPathComponent("RoachNetSource", isDirectory: true)
         guard isRepositoryRoot(candidate) else {
-            return nil
+            guard let archiveURL = bundledRepositoryArchiveURL(resourceURL: resourceURL) else {
+                return nil
+            }
+
+            return extractBundledRepositoryArchive(from: archiveURL)
         }
 
         return candidate
@@ -616,6 +628,97 @@ public enum RoachNetRepositoryLocator {
         }
 
         return decoded
+    }
+
+    private static func bundledRepositoryArchiveURL(resourceURL: URL) -> URL? {
+        let archiveURL = resourceURL.appendingPathComponent("RoachNetSource.tar.gz", isDirectory: false)
+        return FileManager.default.fileExists(atPath: archiveURL.path) ? archiveURL : nil
+    }
+
+    private static func isSetupBundle() -> Bool {
+        (Bundle.main.bundleIdentifier ?? "").hasSuffix(".setup")
+    }
+
+    private static func configuredRepositoryRoot() -> URL? {
+        let configuredInstallPath = readConfig().installPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !configuredInstallPath.isEmpty else {
+            return nil
+        }
+
+        let candidate = URL(fileURLWithPath: configuredInstallPath).standardizedFileURL
+        return isRepositoryRoot(candidate) ? candidate : nil
+    }
+
+    private static func bundledRepositoryExtractionRoot() -> URL {
+        let version =
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+            ?? "0"
+
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.roachwares.roachnet"
+        if bundleIdentifier.hasSuffix(".setup") {
+            return FileManager.default.temporaryDirectory
+                .appendingPathComponent("roachnet-setup-source-\(version)", isDirectory: true)
+        }
+
+        let installPath = readConfig().installPath
+        let normalizedInstallPath = installPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultInstallPath()
+            : installPath
+
+        return URL(fileURLWithPath: normalizedInstallPath)
+            .appendingPathComponent("runtime", isDirectory: true)
+            .appendingPathComponent("bundled-source", isDirectory: true)
+            .appendingPathComponent(version, isDirectory: true)
+    }
+
+    private static func extractBundledRepositoryArchive(from archiveURL: URL) -> URL? {
+        let fileManager = FileManager.default
+        let extractionRoot = bundledRepositoryExtractionRoot()
+        let extractedRepositoryRoot = extractionRoot.appendingPathComponent("RoachNetSource", isDirectory: true)
+        if isRepositoryRoot(extractedRepositoryRoot) {
+            return extractedRepositoryRoot
+        }
+
+        let parentDirectory = extractionRoot.deletingLastPathComponent()
+        let stagingRoot = parentDirectory.appendingPathComponent(
+            "\(extractionRoot.lastPathComponent).staging-\(UUID().uuidString)",
+            isDirectory: true
+        )
+
+        do {
+            try fileManager.createDirectory(at: parentDirectory, withIntermediateDirectories: true)
+            try? fileManager.removeItem(at: extractionRoot)
+            try fileManager.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
+
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+            process.arguments = ["-xzf", archiveURL.path, "-C", stagingRoot.path]
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+
+            try process.run()
+            process.waitUntilExit()
+
+            guard process.terminationStatus == 0 else {
+                try? fileManager.removeItem(at: stagingRoot)
+                return nil
+            }
+
+            let stagedRepositoryRoot = stagingRoot.appendingPathComponent("RoachNetSource", isDirectory: true)
+            guard isRepositoryRoot(stagedRepositoryRoot) else {
+                try? fileManager.removeItem(at: stagingRoot)
+                return nil
+            }
+
+            try fileManager.moveItem(at: stagingRoot, to: extractionRoot)
+            return extractionRoot.appendingPathComponent("RoachNetSource", isDirectory: true)
+        } catch {
+            try? fileManager.removeItem(at: stagingRoot)
+            return nil
+        }
     }
 
     public static func writeConfig(_ config: RoachNetInstallerConfig) throws {

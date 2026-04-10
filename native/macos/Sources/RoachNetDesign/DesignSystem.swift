@@ -7,10 +7,12 @@ public enum RoachPalette {
     public static let bronze = Color(red: 0.98, green: 0.74, blue: 0.20)
     public static let cyan = Color(red: 0.40, green: 0.84, blue: 1.0)
     public static let background = Color(red: 0.035, green: 0.036, blue: 0.044)
+    public static let backgroundRaised = Color(red: 0.058, green: 0.060, blue: 0.072)
     public static let panel = Color(red: 0.088, green: 0.091, blue: 0.103)
     public static let panelRaised = Color(red: 0.108, green: 0.111, blue: 0.126)
     public static let panelSoft = Color(red: 0.150, green: 0.154, blue: 0.172)
     public static let panelGlass = Color.white.opacity(0.045)
+    public static let panelSpecular = Color.white.opacity(0.08)
     public static let border = Color.white.opacity(0.085)
     public static let borderStrong = Color.white.opacity(0.14)
     public static let text = Color.white.opacity(0.97)
@@ -22,6 +24,7 @@ public enum RoachPalette {
 
 public struct RoachBackground: View {
     @State private var drift = false
+    @State private var sweep = false
 
     public init() {}
 
@@ -30,7 +33,7 @@ public struct RoachBackground: View {
             LinearGradient(
                 colors: [
                     RoachPalette.background,
-                    Color(red: 0.045, green: 0.048, blue: 0.060),
+                    RoachPalette.backgroundRaised,
                     RoachPalette.background,
                 ],
                 startPoint: .topLeading,
@@ -123,11 +126,118 @@ public struct RoachBackground: View {
             }
             .opacity(0.11)
             .blendMode(.overlay)
+
+            GeometryReader { proxy in
+                RoundedRectangle(cornerRadius: proxy.size.width * 0.2, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.clear,
+                                RoachPalette.green.opacity(0.10),
+                                RoachPalette.cyan.opacity(0.07),
+                                Color.clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: proxy.size.width * 0.56, height: 220)
+                    .blur(radius: 58)
+                    .rotationEffect(.degrees(-18))
+                    .offset(
+                        x: sweep ? proxy.size.width * 0.38 : -proxy.size.width * 0.34,
+                        y: sweep ? proxy.size.height * 0.08 : -proxy.size.height * 0.16
+                    )
+            }
+            .allowsHitTesting(false)
+            .blendMode(.screen)
+            .opacity(0.42)
         }
         .ignoresSafeArea()
         .onAppear {
             withAnimation(.easeInOut(duration: 24).repeatForever(autoreverses: true)) {
                 drift = true
+            }
+            withAnimation(.easeInOut(duration: 18).repeatForever(autoreverses: true)) {
+                sweep = true
+            }
+        }
+    }
+}
+
+private struct RoachAnimatedChrome: View {
+    let cornerRadius: CGFloat
+    let accent: Color
+    @State private var sweep = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.08),
+                                accent.opacity(0.18),
+                                RoachPalette.borderStrong,
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                accent.opacity(0.11),
+                                Color.clear,
+                                RoachPalette.cyan.opacity(0.05),
+                                Color.clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: proxy.size.width * 0.48, height: max(96, proxy.size.height * 0.42))
+                    .blur(radius: 34)
+                    .rotationEffect(.degrees(-15))
+                    .offset(
+                        x: sweep ? proxy.size.width * 0.44 : -proxy.size.width * 0.28,
+                        y: sweep ? proxy.size.height * 0.12 : -proxy.size.height * 0.10
+                    )
+                    .opacity(0.55)
+
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                accent.opacity(0.44),
+                                RoachPalette.magenta.opacity(0.22),
+                                Color.clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: min(proxy.size.width * 0.42, 240), height: 3)
+                    .padding(.leading, 18)
+                    .padding(.top, 14)
+                    .blur(radius: 0.2)
+
+                Circle()
+                    .fill(accent.opacity(0.10))
+                    .frame(width: min(proxy.size.width * 0.22, 120), height: min(proxy.size.width * 0.22, 120))
+                    .blur(radius: 18)
+                    .offset(x: proxy.size.width * 0.70, y: proxy.size.height * 0.14)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 7.5).repeatForever(autoreverses: true)) {
+                sweep = true
             }
         }
     }
@@ -155,7 +265,8 @@ public struct RoachPanel<Content: View>: View {
                         LinearGradient(
                             colors: [
                                 RoachPalette.panel.opacity(0.92),
-                                RoachPalette.panelRaised.opacity(0.86),
+                                RoachPalette.panelRaised.opacity(0.88),
+                                Color.black.opacity(0.22),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -173,7 +284,7 @@ public struct RoachPanel<Content: View>: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.05),
+                                RoachPalette.panelSpecular,
                                 Color.clear,
                                 Color.white.opacity(0.015),
                             ],
@@ -190,7 +301,11 @@ public struct RoachPanel<Content: View>: View {
                     .stroke(Color.white.opacity(0.025), lineWidth: 1)
                     .allowsHitTesting(false)
             )
-            .shadow(color: RoachPalette.shadow.opacity(0.88), radius: 30, x: 0, y: 16)
+            .overlay(
+                RoachAnimatedChrome(cornerRadius: 26, accent: RoachPalette.green)
+            )
+            .shadow(color: RoachPalette.shadow.opacity(0.88), radius: 34, x: 0, y: 18)
+            .shadow(color: RoachPalette.green.opacity(0.05), radius: 48, x: 0, y: 24)
     }
 }
 
@@ -263,6 +378,9 @@ public struct RoachSpotlightPanel<Content: View>: View {
                         lineWidth: 1
                     )
             )
+            .overlay(
+                RoachAnimatedChrome(cornerRadius: 30, accent: accent)
+            )
             .shadow(color: accent.opacity(0.10), radius: 28, x: 0, y: 16)
             .onAppear {
                 withAnimation(.easeInOut(duration: 6.5).repeatForever(autoreverses: true)) {
@@ -325,11 +443,16 @@ private struct RoachPrimaryButtonBody: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
-                            RoachPalette.panelSoft.opacity(
-                                configuration.isPressed ? 0.72 : (hovered ? 0.92 : 0.84)
+                            LinearGradient(
+                                colors: [
+                                    RoachPalette.magenta.opacity(configuration.isPressed ? 0.84 : (hovered ? 0.94 : 0.88)),
+                                    RoachPalette.green.opacity(configuration.isPressed ? 0.50 : (hovered ? 0.64 : 0.56)),
+                                    RoachPalette.panelSoft.opacity(configuration.isPressed ? 0.86 : (hovered ? 0.92 : 0.88)),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
                             )
                         )
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(
@@ -344,9 +467,22 @@ private struct RoachPrimaryButtonBody: View {
                             ),
                             lineWidth: 1.0
                         )
+
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(hovered ? 0.18 : 0.12),
+                                    Color.clear,
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottom
+                            )
+                        )
+                        .blendMode(.screen)
                 }
             )
-            .shadow(color: RoachPalette.green.opacity(configuration.isPressed ? 0.09 : (hovered ? 0.20 : 0.14)), radius: hovered ? 24 : 18, x: 0, y: hovered ? 14 : 10)
+            .shadow(color: RoachPalette.magenta.opacity(configuration.isPressed ? 0.14 : (hovered ? 0.30 : 0.20)), radius: hovered ? 28 : 20, x: 0, y: hovered ? 16 : 10)
             .scaleEffect(configuration.isPressed ? 0.98 : (hovered ? 1.016 : 1.0))
             .offset(y: configuration.isPressed ? 1 : (hovered ? -1 : 0))
             .onHover { inside in
@@ -368,17 +504,32 @@ private struct RoachSecondaryButtonBody: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        RoachPalette.panelRaised.opacity(
-                            configuration.isPressed ? 0.62 : (hovered ? 0.82 : 0.74)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    RoachPalette.panelRaised.opacity(configuration.isPressed ? 0.72 : (hovered ? 0.84 : 0.76)),
+                                    RoachPalette.panel.opacity(configuration.isPressed ? 0.68 : (hovered ? 0.76 : 0.70)),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.10), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottom
+                            )
+                        )
+                        .blendMode(.screen)
+                }
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(hovered ? RoachPalette.green.opacity(0.18) : RoachPalette.border, lineWidth: 1)
+                    .stroke(hovered ? RoachPalette.green.opacity(0.20) : RoachPalette.border, lineWidth: 1)
             )
             .shadow(color: hovered ? RoachPalette.green.opacity(0.07) : .clear, radius: hovered ? 16 : 0, x: 0, y: hovered ? 10 : 0)
             .scaleEffect(configuration.isPressed ? 0.985 : (hovered ? 1.01 : 1.0))
@@ -723,6 +874,7 @@ public struct RoachFeatureTile: View {
     private let detail: String
     private let systemName: String
     private let accent: Color
+    @State private var hovered = false
 
     public init(
         _ label: String,
@@ -739,58 +891,113 @@ public struct RoachFeatureTile: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                Image(systemName: systemName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(accent)
-                    .frame(width: 36, height: 36)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(accent.opacity(0.12))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(accent.opacity(0.16), lineWidth: 1)
-                    )
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(label.uppercased())
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(RoachPalette.muted)
+
+                    Text(title)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(RoachPalette.text)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.88)
+                }
 
                 Spacer(minLength: 10)
 
-                Text(label.uppercased())
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .tracking(1.1)
-                    .foregroundStyle(RoachPalette.muted)
+                ZStack {
+                    Circle()
+                        .fill(accent.opacity(hovered ? 0.20 : 0.14))
+                        .frame(width: hovered ? 52 : 46, height: hovered ? 52 : 46)
+                        .blur(radius: hovered ? 8 : 5)
+
+                    Image(systemName: systemName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(accent)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(accent.opacity(0.12))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(accent.opacity(hovered ? 0.28 : 0.18), lineWidth: 1)
+                        )
+                }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(RoachPalette.text)
-                Text(detail)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(RoachPalette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+            Text(detail)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(RoachPalette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(alignment: .center, spacing: 10) {
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [accent.opacity(0.92), accent.opacity(0.18)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: hovered ? 104 : 82, height: 3)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(accent.opacity(hovered ? 0.92 : 0.54))
+                    .offset(x: hovered ? 1 : 0, y: hovered ? -1 : 0)
             }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            RoachPalette.panelRaised.opacity(0.72),
-                            RoachPalette.panel.opacity(0.62),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                RoachPalette.panelRaised.opacity(hovered ? 0.86 : 0.78),
+                                RoachPalette.panel.opacity(hovered ? 0.78 : 0.68),
+                                Color.black.opacity(0.18),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
+
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                accent.opacity(hovered ? 0.16 : 0.10),
+                                Color.clear,
+                                Color.clear,
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(accent.opacity(0.16), lineWidth: 1)
+                .stroke(accent.opacity(hovered ? 0.24 : 0.14), lineWidth: 1)
         )
+        .overlay(
+            RoachAnimatedChrome(cornerRadius: 24, accent: accent)
+        )
+        .shadow(color: accent.opacity(hovered ? 0.10 : 0.04), radius: hovered ? 24 : 18, x: 0, y: hovered ? 16 : 10)
+        .scaleEffect(hovered ? 1.01 : 1.0)
+        .offset(y: hovered ? -1 : 0)
+        .onHover { inside in
+            hovered = inside
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: hovered)
     }
 }
 
@@ -905,6 +1112,7 @@ public struct RoachCommandTray: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(RoachPalette.borderStrong, lineWidth: 1)
             )
+            .shadow(color: RoachPalette.green.opacity(0.12), radius: 18, x: 0, y: 10)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(label.uppercased())
@@ -946,8 +1154,9 @@ public struct RoachCommandTray: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            RoachPalette.panelRaised.opacity(0.78),
-                            RoachPalette.panel.opacity(0.70),
+                            RoachPalette.panelRaised.opacity(0.84),
+                            RoachPalette.panel.opacity(0.76),
+                            Color.black.opacity(0.14),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -957,6 +1166,9 @@ public struct RoachCommandTray: View {
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(RoachPalette.borderStrong, lineWidth: 1)
+        )
+        .overlay(
+            RoachAnimatedChrome(cornerRadius: 24, accent: RoachPalette.green)
         )
         .shadow(color: RoachPalette.shadow.opacity(0.16), radius: 24, x: 0, y: 12)
     }
@@ -989,7 +1201,7 @@ public struct RoachSidebarTile: View {
 
     public var body: some View {
         Group {
-            if isCompact {
+                if isCompact {
                     RoachModuleMark(
                         systemName: systemName,
                         assetName: assetName,
@@ -1000,9 +1212,13 @@ public struct RoachSidebarTile: View {
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .fill(
-                                    isSelected
-                                        ? RoachPalette.panelSoft.opacity(hovered ? 0.88 : 0.76)
-                                        : RoachPalette.panelRaised.opacity(hovered ? 0.72 : 0.56)
+                                    LinearGradient(
+                                        colors: isSelected
+                                            ? [RoachPalette.panelSoft.opacity(hovered ? 0.92 : 0.80), RoachPalette.panelRaised.opacity(0.74)]
+                                            : [RoachPalette.panelRaised.opacity(hovered ? 0.76 : 0.60), RoachPalette.panel.opacity(0.58)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
                                 )
                         )
                         .overlay(
@@ -1021,7 +1237,16 @@ public struct RoachSidebarTile: View {
                         .frame(width: 28, height: 28)
                         .background(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(RoachPalette.panelGlass)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            isSelected ? RoachPalette.green.opacity(0.12) : RoachPalette.panelGlass,
+                                            Color.white.opacity(0.02),
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         )
                         .shadow(color: isSelected ? RoachPalette.green.opacity(0.16) : .clear, radius: 18, y: 8)
 
@@ -1036,22 +1261,69 @@ public struct RoachSidebarTile: View {
                     }
 
                     Spacer()
+
+                    HStack(spacing: 8) {
+                        if hovered && !isSelected {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(RoachPalette.green.opacity(0.72))
+                        }
+
+                        Circle()
+                            .fill(isSelected ? RoachPalette.green : (hovered ? RoachPalette.green.opacity(0.44) : Color.clear))
+                            .frame(width: 7, height: 7)
+                            .shadow(color: RoachPalette.green.opacity(isSelected ? 0.32 : 0.16), radius: 8, x: 0, y: 0)
+                    }
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(
-                                    isSelected
-                                        ? RoachPalette.panelSoft.opacity(hovered ? 0.88 : 0.74)
-                                        : RoachPalette.panel.opacity(hovered ? 0.50 : 0.34)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: isSelected
+                                        ? [RoachPalette.panelSoft.opacity(hovered ? 0.90 : 0.76), RoachPalette.panelRaised.opacity(0.70)]
+                                        : [RoachPalette.panel.opacity(hovered ? 0.44 : 0.26), RoachPalette.panelRaised.opacity(0.34)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
+                            )
+
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        isSelected ? RoachPalette.green.opacity(0.12) : Color.clear,
+                                        Color.clear,
+                                        hovered ? RoachPalette.magenta.opacity(0.03) : Color.clear,
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                )
+                .overlay(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    RoachPalette.green.opacity(isSelected ? 0.88 : (hovered ? 0.42 : 0.0)),
+                                    accentlessSidebarGlow,
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .stroke(isSelected ? RoachPalette.green.opacity(0.22) : (hovered ? RoachPalette.green.opacity(0.10) : RoachPalette.border), lineWidth: 1)
-                        )
-                        .shadow(color: isSelected ? RoachPalette.green.opacity(hovered ? 0.14 : 0.08) : .clear, radius: hovered ? 18 : 14, x: 0, y: hovered ? 10 : 8)
+                        .frame(width: 3, height: isSelected ? 34 : (hovered ? 20 : 0))
+                        .padding(.leading, 8)
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(isSelected ? RoachPalette.green.opacity(0.18) : (hovered ? RoachPalette.green.opacity(0.08) : RoachPalette.border), lineWidth: 1)
+                )
+                .shadow(color: isSelected ? RoachPalette.green.opacity(hovered ? 0.12 : 0.06) : .clear, radius: hovered ? 14 : 10, x: 0, y: hovered ? 8 : 6)
             }
         }
         .scaleEffect(isCompact ? (hovered ? 1.05 : 1.0) : (hovered ? 1.01 : 1.0))
@@ -1060,6 +1332,10 @@ public struct RoachSidebarTile: View {
             hovered = inside
         }
         .animation(.spring(response: 0.26, dampingFraction: 0.84), value: hovered)
+    }
+
+    private var accentlessSidebarGlow: Color {
+        Color.clear
     }
 }
 
@@ -1118,6 +1394,9 @@ public struct RoachMetricCard: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(RoachPalette.borderStrong, lineWidth: 1)
         )
+        .overlay(
+            RoachAnimatedChrome(cornerRadius: 24, accent: RoachPalette.magenta)
+        )
         .shadow(color: RoachPalette.shadow.opacity(0.16), radius: 16, x: 0, y: 8)
     }
 }
@@ -1135,24 +1414,40 @@ public struct RoachInsetPanel<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            RoachPalette.panelRaised.opacity(0.84),
-                            RoachPalette.panel.opacity(0.80),
-                        ],
-                        startPoint: .topLeading,
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                RoachPalette.panelRaised.opacity(0.88),
+                                RoachPalette.panel.opacity(0.84),
+                                Color.black.opacity(0.12),
+                            ],
+                            startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-                .allowsHitTesting(false)
+                    .allowsHitTesting(false)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(RoachPalette.borderStrong, lineWidth: 1)
-                .allowsHitTesting(false)
+                    .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
-            .shadow(color: RoachPalette.shadow.opacity(0.14), radius: 16, x: 0, y: 8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.08), Color.clear, Color.clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .blendMode(.screen)
+                    .allowsHitTesting(false)
+            )
+            .overlay(
+                RoachAnimatedChrome(cornerRadius: 22, accent: RoachPalette.cyan)
+            )
+            .shadow(color: RoachPalette.shadow.opacity(0.18), radius: 18, x: 0, y: 10)
     }
 }
 
@@ -1218,6 +1513,9 @@ public struct RoachNotice: View {
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(accent.opacity(0.22), lineWidth: 1)
+        )
+        .overlay(
+            RoachAnimatedChrome(cornerRadius: 22, accent: accent)
         )
         .shadow(color: RoachPalette.shadow.opacity(0.14), radius: 16, x: 0, y: 8)
     }

@@ -2366,6 +2366,9 @@ async function smokeTestInstalledRuntime(config, envValues, task) {
   let launcherStdout = ''
   let launcherStderr = ''
   let launcherExitCode = null
+  const runtimeLogsPath = path.join(storagePath, 'logs')
+  const launcherLogPath = path.join(runtimeLogsPath, 'roachnet-launcher-debug.log')
+  const serverLogPath = path.join(runtimeLogsPath, 'roachnet-server.log')
 
   try {
     launcherChild = spawn(nodeBinary, [launcherPath], {
@@ -2384,7 +2387,26 @@ async function smokeTestInstalledRuntime(config, envValues, task) {
       launcherStderr += `${error?.message || String(error)}\n`
     })
 
-    await waitForHttpOk(healthUrl, PORT_WAIT_TIMEOUT_MS + 120_000)
+    try {
+      await waitForHttpOk(healthUrl, PORT_WAIT_TIMEOUT_MS + 120_000)
+    } catch (error) {
+      const diagnostics = [launcherStderr.trim(), launcherStdout.trim()]
+
+      if (existsSync(launcherLogPath)) {
+        diagnostics.push(`launcher debug log:\n${readFileSync(launcherLogPath, 'utf8').trim()}`)
+      }
+
+      if (existsSync(serverLogPath)) {
+        diagnostics.push(`server log:\n${readFileSync(serverLogPath, 'utf8').trim()}`)
+      }
+
+      throw new Error(
+        [
+          error.message,
+          ...diagnostics.filter(Boolean),
+        ].join('\n\n')
+      )
+    }
     appendTaskLog(task, `Contained runtime answered ${healthUrl}.`)
 
     // The runtime launcher is expected to stay alive once the health endpoint is up.
@@ -2913,8 +2935,12 @@ async function runInstallWorkflow(config) {
     task.finishedAt = new Date().toISOString()
     task.error = error.message
     appendTaskLog(task, `Setup failed: ${error.message}`)
-    await rm(stagingInstallPath, { recursive: true, force: true })
-    appendTaskLog(task, 'Removed the staged install so this Mac can retry setup cleanly.')
+    if (process.env.ROACHNET_SMOKE_KEEP_TEMP === '1' || process.env.ROACHNET_SETUP_KEEP_STAGED_FAILURE === '1') {
+      appendTaskLog(task, `Preserving staged install at ${stagingInstallPath} for debugging.`)
+    } else {
+      await rm(stagingInstallPath, { recursive: true, force: true })
+      appendTaskLog(task, 'Removed the staged install so this Mac can retry setup cleanly.')
+    }
   } finally {
     invalidateInstallerDiagnosticsCache()
     runtimeState.lastCompletedTask = task
