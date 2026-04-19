@@ -1,5 +1,5 @@
 import AppKit
-import QuickLookThumbnailing
+@preconcurrency import QuickLookThumbnailing
 import SwiftUI
 import RoachNetDesign
 
