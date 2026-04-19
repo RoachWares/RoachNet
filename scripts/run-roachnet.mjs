@@ -33,6 +33,8 @@ const SERVER_BOOT_TIMEOUT_MS = 300_000
 const BUILD_BOOT_TIMEOUT_MS = 300_000
 const HEALTH_POLL_INTERVAL_MS = 1_500
 const HEALTH_REQUEST_TIMEOUT_MS = 3_000
+const EXITED_SERVER_HEALTH_GRACE_MS = 10_000
+const EXISTING_RUNTIME_RECONNECT_GRACE_MS = 10_000
 const BUILD_RUNTIME_METADATA_FILENAME = '.roachnet-runtime.json'
 const BUILD_RUNTIME_DEPENDENCY_STAMP_FILENAME = '.roachnet-lock-hash'
 const BUILD_RUNTIME_CODESIGN_STAMP_FILENAME = '.roachnet-codesign-stamp'
@@ -245,20 +247,44 @@ function collectBuildSignatureParts(currentPath, relativePath = '.') {
   return parts
 }
 
-function getLoopbackHealthUrls(baseUrl) {
-  const urls = [new URL('/api/health', baseUrl)]
-  const hostname = baseUrl.hostname.replace(/^\[|\]$/g, '')
+function getLoopbackHealthUrls(baseUrl, envValues = process.env) {
+  const urls = []
   const protocol = baseUrl.protocol
-  const port = baseUrl.port
   const pathName = '/api/health'
+  const hostCandidates = new Set()
+  const portCandidates = new Set()
+  const envHost = envValues.HOST?.trim() || ''
+  const envPort = envValues.PORT?.trim() || ''
 
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-    const hostCandidates = ['localhost', '127.0.0.1', '[::1]']
+  const pushUrl = (candidate) => {
+    const serialized = candidate.toString()
+    if (!urls.some((url) => url.toString() === serialized)) {
+      urls.push(candidate)
+    }
+  }
 
-    for (const candidate of hostCandidates) {
-      const candidateUrl = new URL(`${protocol}//${candidate}${port ? `:${port}` : ''}${pathName}`)
-      if (!urls.some((url) => url.toString() === candidateUrl.toString())) {
-        urls.push(candidateUrl)
+  pushUrl(new URL(pathName, baseUrl))
+
+  if (isLoopbackHost(baseUrl.hostname) || isLoopbackHost(envHost)) {
+    hostCandidates.add('localhost')
+    hostCandidates.add('127.0.0.1')
+    hostCandidates.add('[::1]')
+
+    if (envHost && isLoopbackHost(envHost)) {
+      hostCandidates.add(formatUrlHost(envHost))
+    }
+
+    if (baseUrl.port) {
+      portCandidates.add(baseUrl.port)
+    }
+
+    if (envPort) {
+      portCandidates.add(String(envPort))
+    }
+
+    for (const port of portCandidates) {
+      for (const candidateHost of hostCandidates) {
+        pushUrl(new URL(`${protocol}//${candidateHost}${port ? `:${port}` : ''}${pathName}`))
       }
     }
   }
@@ -266,29 +292,48 @@ function getLoopbackHealthUrls(baseUrl) {
   return urls
 }
 
-async function waitForHealth(urls, timeoutMs) {
+async function checkHealthOnce(urls) {
+  for (const url of urls) {
+    const abortController = new AbortController()
+    const timeout = setTimeout(() => abortController.abort(), HEALTH_REQUEST_TIMEOUT_MS)
+
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: abortController.signal,
+      })
+
+      if (response.ok) {
+        return url
+      }
+    } catch {
+      // Server is still booting or another loopback host is in use.
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  return null
+}
+
+async function waitForHealth(urls, timeoutMs, options = {}) {
+  const exitWhen = typeof options.exitWhen === 'function' ? options.exitWhen : null
+  const exitGraceMs = Math.max(0, Number(options.exitGraceMs) || 0)
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < timeoutMs) {
-    for (const url of urls) {
-      const abortController = new AbortController()
-      const timeout = setTimeout(() => abortController.abort(), HEALTH_REQUEST_TIMEOUT_MS)
+    const healthyUrl = await checkHealthOnce(urls)
+    if (healthyUrl) {
+      return healthyUrl
+    }
 
-      try {
-        const response = await fetch(url, {
-          headers: { Accept: 'application/json' },
-          signal: abortController.signal,
-        })
-
-        if (response.ok) {
-          clearTimeout(timeout)
-          return url
-        }
-      } catch {
-        // Server is still booting or another loopback host is in use.
-      } finally {
-        clearTimeout(timeout)
+    if (exitWhen?.()) {
+      const remainingMs = timeoutMs - (Date.now() - startedAt)
+      if (exitGraceMs > 0 && remainingMs > 0) {
+        return waitForHealth(urls, Math.min(exitGraceMs, remainingMs))
       }
+
+      return null
     }
 
     await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_INTERVAL_MS))
@@ -984,13 +1029,29 @@ async function repairManagedRuntimeDatabaseUser(envValues) {
   )
 }
 
+function getSourceRuntimeTarget() {
+  return {
+    cwd: adminDir,
+    entrypoint: path.join(adminDir, 'bin', 'server.ts'),
+    kind: 'source',
+  }
+}
+
+function canRunSourceRuntime(target = getSourceRuntimeTarget()) {
+  if (!existsSync(target.entrypoint)) {
+    return false
+  }
+
+  if (path.extname(target.entrypoint) !== '.ts') {
+    return true
+  }
+
+  return existsSync(path.join(target.cwd, 'node_modules', 'ts-node-maintained'))
+}
+
 function getServerRuntimeTarget() {
   if (process.env.ROACHNET_USE_SOURCE === '1') {
-    return {
-      cwd: adminDir,
-      entrypoint: path.join(adminDir, 'bin', 'server.ts'),
-      kind: 'source',
-    }
+    return getSourceRuntimeTarget()
   }
 
   if (existsSync(buildEntrypointPath)) {
@@ -1009,11 +1070,7 @@ function getServerRuntimeTarget() {
     }
   }
 
-  return {
-    cwd: adminDir,
-    entrypoint: path.join(adminDir, 'bin', 'server.ts'),
-    kind: 'source',
-  }
+  return getSourceRuntimeTarget()
 }
 
 function openBrowser(url) {
@@ -2290,7 +2347,10 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
     }
   }
 
-  const healthyUrl = await waitForHealth(healthUrls, timeoutMs)
+  const healthyUrl = await waitForHealth(healthUrls, timeoutMs, {
+    exitWhen: () => serverHandle.hasExited(),
+    exitGraceMs: EXITED_SERVER_HEALTH_GRACE_MS,
+  })
   debugBoot('launch-server:health-result', {
     resolvedKind: resolvedTarget.kind,
     healthyUrl: healthyUrl?.toString() ?? null,
@@ -2424,7 +2484,7 @@ async function main() {
     return
   }
   const baseUrl = getBaseUrl(envValues)
-  const healthUrls = getLoopbackHealthUrls(baseUrl)
+  const healthUrls = getLoopbackHealthUrls(baseUrl, envValues)
   const requestedOpenPath = getRequestedOpenPath()
 
   const alreadyRunningUrl = await waitForHealth(healthUrls, 1_000)
@@ -2464,6 +2524,8 @@ async function main() {
 
   const serverLogFd = openSync(serverLogPath, 'a')
   const preferredTarget = getServerRuntimeTarget()
+  const sourceFallbackTarget = getSourceRuntimeTarget()
+  const sourceFallbackAvailable = canRunSourceRuntime(sourceFallbackTarget)
 
   let launchResult
 
@@ -2496,19 +2558,36 @@ async function main() {
   }
 
   if (!launchResult.healthyUrl && preferredTarget.kind === 'build' && process.env.ROACHNET_USE_SOURCE !== '1') {
-    debugBoot('main:fallback-to-source')
-    console.log('Compiled RoachNet runtime did not become healthy. Falling back to the source server...')
-    launchResult = await launchServer(
-      {
-        cwd: adminDir,
-        entrypoint: path.join(adminDir, 'bin', 'server.ts'),
-        kind: 'source',
-      },
-      envValues,
-      healthUrls,
-      SERVER_BOOT_TIMEOUT_MS,
-      serverLogFd
-    )
+    const recoveredHealthUrl = await waitForHealth(healthUrls, EXISTING_RUNTIME_RECONNECT_GRACE_MS)
+
+    if (recoveredHealthUrl) {
+      debugBoot('main:recovered-existing-runtime', {
+        recoveredHealthUrl: recoveredHealthUrl.toString(),
+      })
+      launchResult = {
+        child: null,
+        childExited: false,
+        healthyUrl: recoveredHealthUrl,
+        target: preferredTarget,
+      }
+    } else if (sourceFallbackAvailable) {
+      debugBoot('main:fallback-to-source')
+      console.log('Compiled RoachNet runtime did not become healthy. Falling back to the source server...')
+      launchResult = await launchServer(
+        sourceFallbackTarget,
+        envValues,
+        healthUrls,
+        SERVER_BOOT_TIMEOUT_MS,
+        serverLogFd
+      )
+    } else {
+      debugBoot('main:skip-source-fallback', {
+        sourceEntrypoint: sourceFallbackTarget.entrypoint,
+      })
+      console.warn(
+        'Compiled RoachNet runtime did not become healthy and no runnable source fallback is bundled with this install.'
+      )
+    }
   }
 
   if (!launchResult.healthyUrl) {

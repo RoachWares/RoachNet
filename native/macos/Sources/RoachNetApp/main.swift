@@ -15,7 +15,6 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
     case roachClaw = "RoachClaw"
     case maps = "Maps"
     case education = "Education"
-    case archives = "Archives"
     case knowledge = "Vault"
     case runtime = "Runtime"
 
@@ -29,7 +28,6 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
         case .roachClaw: return "sparkles"
         case .maps: return "map.fill"
         case .education: return "graduationcap.fill"
-        case .archives: return "shippingbox.fill"
         case .knowledge: return "books.vertical.fill"
         case .runtime: return "server.rack"
         }
@@ -52,9 +50,55 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
         case .roachClaw: return "Private AI"
         case .maps: return "Offline atlas"
         case .education: return "Course packs"
-        case .archives: return "Captured web"
         case .knowledge: return "Local shelf"
         case .runtime: return "Health and logs"
+        }
+    }
+
+    var prefersPinnedDetailSurface: Bool {
+        switch self {
+        case .dev:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+enum RuntimeSurfacePathKind {
+    case installRoot
+    case storageRoot
+    case vaultFolder
+    case logFile
+}
+
+enum RuntimeSurfacePathLabel {
+    static func displayValue(_ path: String?, kind: RuntimeSurfacePathKind) -> String {
+        let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            switch kind {
+            case .installRoot:
+                return "Contained app"
+            case .storageRoot:
+                return "storage"
+            case .vaultFolder:
+                return "Contained vault"
+            case .logFile:
+                return "Runtime log"
+            }
+        }
+
+        let lastPathComponent = URL(fileURLWithPath: trimmed).lastPathComponent
+
+        switch kind {
+        case .installRoot:
+            return "Contained app"
+        case .storageRoot:
+            return lastPathComponent.isEmpty ? "storage" : lastPathComponent
+        case .vaultFolder:
+            return "Contained vault"
+        case .logFile:
+            return lastPathComponent.isEmpty ? "Runtime log" : lastPathComponent
         }
     }
 }
@@ -229,6 +273,7 @@ private enum CommandPaletteTarget: Hashable {
     case refreshRuntime
     case launchGuide
     case revealPath(String)
+    case previewVaultFile(String)
     case importObsidianVault
     case stagePrompt(String)
     case togglePromptDictation
@@ -399,7 +444,7 @@ private extension CommandPaletteTarget {
         switch self {
         case .externalURL:
             return false
-        case .pane, .route, .service, .refreshRuntime, .launchGuide, .revealPath, .importObsidianVault, .stagePrompt, .togglePromptDictation, .toggleLatestReplySpeech, .saveLatestReplyToRoachBrain, .toggleContextScope, .setAllContext, .promoteLocalModel, .promoteCloudModel:
+        case .pane, .route, .service, .refreshRuntime, .launchGuide, .revealPath, .previewVaultFile, .importObsidianVault, .stagePrompt, .togglePromptDictation, .toggleLatestReplySpeech, .saveLatestReplyToRoachBrain, .toggleContextScope, .setAllContext, .promoteLocalModel, .promoteCloudModel:
             return true
         }
     }
@@ -1435,9 +1480,6 @@ final class WorkspaceModel: ObservableObject {
         config = RoachNetRepositoryLocator.readConfig()
         reconcilePreparedWorkspaceConfigIfNeeded()
         statusLine = setupCompleted ? "Setup complete." : "Setup still required."
-        if selectedPane == .archives {
-            selectedPane = .knowledge
-        }
         synchronizeSelectedChatModel()
         refreshRoachBrain()
         refreshImportedVaults()
@@ -1924,9 +1966,13 @@ final class WorkspaceModel: ObservableObject {
             return
         }
 
+        previewVaultURL(url, subtitle: file)
+    }
+
+    func previewVaultURL(_ url: URL, subtitle: String? = nil) {
         presentedVaultAsset = PresentedVaultAsset(
             title: url.lastPathComponent,
-            subtitle: file,
+            subtitle: subtitle ?? url.path,
             url: url
         )
         errorLine = nil
@@ -2592,7 +2638,7 @@ final class WorkspaceModel: ObservableObject {
 
         switch action {
         case "base-map-assets":
-            selectedPane = .maps
+            selectedPane = .knowledge
             await downloadBaseMapAssets()
         case "map-collection":
             guard let slug = queryValue("slug", in: components) else {
@@ -2600,7 +2646,7 @@ final class WorkspaceModel: ObservableObject {
                 statusLine = "Install link incomplete."
                 return
             }
-            selectedPane = .maps
+            selectedPane = .knowledge
             await downloadMapCollection(slug)
         case "education-tier":
             guard
@@ -2611,7 +2657,7 @@ final class WorkspaceModel: ObservableObject {
                 statusLine = "Install link incomplete."
                 return
             }
-            selectedPane = .education
+            selectedPane = .knowledge
             await downloadEducationTier(categorySlug: categorySlug, tierSlug: tierSlug)
         case "education-resource":
             guard
@@ -2622,7 +2668,7 @@ final class WorkspaceModel: ObservableObject {
                 statusLine = "Install link incomplete."
                 return
             }
-            selectedPane = .education
+            selectedPane = .knowledge
             await downloadEducationResource(categorySlug: categorySlug, resourceId: resourceId)
         case "direct-download":
             guard let remoteURL = queryValue("url", in: components) else {
@@ -2639,10 +2685,10 @@ final class WorkspaceModel: ObservableObject {
 
             switch fileType {
             case "zim", "knowledge", "education":
-                selectedPane = .education
+                selectedPane = .knowledge
                 await downloadRemoteZim(remoteURL)
             case "map", "pmtiles":
-                selectedPane = .maps
+                selectedPane = .knowledge
                 await downloadRemoteMap(remoteURL)
             default:
                 errorLine = "RoachNet couldn't tell what kind of content that App Store link should install."
@@ -2654,7 +2700,7 @@ final class WorkspaceModel: ObservableObject {
                 statusLine = "Install link incomplete."
                 return
             }
-            selectedPane = .education
+            selectedPane = .knowledge
             selectedWikipediaOptionId = optionId
             await applyWikipediaSelection()
         case "roachclaw-model":
@@ -2682,9 +2728,9 @@ final class WorkspaceModel: ObservableObject {
         case "roachclaw":
             selectedPane = .roachClaw
         case "maps":
-            selectedPane = .maps
+            selectedPane = .knowledge
         case "education":
-            selectedPane = .education
+            selectedPane = .knowledge
         case "archives":
             selectedPane = .knowledge
         case "vault":
@@ -3357,7 +3403,7 @@ private struct LaunchGuideVideoColumn: View {
                                 HStack(spacing: 8) {
                                     RoachTag("Home", accent: RoachPalette.green)
                                     RoachTag("RoachClaw", accent: RoachPalette.magenta)
-                                    RoachTag("Maps", accent: RoachPalette.cyan)
+                                    RoachTag("Vault Shelves", accent: RoachPalette.cyan)
                                     RoachTag("Runtime", accent: RoachPalette.bronze)
                                 }
                             }
@@ -3370,7 +3416,7 @@ private struct LaunchGuideVideoColumn: View {
                                 Text("What it shows")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
-                                Text("Home, RoachClaw, Easy Setup, map packs, reference shelves, runtime health, and the command bar.")
+                                Text("Home, RoachClaw, Easy Setup, vault shelves, runtime health, and the command bar.")
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(RoachPalette.muted)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -3432,8 +3478,8 @@ private struct LaunchGuideSheet: View {
         ),
         .init(
             id: "field",
-            title: "Maps and vault",
-            detail: "Stage map packs, queue course bundles, and keep reference content grouped inside the same install.",
+            title: "Vault shelves",
+            detail: "Stage atlas packs, queue study bundles, and keep captured or reference material inside one living shelf.",
             systemImage: "map.fill"
         ),
         .init(
@@ -3610,8 +3656,8 @@ private struct RootWorkspaceView: View {
     @State private var sidebarCollapsed = false
     @State private var homeMenuSection: HomeMenuSection = .commandDeck
     @State private var didScheduleInitialRefresh = false
-    private let topTitlebarInset: CGFloat = 30
-    private let surfacePadding: CGFloat = 16
+    private let topTitlebarInset: CGFloat = 18
+    private let surfacePadding: CGFloat = 8
     private let shellSpring = Animation.spring(response: 0.42, dampingFraction: 0.86, blendDuration: 0.12)
 
     private var recentCommandPaletteIDs: [String] {
@@ -3630,34 +3676,35 @@ private struct RootWorkspaceView: View {
         case .suite:
             return "Installed surfaces, staged modules, and the next thing to open."
         case .home:
-            return "Contained, quiet, and still there when the network is not."
+            return "Bring the important stuff home and keep it there."
         case .dev:
-            return "Projects, code, shell, and assist in one desk."
+            return "A quieter desk for code, the shell, and the next real edit."
         case .roachClaw:
             return "A real chat lane first. Local by default, cloud only when it earns the trip."
         case .maps:
-            return "Atlas packs and route references that still work when the network drops."
+            return "Notes, captures, atlas packs, study shelves, and saved media under one library."
         case .education:
-            return "Course packs, docs, and reference shelves staged into the same root."
-        case .archives:
-            return "Captured sites now stay folded into the wider vault lane."
+            return "Notes, captures, atlas packs, study shelves, and saved media under one library."
         case .knowledge:
-            return "Notes, captures, books, media, and installed packs under one shelf."
+            return "Notes, captures, atlas packs, study shelves, books, media, and installed packs under one shelf."
         case .runtime:
             return "The stack, the health, the sync state, and the logs in one place."
         }
     }
 
-    private var activePane: WorkspacePane {
-        if model.selectedPane == .archives {
+    private func displayedPane(for pane: WorkspacePane?) -> WorkspacePane {
+        switch pane {
+        case .maps?, .education?:
             return .knowledge
-        }
-
-        guard let selectedPane = model.selectedPane, visiblePanes.contains(selectedPane) else {
+        case let pane? where visiblePanes.contains(pane):
+            return pane
+        default:
             return .home
         }
+    }
 
-        return selectedPane
+    private var activePane: WorkspacePane {
+        displayedPane(for: model.selectedPane)
     }
 
     var body: some View {
@@ -3667,10 +3714,10 @@ private struct RootWorkspaceView: View {
             let isVeryTightShell = proxy.size.width < 900 || proxy.size.height < 680
             let autoCollapsed = proxy.size.width < 1080
             let effectiveSidebarCollapsed = sidebarCollapsed || autoCollapsed
-            let shellPadding = isVeryTightShell ? 10.0 : (isTightShell ? 12.0 : surfacePadding)
-            let verticalInset = proxy.size.height < 700 ? 16.0 : (isTightShell ? 22.0 : topTitlebarInset)
-            let sidebarWidth = effectiveSidebarCollapsed ? (isVeryTightShell ? 68.0 : 74.0) : (isTightShell ? 276.0 : 304.0)
-            let shellSpacing = effectiveSidebarCollapsed ? 8.0 : (isTightShell ? 14.0 : 18.0)
+            let shellPadding = isVeryTightShell ? 6.0 : (isTightShell ? 7.0 : surfacePadding)
+            let verticalInset = proxy.size.height < 700 ? 10.0 : (isTightShell ? 14.0 : topTitlebarInset)
+            let sidebarWidth = effectiveSidebarCollapsed ? (isVeryTightShell ? 64.0 : 70.0) : (isTightShell ? 268.0 : 292.0)
+            let shellSpacing = effectiveSidebarCollapsed ? 8.0 : (isTightShell ? 12.0 : 16.0)
 
             ZStack {
                 RoachBackground()
@@ -3693,10 +3740,10 @@ private struct RootWorkspaceView: View {
                         }
                     }
                 }
-                .frame(maxWidth: 1440, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(shellPadding)
                 .padding(.top, verticalInset)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
                 .animation(shellSpring, value: effectiveSidebarCollapsed)
                 .animation(shellSpring, value: activePane)
 
@@ -3725,11 +3772,9 @@ private struct RootWorkspaceView: View {
             }
         }
         .task {
-            if model.selectedPane == .archives {
+            if model.selectedPane == .maps || model.selectedPane == .education {
                 model.selectedPane = .knowledge
-            }
-
-            if !visiblePanes.contains(model.selectedPane ?? .home) {
+            } else if !visiblePanes.contains(model.selectedPane ?? .home) {
                 model.selectedPane = .home
             }
 
@@ -3777,7 +3822,10 @@ private struct RootWorkspaceView: View {
             if let asset = model.presentedVaultAsset {
                 VaultPreviewSurfaceView(
                     asset: asset,
-                    onClose: { model.presentedVaultAsset = nil }
+                    onClose: { model.presentedVaultAsset = nil },
+                    onOpenAsset: { url in
+                        model.previewVaultURL(url)
+                    }
                 )
             }
         }
@@ -4079,57 +4127,71 @@ private struct RootWorkspaceView: View {
 
     @ViewBuilder
     private func detailPane(isTight: Bool) -> some View {
-        RoachPanel {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: isTight ? 16 : 18) {
-                    headerBar(isTight: isTight)
-
-                    if let errorLine = model.errorLine {
-                        RoachNotice(title: "Runtime notice", detail: errorLine)
+        GeometryReader { proxy in
+            RoachPanel {
+                if model.setupCompleted && activePane.prefersPinnedDetailSurface {
+                    detailPaneStack(isTight: isTight)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(minHeight: proxy.size.height, alignment: .topLeading)
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        detailPaneStack(isTight: isTight)
                     }
-
-                    if model.setupCompleted && activePane == .home {
-                        commandTray(isTight: isTight)
-                    }
-
-                    if model.setupCompleted {
-                        Group {
-                            switch activePane {
-                            case .suite, .home:
-                                home
-                            case .dev:
-                                DevWorkspaceView(model: model)
-                            case .roachClaw:
-                                roachClaw
-                            case .maps:
-                                maps
-                            case .education:
-                                education
-                            case .archives:
-                                knowledge
-                            case .knowledge:
-                                knowledge
-                            case .runtime:
-                                runtime
-                            }
-                        }
-                        .id(activePane.rawValue)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    } else {
-                        lockedState
-                            .id("locked")
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
-                .padding(.bottom, 12)
-                .frame(maxWidth: isTight ? 1180 : 1260, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(shellSpring, value: activePane)
-                .animation(shellSpring, value: model.setupCompleted)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func detailPaneStack(isTight: Bool) -> some View {
+        VStack(alignment: .leading, spacing: isTight ? 16 : 18) {
+            headerBar(isTight: isTight)
+
+            if let errorLine = model.errorLine {
+                RoachNotice(title: "Runtime notice", detail: errorLine)
+            }
+
+            if model.setupCompleted && activePane == .home {
+                commandTray(isTight: isTight)
+            }
+
+            detailPaneSurface
+        }
+        .padding(.bottom, 8)
+        .frame(maxWidth: isTight ? 1280 : 1480, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(shellSpring, value: activePane)
+        .animation(shellSpring, value: model.setupCompleted)
+    }
+
+    @ViewBuilder
+    private var detailPaneSurface: some View {
+        if model.setupCompleted {
+            Group {
+                switch activePane {
+                case .suite, .home:
+                    home
+                case .dev:
+                    DevWorkspaceView(model: model)
+                case .roachClaw:
+                    roachClaw
+                case .maps, .education:
+                    knowledge
+                case .knowledge:
+                    knowledge
+                case .runtime:
+                    runtime
+                }
+            }
+            .id(activePane.rawValue)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        } else {
+            lockedState
+                .id("locked")
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
     }
 
     private func headerBar(isTight: Bool) -> some View {
@@ -4139,7 +4201,7 @@ private struct RootWorkspaceView: View {
         let runtimeAccent = model.snapshot == nil ? RoachPalette.warning : RoachPalette.green
         let accountTitle = model.snapshot?.account.linked == true ? "Account linked" : "Account local"
         let accountAccent = model.snapshot?.account.linked == true ? RoachPalette.cyan : RoachPalette.bronze
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 10) {
             responsiveBar {
                 if activePane == .roachClaw {
                     HStack(alignment: .center, spacing: 14) {
@@ -4227,11 +4289,16 @@ private struct RootWorkspaceView: View {
                     RoachSectionHeader("Suite", title: "Installed surfaces, not browser tabs.", detail: "Open what is already on this machine, then stage the next useful module in the same app.")
 
                     LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
+                        suiteCard(title: "Home", detail: "The contained shell and the next useful move.", value: "Status, command bar, and launch deck", pane: .home)
                         suiteCard(title: "Dev", detail: "Native coding, shell, and secrets surfaces.", value: "Projects and AI assist", pane: .dev)
-                        suiteCard(title: "Maps", detail: "Offline regions and route assets.", value: "\(model.snapshot?.mapCollections.count ?? 0) collections", pane: .maps)
-                        suiteCard(title: "Education", detail: "Wikipedia and curated reference packs.", value: educationSummary, pane: .education)
-                        suiteCard(title: "Vault", detail: "Files, captured sites, and imported note shelves.", value: "\(model.snapshot?.knowledgeFiles.count ?? 0) files · \(model.snapshot?.siteArchives.count ?? 0) archives", pane: .knowledge)
+                        suiteCard(
+                            title: "Vault",
+                            detail: "Files, captured sites, imported notes, atlas packs, and study shelves.",
+                            value: "\(model.snapshot?.knowledgeFiles.count ?? 0) files · \(model.snapshot?.siteArchives.count ?? 0) captures · \(model.snapshot?.mapCollections.count ?? 0) map packs",
+                            pane: .knowledge
+                        )
                         suiteCard(title: "RoachClaw", detail: "Private AI, local by default.", value: roachClawSummary, pane: .roachClaw)
+                        suiteCard(title: "Runtime", detail: "Health, logs, and service state.", value: providerSummary, pane: .runtime)
                     }
 
                     LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
@@ -4325,8 +4392,8 @@ private struct RootWorkspaceView: View {
 
                             RoachSectionHeader(
                                 "Home",
-                                title: "Home Is Where The Roach Is!",
-                                detail: "Dev, RoachClaw, maps, vault, and sync stay in one place instead of smearing across the Mac."
+                                title: "Bring the important stuff home.",
+                                detail: "RoachClaw, the vault, the dev desk, and the runtime stay under one root instead of dissolving into tabs, dashboards, and drift."
                             )
                         }
                     } actions: {
@@ -4371,8 +4438,8 @@ private struct RootWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     RoachSectionHeader(
                         "Command Grid",
-                        title: "Open what matters next.",
-                        detail: "Core surfaces, installable modules, and the next useful move stay in one grid."
+                        title: "Open the next thing that matters.",
+                        detail: "Core surfaces, installable shelves, and the next useful move stay in one grid."
                     )
 
                     homeMenuStrip(
@@ -4427,8 +4494,8 @@ private struct RootWorkspaceView: View {
                         responsiveBar {
                             RoachSectionHeader(
                                 "Next Up",
-                                title: "Finish the missing pieces without guessing.",
-                                detail: "RoachNet calls out the blockers instead of sending you digging."
+                                title: "Bring the missing pieces home without guessing.",
+                                detail: "RoachNet calls out the blockers instead of sending you hunting through setup cruft."
                             )
                         } actions: {
                             Button("Easy Setup") {
@@ -4451,7 +4518,7 @@ private struct RootWorkspaceView: View {
                     Text("Contained desktop build v\(bundleVersion)")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
-                    Text("Home, Dev, RoachClaw, maps, vault, and the runtime all stay under one root.")
+                    Text("AI, archive, the dev desk, and the runtime stay under one root.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }
@@ -4512,7 +4579,7 @@ private struct RootWorkspaceView: View {
                 RoachSectionHeader(
                     "At A Glance",
                     title: "What matters, up front.",
-                        detail: "Read the machine, spot the next move, keep going."
+                        detail: "Read the machine, see the blockers, and keep moving."
                 )
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -4608,7 +4675,7 @@ private struct RootWorkspaceView: View {
 
             roachClawOverviewPanel(roachClaw: roachClaw, providers: providers)
 
-            LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 16) {
                 RoachInsetPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -4915,7 +4982,7 @@ private struct RootWorkspaceView: View {
                         cloudModels: cloudModels
                     )
                 }
-                .frame(width: 344, alignment: .topLeading)
+                .frame(width: 320, alignment: .topLeading)
             }
 
             VStack(alignment: .leading, spacing: 14) {
@@ -4951,8 +5018,8 @@ private struct RootWorkspaceView: View {
         let latestPrompt = model.chatLines.last(where: { $0.role == "User" })?.text
         let threadTitle = latestPrompt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? latestPrompt!
-            : "New conversation"
-        let laneTitle = model.hasCloudChatFallback ? "Hosted lane open" : "Local lane first"
+            : "Fresh thread"
+        let laneTitle = model.hasCloudChatFallback ? "Web lane active" : "Private lane first"
 
         return RoachInsetPanel {
             VStack(alignment: .leading, spacing: 16) {
@@ -4992,8 +5059,8 @@ private struct RootWorkspaceView: View {
                                 }
 
                                 Text(hasMessages
-                                     ? "This lane stays chat-first. Routing, voice, and memory controls stay in the side rail so the thread does not collapse into a dashboard."
-                                     : "Your account-scoped thread stays here, the local lane stays opt-in, and the work starts with one clear ask.")
+                                     ? "This lane stays chat-first. Threads stay in front while routing, voice, and memory stay one move off to the side."
+                                     : "Your thread stays with this workbench. Pair the private local lane when the machine should answer first.")
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(RoachPalette.muted)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -5041,8 +5108,8 @@ private struct RootWorkspaceView: View {
                             }
 
                             Text(hasMessages
-                                 ? "This lane stays chat-first. Routing, voice, and memory controls stay in the side rail so the thread does not collapse into a dashboard."
-                                 : "Your account-scoped thread stays here, the local lane stays opt-in, and the work starts with one clear ask.")
+                                 ? "This lane stays chat-first. Threads stay in front while routing, voice, and memory stay one move off to the side."
+                                 : "Your thread stays with this workbench. Pair the private local lane when the machine should answer first.")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(RoachPalette.muted)
 
@@ -5090,7 +5157,7 @@ private struct RootWorkspaceView: View {
                                         .font(.system(size: 18, weight: .bold, design: .rounded))
                                         .foregroundStyle(RoachPalette.text)
                                         .lineLimit(1)
-                                    Text("Recent turns stay readable here while the route and voice tools live off to the side.")
+                                    Text("Recent turns stay readable here while route, context, and voice stay one move away.")
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundStyle(RoachPalette.muted)
                                 }
@@ -5098,8 +5165,8 @@ private struct RootWorkspaceView: View {
                                 Spacer(minLength: 12)
 
                                 HStack(spacing: 8) {
-                                    RoachTag("Account-scoped", accent: RoachPalette.magenta)
-                                    RoachTag(model.hasCloudChatFallback ? "Hosted web lane" : "Contained local lane", accent: model.hasCloudChatFallback ? RoachPalette.cyan : RoachPalette.green)
+                                    RoachTag("Thread anchored", accent: RoachPalette.magenta)
+                                    RoachTag(model.hasCloudChatFallback ? "Web lane" : "Private lane", accent: model.hasCloudChatFallback ? RoachPalette.cyan : RoachPalette.green)
                                 }
                             }
 
@@ -5107,12 +5174,12 @@ private struct RootWorkspaceView: View {
                                 Text(threadTitle)
                                     .font(.system(size: 18, weight: .bold, design: .rounded))
                                     .foregroundStyle(RoachPalette.text)
-                                Text("Recent turns stay readable here while the route and voice tools live off to the side.")
+                                Text("Recent turns stay readable here while route, context, and voice stay one move away.")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(RoachPalette.muted)
                                 HStack(spacing: 8) {
-                                    RoachTag("Account-scoped", accent: RoachPalette.magenta)
-                                    RoachTag(model.hasCloudChatFallback ? "Hosted web lane" : "Contained local lane", accent: model.hasCloudChatFallback ? RoachPalette.cyan : RoachPalette.green)
+                                    RoachTag("Thread anchored", accent: RoachPalette.magenta)
+                                    RoachTag(model.hasCloudChatFallback ? "Web lane" : "Private lane", accent: model.hasCloudChatFallback ? RoachPalette.cyan : RoachPalette.green)
                                 }
                             }
                         }
@@ -5125,7 +5192,7 @@ private struct RootWorkspaceView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(minHeight: 360, idealHeight: 420, maxHeight: 500)
+                        .frame(minHeight: 390, idealHeight: 460, maxHeight: 560)
                         .padding(14)
                         .background(
                             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -5163,16 +5230,16 @@ private struct RootWorkspaceView: View {
                                     Text("Start with one clear ask.")
                                         .font(.system(size: 20, weight: .bold, design: .rounded))
                                         .foregroundStyle(RoachPalette.text)
-                                    Text("Use a starter prompt or drop straight into the composer. The thread stays with RoachNet instead of dissolving into browser tabs and stray notes.")
+                                    Text("Use a starter prompt or drop straight into the composer. Keep the thread here instead of letting it dissolve into stray tabs and notes.")
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(RoachPalette.muted)
                                 }
                             }
 
                             HStack(spacing: 8) {
-                                RoachTag("Account-scoped chat", accent: RoachPalette.magenta)
-                                RoachTag("Local-first route", accent: RoachPalette.green)
-                                RoachTag("Memory stays close", accent: RoachPalette.cyan)
+                                RoachTag("Thread-first lane", accent: RoachPalette.magenta)
+                                RoachTag("Private lane first", accent: RoachPalette.green)
+                                RoachTag("Context stays gated", accent: RoachPalette.cyan)
                             }
                         }
 
@@ -5213,8 +5280,8 @@ private struct RootWorkspaceView: View {
                     }
 
                     Text(model.hasCloudChatFallback
-                         ? "Hosted RoachClaw stays ready from anywhere. Promote the contained model lane when the private route should answer first."
-                         : "RoachClaw stays local-first. Arm a hosted fallback later if you actually need a wider lane.")
+                         ? "The web lane stays ready from anywhere. Promote the private local lane when this machine should answer first."
+                         : "RoachClaw stays private-first. Open a wider web lane only when the thread genuinely needs it.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }
@@ -5674,13 +5741,13 @@ private struct RootWorkspaceView: View {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
                     responsiveBar {
-                        RoachSectionHeader("Maps", title: "Offline regions, ready to stage.", detail: "Download region packs, install the base atlas, and open the full map surface when you need it.")
+                        RoachSectionHeader("Atlas Shelf", title: "Offline regions live inside Vault now.", detail: "Download region packs, install the base atlas, and keep route references on the same shelf as notes, captures, and media.")
                     } actions: {
-                        Button("Open Full Maps") {
-                            Task { await model.openRoute("/maps", title: "Maps") }
+                        Button("Open Atlas View") {
+                            Task { await model.openRoute("/maps", title: "Atlas Shelf") }
                         }
                         .buttonStyle(RoachSecondaryButtonStyle())
-                        Button(model.activeActions.contains("maps-base-assets") ? "Installing..." : "Install Base Assets") {
+                        Button(model.activeActions.contains("maps-base-assets") ? "Installing..." : "Install Atlas Base") {
                             Task { await model.downloadBaseMapAssets() }
                         }
                         .buttonStyle(RoachPrimaryButtonStyle())
@@ -5709,34 +5776,37 @@ private struct RootWorkspaceView: View {
             }
 
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
-                ForEach(collections.prefix(8)) { collection in
-                    RoachInsetPanel {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(collection.name)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(RoachPalette.text)
-                            Text(collection.description ?? "Offline regional map pack")
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundStyle(RoachPalette.muted)
-                            RoachStatusRow(
-                                title: "Coverage",
-                                value: "\(collection.installed_count ?? 0) / \(collection.total_count ?? collection.resources.count) ready",
-                                accent: RoachPalette.green
-                            )
-                            Button(
-                                (collection.installed_count ?? 0) >= (collection.total_count ?? collection.resources.count)
-                                    ? "Installed"
-                                    : (model.activeActions.contains("map-\(collection.slug)") ? "Queueing..." : "Download Collection")
-                            ) {
-                                Task { await model.downloadMapCollection(collection.slug) }
-                            }
-                            .buttonStyle(RoachPrimaryButtonStyle())
-                            .disabled(
-                                model.activeActions.contains("map-\(collection.slug)") ||
-                                (collection.installed_count ?? 0) >= (collection.total_count ?? collection.resources.count)
-                            )
+                ForEach(collections) { collection in
+                    let installedCount = collection.installed_count ?? 0
+                    let totalCount = collection.total_count ?? collection.resources.count
+                    let fullyInstalled = totalCount > 0 && installedCount >= totalCount
+                    let actionKey = "map-\(collection.slug)"
+
+                    Button {
+                        if fullyInstalled {
+                            Task { await model.openRoute("/maps", title: collection.name) }
+                        } else {
+                            Task { await model.downloadMapCollection(collection.slug) }
                         }
+                    } label: {
+                        VaultVirtualShelfCard(
+                            title: collection.name,
+                            detail: collection.description ?? "Offline regional map pack ready to live on the atlas shelf.",
+                            pathLabel: "Vault / Atlas / \(collection.slug)",
+                            kindLabel: "Atlas Pack",
+                            actionLabel: fullyInstalled
+                                ? "Open atlas"
+                                : (model.activeActions.contains(actionKey) ? "Queueing..." : "Add to Vault"),
+                            accent: RoachPalette.cyan,
+                            fallbackSystemName: "map.fill",
+                            extraTags: [
+                                "\(installedCount) / \(totalCount) ready",
+                                fullyInstalled ? "Ready on shelf" : "Download to Vault",
+                            ]
+                        )
                     }
+                    .buttonStyle(RoachCardButtonStyle())
+                    .disabled(model.activeActions.contains(actionKey))
                 }
             }
         }
@@ -5753,10 +5823,10 @@ private struct RootWorkspaceView: View {
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 16) {
                     responsiveBar {
-                        RoachSectionHeader("Education", title: "Wikipedia and reference packs.", detail: "Pick a Wikipedia bundle, queue recommended content tiers, or open the full docs and setup surfaces.")
+                        RoachSectionHeader("Study Shelf", title: "Wikipedia and reference packs stay in the library.", detail: "Pick a Wikipedia bundle, queue recommended content tiers, and keep docs or setup close without splitting them into another lane.")
                     } actions: {
-                        Button("Open Docs") {
-                            Task { await model.openRoute("/docs/home", title: "Docs") }
+                        Button("Open Study View") {
+                            Task { await model.openRoute("/docs/home", title: "Study Shelf") }
                         }
                         .buttonStyle(RoachSecondaryButtonStyle())
                         Button("Easy Setup") {
@@ -5769,24 +5839,6 @@ private struct RootWorkspaceView: View {
                         RoachInfoPill(title: "Wikipedia", value: selectedWikipediaName ?? "Not selected")
                         RoachInfoPill(title: "Options", value: "\(wikipedia?.options.count ?? 0) packages")
                         RoachInfoPill(title: "Collections", value: "\(categories.count) categories")
-                    }
-
-                    if let wikipedia {
-                        HStack(spacing: 12) {
-                            Picker("Wikipedia", selection: $model.selectedWikipediaOptionId) {
-                                ForEach(wikipedia.options) { option in
-                                    Text(option.name).tag(option.id)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .frame(maxWidth: 360, alignment: .leading)
-
-                            Button(model.activeActions.contains("wikipedia-\(model.selectedWikipediaOptionId)") ? "Applying..." : "Apply Wikipedia") {
-                                Task { await model.applyWikipediaSelection() }
-                            }
-                            .buttonStyle(RoachPrimaryButtonStyle())
-                            .disabled(model.activeActions.contains("wikipedia-\(model.selectedWikipediaOptionId)"))
-                        }
                     }
 
                     if !activeEducationDownloads.isEmpty {
@@ -5810,81 +5862,78 @@ private struct RootWorkspaceView: View {
                 }
             }
 
-            LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
-                ForEach(categories.prefix(6)) { category in
-                    RoachInsetPanel {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(category.name)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(RoachPalette.text)
-                            Text(category.description ?? "Curated offline education pack")
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundStyle(RoachPalette.muted)
-                            Text(category.tiers.first(where: { $0.recommended == true })?.name ?? category.tiers.first?.name ?? "Tiered")
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(RoachPalette.green)
-                            let recommendedTier = category.tiers.first(where: { $0.recommended == true }) ?? category.tiers.first
-                            Button(
-                                model.activeActions.contains("education-\(category.slug)-\(recommendedTier?.slug ?? "")")
-                                    ? "Queueing..."
-                                    : "Download Recommended Tier"
-                            ) {
-                                if let recommendedTier {
-                                    Task {
-                                        await model.downloadEducationTier(
-                                            categorySlug: category.slug,
-                                            tierSlug: recommendedTier.slug
-                                        )
-                                    }
-                                }
+            if let wikipedia {
+                LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 16) {
+                    ForEach(wikipedia.options) { option in
+                        let actionKey = "wikipedia-\(option.id)"
+                        let isCurrentSelection = wikipedia.currentSelection?.optionId == option.id
+
+                        Button {
+                            if isCurrentSelection {
+                                Task { await model.openRoute("/docs/home", title: option.name) }
+                            } else {
+                                model.selectedWikipediaOptionId = option.id
+                                Task { await model.applyWikipediaSelection() }
                             }
-                            .buttonStyle(RoachPrimaryButtonStyle())
-                            .disabled(recommendedTier == nil || model.activeActions.contains("education-\(category.slug)-\(recommendedTier?.slug ?? "")"))
+                        } label: {
+                            VaultVirtualShelfCard(
+                                title: option.name,
+                                detail: option.description ?? "Wikipedia bundle ready for the study shelf.",
+                                pathLabel: "Vault / Wikipedia / \(option.id)",
+                                kindLabel: "Wikipedia",
+                                actionLabel: isCurrentSelection
+                                    ? "Open study lane"
+                                    : (model.activeActions.contains(actionKey) ? "Applying..." : "Bring to Vault"),
+                                accent: isCurrentSelection ? RoachPalette.magenta : RoachPalette.cyan,
+                                fallbackSystemName: "globe.americas.fill",
+                                extraTags: [
+                                    isCurrentSelection ? "Current selection" : "Available",
+                                    "Study shelf",
+                                ]
+                            )
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    private var archives: some View {
-        let archives = model.snapshot?.siteArchives ?? []
-
-        return VStack(alignment: .leading, spacing: 18) {
-            RoachInsetPanel {
-                VStack(alignment: .leading, spacing: 16) {
-                    responsiveBar {
-                        RoachSectionHeader("Archives", title: "Saved sites stay close.", detail: "Open the offline web app manager or review mirrored sites already on disk.")
-                    } actions: {
-                        Button("Open Offline Web Apps") {
-                            Task { await model.openRoute("/site-archives", title: "Offline Web Apps") }
-                        }
-                        .buttonStyle(RoachSecondaryButtonStyle())
+                        .buttonStyle(RoachCardButtonStyle())
+                        .disabled(model.activeActions.contains(actionKey))
                     }
                 }
             }
 
-            if archives.isEmpty {
-                RoachInsetPanel {
-                    Text("No archived sites yet.")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(RoachPalette.muted)
-                }
-            } else {
-                LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
-                    ForEach(archives.prefix(12)) { archive in
-                        RoachInsetPanel {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(archive.title ?? archive.slug)
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(RoachPalette.text)
-                                Text(archive.url ?? archive.slug)
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(RoachPalette.muted)
-                                    .lineLimit(2)
+            LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 16) {
+                ForEach(categories) { category in
+                    let recommendedTier = category.tiers.first(where: { $0.recommended == true }) ?? category.tiers.first
+                    let installedTier = category.tiers.first(where: { $0.slug == category.installedTierSlug })
+                    let actionKey = "education-\(category.slug)-\(recommendedTier?.slug ?? "")"
+
+                    Button {
+                        if installedTier != nil {
+                            Task { await model.openRoute("/docs/home", title: category.name) }
+                        } else if let recommendedTier {
+                            Task {
+                                await model.downloadEducationTier(
+                                    categorySlug: category.slug,
+                                    tierSlug: recommendedTier.slug
+                                )
                             }
                         }
+                    } label: {
+                        VaultVirtualShelfCard(
+                            title: category.name,
+                            detail: category.description ?? "Curated offline education pack ready for the study shelf.",
+                            pathLabel: "Vault / Study / \(category.slug) / \((installedTier ?? recommendedTier)?.slug ?? "queue")",
+                            kindLabel: "Study Shelf",
+                            actionLabel: installedTier != nil
+                                ? "Open study lane"
+                                : (model.activeActions.contains(actionKey) ? "Queueing..." : "Download recommended"),
+                            accent: RoachPalette.green,
+                            fallbackSystemName: "books.vertical.fill",
+                            extraTags: [
+                                installedTier?.name ?? recommendedTier?.name ?? "Tiered",
+                                installedTier != nil ? "Ready on shelf" : "Recommended tier",
+                            ]
+                        )
                     }
+                    .buttonStyle(RoachCardButtonStyle())
+                    .disabled(recommendedTier == nil || model.activeActions.contains(actionKey))
                 }
             }
         }
@@ -5893,6 +5942,8 @@ private struct RootWorkspaceView: View {
     private var knowledge: some View {
         let files = model.snapshot?.knowledgeFiles ?? []
         let archives = model.snapshot?.siteArchives ?? []
+        let mapCollectionCount = model.snapshot?.mapCollections.count ?? 0
+        let educationCategoryCount = model.snapshot?.educationCategories.count ?? 0
         let installedMapCollections = (model.snapshot?.mapCollections ?? []).filter { ($0.installed_count ?? 0) > 0 }
         let installedEducationCategories = (model.snapshot?.educationCategories ?? []).filter { category in
             guard let installedTierSlug = category.installedTierSlug else { return false }
@@ -5904,7 +5955,8 @@ private struct RootWorkspaceView: View {
         let installedModelNames = model.snapshot?.installedModels.map(\.name) ?? []
         let importedVaults = model.importedObsidianVaults
         let selectedImportedVault = importedVaults.first(where: { $0.id == model.selectedImportedVaultID }) ?? importedVaults.first
-        let importedVaultNotes = selectedImportedVault.map { VaultWorkspaceStore.noteURLs(in: $0, limit: 12) } ?? []
+        let activeImportedVaultName = selectedImportedVault?.name ?? "No live markdown vault selected"
+        let importedVaultNotes = selectedImportedVault.map { VaultWorkspaceStore.noteURLs(in: $0, limit: nil) } ?? []
 
         return VStack(alignment: .leading, spacing: 18) {
             RoachInsetPanel {
@@ -5925,6 +5977,41 @@ private struct RootWorkspaceView: View {
                         RoachTag("Media preview", accent: RoachPalette.cyan)
                         RoachTag("Shelf view", accent: RoachPalette.green)
                         RoachTag("\(archives.count) captured sites", accent: RoachPalette.cyan)
+                        RoachTag("\(mapCollectionCount) atlas packs", accent: RoachPalette.cyan)
+                        RoachTag("\(educationCategoryCount) study shelves", accent: RoachPalette.green)
+                    }
+                }
+            }
+
+            RoachInsetPanel {
+                VStack(alignment: .leading, spacing: 14) {
+                    RoachSectionHeader(
+                        "Shelf Pulse",
+                        title: "The living library stays readable at a glance.",
+                        detail: "See what is already on the shelf before you dive into notes, captures, atlases, study packs, or media."
+                    )
+
+                    LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
+                        RoachMetricCard(
+                            label: "Indexed",
+                            value: "\(files.count)",
+                            detail: files.isEmpty ? "No files on shelf yet" : "Files ready to open in place"
+                        )
+                        RoachMetricCard(
+                            label: "Imported vaults",
+                            value: "\(importedVaults.count)",
+                            detail: importedVaults.isEmpty ? activeImportedVaultName : "\(activeImportedVaultName) is active"
+                        )
+                        RoachMetricCard(
+                            label: "Captured web",
+                            value: "\(archives.count)",
+                            detail: archives.isEmpty ? "No mirrored sites yet" : "Offline site mirrors are shelved here"
+                        )
+                        RoachMetricCard(
+                            label: "Installed packs",
+                            value: "\(installedMapCollections.count + installedEducationCategories.count + (installedWikipediaOption == nil ? 0 : 1) + installedModelNames.count)",
+                            detail: "Atlas, study, Wikipedia, and model packs stay inside Vault"
+                        )
                     }
                 }
             }
@@ -5945,8 +6032,8 @@ private struct RootWorkspaceView: View {
                             .buttonStyle(RoachSecondaryButtonStyle())
                         }
 
-                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
-                            ForEach(archives.prefix(12)) { archive in
+                        LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 12) {
+                            ForEach(archives) { archive in
                                 Button {
                                     Task { await model.openRoute("/site-archives", title: "Offline Web Apps") }
                                 } label: {
@@ -5954,8 +6041,8 @@ private struct RootWorkspaceView: View {
                                         title: archive.title ?? archive.slug,
                                         detail: archive.url ?? "Captured site mirror already staged in the contained web lane.",
                                         pathLabel: "Vault / Captured Web / \(archive.slug)",
-                                        kindLabel: "Archived Site",
-                                        actionLabel: "Open archive lane",
+                                        kindLabel: "Captured Site",
+                                        actionLabel: "Open Offline Web Apps",
                                         accent: RoachPalette.cyan,
                                         fallbackSystemName: "globe.badge.chevron.backward",
                                         extraTags: ["Contained mirror", "Vault lane"]
@@ -5986,51 +6073,27 @@ private struct RootWorkspaceView: View {
                             }
                         }
 
-                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
+                        LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 12) {
                             ForEach(importedVaults) { vault in
                                 Button {
                                     model.selectedImportedVaultID = vault.id
                                 } label: {
-                                    RoachInsetPanel {
-                                        VStack(alignment: .leading, spacing: 14) {
-                                            HStack(alignment: .top) {
-                                                VStack(alignment: .leading, spacing: 8) {
-                                                    RoachTag(
-                                                        VaultWorkspaceStore.isObsidianCompatible(vault: vault) ? "Obsidian live link" : "Markdown shelf",
-                                                        accent: VaultWorkspaceStore.isObsidianCompatible(vault: vault) ? RoachPalette.magenta : RoachPalette.cyan
-                                                    )
-
-                                                    Text(vault.name)
-                                                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                                                        .foregroundStyle(RoachPalette.text)
-                                                        .lineLimit(2)
-                                                }
-
-                                                Spacer(minLength: 12)
-
-                                                Text("\(VaultWorkspaceStore.noteCount(in: vault)) notes")
-                                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                                    .foregroundStyle(RoachPalette.green)
+                                    VaultVirtualShelfCard(
+                                        title: vault.name,
+                                        detail: "RoachNet and Obsidian can point at the same markdown files without copying the vault into a second silo.",
+                                        pathLabel: vault.path,
+                                        kindLabel: VaultWorkspaceStore.isObsidianCompatible(vault: vault) ? "Obsidian live link" : "Markdown shelf",
+                                        actionLabel: vault.id == selectedImportedVault?.id ? "Selected shelf" : "Browse notes",
+                                        accent: VaultWorkspaceStore.isObsidianCompatible(vault: vault) ? RoachPalette.magenta : RoachPalette.cyan,
+                                        fallbackSystemName: "books.vertical.fill",
+                                        extraTags: {
+                                            var tags = ["\(VaultWorkspaceStore.noteCount(in: vault)) notes", "Same markdown files"]
+                                            if vault.id == selectedImportedVault?.id {
+                                                tags.append("Selected")
                                             }
-
-                                            Text(vault.path)
-                                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                                .foregroundStyle(RoachPalette.muted)
-                                                .lineLimit(2)
-
-                                            Text("RoachNet and Obsidian can both point at this same vault. Nothing gets copied into a second note silo.")
-                                                .font(.system(size: 13, weight: .medium))
-                                                .foregroundStyle(RoachPalette.muted)
-                                                .lineLimit(3)
-
-                                            HStack(spacing: 8) {
-                                                RoachTag("Same markdown files", accent: RoachPalette.green)
-                                                if vault.id == selectedImportedVault?.id {
-                                                    RoachTag("Selected", accent: RoachPalette.magenta)
-                                                }
-                                            }
-                                        }
-                                    }
+                                            return tags
+                                        }()
+                                    )
                                 }
                                 .buttonStyle(RoachCardButtonStyle())
                             }
@@ -6038,6 +6101,10 @@ private struct RootWorkspaceView: View {
                     }
                 }
             }
+
+            maps
+
+            education
 
             if let selectedImportedVault, !importedVaultNotes.isEmpty {
                 RoachInsetPanel {
@@ -6052,7 +6119,7 @@ private struct RootWorkspaceView: View {
                             RoachTag("Shared with Obsidian", accent: RoachPalette.magenta)
                         }
 
-                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
+                        LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 12) {
                             ForEach(importedVaultNotes, id: \.path) { noteURL in
                                 Button {
                                     model.revealImportedVaultNote(noteURL)
@@ -6089,17 +6156,17 @@ private struct RootWorkspaceView: View {
                             RoachTag("Installed via Apps", accent: RoachPalette.magenta)
                         }
 
-                        LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
+                        LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 12) {
                             ForEach(installedMapCollections) { collection in
                                 Button {
-                                    model.selectedPane = .maps
+                                    Task { await model.openRoute("/maps", title: collection.name) }
                                 } label: {
                                     VaultVirtualShelfCard(
                                         title: collection.name,
                                         detail: collection.description ?? "Offline region pack already staged inside RoachNet.",
-                                        pathLabel: "Vault / Maps / \(collection.slug)",
+                                        pathLabel: "Vault / Atlas / \(collection.slug)",
                                         kindLabel: "Map Pack",
-                                        actionLabel: "Open maps",
+                                        actionLabel: "Open atlas",
                                         accent: RoachPalette.cyan,
                                         fallbackSystemName: "map.fill",
                                         extraTags: [
@@ -6114,14 +6181,14 @@ private struct RootWorkspaceView: View {
                             ForEach(installedEducationCategories) { category in
                                 if let installedTier = category.tiers.first(where: { $0.slug == category.installedTierSlug }) {
                                     Button {
-                                        model.selectedPane = .education
+                                        Task { await model.openRoute("/docs/home", title: category.name) }
                                     } label: {
                                         VaultVirtualShelfCard(
                                             title: category.name,
                                             detail: installedTier.description ?? category.description ?? "Curated offline reference shelf already staged inside the vault.",
                                             pathLabel: "Vault / Study / \(category.slug) / \(installedTier.slug)",
                                             kindLabel: "Study Shelf",
-                                            actionLabel: "Open shelf",
+                                            actionLabel: "Open study shelf",
                                             accent: RoachPalette.green,
                                             fallbackSystemName: "books.vertical.fill",
                                             extraTags: [installedTier.name, "Installed via Apps"]
@@ -6133,14 +6200,14 @@ private struct RootWorkspaceView: View {
 
                             if let installedWikipediaOption {
                                 Button {
-                                    model.selectedPane = .education
+                                    Task { await model.openRoute("/docs/home", title: installedWikipediaOption.name) }
                                 } label: {
                                     VaultVirtualShelfCard(
                                         title: installedWikipediaOption.name,
                                         detail: installedWikipediaOption.description ?? "The selected Wikipedia pack is staged in the contained study lane.",
                                         pathLabel: "Vault / Wikipedia / \(installedWikipediaOption.id)",
                                         kindLabel: "Wikipedia",
-                                        actionLabel: "Open shelf",
+                                        actionLabel: "Open reference shelf",
                                         accent: RoachPalette.magenta,
                                         fallbackSystemName: "globe.americas.fill",
                                         extraTags: ["Current selection", "Installed via Apps"]
@@ -6179,8 +6246,8 @@ private struct RootWorkspaceView: View {
                         .foregroundStyle(RoachPalette.muted)
                 }
             } else {
-                LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
-                    ForEach(files.prefix(12), id: \.self) { file in
+                LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 12) {
+                    ForEach(files, id: \.self) { file in
                         Button {
                             model.previewVaultFile(file)
                         } label: {
@@ -6193,9 +6260,19 @@ private struct RootWorkspaceView: View {
                                 actionLabel: vaultFileActionLabel(for: file),
                                 accent: vaultFileAccent(for: file),
                                 fallbackSystemName: vaultFileIcon(for: file),
-                                extraTags: vaultFileKindLabel(for: file) == "Markdown"
-                                    ? ["Open in RoachNet", "Notes lane"]
-                                    : ["Open in RoachNet"]
+                                extraTags: {
+                                    let kind = VaultPreviewKind.resolve(for: URL(fileURLWithPath: file))
+                                    switch kind {
+                                    case .markdown:
+                                        return ["Open in RoachNet", "Notes lane"]
+                                    case .text:
+                                        return ["Open in RoachNet", "Text deck"]
+                                    case .image:
+                                        return ["Open in RoachNet", "Lightbox"]
+                                    default:
+                                        return ["Open in RoachNet"]
+                                    }
+                                }()
                             )
                         }
                         .buttonStyle(RoachCardButtonStyle())
@@ -6206,81 +6283,113 @@ private struct RootWorkspaceView: View {
     }
 
     private func vaultFileKindLabel(for file: String) -> String {
-        switch URL(fileURLWithPath: file).pathExtension.lowercased() {
-        case "epub":
+        switch VaultPreviewKind.resolve(for: URL(fileURLWithPath: file)) {
+        case .book:
             return "Book"
-        case "mp4", "m4v", "mov", "webm", "mkv":
+        case .video:
             return "Video"
-        case "mp3", "m4a", "wav", "flac", "ogg":
+        case .audio:
             return "Audio"
-        case "md", "markdown":
+        case .markdown:
             return "Markdown"
-        case "pdf":
+        case .text:
+            return "Text"
+        case .image:
+            return "Image"
+        case .pdf:
             return "PDF"
+        case .folder:
+            return "Folder"
         default:
             return "Preview"
         }
     }
 
     private func vaultFileIcon(for file: String) -> String {
-        switch URL(fileURLWithPath: file).pathExtension.lowercased() {
-        case "epub":
+        switch VaultPreviewKind.resolve(for: URL(fileURLWithPath: file)) {
+        case .book:
             return "books.vertical.fill"
-        case "mp4", "m4v", "mov", "webm", "mkv":
+        case .video:
             return "film.fill"
-        case "mp3", "m4a", "wav", "flac", "ogg":
+        case .audio:
             return "waveform"
-        case "md", "markdown":
+        case .markdown:
             return "doc.text.fill"
-        case "pdf":
+        case .text:
+            return "doc.plaintext.fill"
+        case .image:
+            return "photo.fill"
+        case .pdf:
             return "doc.richtext.fill"
+        case .folder:
+            return "folder.fill"
         default:
             return "doc.fill"
         }
     }
 
     private func vaultFileAccent(for file: String) -> Color {
-        switch URL(fileURLWithPath: file).pathExtension.lowercased() {
-        case "epub":
+        switch VaultPreviewKind.resolve(for: URL(fileURLWithPath: file)) {
+        case .book:
             return RoachPalette.magenta
-        case "mp4", "m4v", "mov", "webm", "mkv":
+        case .video:
             return RoachPalette.cyan
-        case "mp3", "m4a", "wav", "flac", "ogg":
+        case .audio:
             return RoachPalette.green
-        case "pdf":
+        case .markdown:
+            return RoachPalette.magenta
+        case .text:
+            return RoachPalette.cyan
+        case .image:
+            return RoachPalette.magenta
+        case .pdf:
             return RoachPalette.bronze
+        case .folder:
+            return RoachPalette.cyan
         default:
             return RoachPalette.cyan
         }
     }
 
     private func vaultFilePreviewHint(for file: String) -> String {
-        switch URL(fileURLWithPath: file).pathExtension.lowercased() {
-        case "epub":
+        switch VaultPreviewKind.resolve(for: URL(fileURLWithPath: file)) {
+        case .book:
             return "Open the built-in reader surface and keep the book in your shelf."
-        case "mp4", "m4v", "mov", "webm", "mkv":
+        case .video:
             return "Open the video lane and keep the file in the same archive shell."
-        case "mp3", "m4a", "wav", "flac", "ogg":
+        case .audio:
             return "Play it in the built-in listening surface without leaving the vault."
-        case "md", "markdown":
+        case .markdown:
             return "Preview the note in-place and keep the markdown lane close to the wider vault."
-        case "pdf":
+        case .text:
+            return "Open the file in the built-in text deck and keep config, logs, and source on the same shelf."
+        case .image:
+            return "Open the file in the lightbox and keep the visual tied to the rest of the archive."
+        case .pdf:
             return "Open the document in the built-in reader instead of bouncing out to Preview."
+        case .folder:
+            return "Open the folder in the expanded shelf view and keep drilling inward without dropping to Finder."
         default:
             return "Open the file inside RoachNet and keep the archive lane tidy."
         }
     }
 
     private func vaultFileActionLabel(for file: String) -> String {
-        switch URL(fileURLWithPath: file).pathExtension.lowercased() {
-        case "epub", "pdf":
+        switch VaultPreviewKind.resolve(for: URL(fileURLWithPath: file)) {
+        case .book, .pdf:
             return "Read"
-        case "mp4", "m4v", "mov", "webm", "mkv":
+        case .video:
             return "Watch"
-        case "mp3", "m4a", "wav", "flac", "ogg":
+        case .audio:
             return "Play"
-        case "md", "markdown":
+        case .markdown:
             return "Open note"
+        case .text:
+            return "Open file"
+        case .image:
+            return "Open image"
+        case .folder:
+            return "Open folder"
         default:
             return "Preview"
         }
@@ -6603,7 +6712,11 @@ private struct RootWorkspaceView: View {
                             RoachMetricCard(label: "Folder", value: roachSync.folderId, detail: "Contained sync target")
                         }
 
-                        RoachStatusRow(title: "Folder Path", value: roachSync.folderPath, accent: RoachPalette.green)
+                        RoachStatusRow(
+                            title: "Folder Path",
+                            value: RuntimeSurfacePathLabel.displayValue(roachSync.folderPath, kind: .vaultFolder),
+                            accent: RoachPalette.green
+                        )
 
                         if let guiURL = roachSync.guiUrl, !guiURL.isEmpty {
                             RoachStatusRow(title: "Control URL", value: guiURL, accent: RoachPalette.green)
@@ -6669,7 +6782,11 @@ private struct RootWorkspaceView: View {
                         .disabled(model.isRelocatingStorage)
                     }
 
-                    RoachStatusRow(title: "Current Path", value: model.storagePath, accent: RoachPalette.green)
+                    RoachStatusRow(
+                        title: "Current Path",
+                        value: RuntimeSurfacePathLabel.displayValue(model.storagePath, kind: .storageRoot),
+                        accent: RoachPalette.green
+                    )
                     Text("Maps, Wikipedia packages, archives, and other local content now follow this shared storage root.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
@@ -6694,13 +6811,17 @@ private struct RootWorkspaceView: View {
         [GridItem(.adaptive(minimum: 212), spacing: 16, alignment: .top)]
     }
 
+    private var vaultShelfColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 240), spacing: 16, alignment: .top)]
+    }
+
     private var homeGridItems: [CommandGridItem] {
         [
             CommandGridItem(
                 id: "maps",
-                title: "Maps",
-                detail: "Open the contained maps shelf and keep routes close.",
-                badge: "Core Capability",
+                title: "Atlas Shelf",
+                detail: "Open the vault atlas shelf and keep routes, packs, and offline regions close.",
+                badge: "Vault",
                 systemImage: "map.fill",
                 routePath: "/maps",
                 isInstalled: true
@@ -6725,9 +6846,9 @@ private struct RootWorkspaceView: View {
             ),
             CommandGridItem(
                 id: "offline-web",
-                title: "Offline Web Apps",
-                detail: "Keep mirrored sites readable in-app instead of buried in browser tabs.",
-                badge: "Archived",
+                title: "Web Shelf",
+                detail: "Keep captured sites readable from the vault instead of burying them in browser tabs.",
+                badge: "Vault",
                 systemImage: "globe.badge.chevron.backward",
                 routePath: "/site-archives",
                 isInstalled: true
@@ -6743,9 +6864,9 @@ private struct RootWorkspaceView: View {
             ),
             CommandGridItem(
                 id: "docs",
-                title: "Docs",
-                detail: "Read the guides, runtime notes, and field references without leaving the shell.",
-                badge: "Local Reference",
+                title: "Study Shelf",
+                detail: "Read guides, runtime notes, and offline references from the same vault shelf.",
+                badge: "Vault",
                 systemImage: "doc.text.fill",
                 routePath: "/docs/home",
                 isInstalled: true
@@ -6792,6 +6913,11 @@ private struct RootWorkspaceView: View {
         let storagePath = model.storagePath
         let installPath = model.installPath
         let projectsPath = RoachNetDeveloperPaths.projectsRoot(storagePath: storagePath)
+        let importedVaults = model.importedObsidianVaults
+        let selectedImportedVault = importedVaults.first(where: { $0.id == model.selectedImportedVaultID }) ?? importedVaults.first
+        let importedVaultNotes = selectedImportedVault.map { VaultWorkspaceStore.noteURLs(in: $0, limit: 6) } ?? []
+        let knowledgeFiles = Array((model.snapshot?.knowledgeFiles ?? []).prefix(8))
+        let capturedSites = Array((model.snapshot?.siteArchives ?? []).prefix(4))
         let paneEntries = visiblePanes.map { pane in
             CommandPaletteEntry(
                 id: "pane-\(pane.rawValue)",
@@ -6830,9 +6956,66 @@ private struct RootWorkspaceView: View {
             )
         }
 
+        let importedVaultEntries = importedVaults.map { vault in
+            CommandPaletteEntry(
+                id: "vault-\(vault.id)",
+                section: "Vault",
+                title: "Open \(vault.name)",
+                detail: "Open the imported vault in RoachNet's expanded shelf instead of bouncing out to Finder.",
+                systemImage: "books.vertical.fill",
+                target: .previewVaultFile(vault.path),
+                badge: VaultWorkspaceStore.isObsidianCompatible(vault: vault) ? "Obsidian" : "Markdown",
+                keywords: ["vault", "obsidian", "notes", vault.name, vault.path]
+            )
+        }
+
+        let importedVaultNoteEntries = importedVaultNotes.map { noteURL in
+            CommandPaletteEntry(
+                id: "vault-note-\(noteURL.path)",
+                section: "Vault",
+                title: noteURL.deletingPathExtension().lastPathComponent,
+                detail: "Open the note directly in the built-in notes lane and keep the same markdown live on disk.",
+                systemImage: "note.text",
+                target: .previewVaultFile(noteURL.path),
+                badge: "Note",
+                keywords: ["vault", "note", "markdown", noteURL.lastPathComponent, noteURL.path]
+            )
+        }
+
+        let knowledgeFileEntries = knowledgeFiles.map { file in
+            let fileURL = URL(fileURLWithPath: file)
+            return CommandPaletteEntry(
+                id: "vault-file-\(file)",
+                section: "Vault",
+                title: fileURL.lastPathComponent,
+                detail: vaultFilePreviewHint(for: file),
+                systemImage: vaultFileIcon(for: file),
+                target: .previewVaultFile(file),
+                badge: vaultFileKindLabel(for: file),
+                keywords: ["vault", "file", fileURL.lastPathComponent, file]
+            )
+        }
+
+        let capturedSiteEntries = capturedSites.map { archive in
+            CommandPaletteEntry(
+                id: "vault-captured-\(archive.slug)",
+                section: "Vault",
+                title: archive.title ?? archive.slug,
+                detail: "Jump into the captured web shelf for \(archive.url ?? archive.slug) without leaving the launcher.",
+                systemImage: "globe.badge.chevron.backward",
+                target: .route(title: "Offline Web Apps", path: "/site-archives"),
+                badge: "Captured",
+                keywords: ["captured", "web", "archive", archive.slug, archive.url ?? ""]
+            )
+        }
+
         return paneEntries
             + routeEntries
             + serviceEntries
+            + importedVaultEntries
+            + importedVaultNoteEntries
+            + knowledgeFileEntries
+            + capturedSiteEntries
             + [
                 CommandPaletteEntry(
                     id: "action-refresh-runtime",
@@ -7061,10 +7244,9 @@ private struct RootWorkspaceView: View {
         case .knowledge:
             return commandPaletteEntries.filter {
                 $0.id == "pane-Vault"
-                    || $0.id == "pane-Maps"
-                    || $0.id == "pane-Education"
                     || $0.id == "action-open-storage-root"
                     || $0.id == "action-import-obsidian-vault"
+                    || $0.section == "Vault"
             }
         case .dev:
             return commandPaletteEntries.filter {
@@ -7073,6 +7255,7 @@ private struct RootWorkspaceView: View {
                     || $0.id == "action-refresh-runtime"
                     || $0.id == "action-open-projects-root"
                     || $0.id == "action-open-storage-root"
+                    || $0.section == "Vault"
             }
         default:
             return commandPaletteEntries.filter { $0.section == "Open" || $0.section == "Navigate" }.prefix(4).map { $0 }
@@ -7090,6 +7273,7 @@ private struct RootWorkspaceView: View {
                     || $0.id == "action-open-apps-store"
                     || $0.id == "action-open-storage-root"
                     || $0.id == "action-stage-next-useful-move"
+                    || $0.section == "Vault"
             }
         ]
 
@@ -7132,6 +7316,8 @@ private struct RootWorkspaceView: View {
             showLaunchGuide = true
         case let .revealPath(path):
             model.revealPathInFinder(path)
+        case let .previewVaultFile(file):
+            model.previewVaultFile(file)
         case .importObsidianVault:
             model.selectedPane = .knowledge
             model.importObsidianVault()
@@ -7196,7 +7382,7 @@ private struct RootWorkspaceView: View {
     }
 
     private var visiblePanes: [WorkspacePane] {
-        WorkspacePane.allCases.filter { $0 != .suite && $0 != .archives }
+        WorkspacePane.allCases.filter { $0 != .suite && $0 != .maps && $0 != .education }
     }
 
     private var readinessSteps: [ReadinessStep] {
@@ -7369,8 +7555,7 @@ private struct RootWorkspaceView: View {
     }
 
     private func shortRuntimePath(_ path: String) -> String {
-        let last = URL(fileURLWithPath: path).lastPathComponent
-        return last.isEmpty ? path : last
+        RuntimeSurfacePathLabel.displayValue(path, kind: .storageRoot)
     }
 
     private func runtimeSignalDeck(
@@ -7430,7 +7615,7 @@ private struct RootWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     RoachDigestRow(
                         "Install root",
-                        value: shortRuntimePath(model.installPath),
+                        value: RuntimeSurfacePathLabel.displayValue(model.installPath, kind: .installRoot),
                         detail: "The contained app root. No smear across the host when this lane is behaving.",
                         systemName: "shippingbox.fill",
                         accent: RoachPalette.green
@@ -7514,7 +7699,7 @@ private struct RootWorkspaceView: View {
 
     private func logPathValue(_ serverInfo: ManagedAppServerInfo?) -> String {
         if let logPath = serverInfo?.logPath?.trimmingCharacters(in: .whitespacesAndNewlines), !logPath.isEmpty {
-            return logPath
+            return RuntimeSurfacePathLabel.displayValue(logPath, kind: .logFile)
         }
 
         return model.snapshot == nil ? "Preparing logs" : "Managed by runtime"

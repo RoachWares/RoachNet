@@ -4,6 +4,9 @@ import XCTest
 final class VaultContextSupportTests: XCTestCase {
     func testPreviewKindRecognizesVaultAssetTypes() {
         XCTAssertEqual(VaultPreviewKind.resolve(for: URL(fileURLWithPath: "/tmp/note.md")), .markdown)
+        XCTAssertEqual(VaultPreviewKind.resolve(for: URL(fileURLWithPath: "/tmp/log.txt")), .text)
+        XCTAssertEqual(VaultPreviewKind.resolve(for: URL(fileURLWithPath: "/tmp/config.json")), .text)
+        XCTAssertEqual(VaultPreviewKind.resolve(for: URL(fileURLWithPath: "/tmp/cover.png")), .image)
         XCTAssertEqual(VaultPreviewKind.resolve(for: URL(fileURLWithPath: "/tmp/track.flac")), .audio)
         XCTAssertEqual(VaultPreviewKind.resolve(for: URL(fileURLWithPath: "/tmp/movie.mp4")), .video)
         XCTAssertEqual(VaultPreviewKind.resolve(for: URL(fileURLWithPath: "/tmp/book.pdf")), .pdf)
@@ -36,6 +39,15 @@ final class VaultContextSupportTests: XCTestCase {
         XCTAssertNotNil(excerpt)
         XCTAssertTrue(excerpt?.count == 65)
         XCTAssertTrue(excerpt?.hasSuffix("…") == true)
+    }
+
+    @MainActor
+    func testDeveloperTerminalUsesPinnedWorkingDirectoryWhenSet() {
+        let model = DevWorkspaceModel()
+        model.projectsRootPath = "/tmp/workspace"
+        model.terminalWorkingDirectoryOverride = "/tmp/workspace/project-a"
+
+        XCTAssertEqual(model.currentWorkingDirectory(), "/tmp/workspace/project-a")
     }
 
     private func makeTemporaryDirectory() throws -> URL {

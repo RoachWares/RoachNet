@@ -329,45 +329,77 @@ function normalizeWindowLabel(value) {
     .replace(/\s+/g, ' ')
 }
 
+function normalizeWindowToken(value) {
+  return normalizeWindowLabel(value).replace(/[^a-z0-9]/g, '')
+}
+
 async function hasRoachWindow(ownerName, titleName = ownerName, processName = null) {
   const normalizedOwner = normalizeWindowLabel(ownerName)
   const normalizedTitle = normalizeWindowLabel(titleName)
   const normalizedProcess = normalizeWindowLabel(processName)
+  const ownerToken = normalizeWindowToken(ownerName)
+  const titleToken = normalizeWindowToken(titleName)
+  const processToken = normalizeWindowToken(processName)
 
   if (processName) {
-    const automationWindowSnapshot = await listAutomationWindowSnapshot(processName)
-    if (automationWindowSnapshot.count > 0) {
-      return true
+    const automationWindowSnapshots = [await listAutomationWindowSnapshot(processName)]
+    if (normalizedProcess && normalizedProcess !== normalizedOwner) {
+      automationWindowSnapshots.push(await listAutomationWindowSnapshot(ownerName))
     }
 
-    if (
-      automationWindowSnapshot.names.some((name) => {
-        const normalizedName = normalizeWindowLabel(name)
-        return (
-          normalizedName === normalizedTitle ||
-          normalizedName === normalizedOwner ||
-          (!normalizedTitle && normalizedName.length > 0)
-        )
-      })
-    ) {
-      return true
+    for (const automationWindowSnapshot of automationWindowSnapshots) {
+      if (automationWindowSnapshot.count > 0) {
+        return true
+      }
+
+      if (
+        automationWindowSnapshot.names.some((name) => {
+          const normalizedName = normalizeWindowLabel(name)
+          const normalizedToken = normalizeWindowToken(name)
+          return (
+            normalizedName === normalizedTitle ||
+            normalizedName === normalizedOwner ||
+            normalizedName === normalizedProcess ||
+            normalizedToken === titleToken ||
+            normalizedToken === ownerToken ||
+            normalizedToken === processToken ||
+            (!normalizedTitle && normalizedName.length > 0)
+          )
+        })
+      ) {
+        return true
+      }
     }
+
+    return false
   }
 
   const windows = await listRoachWindows()
   return windows.some((window) => {
     const normalizedWindowOwner = normalizeWindowLabel(window.owner)
     const normalizedWindowName = normalizeWindowLabel(window.name)
+    const normalizedWindowOwnerToken = normalizeWindowToken(window.owner)
+    const normalizedWindowNameToken = normalizeWindowToken(window.name)
 
     if (window.layer !== 0) {
       return false
     }
 
     return (
-      (normalizedWindowOwner === normalizedOwner || normalizedWindowOwner === normalizedProcess) &&
-      (normalizedWindowName === normalizedTitle ||
+      (
+        normalizedWindowOwner === normalizedOwner ||
+        normalizedWindowOwner === normalizedProcess ||
+        normalizedWindowOwnerToken === ownerToken ||
+        normalizedWindowOwnerToken === processToken
+      ) &&
+      (
+        normalizedWindowName === normalizedTitle ||
         normalizedWindowName === normalizedOwner ||
-        normalizedWindowName === normalizedProcess)
+        normalizedWindowName === normalizedProcess ||
+        normalizedWindowNameToken === titleToken ||
+        normalizedWindowNameToken === ownerToken ||
+        normalizedWindowNameToken === processToken
+      )
     )
   })
 }

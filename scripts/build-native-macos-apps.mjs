@@ -8,6 +8,8 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
+import { writeSha256Sidecar } from './build-native-macos-packaging-support.mjs'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
@@ -893,8 +895,21 @@ async function syncTree(sourcePath, destinationPath, excludePatterns = bundledSo
 async function copyTreeFast(sourcePath, destinationPath) {
   discardPath(destinationPath)
   mkdirSync(path.dirname(destinationPath), { recursive: true })
-  // On APFS this avoids a full byte-for-byte duplicate pass for large bundle trees.
-  await run('ditto', ['--clone', sourcePath, destinationPath], { stdio: 'pipe' })
+  try {
+    // On APFS this avoids a full byte-for-byte duplicate pass for large bundle trees.
+    await run('ditto', ['--clone', sourcePath, destinationPath], {
+      stdio: 'pipe',
+      timeoutMs: 120_000,
+    })
+  } catch (error) {
+    discardPath(destinationPath)
+    console.warn(
+      `[build-native-macos-apps] Falling back to a recursive copy for ${path.basename(destinationPath)}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    )
+    await cp(sourcePath, destinationPath, { recursive: true, force: true })
+  }
 }
 
 function discardPath(targetPath) {
@@ -1365,6 +1380,7 @@ async function main() {
     if (!skipDmg) {
       const dmgPath = await createSetupDmg(setupAppBundlePath)
       await notarizeArtifact(dmgPath)
+      await writeSha256Sidecar(dmgPath)
       builtBundles.push(dmgPath)
     }
   }

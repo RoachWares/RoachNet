@@ -150,6 +150,53 @@ function serializeEnvFile(values) {
   )
 }
 
+function formatUrlHost(host) {
+  const trimmed = String(host || '').trim()
+  if (!trimmed) {
+    return '127.0.0.1'
+  }
+
+  return trimmed.includes(':') && !trimmed.startsWith('[') ? `[${trimmed}]` : trimmed
+}
+
+function normalizeHostName(host) {
+  return String(host || '')
+    .trim()
+    .replace(/^\[|\]$/g, '')
+    .toLowerCase()
+}
+
+function isLoopbackHost(host) {
+  const normalizedHost = normalizeHostName(host)
+  return ['localhost', '127.0.0.1', '::1', '0.0.0.0', '::'].includes(normalizedHost)
+}
+
+function resolveInstallBaseUrl(existingUrl, host, port) {
+  const normalizedHost = normalizeHostName(host) || '127.0.0.1'
+  const fallbackUrl = `http://${formatUrlHost(normalizedHost)}:${port}`
+  const trimmedExistingUrl = String(existingUrl || '').trim()
+
+  if (!trimmedExistingUrl) {
+    return fallbackUrl
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedExistingUrl)
+    if (isLoopbackHost(parsedUrl.hostname) || normalizeHostName(parsedUrl.hostname) === normalizedHost) {
+      parsedUrl.hostname = normalizedHost
+      parsedUrl.port = String(port)
+      parsedUrl.pathname = '/'
+      parsedUrl.search = ''
+      parsedUrl.hash = ''
+      return parsedUrl.toString().replace(/\/$/, '')
+    }
+
+    return parsedUrl.toString().replace(/\/$/, '')
+  } catch {
+    return fallbackUrl
+  }
+}
+
 function readJsonFile(filePath) {
   if (!existsSync(filePath)) {
     return null
@@ -1879,6 +1926,13 @@ function getDependencyNotes(packageManagerId, dependencyId) {
 
 function getDefaultConfig(overrides = {}) {
   const persistedConfig = loadPersistedInstallerConfig()
+  const persistedInstallPath = normalizeInputPath(
+    persistedConfig.installPath || getDefaultInstallPath()
+  )
+  const hasInstallPathOverride =
+    typeof overrides.installPath === 'string' && overrides.installPath.trim().length > 0
+  const hasStoragePathOverride =
+    typeof overrides.storagePath === 'string' && overrides.storagePath.trim().length > 0
   const defaultInstallPath = normalizeInputPath(
     overrides.installPath || persistedConfig.installPath || getDefaultInstallPath()
   )
@@ -1893,10 +1947,14 @@ function getDefaultConfig(overrides = {}) {
       : Boolean(persistedConfig.installRoachClaw)
   const installPath = normalizeInputPath(defaultInstallPath)
   const installedAppPath = getCanonicalInstalledAppPath(installPath)
+  const shouldReusePersistedStoragePath =
+    !hasInstallPathOverride || installPath === persistedInstallPath
   const storagePath = normalizeInputPath(
-    overrides.storagePath ||
-      persistedConfig.storagePath ||
-      path.join(installPath, 'storage')
+    hasStoragePathOverride
+      ? overrides.storagePath
+      : shouldReusePersistedStoragePath
+        ? persistedConfig.storagePath || path.join(installPath, 'storage')
+        : path.join(installPath, 'storage')
   )
   const installLooksPresent =
     existsSync(path.join(installPath, 'scripts', 'run-roachnet.mjs')) &&
@@ -3117,7 +3175,7 @@ async function prepareEnvironmentFiles(config, repoPath, task) {
     ...existingValues,
     PORT: port,
     HOST: host,
-    URL: existingValues.URL || `http://${host}:${port}`,
+    URL: resolveInstallBaseUrl(existingValues.URL, host, port),
     LOG_LEVEL: existingValues.LOG_LEVEL || 'info',
     APP_KEY: appKey,
     NODE_ENV: existingValues.NODE_ENV || 'production',

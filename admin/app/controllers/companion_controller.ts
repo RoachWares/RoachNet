@@ -5,7 +5,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { ChatService } from '#services/chat_service'
+import { MapService } from '#services/map_service'
 import { OllamaService } from '#services/ollama_service'
+import { ZimService } from '#services/zim_service'
 
 type CompanionInstallInput = {
   installUrl?: string
@@ -208,7 +210,9 @@ type CompanionChatInputMessage = {
 export default class CompanionController {
   constructor(
     private chatService: ChatService,
-    private ollamaService: OllamaService
+    private ollamaService: OllamaService,
+    private mapService: MapService,
+    private zimService: ZimService
   ) {}
 
   async bootstrap({ request }: HttpContext) {
@@ -735,18 +739,86 @@ export default class CompanionController {
 
   private async vaultPayload(request: HttpContext['request']) {
     const issues: RelayIssue[] = []
-    const [knowledgeFiles, siteArchives, roachBrain] = await Promise.all([
+    const [knowledgeFiles, siteArchives, roachBrain, atlasShelves, studyShelves, referenceShelves] =
+      await Promise.all([
       this.relayJsonFallback('/api/rag/files', request, { files: [] }, issues),
       this.relayJsonFallback('/api/site-archives', request, { archives: [] }, issues),
       this.readRoachBrainMemories(),
+      this.localPayloadFallback('/api/maps/collections', [], issues, async () =>
+        this.buildAtlasShelves()
+      ),
+      this.localPayloadFallback('/api/zim/categories', [], issues, async () =>
+        this.buildStudyShelves()
+      ),
+      this.localPayloadFallback('/api/zim/wikipedia/state', [], issues, async () =>
+        this.buildReferenceShelves()
+      ),
     ])
 
     return {
       knowledgeFiles: knowledgeFiles?.files ?? [],
       siteArchives: siteArchives?.archives ?? [],
       roachBrain,
+      atlasShelves,
+      studyShelves,
+      referenceShelves,
       issues,
     }
+  }
+
+  private async buildAtlasShelves() {
+    const collections = await this.mapService.listCuratedCollections()
+
+    return collections.map((collection) => ({
+      id: collection.slug,
+      title: collection.name,
+      detail:
+        collection.description ||
+        'Offline regional map pack ready to live beside the rest of the Vault.',
+      kind: 'atlas',
+      status: collection.all_installed
+        ? 'Ready on shelf'
+        : `${collection.installed_count}/${collection.total_count} ready`,
+      actionLabel: collection.all_installed ? 'Open atlas' : 'Add to Vault',
+      routePath: '/maps',
+      installed: collection.all_installed,
+    }))
+  }
+
+  private async buildStudyShelves() {
+    const categories = await this.zimService.listCuratedCategories()
+
+    return categories.map((category) => ({
+      id: category.slug,
+      title: category.name,
+      detail:
+        category.description || 'Structured offline coursework ready for the study shelf.',
+      kind: 'study',
+      status: category.installedTierSlug
+        ? `Ready · ${category.installedTierSlug}`
+        : 'Download recommended',
+      actionLabel: category.installedTierSlug ? 'Open study shelf' : 'Add to Vault',
+      routePath: '/docs/home',
+      installed: Boolean(category.installedTierSlug),
+    }))
+  }
+
+  private async buildReferenceShelves() {
+    const wikipediaState = await this.zimService.getWikipediaState()
+    const currentOptionId = wikipediaState.currentSelection?.optionId
+
+    return wikipediaState.options
+      .filter((option) => option.id !== 'none')
+      .map((option) => ({
+        id: option.id,
+        title: option.name,
+        detail: option.description || 'Offline reference package ready for the shelf.',
+        kind: 'reference',
+        status: option.id === currentOptionId ? 'Current reference' : 'Available',
+        actionLabel: option.id === currentOptionId ? 'Open reference' : 'Set reference',
+        routePath: '/docs/home',
+        installed: option.id === currentOptionId,
+      }))
   }
 
   private async accountPayload(): Promise<RoachNetAccountStateRecord> {
@@ -1055,6 +1127,23 @@ export default class CompanionController {
       issues.push({
         path: pathname,
         error: error instanceof Error ? error.message : 'Relay failed',
+      })
+      return fallback
+    }
+  }
+
+  private async localPayloadFallback<T>(
+    label: string,
+    fallback: T,
+    issues: RelayIssue[],
+    operation: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await operation()
+    } catch (error) {
+      issues.push({
+        path: label,
+        error: error instanceof Error ? error.message : 'Local payload failed',
       })
       return fallback
     }
