@@ -275,6 +275,7 @@ private enum CommandPaletteTarget: Hashable {
     case revealPath(String)
     case previewVaultFile(String)
     case importObsidianVault
+    case openGlobalRoachClaw
     case stagePrompt(String)
     case togglePromptDictation
     case toggleLatestReplySpeech
@@ -444,7 +445,7 @@ private extension CommandPaletteTarget {
         switch self {
         case .externalURL:
             return false
-        case .pane, .route, .service, .refreshRuntime, .launchGuide, .revealPath, .previewVaultFile, .importObsidianVault, .stagePrompt, .togglePromptDictation, .toggleLatestReplySpeech, .saveLatestReplyToRoachBrain, .toggleContextScope, .setAllContext, .promoteLocalModel, .promoteCloudModel:
+        case .pane, .route, .service, .refreshRuntime, .launchGuide, .revealPath, .previewVaultFile, .importObsidianVault, .openGlobalRoachClaw, .stagePrompt, .togglePromptDictation, .toggleLatestReplySpeech, .saveLatestReplyToRoachBrain, .toggleContextScope, .setAllContext, .promoteLocalModel, .promoteCloudModel:
             return true
         }
     }
@@ -919,7 +920,7 @@ private struct CommandPaletteSheet: View {
                                     Image(systemName: "magnifyingglass")
                                         .foregroundStyle(RoachPalette.green)
 
-                                    TextField("Search commands, panes, installs, AI routes, and settings", text: $query)
+                                    TextField("Search commands, panes, installs, voice, AI routes, and settings", text: $query)
                                         .textFieldStyle(.plain)
                                         .font(.system(size: 16, weight: .medium))
                                         .foregroundStyle(RoachPalette.text)
@@ -1083,7 +1084,7 @@ private struct DetachedCommandPaletteView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(RoachPalette.green)
 
-                                TextField("Search commands, installs, and AI controls", text: $query)
+                                TextField("Search commands, voice requests, installs, and AI controls", text: $query)
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundStyle(RoachPalette.text)
@@ -1456,6 +1457,10 @@ final class WorkspaceModel: ObservableObject {
     }
     var roachBrainPinnedCount: Int {
         roachBrainMemories.filter(\.pinned).count
+    }
+
+    var roachBrainWikiStatus: RoachBrainWikiStatus {
+        RoachBrainWikiStore.status(storagePath: storagePath)
     }
     var roachTailActionInFlight: Bool {
         activeActions.contains { $0.hasPrefix("roachtail-") }
@@ -2330,6 +2335,9 @@ final class WorkspaceModel: ObservableObject {
 
     func refreshRoachBrain() {
         roachBrainMemories = RoachBrainStore.load(storagePath: storagePath)
+        if !roachBrainMemories.isEmpty, RoachBrainWikiStore.status(storagePath: storagePath).pageCount == 0 {
+            _ = try? RoachBrainWikiStore.rebuildFromMemories(storagePath: storagePath, memories: roachBrainMemories)
+        }
     }
 
     private func applyDictationTranscript(_ transcript: String) {
@@ -2464,6 +2472,11 @@ final class WorkspaceModel: ObservableObject {
             if !importedVaults.isEmpty {
                 lines.append("- Imported vaults: \(importedVaults.joined(separator: " · "))")
             }
+            let wikiStatus = RoachBrainWikiStore.status(storagePath: storagePath)
+            if wikiStatus.pageCount > 0 {
+                lines.append("- Compiled RoachBrain wiki: \(wikiStatus.pageCount) pages")
+                lines.append("- Wiki index: \(wikiStatus.indexPath)")
+            }
             if !installedMapCollections.isEmpty {
                 lines.append("- Installed map packs: \(installedMapCollections.joined(separator: ", "))")
             }
@@ -2557,8 +2570,11 @@ final class WorkspaceModel: ObservableObject {
 
     private func composedRoachBrainPrompt(from prompt: String, matches: [RoachBrainMatch], mode: String) -> String {
         let contextBlock = RoachBrainStore.contextBlock(for: matches)
+        let wikiContextBlock = RoachBrainWikiStore.contextBlock(storagePath: storagePath, query: prompt, matches: matches)
+        let operatorProtocolBlock = RoachBrainWikiStore.operatorProtocolBlock()
+        let researchProtocolBlock = RoachBrainWikiStore.researchProtocolBlock()
         let localContextBlock = permissionedRoachClawContextBlock()
-        let contextSections = [contextBlock, localContextBlock].filter { !$0.isEmpty }
+        let contextSections = [operatorProtocolBlock, researchProtocolBlock, contextBlock, wikiContextBlock, localContextBlock].filter { !$0.isEmpty }
         guard !contextSections.isEmpty else { return prompt }
 
         return """
@@ -3128,6 +3144,309 @@ private struct ChatBubble: View {
     }
 }
 
+private struct GlobalRoachClawPanel: View {
+    @ObservedObject var model: WorkspaceModel
+    let onDismiss: () -> Void
+
+    @FocusState private var promptFocused: Bool
+
+    private var recentThread: [ChatLine] {
+        Array(model.chatLines.suffix(4))
+    }
+
+    private var latestPrompt: String? {
+        model.chatLines.last(where: { $0.role == "User" })?.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSend: Bool {
+        !model.isSendingPrompt
+            && !model.chatModelOptions.isEmpty
+            && !model.promptDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var voiceLabel: String {
+        model.isDictatingPrompt ? "Stop Voice" : "Voice Request"
+    }
+
+    var body: some View {
+        RoachPanel {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+
+                RoachInsetPanel {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            RoachTag(model.selectedChatModelLabel, accent: RoachPalette.magenta)
+                            RoachTag(model.isDictatingPrompt ? "Listening" : "Ready", accent: model.isDictatingPrompt ? RoachPalette.green : RoachPalette.cyan)
+                            RoachTag(model.enabledRoachClawContextCount == 0 ? "Context locked" : "\(model.enabledRoachClawContextCount) lanes", accent: model.enabledRoachClawContextCount == 0 ? RoachPalette.warning : RoachPalette.green)
+                        }
+
+                        Text("Chat, ask for work, or start voice without leaving the surface you are using.")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(RoachPalette.muted)
+                    }
+                }
+
+                composer
+
+                if let speechStatus = model.speechStatusLine, !speechStatus.isEmpty {
+                    Text(speechStatus)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.muted)
+                        .lineLimit(2)
+                }
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let latestPrompt, !latestPrompt.isEmpty {
+                            RoachInsetPanel {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    RoachKicker("Last Ask")
+                                    Text(latestPrompt)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(RoachPalette.muted)
+                                        .lineLimit(3)
+                                }
+                            }
+                        }
+
+                        ForEach(recentThread) { line in
+                            ChatBubble(line: line)
+                        }
+
+                        contextDeck
+                    }
+                    .padding(.bottom, 4)
+                }
+
+                footer
+            }
+        }
+        .onAppear {
+            promptFocused = true
+        }
+        .onExitCommand {
+            onDismiss()
+        }
+    }
+
+    private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                headerTitle
+                Spacer(minLength: 12)
+                headerActions
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                headerTitle
+                headerActions
+            }
+        }
+    }
+
+    private var headerTitle: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(RoachPalette.green.opacity(0.14))
+                    .frame(width: 52, height: 52)
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(RoachPalette.green)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                RoachKicker("RoachClaw Anywhere")
+                Text("Ask without breaking flow.")
+                    .font(.system(size: 23, weight: .bold, design: .rounded))
+                    .foregroundStyle(RoachPalette.text)
+                Text("The same agent, memory, voice, and context controls float over every RoachNet surface.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(RoachPalette.muted)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var headerActions: some View {
+        HStack(spacing: 10) {
+            Button("Full Workbench") {
+                model.selectedPane = .roachClaw
+                onDismiss()
+            }
+            .buttonStyle(RoachSecondaryButtonStyle())
+
+            Button("Close") {
+                onDismiss()
+            }
+            .buttonStyle(RoachSecondaryButtonStyle())
+        }
+    }
+
+    private var composer: some View {
+        RoachInsetPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    Button {
+                        toggleVoice()
+                    } label: {
+                        Image(systemName: model.isDictatingPrompt ? "waveform.circle.fill" : "mic.circle.fill")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.magenta)
+                    }
+                    .buttonStyle(.plain)
+                    .help(voiceLabel)
+
+                    TextField("Ask RoachClaw, or start voice and speak the request", text: $model.promptDraft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(RoachPalette.text)
+                        .focused($promptFocused)
+                        .lineLimit(2...6)
+                        .onSubmit {
+                            sendPrompt()
+                        }
+                }
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        Button(voiceLabel) {
+                            toggleVoice()
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+
+                        Button(model.isSendingPrompt ? "Sending..." : "Send to RoachClaw") {
+                            sendPrompt()
+                        }
+                        .buttonStyle(RoachPrimaryButtonStyle())
+                        .disabled(!canSend)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Button(voiceLabel) {
+                            toggleVoice()
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+
+                        Button(model.isSendingPrompt ? "Sending..." : "Send to RoachClaw") {
+                            sendPrompt()
+                        }
+                        .buttonStyle(RoachPrimaryButtonStyle())
+                        .disabled(!canSend)
+                    }
+                }
+            }
+        }
+    }
+
+    private var contextDeck: some View {
+        RoachInsetPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                RoachSectionHeader(
+                    "Context",
+                    title: "Open the ground truth the request needs.",
+                    detail: "Vault, project, captured web, and live app context stay permissioned while the global panel is open."
+                )
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(RoachClawContextScope.allCases) { scope in
+                        let enabled = model.isRoachClawContextEnabled(scope)
+                        Button {
+                            model.setRoachClawContext(scope, enabled: !enabled)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: scope.systemImage)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(scope.accent)
+                                Text(scope.title)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(RoachPalette.text)
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                Circle()
+                                    .fill(enabled ? scope.accent : RoachPalette.warning)
+                                    .frame(width: 7, height: 7)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 9)
+                            .background(
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .fill(enabled ? scope.accent.opacity(0.12) : RoachPalette.panelRaised.opacity(0.68))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .stroke(enabled ? scope.accent.opacity(0.28) : RoachPalette.border, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Button(model.hasFullRoachClawContextAccess ? "Lock All Context" : "Allow Full Context") {
+                    model.setAllRoachClawContext(enabled: !model.hasFullRoachClawContextAccess)
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+            }
+        }
+    }
+
+    private var footer: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                Button(model.isSpeakingLatestReply ? "Stop Reply" : "Listen Back") {
+                    model.toggleLatestReplySpeech()
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+                .disabled(model.latestRoachClawReply == nil)
+
+                Button("Save Latest") {
+                    model.saveLatestRoachClawResponseToRoachBrain()
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+                .disabled(model.latestRoachClawReply == nil)
+
+                Spacer(minLength: 8)
+
+                Text("Cmd-K opens the command bar. \(RoachNetGlobalHotKey.hint) opens it from the desktop.")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(RoachPalette.muted)
+                    .lineLimit(1)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Button(model.isSpeakingLatestReply ? "Stop Reply" : "Listen Back") {
+                        model.toggleLatestReplySpeech()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+                    .disabled(model.latestRoachClawReply == nil)
+
+                    Button("Save Latest") {
+                        model.saveLatestRoachClawResponseToRoachBrain()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+                    .disabled(model.latestRoachClawReply == nil)
+                }
+
+                Text("Cmd-K in shell. \(RoachNetGlobalHotKey.hint) from the desktop.")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(RoachPalette.muted)
+            }
+        }
+    }
+
+    private func sendPrompt() {
+        guard canSend else { return }
+        Task { await model.sendPrompt() }
+    }
+
+    private func toggleVoice() {
+        Task { await model.togglePromptDictation() }
+    }
+}
+
 private enum LaunchGuideAssetResolver {
     private static let fileName = "roachnet-launch-guide.mp4"
     private static let bundleNames = [
@@ -3653,6 +3972,7 @@ private struct RootWorkspaceView: View {
     @StateObject private var detachedPaletteCoordinator = DetachedCommandPaletteCoordinator()
     @State private var showLaunchGuide = false
     @State private var showCommandPalette = false
+    @State private var showGlobalRoachClaw = false
     @State private var sidebarCollapsed = false
     @State private var homeMenuSection: HomeMenuSection = .commandDeck
     @State private var didScheduleInitialRefresh = false
@@ -3769,6 +4089,35 @@ private struct RootWorkspaceView: View {
                     .transition(.opacity)
                     .zIndex(15)
                 }
+
+                if showGlobalRoachClaw {
+                    Color.black.opacity(0.30)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            closeGlobalRoachClaw()
+                        }
+                        .transition(.opacity)
+                        .zIndex(17)
+
+                    GlobalRoachClawPanel(model: model) {
+                        closeGlobalRoachClaw()
+                    }
+                    .frame(
+                        width: max(340, min(proxy.size.width - 30, isCompactShell ? 620 : 720)),
+                        height: max(420, min(proxy.size.height - 30, isCompactShell ? 640 : 690)),
+                        alignment: .topTrailing
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, isCompactShell ? 16 : 26)
+                    .padding(.trailing, isCompactShell ? 15 : 24)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .topTrailing)),
+                            removal: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.98, anchor: .topTrailing))
+                        )
+                    )
+                    .zIndex(18)
+                }
             }
         }
         .task {
@@ -3831,6 +4180,20 @@ private struct RootWorkspaceView: View {
         }
     }
 
+    private func openGlobalRoachClaw() {
+        detachedPaletteCoordinator.dismiss()
+        showCommandPalette = false
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86, blendDuration: 0.10)) {
+            showGlobalRoachClaw = true
+        }
+    }
+
+    private func closeGlobalRoachClaw() {
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.88, blendDuration: 0.08)) {
+            showGlobalRoachClaw = false
+        }
+    }
+
     private func sidebar(isCollapsed: Bool, isTight: Bool, isVeryTight: Bool) -> some View {
         RoachPanel {
             ZStack(alignment: .top) {
@@ -3843,6 +4206,25 @@ private struct RootWorkspaceView: View {
 
                         sidebarToggleButton(isCollapsed: true)
                             .matchedGeometryEffect(id: "sidebar-toggle", in: sidebarMotion)
+
+                        Button {
+                            openGlobalRoachClaw()
+                        } label: {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(RoachPalette.green)
+                                .frame(width: isVeryTight ? 44 : 48, height: isVeryTight ? 44 : 48)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .fill(RoachPalette.green.opacity(0.12))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(RoachPalette.green.opacity(0.25), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open RoachClaw anywhere")
 
                         VStack(spacing: 10) {
                             ForEach(visiblePanes) { pane in
@@ -4005,6 +4387,11 @@ private struct RootWorkspaceView: View {
                     VStack(alignment: .trailing, spacing: 10) {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 10) {
+                                Button("Claw") {
+                                    openGlobalRoachClaw()
+                                }
+                                .buttonStyle(RoachSecondaryButtonStyle())
+
                                 Button("Command") {
                                     showCommandPalette = true
                                 }
@@ -4017,6 +4404,11 @@ private struct RootWorkspaceView: View {
                             }
 
                             VStack(spacing: 8) {
+                                Button("Claw") {
+                                    openGlobalRoachClaw()
+                                }
+                                .buttonStyle(RoachSecondaryButtonStyle())
+
                                 Button("Command") {
                                     showCommandPalette = true
                                 }
@@ -4196,6 +4588,7 @@ private struct RootWorkspaceView: View {
 
     private func headerBar(isTight: Bool) -> some View {
         let commandLabel = isTight ? "Cmd-K" : "Command"
+        let roachClawLabel = isTight ? "Claw" : "RoachClaw"
         let sidebarLabel = "Nav"
         let runtimeTitle = model.isLoading ? "Runtime loading" : (model.snapshot == nil ? "Runtime waiting" : "Runtime live")
         let runtimeAccent = model.snapshot == nil ? RoachPalette.warning : RoachPalette.green
@@ -4233,6 +4626,11 @@ private struct RootWorkspaceView: View {
                     }
                 }
             } actions: {
+                Button(roachClawLabel) {
+                    openGlobalRoachClaw()
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+
                 Button(commandLabel) {
                     showCommandPalette = true
                 }
@@ -4681,6 +5079,7 @@ private struct RootWorkspaceView: View {
                         HStack {
                             RoachKicker("RoachBrain")
                             Spacer()
+                            RoachTag("\(model.roachBrainWikiStatus.pageCount) wiki", accent: RoachPalette.cyan)
                             Text("\(model.roachBrainMemories.count)")
                                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
@@ -4786,6 +5185,14 @@ private struct RootWorkspaceView: View {
                                 }
                             }
                         }
+
+                        RoachNotice(
+                            title: "Compiled Wiki",
+                            detail: model.roachBrainWikiStatus.pageCount == 0
+                                ? "RoachBrain will compile saved turns into an Obsidian-readable local wiki as memory grows."
+                                : "\(model.roachBrainWikiStatus.pageCount) linked pages are ready at index.md for RoachClaw context.",
+                            accent: RoachPalette.cyan
+                        )
                     }
                 }
 
@@ -4925,6 +5332,13 @@ private struct RootWorkspaceView: View {
                         systemName: "brain.head.profile",
                         accent: RoachPalette.bronze
                     )
+                    RoachDigestRow(
+                        "Compiled Wiki",
+                        value: model.roachBrainWikiStatus.pageCount == 0 ? "Waiting" : "\(model.roachBrainWikiStatus.pageCount) pages",
+                        detail: "Saved work becomes linked Markdown context RoachClaw can read before raw recall.",
+                        systemName: "point.3.connected.trianglepath.dotted",
+                        accent: RoachPalette.cyan
+                    )
                 }
             }
         }
@@ -4954,6 +5368,11 @@ private struct RootWorkspaceView: View {
                 label: "RoachBrain",
                 value: "\(model.roachBrainPinnedCount) pinned",
                 detail: model.roachBrainMemories.isEmpty ? "Memory shelf is still empty." : "\(model.roachBrainMemories.count) local recalls indexed"
+            )
+            RoachMetricCard(
+                label: "Wiki",
+                value: model.roachBrainWikiStatus.pageCount == 0 ? "Ready" : "\(model.roachBrainWikiStatus.pageCount) pages",
+                detail: "Compiled markdown context"
             )
         }
     }
@@ -7086,14 +7505,24 @@ private struct RootWorkspaceView: View {
                     keywords: ["models", "ollama", "cloud", "store", "ai"]
                 ),
                 CommandPaletteEntry(
+                    id: "action-open-roachclaw-anywhere",
+                    section: "RoachClaw",
+                    title: "Open RoachClaw Anywhere",
+                    detail: "Float chat, voice, memory, and context controls over the current RoachNet surface.",
+                    systemImage: "sparkles",
+                    target: .openGlobalRoachClaw,
+                    badge: "Global",
+                    keywords: ["roachclaw", "assistant", "chat", "voice", "global", "anywhere"]
+                ),
+                CommandPaletteEntry(
                     id: "action-voice-prompt",
                     section: "RoachClaw",
                     title: model.isDictatingPrompt ? "Stop Voice Prompt" : "Start Voice Prompt",
-                    detail: "Open the on-device dictation lane directly from the command bar.",
+                    detail: "Open the floating RoachClaw voice lane directly from the command bar.",
                     systemImage: model.isDictatingPrompt ? "waveform.circle.fill" : "mic.circle.fill",
                     target: .togglePromptDictation,
                     badge: model.isDictatingPrompt ? "Listening" : "Standby",
-                    keywords: ["voice", "speech", "dictation", "prompt", "whisper"]
+                    keywords: ["voice", "speech", "dictation", "prompt", "whisper", "global"]
                 ),
                 CommandPaletteEntry(
                     id: "action-latest-reply",
@@ -7118,7 +7547,7 @@ private struct RootWorkspaceView: View {
                     id: "action-stage-next-useful-move",
                     section: "RoachClaw",
                     title: "Stage 'Next Useful Move'",
-                    detail: "Preload the command-deck style prompt that works well as a first ask.",
+                    detail: "Load a first ask into the floating RoachClaw panel without leaving the current surface.",
                     systemImage: "arrowshape.turn.up.right.fill",
                     target: .stagePrompt("Give me the next useful move for this machine."),
                     keywords: ["prompt", "next", "useful", "move", "assistant"]
@@ -7127,7 +7556,7 @@ private struct RootWorkspaceView: View {
                     id: "action-stage-runtime-summary",
                     section: "RoachClaw",
                     title: "Stage Runtime Summary Prompt",
-                    detail: "Queue a concrete ask for the current RoachNet runtime, services, and installed lane state.",
+                    detail: "Queue a concrete ask for the current RoachNet runtime inside the floating panel.",
                     systemImage: "waveform.path.ecg.rectangle.fill",
                     target: .stagePrompt("Summarize what RoachNet is running right now."),
                     keywords: ["prompt", "runtime", "summary", "services", "status"]
@@ -7237,7 +7666,7 @@ private struct RootWorkspaceView: View {
         switch activePane {
         case .roachClaw:
             return commandPaletteEntries.filter {
-                $0.section == "RoachClaw" || $0.id == "pane-RoachClaw" || $0.id == "action-open-model-store"
+                $0.section == "RoachClaw" || $0.id == "pane-RoachClaw" || $0.id == "action-open-model-store" || $0.id == "action-open-roachclaw-anywhere"
             }
         case .runtime:
             return commandPaletteEntries.filter { $0.section == "Runtime" || $0.id == "pane-Runtime" }
@@ -7269,6 +7698,8 @@ private struct RootWorkspaceView: View {
             recentCommandPaletteEntries,
             commandPaletteEntries.filter {
                 $0.id == "action-refresh-runtime"
+                    || $0.id == "action-open-roachclaw-anywhere"
+                    || $0.id == "action-voice-prompt"
                     || $0.id == "action-open-model-store"
                     || $0.id == "action-open-apps-store"
                     || $0.id == "action-open-storage-root"
@@ -7321,10 +7752,13 @@ private struct RootWorkspaceView: View {
         case .importObsidianVault:
             model.selectedPane = .knowledge
             model.importObsidianVault()
+        case .openGlobalRoachClaw:
+            openGlobalRoachClaw()
         case let .stagePrompt(prompt):
-            model.selectedPane = .roachClaw
             model.promptDraft = prompt
+            openGlobalRoachClaw()
         case .togglePromptDictation:
+            openGlobalRoachClaw()
             Task { await model.togglePromptDictation() }
         case .toggleLatestReplySpeech:
             model.toggleLatestReplySpeech()

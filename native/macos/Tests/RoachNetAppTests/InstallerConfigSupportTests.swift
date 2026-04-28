@@ -4,18 +4,18 @@ import XCTest
 final class InstallerConfigSupportTests: XCTestCase {
     func testInstallerScratchPathRecognizesRegressionCheckRoots() {
         XCTAssertTrue(
-            RoachNetRepositoryLocator.isInstallerScratchPath("/Users/roach/RoachNet-public-regressioncheck")
+            RoachNetRepositoryLocator.isInstallerScratchPath("/Users/example/RoachNet.regressioncheck")
         )
         XCTAssertTrue(
             RoachNetRepositoryLocator.isInstallerScratchPath("/tmp/RoachNet.staging-5B63")
         )
         XCTAssertFalse(
-            RoachNetRepositoryLocator.isInstallerScratchPath("/Users/roach/RoachNet")
+            RoachNetRepositoryLocator.isInstallerScratchPath("/Users/example/RoachNet")
         )
     }
 
     func testSanitizedPersistedConfigResetsScratchInstallRootBackToPublicDefault() {
-        let scratchRoot = "/Users/roach/RoachNet-public-regressioncheck"
+        let scratchRoot = "/Users/example/RoachNet.regressioncheck"
         let config = RoachNetInstallerConfig(
             installPath: scratchRoot,
             installedAppPath: URL(fileURLWithPath: scratchRoot)
@@ -55,7 +55,7 @@ final class InstallerConfigSupportTests: XCTestCase {
     }
 
     func testSanitizedPersistedConfigKeepsCustomInstallRoot() {
-        let customRoot = "/Users/roach/Applications/RoachNet"
+        let customRoot = "/Users/example/Applications/RoachNet"
         let config = RoachNetInstallerConfig(
             installPath: customRoot,
             installedAppPath: URL(fileURLWithPath: customRoot)

@@ -3,11 +3,11 @@ import XCTest
 
 final class DevWorkspaceSupportTests: XCTestCase {
     func testTerminalTranscriptParsesPromptMetadataAndKeepsVisiblePrompt() {
-        let chunk = "__RN_PROMPT__/Users/roach/RoachNet__STATUS__0__\nroachnet % "
+        let chunk = "__RN_PROMPT__/Users/example/RoachNet__STATUS__0__\nroachnet % "
 
         let parsed = DeveloperTerminalTranscript.consume(chunk)
 
-        XCTAssertEqual(parsed.prompt?.workingDirectory, "/Users/roach/RoachNet")
+        XCTAssertEqual(parsed.prompt?.workingDirectory, "/Users/example/RoachNet")
         XCTAssertEqual(parsed.prompt?.exitCode, 0)
         XCTAssertEqual(parsed.visibleText, "roachnet % ")
     }
@@ -137,7 +137,7 @@ final class DevWorkspaceSupportTests: XCTestCase {
         XCTAssertEqual(
             DeveloperWorkspacePathLabel.displayName(
                 title: "Install",
-                path: "/Users/roach/RoachNet-public-regressioncheck"
+                path: "/Users/example/RoachNet.regressioncheck"
             ),
             "Contained app"
         )
@@ -147,7 +147,7 @@ final class DevWorkspaceSupportTests: XCTestCase {
         XCTAssertEqual(
             DeveloperWorkspacePathLabel.displayName(
                 title: "Workspace",
-                path: "/Volumes/Parodox/DEVPROJECTS/RoachNet/projects"
+                path: "/Volumes/Shared/DEVPROJECTS/RoachNet/projects"
             ),
             "projects"
         )
@@ -161,7 +161,7 @@ final class DevWorkspaceSupportTests: XCTestCase {
     func testRuntimeSurfacePathLabelRedactsInstallRoots() {
         XCTAssertEqual(
             RuntimeSurfacePathLabel.displayValue(
-                "/Users/roach/RoachNet-public-regressioncheck",
+                "/Users/example/RoachNet.regressioncheck",
                 kind: .installRoot
             ),
             "Contained app"
@@ -171,7 +171,7 @@ final class DevWorkspaceSupportTests: XCTestCase {
     func testRuntimeSurfacePathLabelKeepsGenericStorageName() {
         XCTAssertEqual(
             RuntimeSurfacePathLabel.displayValue(
-                "/Users/roach/RoachNet-public-regressioncheck/storage",
+                "/Users/example/RoachNet.regressioncheck/storage",
                 kind: .storageRoot
             ),
             "storage"
@@ -181,7 +181,7 @@ final class DevWorkspaceSupportTests: XCTestCase {
     func testRuntimeSurfacePathLabelRedactsVaultFolderPaths() {
         XCTAssertEqual(
             RuntimeSurfacePathLabel.displayValue(
-                "/Users/roach/RoachNet-public-regressioncheck/storage/vault",
+                "/Users/example/RoachNet.regressioncheck/storage/vault",
                 kind: .vaultFolder
             ),
             "Contained vault"
@@ -191,7 +191,7 @@ final class DevWorkspaceSupportTests: XCTestCase {
     func testRuntimeSurfacePathLabelShortensLogFilePaths() {
         XCTAssertEqual(
             RuntimeSurfacePathLabel.displayValue(
-                "/Users/roach/RoachNet-public-regressioncheck/storage/logs/roachnet-server.log",
+                "/Users/example/RoachNet.regressioncheck/storage/logs/roachnet-server.log",
                 kind: .logFile
             ),
             "roachnet-server.log"

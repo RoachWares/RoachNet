@@ -54,6 +54,7 @@ struct DeveloperWorkspaceShortcut: Identifiable {
 }
 
 enum DeveloperAssistMode: String, CaseIterable, Identifiable {
+    case agent = "Agent"
     case plan = "Plan"
     case implement = "Implement"
     case debug = "Debug"
@@ -63,6 +64,8 @@ enum DeveloperAssistMode: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
+        case .agent:
+            return "Run the task loop: inspect, act, verify, record."
         case .plan:
             return "Shape the next safe sequence."
         case .implement:
@@ -76,6 +79,8 @@ enum DeveloperAssistMode: String, CaseIterable, Identifiable {
 
     var systemName: String {
         switch self {
+        case .agent:
+            return "terminal.fill"
         case .plan:
             return "point.topleft.down.curvedto.point.bottomright.up"
         case .implement:
@@ -89,6 +94,8 @@ enum DeveloperAssistMode: String, CaseIterable, Identifiable {
 
     var accent: Color {
         switch self {
+        case .agent:
+            return RoachPalette.green
         case .plan:
             return RoachPalette.cyan
         case .implement:
@@ -102,6 +109,8 @@ enum DeveloperAssistMode: String, CaseIterable, Identifiable {
 
     var instruction: String {
         switch self {
+        case .agent:
+            return "Operate like a task runner inside the RoachNet Dev Studio. Use the open file, local memory, compiled wiki, terminal context, and explicit app context. Give the smallest concrete action, include patch-ready code when a file should change, and name the verification command or signal. Never claim a command ran or a file changed unless RoachNet actually performed it."
         case .plan:
             return "Break the request into the next concrete implementation steps. Keep it short, ordered, and biased toward what should happen first."
         case .implement:
@@ -113,38 +122,6 @@ enum DeveloperAssistMode: String, CaseIterable, Identifiable {
         }
     }
 
-    var presets: [String] {
-        switch self {
-        case .plan:
-            return [
-                "Turn this request into the next safe implementation steps.",
-                "Map the smallest shippable path for this file.",
-                "List the commands I should run before changing anything.",
-                "What is the safest order to change and verify this surface?",
-            ]
-        case .implement:
-            return [
-                "Implement the next change in this file and include the verification commands.",
-                "Write the smallest safe patch for this issue.",
-                "Refactor this file without changing behavior and explain the exact edits.",
-                "Give me the exact code path to change and the shell commands to validate it.",
-            ]
-        case .debug:
-            return [
-                "Find the most likely root cause and the fastest proof.",
-                "What is most likely broken in this file and why?",
-                "Give me a targeted debug plan with expected signals.",
-                "Explain the failure path and the smallest safe fix.",
-            ]
-        case .review:
-            return [
-                "Review the open file and call out regressions or missing tests.",
-                "What is risky or weak in this code path?",
-                "Audit this file for edge cases and deployment assumptions.",
-                "Give me the findings first, then the cleanups worth making.",
-            ]
-        }
-    }
 }
 
 @MainActor
@@ -605,54 +582,11 @@ final class DevWorkspaceModel: ObservableObject {
         }
     }
 
-    var contextualTerminalCommands: [String] {
-        guard let activeDocument else {
-            return terminalPresets
-        }
-
-        let pathExtension = activeDocument.url.pathExtension.lowercased()
-        let fileName = activeDocument.url.lastPathComponent
-
-        switch pathExtension {
-        case "swift":
-            return ["swift build", "swift test", "swift run"]
-        case "ts", "tsx", "js", "jsx":
-            return ["npm install", "npm test", "npm run dev"]
-        case "py":
-            return ["python \(fileName)", "python -m pytest", "ruff check ."]
-        case "go":
-            return ["go run .", "go test ./...", "go fmt ./..."]
-        case "rs":
-            return ["cargo run", "cargo test", "cargo fmt"]
-        case "cs":
-            return ["dotnet build", "dotnet run", "dotnet test"]
-        case "sh", "zsh":
-            return ["bash \(fileName)", "shellcheck \(fileName)", "chmod +x \(fileName)"]
-        default:
-            return ["git status --short", "ls -la", "pwd"]
-        }
-    }
-
     var filteredFileTree: [DeveloperFileNode] {
         let query = fileSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return fileTree }
         return filterNodes(fileTree, query: query.lowercased())
     }
-
-    var assistantPromptPresets: [String] {
-        assistantMode.presets
-    }
-
-    let terminalPresets: [String] = [
-        "pwd",
-        "git status --short",
-        "ls -la",
-        "swift test",
-        "npm test",
-        "pnpm test",
-        "python -m pytest",
-        "cargo test",
-    ]
 
     let starterProjectLanguages: [String] = [
         "Swift",
@@ -1133,9 +1067,13 @@ final class DevWorkspaceModel: ObservableObject {
 
     func loadRoachBrain(storagePath: String) {
         roachBrainMemories = RoachBrainStore.load(storagePath: storagePath)
+        if !roachBrainMemories.isEmpty, RoachBrainWikiStore.status(storagePath: storagePath).pageCount == 0 {
+            _ = try? RoachBrainWikiStore.rebuildFromMemories(storagePath: storagePath, memories: roachBrainMemories)
+        }
+        let wikiPages = RoachBrainWikiStore.status(storagePath: storagePath).pageCount
         roachBrainStatus = roachBrainMemories.isEmpty
             ? "No memory stored yet."
-            : "\(roachBrainMemories.count) local memories ready."
+            : "\(roachBrainMemories.count) memories, \(wikiPages) wiki pages."
     }
 
     func selectSecret(_ record: RoachNetSecretRecord?) {
@@ -1255,6 +1193,9 @@ final class DevWorkspaceModel: ObservableObject {
 
         let memoryMatches = roachBrainSuggestedMatches
         let memoryContextBlock = RoachBrainStore.contextBlock(for: memoryMatches)
+        let wikiContextBlock = RoachBrainWikiStore.contextBlock(storagePath: storagePath, query: prompt, matches: memoryMatches)
+        let operatorProtocolBlock = RoachBrainWikiStore.operatorProtocolBlock()
+        let researchProtocolBlock = RoachBrainWikiStore.researchProtocolBlock()
         let appContextBlock = workspaceModel.permissionedRoachClawContextBlock()
 
         let fileContext = activeDocument.map { document in
@@ -1279,6 +1220,16 @@ final class DevWorkspaceModel: ObservableObject {
 
         Use the RoachBrain notes only if they help this request stay concrete.
         """)
+
+        \(wikiContextBlock.isEmpty ? "" : """
+        \(wikiContextBlock)
+
+        Read the compiled wiki as durable local context, not as unquestioned truth.
+        """)
+
+        \(operatorProtocolBlock)
+
+        \(researchProtocolBlock)
 
         \(appContextBlock.isEmpty ? "" : """
         \(appContextBlock)
@@ -1361,7 +1312,9 @@ final class DevWorkspaceModel: ObservableObject {
 
         let tailWindow = String(activeDocument.text.suffix(3200))
         let openingWindow = String(activeDocument.text.prefix(800))
-        let memoryContextBlock = RoachBrainStore.contextBlock(for: roachBrainSuggestedMatches.prefix(2).map { $0 })
+        let memoryMatches = roachBrainSuggestedMatches.prefix(2).map { $0 }
+        let memoryContextBlock = RoachBrainStore.contextBlock(for: memoryMatches)
+        let wikiContextBlock = RoachBrainWikiStore.contextBlock(storagePath: storagePath, query: tailWindow, matches: memoryMatches)
         let inlinePromptDirective = self.inlinePromptDirective
 
         let prompt = """
@@ -1387,6 +1340,11 @@ final class DevWorkspaceModel: ObservableObject {
         \(memoryContextBlock.isEmpty ? "" : """
         Local memory:
         \(memoryContextBlock)
+        """)
+
+        \(wikiContextBlock.isEmpty ? "" : """
+        Compiled RoachBrain wiki:
+        \(wikiContextBlock)
         """)
 
         Buffer opening:
@@ -3020,18 +2978,11 @@ struct DevWorkspaceView: View {
                 accent: devModel.assistantMode.accent
             )
 
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(minimum: 0), spacing: 8),
-                    GridItem(.flexible(minimum: 0), spacing: 8),
-                ],
-                alignment: .leading,
-                spacing: 8
-            ) {
-                ForEach(devModel.assistantPromptPresets.prefix(4), id: \.self) { preset in
-                    presetCard(preset)
-                }
-            }
+            RoachNotice(
+                title: "Direct Ask",
+                detail: "Write the coding request yourself. RoachClaw will use the open file, RoachBrain wiki, and the mode contract without staging canned commands.",
+                accent: RoachPalette.cyan
+            )
 
             HStack(spacing: 10) {
                 Button(devModel.aiIsRunning ? "Thinking…" : "Ask RoachClaw") {
@@ -4283,46 +4234,5 @@ struct DevWorkspaceView: View {
 
     private func selectAssistMode(_ mode: DeveloperAssistMode) {
         devModel.assistantMode = mode
-        if devModel.aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || devModel.assistantPromptPresets.contains(devModel.aiPrompt)
-        {
-            devModel.aiPrompt = mode.presets.first ?? devModel.aiPrompt
-        }
-    }
-
-    private func presetCard(_ preset: String) -> some View {
-        Button {
-            devModel.aiPrompt = preset
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Starter".uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .tracking(1.0)
-                    .foregroundStyle(RoachPalette.muted)
-                Text(preset)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(RoachPalette.text)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(RoachPalette.panelRaised.opacity(0.60))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(RoachPalette.border, lineWidth: 1)
-            )
-            .overlay(alignment: .topTrailing) {
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(RoachPalette.magenta)
-                    .padding(.top, 8)
-                    .padding(.trailing, 8)
-            }
-        }
-        .buttonStyle(RoachCardButtonStyle())
     }
 }

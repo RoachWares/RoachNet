@@ -333,6 +333,34 @@ function normalizeWindowToken(value) {
   return normalizeWindowLabel(value).replace(/[^a-z0-9]/g, '')
 }
 
+function roachWindowMatches(window, labels) {
+  const normalizedWindowOwner = normalizeWindowLabel(window.owner)
+  const normalizedWindowName = normalizeWindowLabel(window.name)
+  const normalizedWindowOwnerToken = normalizeWindowToken(window.owner)
+  const normalizedWindowNameToken = normalizeWindowToken(window.name)
+
+  if (window.layer !== 0) {
+    return false
+  }
+
+  return (
+    (
+      normalizedWindowOwner === labels.normalizedOwner ||
+      normalizedWindowOwner === labels.normalizedProcess ||
+      normalizedWindowOwnerToken === labels.ownerToken ||
+      normalizedWindowOwnerToken === labels.processToken
+    ) &&
+    (
+      normalizedWindowName === labels.normalizedTitle ||
+      normalizedWindowName === labels.normalizedOwner ||
+      normalizedWindowName === labels.normalizedProcess ||
+      normalizedWindowNameToken === labels.titleToken ||
+      normalizedWindowNameToken === labels.ownerToken ||
+      normalizedWindowNameToken === labels.processToken
+    )
+  )
+}
+
 async function hasRoachWindow(ownerName, titleName = ownerName, processName = null) {
   const normalizedOwner = normalizeWindowLabel(ownerName)
   const normalizedTitle = normalizeWindowLabel(titleName)
@@ -340,6 +368,14 @@ async function hasRoachWindow(ownerName, titleName = ownerName, processName = nu
   const ownerToken = normalizeWindowToken(ownerName)
   const titleToken = normalizeWindowToken(titleName)
   const processToken = normalizeWindowToken(processName)
+  const labels = {
+    normalizedOwner,
+    normalizedTitle,
+    normalizedProcess,
+    ownerToken,
+    titleToken,
+    processToken,
+  }
 
   if (processName) {
     const automationWindowSnapshots = [await listAutomationWindowSnapshot(processName)]
@@ -371,37 +407,12 @@ async function hasRoachWindow(ownerName, titleName = ownerName, processName = nu
       }
     }
 
-    return false
+    const windows = await listRoachWindows()
+    return windows.some((window) => roachWindowMatches(window, labels))
   }
 
   const windows = await listRoachWindows()
-  return windows.some((window) => {
-    const normalizedWindowOwner = normalizeWindowLabel(window.owner)
-    const normalizedWindowName = normalizeWindowLabel(window.name)
-    const normalizedWindowOwnerToken = normalizeWindowToken(window.owner)
-    const normalizedWindowNameToken = normalizeWindowToken(window.name)
-
-    if (window.layer !== 0) {
-      return false
-    }
-
-    return (
-      (
-        normalizedWindowOwner === normalizedOwner ||
-        normalizedWindowOwner === normalizedProcess ||
-        normalizedWindowOwnerToken === ownerToken ||
-        normalizedWindowOwnerToken === processToken
-      ) &&
-      (
-        normalizedWindowName === normalizedTitle ||
-        normalizedWindowName === normalizedOwner ||
-        normalizedWindowName === normalizedProcess ||
-        normalizedWindowNameToken === titleToken ||
-        normalizedWindowNameToken === ownerToken ||
-        normalizedWindowNameToken === processToken
-      )
-    )
-  })
+  return windows.some((window) => roachWindowMatches(window, labels))
 }
 
 async function waitForRoachWindow(ownerName, timeoutMs, titleName = ownerName, processName = null) {
@@ -588,21 +599,31 @@ async function terminateLingeringSmokeProcesses() {
 
 async function normalizeMacBundle(bundlePath, homePath, timeoutMs = startupTimeoutMs) {
   const env = baseShellEnv(homePath)
+  const targets = [bundlePath]
+  const executableRoot = path.join(bundlePath, 'Contents', 'MacOS')
 
-  await runCommand('xattr', ['-d', 'com.apple.quarantine', bundlePath], {
-    env,
-    timeoutMs: 15_000,
-  }).catch(() => {})
+  try {
+    const executableEntries = await readdir(executableRoot, { withFileTypes: true })
+    for (const entry of executableEntries) {
+      if (entry.isFile()) {
+        targets.push(path.join(executableRoot, entry.name))
+      }
+    }
+  } catch {
+    // Keep launch normalization best-effort.
+  }
 
-  await runCommand('xattr', ['-d', 'com.apple.provenance', bundlePath], {
-    env,
-    timeoutMs: 15_000,
-  }).catch(() => {})
+  for (const targetPath of targets) {
+    await runCommand('xattr', ['-d', 'com.apple.quarantine', targetPath], {
+      env,
+      timeoutMs: 15_000,
+    }).catch(() => {})
 
-  await runCommand('xattr', ['-cr', bundlePath], {
-    env,
-    timeoutMs,
-  }).catch(() => {})
+    await runCommand('xattr', ['-d', 'com.apple.provenance', targetPath], {
+      env,
+      timeoutMs: 15_000,
+    }).catch(() => {})
+  }
 }
 
 function formatProcessLogs(label, logs) {

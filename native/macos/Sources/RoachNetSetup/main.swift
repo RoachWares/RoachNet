@@ -909,7 +909,14 @@ private struct AnyEncodable: Encodable {
 @main
 struct RoachNetSetupApp: App {
     @NSApplicationDelegateAdaptor(RoachNetSetupAppDelegate.self) private var appDelegate
-    @StateObject private var controller = SetupController()
+    @StateObject private var controller: SetupController
+
+    @MainActor
+    init() {
+        let controller = SetupController()
+        _controller = StateObject(wrappedValue: controller)
+        RoachNetSetupAppDelegate.bootstrapController = controller
+    }
 
     var body: some Scene {
         WindowGroup("RoachNet Setup", id: "main") {
@@ -927,13 +934,19 @@ struct RoachNetSetupApp: App {
     }
 }
 
+@MainActor
 final class RoachNetSetupAppDelegate: NSObject, NSApplicationDelegate {
-    weak var controller: SetupController?
+    static var bootstrapController: SetupController?
+
+    var controller: SetupController?
+    private var fallbackWindowController: NSWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         clearSavedState()
         NSApp.setActivationPolicy(.regular)
+        controller = controller ?? Self.bootstrapController
         bringPrimaryWindowForward()
+        scheduleFallbackWindowIfNeeded()
     }
 
     func applicationShouldSaveApplicationState(_ app: NSApplication) -> Bool {
@@ -962,14 +975,61 @@ final class RoachNetSetupAppDelegate: NSObject, NSApplicationDelegate {
         return .terminateNow
     }
 
-    private func bringPrimaryWindowForward() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+    private func bringPrimaryWindowForward(retriesRemaining: Int = 18) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             NSApp.activate(ignoringOtherApps: true)
             if let window = NSApp.windows.first(where: { $0.canBecomeKey }) ?? NSApp.windows.first {
+                self?.configure(window: window)
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
+            } else if retriesRemaining > 0 {
+                self?.bringPrimaryWindowForward(retriesRemaining: retriesRemaining - 1)
             }
         }
+    }
+
+    private func scheduleFallbackWindowIfNeeded() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self else { return }
+            guard !NSApp.windows.contains(where: { $0.isVisible }) else { return }
+            self.createFallbackWindow()
+        }
+    }
+
+    private func createFallbackWindow() {
+        guard fallbackWindowController == nil else { return }
+        guard let controller = controller ?? Self.bootstrapController else { return }
+
+        let contentView = SetupRootView(controller: controller)
+            .frame(minWidth: 760, idealWidth: 980, minHeight: 580, idealHeight: 740)
+
+        let hostingController = NSHostingController(rootView: contentView)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 740),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "RoachNet Setup"
+        window.contentViewController = hostingController
+        configure(window: window)
+        window.center()
+
+        let windowController = NSWindowController(window: window)
+        fallbackWindowController = windowController
+        windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    private func configure(window: NSWindow) {
+        window.minSize = NSSize(width: 760, height: 580)
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.tabbingMode = .disallowed
+        window.isMovableByWindowBackground = false
+        window.isRestorable = false
     }
 
     private func clearSavedState() {
