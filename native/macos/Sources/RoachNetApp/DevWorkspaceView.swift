@@ -53,6 +53,80 @@ struct DeveloperWorkspaceShortcut: Identifiable {
     let accent: Color
 }
 
+enum DeveloperTerminalTheme: String, CaseIterable, Identifiable {
+    case roach = "Roach"
+    case phosphor = "Phosphor"
+    case ember = "Ember"
+    case midnight = "Midnight"
+
+    var id: String { rawValue }
+
+    var detail: String {
+        switch self {
+        case .roach:
+            return "Green signal, black glass."
+        case .phosphor:
+            return "Soft CRT glow."
+        case .ember:
+            return "Warm build room."
+        case .midnight:
+            return "Quiet blue console."
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .roach:
+            return RoachPalette.green
+        case .phosphor:
+            return RoachPalette.cyan
+        case .ember:
+            return RoachPalette.warning
+        case .midnight:
+            return RoachPalette.magenta
+        }
+    }
+
+    var outputForeground: Color {
+        switch self {
+        case .roach:
+            return RoachPalette.text
+        case .phosphor:
+            return RoachPalette.cyan.opacity(0.94)
+        case .ember:
+            return Color(red: 1.0, green: 0.78, blue: 0.48)
+        case .midnight:
+            return Color(red: 0.80, green: 0.88, blue: 1.0)
+        }
+    }
+
+    var mutedForeground: Color {
+        switch self {
+        case .roach:
+            return RoachPalette.muted
+        case .phosphor:
+            return RoachPalette.cyan.opacity(0.58)
+        case .ember:
+            return Color(red: 1.0, green: 0.70, blue: 0.42).opacity(0.64)
+        case .midnight:
+            return Color(red: 0.62, green: 0.70, blue: 0.86)
+        }
+    }
+
+    var backgroundColors: [Color] {
+        switch self {
+        case .roach:
+            return [Color.black.opacity(0.50), Color.black.opacity(0.34), RoachPalette.green.opacity(0.08)]
+        case .phosphor:
+            return [Color.black.opacity(0.54), Color(red: 0.01, green: 0.12, blue: 0.11).opacity(0.74), RoachPalette.cyan.opacity(0.10)]
+        case .ember:
+            return [Color.black.opacity(0.52), Color(red: 0.18, green: 0.07, blue: 0.02).opacity(0.78), RoachPalette.warning.opacity(0.11)]
+        case .midnight:
+            return [Color.black.opacity(0.54), Color(red: 0.02, green: 0.05, blue: 0.14).opacity(0.86), RoachPalette.magenta.opacity(0.10)]
+        }
+    }
+}
+
 enum DeveloperAssistMode: String, CaseIterable, Identifiable {
     case agent = "Agent"
     case plan = "Plan"
@@ -150,6 +224,9 @@ final class DevWorkspaceModel: ObservableObject {
     @Published var terminalWorkingDirectoryOverride = ""
     @Published var terminalReportedWorkingDirectory = ""
     @Published var lastTerminalExitCode: Int32?
+    @Published var terminalTheme: DeveloperTerminalTheme = .roach
+    @Published var terminalFontSize: CGFloat = 12
+    @Published var terminalSoftWrap = true
     @Published var inlineCompletion = ""
     @Published var inlineCompletionIsLoading = false
     @Published var inlineCompletionStatus = "Open a file and RoachClaw will watch the buffer tail."
@@ -284,6 +361,10 @@ final class DevWorkspaceModel: ObservableObject {
 
     var terminalOutputLineCount: Int {
         max(terminalOutput.components(separatedBy: .newlines).count, terminalOutput.isEmpty ? 0 : 1)
+    }
+
+    var terminalViewportHeight: CGFloat {
+        terminalSoftWrap ? 284 : 306
     }
 
     var activeDocumentLanguage: String {
@@ -1045,6 +1126,24 @@ final class DevWorkspaceModel: ObservableObject {
     func copyTerminalOutput() {
         copyToPasteboard(terminalOutput)
         importStatus = "Copied terminal output."
+    }
+
+    func cycleTerminalTheme() {
+        let themes = DeveloperTerminalTheme.allCases
+        guard let index = themes.firstIndex(of: terminalTheme) else {
+            terminalTheme = .roach
+            return
+        }
+        terminalTheme = themes[(index + 1) % themes.count]
+        terminalStatus = "\(terminalTheme.rawValue) terminal skin."
+    }
+
+    func increaseTerminalFontSize() {
+        terminalFontSize = min(terminalFontSize + 1, 18)
+    }
+
+    func decreaseTerminalFontSize() {
+        terminalFontSize = max(terminalFontSize - 1, 10)
     }
 
     private func recordTerminalCommand(_ command: String) {
@@ -2304,65 +2403,68 @@ struct DevWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(minHeight: 820, maxHeight: .infinity, alignment: .topLeading)
+        .frame(minHeight: 760, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var expandedWorkbenchLayout: some View {
-        devWorkbenchShell {
-            HStack(spacing: 0) {
-                fileExplorerColumn
-                    .frame(width: 232)
-                    .frame(maxHeight: .infinity, alignment: .topLeading)
+        HStack(alignment: .top, spacing: 14) {
+            devWorkbenchShell {
+                HStack(spacing: 0) {
+                    fileExplorerColumn
+                        .frame(width: 238)
+                        .frame(maxHeight: .infinity, alignment: .topLeading)
 
-                verticalWorkbenchDivider
+                    verticalWorkbenchDivider
 
-                VStack(spacing: 0) {
-                    editorColumn
-                        .frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+                    VStack(spacing: 0) {
+                        editorColumn
+                            .frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
 
-                    horizontalWorkbenchDivider
+                        horizontalWorkbenchDivider
 
-                    terminalColumn
-                        .frame(minHeight: 292, idealHeight: 340, alignment: .topLeading)
+                        terminalColumn
+                            .frame(minHeight: 310, idealHeight: 360, alignment: .topLeading)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                verticalWorkbenchDivider
-
-                sideRail
-                    .frame(minWidth: 344, idealWidth: 352, maxWidth: 360)
-                    .frame(maxHeight: .infinity, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            sideRail
+                .frame(minWidth: 344, idealWidth: 370, maxWidth: 386)
+                .frame(maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var compactWorkbenchLayout: some View {
-        devWorkbenchShell {
-            VStack(spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    fileExplorerColumn
-                        .frame(minWidth: 220, idealWidth: 232, maxWidth: 240, maxHeight: .infinity, alignment: .topLeading)
+        VStack(alignment: .leading, spacing: 14) {
+            devWorkbenchShell {
+                VStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        fileExplorerColumn
+                            .frame(minWidth: 220, idealWidth: 232, maxWidth: 240, maxHeight: .infinity, alignment: .topLeading)
 
-                    editorColumn
-                        .frame(maxWidth: .infinity, minHeight: 560, maxHeight: .infinity, alignment: .topLeading)
-                }
+                        editorColumn
+                            .frame(maxWidth: .infinity, minHeight: 560, maxHeight: .infinity, alignment: .topLeading)
+                    }
 
-                HStack(alignment: .top, spacing: 12) {
                     terminalColumn
-                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
-
-                    sideRail
-                        .frame(minWidth: 312, idealWidth: 328, maxWidth: 348, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 320, alignment: .topLeading)
                 }
             }
+
+            sideRail
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func devWorkbenchShell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .padding(8)
+            .padding(6)
             .background(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -2376,10 +2478,10 @@ struct DevWorkspaceView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .stroke(RoachPalette.borderStrong, lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     private var verticalWorkbenchDivider: some View {
@@ -3809,6 +3911,100 @@ struct DevWorkspaceView: View {
         }
     }
 
+    private var terminalControlStrip: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                terminalThemeRail
+
+                Spacer(minLength: 8)
+
+                Button("Aa−") {
+                    devModel.decreaseTerminalFontSize()
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+
+                Button("Aa+") {
+                    devModel.increaseTerminalFontSize()
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+
+                Button(devModel.terminalSoftWrap ? "Wrap On" : "Wrap Off") {
+                    devModel.terminalSoftWrap.toggle()
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+
+                Button("Theme") {
+                    devModel.cycleTerminalTheme()
+                }
+                .buttonStyle(RoachSecondaryButtonStyle())
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                terminalThemeRail
+
+                HStack(spacing: 10) {
+                    Button("Aa−") {
+                        devModel.decreaseTerminalFontSize()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+
+                    Button("Aa+") {
+                        devModel.increaseTerminalFontSize()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+
+                    Button(devModel.terminalSoftWrap ? "Wrap On" : "Wrap Off") {
+                        devModel.terminalSoftWrap.toggle()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+
+                    Button("Theme") {
+                        devModel.cycleTerminalTheme()
+                    }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+                }
+            }
+        }
+    }
+
+    private var terminalThemeRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(DeveloperTerminalTheme.allCases) { theme in
+                    Button {
+                        devModel.terminalTheme = theme
+                    } label: {
+                        HStack(spacing: 7) {
+                            Circle()
+                                .fill(theme.accent)
+                                .frame(width: 8, height: 8)
+                                .shadow(color: theme.accent.opacity(0.45), radius: 8, x: 0, y: 0)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(theme.rawValue)
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                Text(theme.detail)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .foregroundStyle(devModel.terminalTheme == theme ? RoachPalette.text : RoachPalette.muted)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(devModel.terminalTheme == theme ? theme.accent.opacity(0.18) : RoachPalette.panelRaised.opacity(0.58))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(devModel.terminalTheme == theme ? theme.accent.opacity(0.44) : RoachPalette.border, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private var terminalColumn: some View {
         RoachInsetPanel {
             VStack(alignment: .leading, spacing: 12) {
@@ -3847,6 +4043,8 @@ struct DevWorkspaceView: View {
                         }
                     }
                 }
+
+                terminalControlStrip
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -3972,37 +4170,38 @@ struct DevWorkspaceView: View {
                         .fill(RoachPalette.borderStrong.opacity(0.9))
                         .frame(height: 1)
 
-                    ScrollView(showsIndicators: false) {
+                    ScrollView(devModel.terminalSoftWrap ? .vertical : [.vertical, .horizontal], showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 8) {
                             if devModel.terminalOutput.isEmpty {
                                 Text("Shell opening. The prompt stays here.")
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(RoachPalette.muted)
+                                    .font(.system(size: devModel.terminalFontSize, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(devModel.terminalTheme.mutedForeground)
                                     .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Text("user@roachnet " + devModel.displayWorkingDirectory() + " %")
-                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                    .foregroundStyle(RoachPalette.green)
+                                    .font(.system(size: devModel.terminalFontSize, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(devModel.terminalTheme.accent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Text("Build, test, git, setup, and local tooling stay under one quiet prompt.")
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(RoachPalette.muted)
+                                    .font(.system(size: max(devModel.terminalFontSize - 1, 10), weight: .medium, design: .monospaced))
+                                    .foregroundStyle(devModel.terminalTheme.mutedForeground)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             } else {
                                 Text(devModel.terminalOutput)
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(RoachPalette.text)
+                                    .font(.system(size: devModel.terminalFontSize, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(devModel.terminalTheme.outputForeground)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .fixedSize(horizontal: !devModel.terminalSoftWrap, vertical: true)
                             }
                     }
                     .padding(14)
                     .textSelection(.enabled)
                 }
-                .frame(minHeight: 260)
+                .frame(minHeight: devModel.terminalViewportHeight)
                 .background(
                     LinearGradient(
-                        colors: [Color.black.opacity(0.42), Color.black.opacity(0.30)],
+                        colors: devModel.terminalTheme.backgroundColors,
                         startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -4138,6 +4337,7 @@ struct DevWorkspaceView: View {
 
                     HStack(spacing: 10) {
                         RoachTag("zsh", accent: RoachPalette.cyan)
+                        RoachTag(devModel.terminalTheme.rawValue, accent: devModel.terminalTheme.accent)
                         RoachTag("TERM xterm-256color", accent: RoachPalette.magenta)
                         RoachTag("\(devModel.terminalOutputLineCount) lines", accent: RoachPalette.bronze)
                         RoachTag("\(devModel.terminalHistoryCount) recent", accent: RoachPalette.cyan)

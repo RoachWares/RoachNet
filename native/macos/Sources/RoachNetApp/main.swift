@@ -277,8 +277,10 @@ private enum CommandPaletteTarget: Hashable {
     case importObsidianVault
     case openGlobalRoachClaw
     case stagePrompt(String)
+    case stagePromptFromClipboard(String)
     case togglePromptDictation
     case toggleLatestReplySpeech
+    case copyLatestReply
     case saveLatestReplyToRoachBrain
     case toggleContextScope(RoachClawContextScope)
     case setAllContext(Bool)
@@ -445,7 +447,7 @@ private extension CommandPaletteTarget {
         switch self {
         case .externalURL:
             return false
-        case .pane, .route, .service, .refreshRuntime, .launchGuide, .revealPath, .previewVaultFile, .importObsidianVault, .openGlobalRoachClaw, .stagePrompt, .togglePromptDictation, .toggleLatestReplySpeech, .saveLatestReplyToRoachBrain, .toggleContextScope, .setAllContext, .promoteLocalModel, .promoteCloudModel:
+        case .pane, .route, .service, .refreshRuntime, .launchGuide, .revealPath, .previewVaultFile, .importObsidianVault, .openGlobalRoachClaw, .stagePrompt, .stagePromptFromClipboard, .togglePromptDictation, .toggleLatestReplySpeech, .copyLatestReply, .saveLatestReplyToRoachBrain, .toggleContextScope, .setAllContext, .promoteLocalModel, .promoteCloudModel:
             return true
         }
     }
@@ -5685,6 +5687,8 @@ private struct RootWorkspaceView: View {
                     )
                 }
 
+                roachClawWorkingSetDock
+
                 VStack(alignment: .leading, spacing: 10) {
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .bottom, spacing: 12) {
@@ -5706,6 +5710,132 @@ private struct RootWorkspaceView: View {
                 }
             }
         }
+    }
+
+    private var roachClawWorkingSetDock: some View {
+        let replies = Array(model.chatLines.filter { $0.role == "RoachClaw" }.suffix(3))
+        let memories = Array(
+            model.roachBrainMemories
+                .sorted { lhs, rhs in
+                    if lhs.pinned != rhs.pinned {
+                        return lhs.pinned && !rhs.pinned
+                    }
+                    return lhs.lastAccessedAt > rhs.lastAccessedAt
+                }
+                .prefix(3)
+        )
+
+        return RoachInsetPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                responsiveBar {
+                    RoachSectionHeader(
+                        "Working Set",
+                        title: "Keep the useful output close.",
+                        detail: "Recent replies and pinned memory act like lightweight artifacts: readable, copyable, and ready to save without leaving the thread."
+                    )
+                } actions: {
+                    HStack(spacing: 8) {
+                        RoachTag("\(replies.count) replies", accent: RoachPalette.magenta)
+                        RoachTag("\(memories.count) recalls", accent: RoachPalette.cyan)
+                    }
+                }
+
+                if replies.isEmpty && memories.isEmpty {
+                    Text("Ask once, then the pieces worth keeping start stacking here.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(RoachPalette.muted)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(replies) { line in
+                                roachClawWorkingSetCard(
+                                    eyebrow: "Reply artifact",
+                                    title: String(line.text.prefix(58)),
+                                    detail: line.text,
+                                    accent: RoachPalette.magenta,
+                                    actionTitle: "Copy"
+                                ) {
+                                    let pasteboard = NSPasteboard.general
+                                    pasteboard.clearContents()
+                                    pasteboard.setString(line.text, forType: .string)
+                                    model.statusLine = "Copied a RoachClaw working-set reply."
+                                }
+                            }
+
+                            ForEach(memories) { memory in
+                                roachClawWorkingSetCard(
+                                    eyebrow: memory.pinned ? "Pinned recall" : "Memory recall",
+                                    title: memory.title,
+                                    detail: memory.summary.isEmpty ? memory.body : memory.summary,
+                                    accent: memory.pinned ? RoachPalette.green : RoachPalette.cyan,
+                                    actionTitle: "Stage"
+                                ) {
+                                    model.promptDraft = "Use this RoachBrain memory as context and give me the next useful move:\n\n\(memory.title)\n\n\(memory.summary.isEmpty ? memory.body : memory.summary)"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func roachClawWorkingSetCard(
+        eyebrow: String,
+        title: String,
+        detail: String,
+        accent: Color,
+        actionTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: accent.opacity(0.35), radius: 8, x: 0, y: 0)
+                Text(eyebrow)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(0.9)
+                    .foregroundStyle(accent)
+            }
+
+            Text(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled output" : title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(RoachPalette.text)
+                .lineLimit(2)
+
+            Text(detail)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(RoachPalette.muted)
+                .lineLimit(4)
+
+            Button(actionTitle) {
+                action()
+            }
+            .buttonStyle(RoachSecondaryButtonStyle())
+        }
+        .padding(14)
+        .frame(width: 240, alignment: .topLeading)
+        .frame(minHeight: 172, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            RoachPalette.panelRaised.opacity(0.82),
+                            accent.opacity(0.08),
+                            Color.black.opacity(0.10),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(accent.opacity(0.26), lineWidth: 1)
+        )
     }
 
     private func roachClawStarterPromptDeck(_ prompts: [String]) -> some View {
@@ -7535,6 +7665,16 @@ private struct RootWorkspaceView: View {
                     keywords: ["tts", "playback", "reply", "voice", "speech"]
                 ),
                 CommandPaletteEntry(
+                    id: "action-copy-latest-reply",
+                    section: "RoachClaw",
+                    title: "Copy Latest Reply",
+                    detail: "Put the most recent RoachClaw answer on the clipboard for handoff into any app.",
+                    systemImage: "doc.on.doc.fill",
+                    target: .copyLatestReply,
+                    badge: model.latestRoachClawReply == nil ? "No reply yet" : "Ready",
+                    keywords: ["copy", "reply", "clipboard", "pasteboard", "handoff"]
+                ),
+                CommandPaletteEntry(
                     id: "action-save-latest-reply",
                     section: "RoachClaw",
                     title: "Save Latest Reply to RoachBrain",
@@ -7560,6 +7700,26 @@ private struct RootWorkspaceView: View {
                     systemImage: "waveform.path.ecg.rectangle.fill",
                     target: .stagePrompt("Summarize what RoachNet is running right now."),
                     keywords: ["prompt", "runtime", "summary", "services", "status"]
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-clipboard",
+                    section: "RoachClaw",
+                    title: "Ask RoachClaw About Clipboard",
+                    detail: "Turn the current clipboard into a focused RoachClaw prompt from the global command bar.",
+                    systemImage: "doc.on.clipboard.fill",
+                    target: .stagePromptFromClipboard("Read this clipboard content and give me the next useful action."),
+                    badge: NSPasteboard.general.string(forType: .string)?.isEmpty == false ? "Clipboard" : "Empty",
+                    keywords: ["clipboard", "pasteboard", "ask", "prompt", "raycast", "global"]
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-dev-agent",
+                    section: "Dev",
+                    title: "Stage Dev Agent Prompt",
+                    detail: "Load a task-runner ask that tells RoachClaw to inspect, act, verify, and record before claiming progress.",
+                    systemImage: "terminal.fill",
+                    target: .stagePrompt("Act as the RoachNet Dev agent for the current project: inspect the relevant files, propose the smallest safe patch, name the verification command, and do not claim anything ran unless it actually did."),
+                    badge: "Agent",
+                    keywords: ["dev", "agent", "ide", "cursor", "code", "verify"]
                 ),
                 CommandPaletteEntry(
                     id: "action-toggle-all-context",
@@ -7704,6 +7864,8 @@ private struct RootWorkspaceView: View {
                     || $0.id == "action-open-apps-store"
                     || $0.id == "action-open-storage-root"
                     || $0.id == "action-stage-next-useful-move"
+                    || $0.id == "action-stage-clipboard"
+                    || $0.id == "action-stage-dev-agent"
                     || $0.section == "Vault"
             }
         ]
@@ -7757,11 +7919,33 @@ private struct RootWorkspaceView: View {
         case let .stagePrompt(prompt):
             model.promptDraft = prompt
             openGlobalRoachClaw()
+        case let .stagePromptFromClipboard(prefix):
+            let clipboard = NSPasteboard.general.string(forType: .string)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? ""
+            model.promptDraft = clipboard.isEmpty
+                ? prefix
+                : """
+                \(prefix)
+
+                Clipboard:
+                \(String(clipboard.prefix(6000)))
+                """
+            openGlobalRoachClaw()
         case .togglePromptDictation:
             openGlobalRoachClaw()
             Task { await model.togglePromptDictation() }
         case .toggleLatestReplySpeech:
             model.toggleLatestReplySpeech()
+        case .copyLatestReply:
+            if let reply = model.latestRoachClawReply, !reply.isEmpty {
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(reply, forType: .string)
+                model.statusLine = "Copied the latest RoachClaw reply."
+            } else {
+                model.statusLine = "No RoachClaw reply is ready to copy yet."
+            }
         case .saveLatestReplyToRoachBrain:
             model.saveLatestRoachClawResponseToRoachBrain()
         case let .toggleContextScope(scope):

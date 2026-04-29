@@ -188,12 +188,22 @@ async function waitForAuthorizedJson(url, token, timeoutMs) {
   throw new Error(`Timed out waiting for authorized companion payload at ${url}`)
 }
 
-async function waitForPath(targetPath, timeoutMs, label = targetPath) {
+async function waitForPath(targetPath, timeoutMs, label = targetPath, options = {}) {
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < timeoutMs) {
     if (existsSync(targetPath)) {
       return
+    }
+
+    if (options.child && options.child.exitCode !== null) {
+      const logs = typeof options.logsProvider === 'function' ? options.logsProvider() : null
+      throw new Error(
+        formatLogs(
+          `runtime exited before ${label}`,
+          logs
+        ) || `Runtime exited before ${label} was written.`
+      )
     }
 
     await sleep(250)
@@ -536,8 +546,14 @@ async function main() {
 
   try {
     console.log('Waiting for contained desktop runtime health...')
-    await waitForPath(adminLogPath, startupTimeoutMs, 'runtime admin log')
-    await waitForPath(processInfoPath, startupTimeoutMs, 'runtime process info')
+    await waitForPath(adminLogPath, startupTimeoutMs, 'runtime admin log', {
+      child: runtimeHandle.child,
+      logsProvider: () => runtimeHandle.getLogs(),
+    })
+    await waitForPath(processInfoPath, startupTimeoutMs, 'runtime process info', {
+      child: runtimeHandle.child,
+      logsProvider: () => runtimeHandle.getLogs(),
+    })
 
     const { runtimeBaseUrl, companionBaseUrl } = await waitForRuntimeEndpoints({
       adminLogPath,

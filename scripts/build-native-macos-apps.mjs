@@ -595,10 +595,10 @@ function getCodesignArgs(targetPath, options = {}) {
 
   if (codesignIdentity) {
     args.push('--options', 'runtime', '--timestamp')
-  }
 
-  if (options.bundle === true) {
-    args.push('--preserve-metadata=identifier,entitlements,flags,runtime')
+    if (options.bundle === true) {
+      args.push('--preserve-metadata=identifier,entitlements,flags,runtime')
+    }
   }
 
   args.push(targetPath)
@@ -606,10 +606,6 @@ function getCodesignArgs(targetPath, options = {}) {
 }
 
 async function signCodeObject(targetPath, options = {}) {
-  if (!codesignIdentity) {
-    return
-  }
-
   await run('codesign', getCodesignArgs(targetPath, options), { stdio: 'pipe' })
 }
 
@@ -644,8 +640,7 @@ async function collectCodeSignTargets(rootPath) {
       if (
         extension === '.dylib' ||
         extension === '.node' ||
-        entry.name === 'node' ||
-        entryPath.includes(`${path.sep}Contents${path.sep}MacOS${path.sep}`)
+        entry.name === 'node'
       ) {
         targets.push(entryPath)
       }
