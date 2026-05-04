@@ -16,7 +16,7 @@ on:
 jobs:
   check_authorization:
     name: Check authorization to publish new Docker image
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       isAuthorized: ${{ steps.check-auth.outputs.is_authorized }}
     steps:
@@ -27,7 +27,7 @@ jobs:
     name: Build Docker image
     needs: check_authorization
     if: needs.check_authorization.outputs.isAuthorized == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -40,8 +40,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Blacksmith Docker builder
+        uses: useblacksmith/setup-docker-builder@v1
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: useblacksmith/build-push-action@v2
         with:
           push: true
           tags: |

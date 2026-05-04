@@ -8,7 +8,7 @@ permissions:
 jobs:
   check_authorization:
     name: Check authorization to release new version
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       isAuthorized: ${{ steps.check-auth.outputs.is_authorized }}
     steps:
@@ -19,7 +19,7 @@ jobs:
     name: Release
     needs: check_authorization
     if: needs.check_authorization.outputs.isAuthorized == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       didRelease: ${{ steps.semver.outputs.new_release_published }}
       newVersion: ${{ steps.semver.outputs.new_release_version }}
