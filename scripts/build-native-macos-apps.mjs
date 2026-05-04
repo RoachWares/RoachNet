@@ -33,7 +33,7 @@ const installerHelperPath = path.join(
   'RoachNet Fix.command'
 )
 const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.0.0'
-const bundledNodeVersion = 'v22.22.2'
+const bundledNodeVersion = 'v24.15.0'
 const bundledOpenClawPackage = process.env.ROACHNET_BUNDLED_OPENCLAW_PACKAGE?.trim() || 'openclaw@2026.4.9'
 const codesignIdentity = process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || ''
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
@@ -157,8 +157,8 @@ function getPreferredNodeBinary() {
     return currentNodeBinary
   }
 
-  const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/node'
-  return existsSync(macHomebrewNode22) ? macHomebrewNode22 : process.execPath
+  const macHomebrewNode24 = '/opt/homebrew/opt/node@24/bin/node'
+  return existsSync(macHomebrewNode24) ? macHomebrewNode24 : process.execPath
 }
 
 function getPreferredNpmBinary() {
@@ -166,9 +166,9 @@ function getPreferredNpmBinary() {
   const localNodeNpm = nodeBinary.includes(path.sep)
     ? path.join(path.dirname(nodeBinary), process.platform === 'win32' ? 'npm.cmd' : 'npm')
     : null
-  const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/npm'
+  const macHomebrewNode24 = '/opt/homebrew/opt/node@24/bin/npm'
 
-  return [localNodeNpm, macHomebrewNode22, 'npm']
+  return [localNodeNpm, macHomebrewNode24, 'npm']
     .filter(Boolean)
     .find((candidate) => candidate === 'npm' || existsSync(candidate)) || 'npm'
 }
@@ -326,15 +326,23 @@ async function prepareBundledOllamaPayload(stagedSourceRoot) {
   await copyTreeFast(extractedRoot, destinationRoot)
 }
 
+async function createDirectoryPayloadArchive(sourcePath, destinationArchivePath) {
+  discardPath(destinationArchivePath)
+  mkdirSync(path.dirname(destinationArchivePath), { recursive: true })
+  await run('tar', ['-czf', destinationArchivePath, '-C', sourcePath, '.'], {
+    stdio: 'pipe',
+  })
+}
+
 async function prepareInstallerContainedTooling(installerAssetsPath) {
-  const openClawDestination = path.join(installerAssetsPath, 'bundled-openclaw')
-  const ollamaDestination = path.join(installerAssetsPath, 'bundled-ollama')
+  const openClawDestination = path.join(installerAssetsPath, 'bundled-openclaw.tar.gz')
+  const ollamaDestination = path.join(installerAssetsPath, 'bundled-ollama.tar.gz')
   const packageRoot = await ensureBundledOpenClawCache()
-  await copyTreeFast(packageRoot, openClawDestination)
+  await createDirectoryPayloadArchive(packageRoot, openClawDestination)
 
   const extractedRoot = await ensureBundledOllamaCache()
   if (extractedRoot) {
-    await copyTreeFast(extractedRoot, ollamaDestination)
+    await createDirectoryPayloadArchive(extractedRoot, ollamaDestination)
   }
 }
 
@@ -720,8 +728,7 @@ async function ensureLaunchGuideVideo() {
   })
 }
 
-async function buildAdminRuntime() {
-  const nodeBinary = getPreferredNodeBinary()
+async function buildAdminRuntime(nodeBinary = getPreferredNodeBinary()) {
   if (process.env.ROACHNET_SKIP_ADMIN_RUNTIME_BUILD === '1') {
     console.log('Using the existing compiled admin runtime.')
     return
@@ -1317,10 +1324,10 @@ async function notarizeArtifact(artifactPath) {
 async function main() {
   mkdirSync(distPath, { recursive: true })
   await ensureLaunchGuideVideo()
-  await buildAdminRuntime()
+  const bundledNodeRuntimePath = await ensureBundledNodeRuntime()
+  await buildAdminRuntime(path.join(bundledNodeRuntimePath, 'bin', 'node'))
   const binPath = await buildSwiftPackage()
   const iconPath = await buildIcns()
-  const bundledNodeRuntimePath = await ensureBundledNodeRuntime()
   const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
 
   const apps = [

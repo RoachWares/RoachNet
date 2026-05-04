@@ -413,14 +413,24 @@ public actor ManagedAppRuntimeBridge {
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
+        let stdoutBuffer = ProcessOutputBuffer()
+        let stderrBuffer = ProcessOutputBuffer()
         let exitState = ProcessExitState()
         process.currentDirectoryURL = repoRoot
         process.executableURL = URL(fileURLWithPath: node)
         process.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path] : [scriptURL.path]
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+            stdoutBuffer.append(handle.availableData)
+        }
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            stderrBuffer.append(handle.availableData)
+        }
         process.terminationHandler = { process in
             exitState.record(process)
+            stdoutPipe.fileHandleForReading.readabilityHandler = nil
+            stderrPipe.fileHandleForReading.readabilityHandler = nil
         }
 
         process.environment = runtimeLaunchEnvironment(
@@ -446,8 +456,8 @@ public actor ManagedAppRuntimeBridge {
             }
 
             if let exitDescription = exitState.describeExit() {
-                let stderr = Self.readPipeOutput(from: stderrPipe)
-                let stdout = Self.readPipeOutput(from: stdoutPipe)
+                let stderr = stderrBuffer.text
+                let stdout = stdoutBuffer.text
                 let details = [stderr, stdout]
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .first(where: { !$0.isEmpty })
@@ -1536,5 +1546,29 @@ private final class ProcessExitState: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return description
+    }
+}
+
+private final class ProcessOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private let maxBytes = 64 * 1024
+
+    var text: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func append(_ chunk: Data) {
+        guard !chunk.isEmpty else { return }
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        data.append(chunk)
+        if data.count > maxBytes {
+            data.removeFirst(data.count - maxBytes)
+        }
     }
 }

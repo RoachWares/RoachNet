@@ -670,6 +670,15 @@ async function installDirectoryArtifact(sourcePath, targetPath) {
   await clearMacQuarantine(targetPath)
 }
 
+async function installTarGzDirectoryArtifact(archivePath, targetPath) {
+  await rm(targetPath, { recursive: true, force: true }).catch(() => {})
+  await ensureDirectory(targetPath)
+  await runProcess('tar', ['-xzf', archivePath, '-C', targetPath], {
+    env: getShellEnv(),
+  })
+  await clearMacQuarantine(targetPath)
+}
+
 function installedAppCandidates(targetPath) {
   const normalizedTargetPath = normalizeInputPath(targetPath)
   const bundleName = path.basename(normalizedTargetPath)
@@ -1325,8 +1334,8 @@ function getDependencyPackageTargets(packageManagerId) {
   const targets = {
     brew: {
       git: ['git'],
-      node: ['node@22'],
-      npm: ['node@22'],
+      node: ['node@24'],
+      npm: ['node@24'],
       docker: ['docker'],
       dockerCompose: ['docker'],
       ollama: ['ollama'],
@@ -1525,12 +1534,12 @@ function buildPendingDependencySnapshot(config = {}) {
     },
     node: {
       id: 'node',
-      label: 'Node.js 22+',
+      label: 'Node.js 24+',
       required: requiredIds.has('node'),
       available: Boolean(getPreferredNodeBinary()),
       path: getPreferredNodeBinary(),
       version: null,
-      minimumVersion: '22.0.0',
+      minimumVersion: '24.0.0',
       needsUpdate: false,
       bundled: true,
       detectionPending: true,
@@ -1720,7 +1729,7 @@ async function detectDependencies({ containerRuntime, includeUpdateChecks = fals
       ? detectLatestNpmPackageVersion('openclaw', npmPath)
       : Promise.resolve(null),
   ])
-  const minimumNodeVersion = '22.0.0'
+  const minimumNodeVersion = '24.0.0'
   const nodeNeedsUpdate =
     Boolean(nodeVersion) && compareVersions(nodeVersion, minimumNodeVersion) < 0
   const packageTargets = getDependencyPackageTargets(packageManager.id)
@@ -1756,7 +1765,7 @@ async function detectDependencies({ containerRuntime, includeUpdateChecks = fals
     },
     node: {
       id: 'node',
-      label: 'Node.js 22+',
+      label: 'Node.js 24+',
       required: true,
       available: Boolean(nodePath),
       path: nodePath,
@@ -1853,7 +1862,7 @@ function getDependencyInstallCommand(packageManagerId, dependencyId) {
   const commands = {
     brew: {
       git: 'brew upgrade git || brew install git',
-      node: 'brew upgrade node@22 || brew install node@22',
+      node: 'brew upgrade node@24 || brew install node@24',
       docker: 'brew upgrade --cask docker || brew install --cask docker',
       dockerCompose: 'brew upgrade --cask docker || brew install --cask docker',
       ollama: 'brew upgrade ollama || brew install ollama',
@@ -1862,7 +1871,7 @@ function getDependencyInstallCommand(packageManagerId, dependencyId) {
     apt: {
       git: 'sudo apt-get update && sudo apt-get install -y git curl ca-certificates',
       node:
-        'curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs',
+        'curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && sudo apt-get install -y nodejs',
       docker: 'curl -fsSL https://get.docker.com | sudo sh',
       dockerCompose: 'sudo apt-get update && sudo apt-get install -y docker-compose-plugin',
       ollama: 'curl -fsSL https://ollama.com/install.sh | sh',
@@ -1870,7 +1879,7 @@ function getDependencyInstallCommand(packageManagerId, dependencyId) {
     },
     dnf: {
       git: 'sudo dnf install -y git curl ca-certificates',
-      node: 'curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash - && sudo dnf install -y nodejs',
+      node: 'curl -fsSL https://rpm.nodesource.com/setup_24.x | sudo bash - && sudo dnf install -y nodejs',
       docker: 'curl -fsSL https://get.docker.com | sudo sh',
       dockerCompose: 'sudo dnf install -y docker-compose-plugin || sudo dnf install -y docker-compose',
       ollama: 'curl -fsSL https://ollama.com/install.sh | sh',
@@ -1878,7 +1887,7 @@ function getDependencyInstallCommand(packageManagerId, dependencyId) {
     },
     yum: {
       git: 'sudo yum install -y git curl ca-certificates',
-      node: 'curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash - && sudo yum install -y nodejs',
+      node: 'curl -fsSL https://rpm.nodesource.com/setup_24.x | sudo bash - && sudo yum install -y nodejs',
       docker: 'curl -fsSL https://get.docker.com | sudo sh',
       dockerCompose: 'sudo yum install -y docker-compose-plugin || sudo yum install -y docker-compose',
       ollama: 'curl -fsSL https://ollama.com/install.sh | sh',
@@ -1894,7 +1903,7 @@ function getDependencyInstallCommand(packageManagerId, dependencyId) {
     },
     zypper: {
       git: 'sudo zypper install -y git curl ca-certificates',
-      node: 'sudo zypper install -y nodejs22 npm22',
+      node: 'sudo zypper install -y nodejs24 npm24',
       docker: 'sudo zypper install -y docker docker-compose',
       dockerCompose: 'sudo zypper install -y docker-compose',
       ollama: null,
@@ -2245,8 +2254,8 @@ function getPreferredNodeBinary() {
   const candidates = [
     process.env.ROACHNET_NODE_BINARY,
     process.execPath,
-    '/opt/homebrew/opt/node@22/bin/node',
-    '/usr/local/opt/node@22/bin/node',
+    '/opt/homebrew/opt/node@24/bin/node',
+    '/usr/local/opt/node@24/bin/node',
     'node',
   ]
 
@@ -2269,8 +2278,8 @@ function getPreferredNpmBinary(nodeBinary = getPreferredNodeBinary()) {
   const candidatePaths = [
     localNodeNpm,
     process.env.ROACHNET_NPM_BINARY,
-    '/opt/homebrew/opt/node@22/bin/npm',
-    '/usr/local/opt/node@22/bin/npm',
+    '/opt/homebrew/opt/node@24/bin/npm',
+    '/usr/local/opt/node@24/bin/npm',
     process.platform === 'win32' ? 'npm.cmd' : 'npm',
   ]
 
@@ -2330,8 +2339,8 @@ function getShellEnv() {
       preferredNodeBin,
       '/opt/homebrew/bin',
       '/usr/local/bin',
-      '/opt/homebrew/opt/node@22/bin',
-      '/usr/local/opt/node@22/bin',
+      '/opt/homebrew/opt/node@24/bin',
+      '/usr/local/opt/node@24/bin',
       process.env.PATH || '',
     ]
       .filter(Boolean)
@@ -2557,6 +2566,15 @@ async function ensureContainedOpenClaw(repoPath, task) {
     return localBinaryPath
   }
 
+  const bundledInstallerArchive = getBundledInstallerAssetPath('bundled-openclaw.tar.gz')
+  if (bundledInstallerArchive && existsSync(bundledInstallerArchive)) {
+    appendTaskLog(task, 'Hydrating contained OpenClaw from archived installer assets...')
+    await installTarGzDirectoryArtifact(bundledInstallerArchive, packageRoot)
+    await symlinkOrCopyToolBinary(installedBinaryPath, localBinaryPath)
+    appendTaskLog(task, 'Contained OpenClaw linked from bundled installer archive.')
+    return localBinaryPath
+  }
+
   const nodeBinary = getPreferredNodeBinary()
   const npmBinary = getPreferredNpmBinary(nodeBinary)
   const latestVersion = await detectLatestNpmPackageVersion('openclaw', npmBinary)
@@ -2681,6 +2699,16 @@ async function ensureContainedOllama(repoPath, task) {
     await clearMacLaunchMetadata(vendorRoot)
     await symlinkOrCopyToolBinary(bundledBinaryPath, localBinaryPath)
     appendTaskLog(task, 'Contained Ollama linked from bundled installer assets.')
+    return localBinaryPath
+  }
+
+  const bundledInstallerArchive = getBundledInstallerAssetPath('bundled-ollama.tar.gz')
+  if (bundledInstallerArchive && existsSync(bundledInstallerArchive)) {
+    appendTaskLog(task, 'Hydrating contained Ollama from archived installer assets...')
+    await installTarGzDirectoryArtifact(bundledInstallerArchive, vendorRoot)
+    await clearMacLaunchMetadata(vendorRoot)
+    await symlinkOrCopyToolBinary(bundledBinaryPath, localBinaryPath)
+    appendTaskLog(task, 'Contained Ollama linked from bundled installer archive.')
     return localBinaryPath
   }
 

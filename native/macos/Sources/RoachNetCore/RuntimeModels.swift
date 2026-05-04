@@ -691,7 +691,7 @@ public enum RoachNetRepositoryLocator {
             ProcessInfo.processInfo.environment["ROACHNET_LOCAL_BIN_PATH"],
             defaultLocalBinPath(installPath: configuredInstallPath),
             embeddedNodeBinDirectory(),
-            "/opt/homebrew/opt/node@22/bin",
+            "/opt/homebrew/opt/node@24/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/Applications/Docker.app/Contents/Resources/bin",

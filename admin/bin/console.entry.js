@@ -1,17 +1,5 @@
-import { createRequire } from 'node:module'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import 'reflect-metadata'
-
-const require = createRequire(import.meta.url)
-const adonisCoreRoot = path.dirname(require.resolve('@adonisjs/core/package.json'))
-const ignitorModuleUrl = pathToFileURL(
-  path.join(adonisCoreRoot, 'build', 'src', 'ignitor', 'main.js')
-).href
-const aceKernelModuleUrl = pathToFileURL(
-  path.join(adonisCoreRoot, 'build', 'modules', 'ace', 'create_kernel.js')
-).href
-const { Ignitor } = await import(ignitorModuleUrl)
+import { Ignitor } from '@adonisjs/core'
 
 function bootDebug(stage, details) {
   if (process.env.ROACHNET_DEBUG_BOOT !== '1') {
@@ -64,50 +52,14 @@ async function bootstrapAce() {
   const commandNameIndex = argv.findIndex((value) => !value.startsWith('-'))
   const commandName = commandNameIndex >= 0 ? argv[commandNameIndex] : undefined
 
-  const app = ignitor.createApp('console')
-  bootDebug('app:create:done', { commandName })
-
-  await app.init()
-  bootDebug('app:init:done')
-
-  const { createAceKernel } = await import(aceKernelModuleUrl)
-  bootDebug('ace:kernel:module:ready')
-  const kernel = createAceKernel(app, commandName)
-  bootDebug('ace:kernel:created')
-  app.container.bindValue('ace', kernel)
-
-  kernel.loading(async (metaData) => {
-    bootDebug('ace:kernel:loading', {
-      commandName: metaData.commandName,
-      startApp: metaData.options.startApp,
+  bootDebug('ace:handle:start', { argv, commandName })
+  await ignitor
+    .ace()
+    .configure(async () => {
+      bootDebug('ace:kernel:configured', { commandName })
     })
-
-    if (metaData.options.startApp && !app.isReady) {
-      if (metaData.commandName === 'repl') {
-        app.setEnvironment('repl')
-      }
-
-      await app.boot()
-      bootDebug('app:boot:done')
-      await app.start(async () => {})
-      bootDebug('app:start:done')
-    }
-  })
-
-  bootDebug('ace:handle:start', { argv })
-  await kernel.handle(argv)
+    .handle(argv)
   bootDebug('ace:handle:resolved')
-
-  const mainCommand = kernel.getMainCommand()
-  if (!mainCommand || !mainCommand.staysAlive) {
-    process.exitCode = kernel.exitCode
-    await app.terminate()
-    return
-  }
-
-  app.terminating(() => {
-    process.exitCode = mainCommand.exitCode
-  })
 }
 
 void bootstrapAce().catch((error) => {

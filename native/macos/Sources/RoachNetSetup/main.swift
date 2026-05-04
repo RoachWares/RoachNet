@@ -492,7 +492,11 @@ final class SetupController: ObservableObject {
         let setupWorkspaceRoot = preferredSetupWorkspaceRoot()
         setenv("ROACHNET_SETUP_WORK_ROOT", setupWorkspaceRoot, 1)
 
-        guard let repoRoot = RoachNetRepositoryLocator.repositoryRoot() else {
+        let repoRoot = await Task.detached(priority: .userInitiated) {
+            RoachNetRepositoryLocator.repositoryRoot()
+        }.value
+
+        guard let repoRoot else {
             throw NSError(domain: "RoachNetSetup", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Could not locate the RoachNet repository root for the setup backend."
             ])

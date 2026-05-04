@@ -8,6 +8,18 @@ import { deleteFileIfExists, ensureDirectoryExists, getFileStatsIfExists } from 
 import { createWriteStream } from 'fs'
 import path from 'path'
 
+function headerValueToString(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return value[0] ? String(value[0]) : ''
+  }
+
+  return value == null ? '' : String(value)
+}
+
 /**
  * Perform a resumable download with progress tracking
  * @param param0 - Download parameters. Leave allowedMimeTypes empty to skip mime type checking.
@@ -47,8 +59,8 @@ export async function doResumableDownload({
       timeout,
     })
 
-    contentType = headResponse.headers['content-type'] || ''
-    totalBytes = parseInt(headResponse.headers['content-length'] || '0')
+    contentType = headerValueToString(headResponse.headers['content-type'])
+    totalBytes = parseInt(headerValueToString(headResponse.headers['content-length']) || '0')
     supportsRangeRequests = headResponse.headers['accept-ranges'] === 'bytes'
   } catch {
     // Some upstream mirrors are slow or don't support HEAD reliably.
@@ -92,7 +104,7 @@ export async function doResumableDownload({
   }
 
   if (!contentType) {
-    contentType = response.headers['content-type'] || ''
+    contentType = headerValueToString(response.headers['content-type'])
   }
 
   if (!totalBytes) {
@@ -103,7 +115,7 @@ export async function doResumableDownload({
     if (rangeMatch) {
       totalBytes = parseInt(rangeMatch[1], 10)
     } else {
-      const responseLength = parseInt(response.headers['content-length'] || '0')
+      const responseLength = parseInt(headerValueToString(response.headers['content-length']) || '0')
       totalBytes = responseLength > 0 ? responseLength + startByte : 0
     }
   }

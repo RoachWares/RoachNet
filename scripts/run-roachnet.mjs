@@ -204,9 +204,9 @@ function getPreferredNpmBinary() {
     ? path.join(path.dirname(nodeBinary), process.platform === 'win32' ? 'npm.cmd' : 'npm')
     : null
   const localBinNpm = getLocalToolBinaryPath('npm')
-  const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/npm'
+  const macHomebrewNode24 = '/opt/homebrew/opt/node@24/bin/npm'
 
-  return [process.env.ROACHNET_NPM_BINARY, localNodeNpm, localBinNpm, macHomebrewNode22, 'npm']
+  return [process.env.ROACHNET_NPM_BINARY, localNodeNpm, localBinNpm, macHomebrewNode24, 'npm']
     .filter(Boolean)
     .find((candidate) => candidate === 'npm' || existsSync(candidate)) || 'npm'
 }
@@ -391,12 +391,12 @@ function getPreferredNodeBinary() {
     'bin',
     'node'
   )
-  const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/node'
+  const macHomebrewNode24 = '/opt/homebrew/opt/node@24/bin/node'
   return [
     process.env.ROACHNET_NODE_BINARY,
     appEmbeddedNode,
     siblingEmbeddedNode,
-    macHomebrewNode22,
+    macHomebrewNode24,
     process.execPath,
   ]
     .filter(Boolean)

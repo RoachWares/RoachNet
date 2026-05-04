@@ -4108,6 +4108,7 @@ private struct RootWorkspaceView: View {
     @State private var sidebarCollapsed = false
     @State private var homeMenuSection: HomeMenuSection = .commandDeck
     @State private var didScheduleInitialRefresh = false
+    @State private var scheduledStoreConfigurationPath: String?
     private let topTitlebarInset: CGFloat = 18
     private let surfacePadding: CGFloat = 8
     private let shellSpring = Animation.spring(response: 0.42, dampingFraction: 0.86, blendDuration: 0.12)
@@ -4159,6 +4160,19 @@ private struct RootWorkspaceView: View {
 
     private var activePane: WorkspacePane {
         displayedPane(for: model.selectedPane)
+    }
+
+    private func scheduleLocalStoreConfiguration() {
+        let storagePath = model.storagePath
+        guard scheduledStoreConfigurationPath != storagePath else { return }
+        scheduledStoreConfigurationPath = storagePath
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(650))
+            guard scheduledStoreConfigurationPath == storagePath else { return }
+            model.roachArcadeStore.configure(storagePath: storagePath)
+            model.roachArchiveStore.configure(storagePath: storagePath)
+        }
     }
 
     var body: some View {
@@ -4276,8 +4290,7 @@ private struct RootWorkspaceView: View {
             }
         }
         .task {
-            model.roachArcadeStore.configure(storagePath: model.storagePath)
-            model.roachArchiveStore.configure(storagePath: model.storagePath)
+            scheduleLocalStoreConfiguration()
 
             if model.selectedPane == .maps || model.selectedPane == .education {
                 model.selectedPane = .knowledge
@@ -4300,8 +4313,7 @@ private struct RootWorkspaceView: View {
             }
         }
         .onAppear {
-            model.roachArcadeStore.configure(storagePath: model.storagePath)
-            model.roachArchiveStore.configure(storagePath: model.storagePath)
+            scheduleLocalStoreConfiguration()
         }
         .onChange(of: model.storagePath) { _, storagePath in
             model.roachArcadeStore.configure(storagePath: storagePath)

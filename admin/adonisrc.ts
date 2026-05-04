@@ -143,9 +143,8 @@ const config = defineConfig({
     },
   ],
 
-  assetsBundler: false,
   hooks: {
-    onBuildStarting: [() => debugImport('@adonisjs/vite/build_hook')],
+    buildStarting: [() => debugImport('@adonisjs/vite/build_hook')],
   },
 })
 

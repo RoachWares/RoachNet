@@ -25,7 +25,7 @@ function run(binary, args) {
       cwd: repoRoot,
       env: {
         ...process.env,
-        PATH: `/opt/homebrew/opt/node@22/bin:${process.env.PATH || ''}`,
+        PATH: `/opt/homebrew/opt/node@24/bin:${process.env.PATH || ''}`,
       },
       stdio: 'inherit',
     })

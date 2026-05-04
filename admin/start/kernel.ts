@@ -28,7 +28,7 @@ server.use([
   () => import('#middleware/container_bindings_middleware'),
   () => import('@adonisjs/cors/cors_middleware'),
   ...(nativeOnly ? [] : [() => import('@adonisjs/vite/vite_middleware')]),
-  ...(nativeOnly ? [] : [() => import('@adonisjs/inertia/inertia_middleware')]),
+  ...(nativeOnly ? [] : [() => import('#middleware/inertia_middleware')]),
   ...(nativeOnly ? [] : [() => import('@adonisjs/static/static_middleware')]),
   ...(nativeOnly ? [] : [() => import('#middleware/maps_static_middleware')]),
 ])

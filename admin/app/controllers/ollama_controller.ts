@@ -7,7 +7,7 @@ import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
 import { DEFAULT_QUERY_REWRITE_MODEL, RAG_CONTEXT_LIMITS, SYSTEM_PROMPTS } from '../../constants/ollama.js'
 import logger from '@adonisjs/core/services/logger'
-import type { Message } from 'ollama'
+import type { ChatRequest, Message } from 'ollama'
 import { getErrorMessage } from '../utils/errors.js'
 
 @inject()
@@ -30,7 +30,10 @@ export default class OllamaController {
   }
 
   async chat({ request, response }: HttpContext) {
-    const reqData = await request.validateUsing(chatSchema)
+    const reqData = (await request.validateUsing(chatSchema)) as ChatRequest & {
+      messages: Message[]
+      sessionId?: number
+    }
     const isCloudModel = this.ollamaService.isCloudModel(reqData.model)
     const writeSSE = (event: string, payload: Record<string, unknown>) => {
       response.response.write(`event: ${event}\n`)

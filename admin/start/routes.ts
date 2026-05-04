@@ -34,7 +34,7 @@ if (process.env.ROACHNET_DISABLE_TRANSMIT !== '1') {
 
 router.get('/', [HomeController, 'index'])
 router.get('/home', [HomeController, 'home'])
-router.get('/about', async ({ inertia }: HttpContext) => inertia.render('about'))
+router.get('/about', async ({ inertia }: HttpContext) => inertia.render('about', {}))
 router.get('/chat', [ChatsController, 'inertia'])
 router.get('/maps', [MapsController, 'index'])
 router.get('/site-archives', [SiteArchivesController, 'index'])

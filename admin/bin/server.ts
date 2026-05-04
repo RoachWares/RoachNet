@@ -11,17 +11,8 @@
 
 import { createServer } from 'node:http'
 import { appendFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import 'reflect-metadata'
-
-const require = createRequire(import.meta.url)
-const adonisCoreRoot = path.dirname(require.resolve('@adonisjs/core/package.json'))
-const ignitorModuleUrl = pathToFileURL(
-  path.join(adonisCoreRoot, 'build', 'src', 'ignitor', 'main.js')
-).href
-const { Ignitor } = await import(ignitorModuleUrl)
+import { Ignitor } from '@adonisjs/core'
 const bootTraceStartedAt = Date.now()
 
 function writeBootTrace(stage: string, details?: Record<string, unknown>) {
@@ -52,19 +43,6 @@ async function prettyPrintBootError(error: unknown) {
   }
 
   console.error(error)
-}
-
-async function listen(nodeHttpServer: ReturnType<typeof createServer>) {
-  const host = process.env.HOST || '0.0.0.0'
-  const port = Number(process.env.PORT || '3333')
-
-  await new Promise<void>((resolve, reject) => {
-    nodeHttpServer.listen(port, host)
-    nodeHttpServer.once('listening', () => resolve())
-    nodeHttpServer.once('error', reject)
-  })
-
-  return { host, port }
 }
 
 /**
@@ -131,50 +109,10 @@ ignitor
     })
   })
 async function startHttpServer() {
-  const app = ignitor.createApp('web')
-  bootDebug('app:create:done')
-
-  await app.init()
-  bootDebug('app:init:done')
-
-  await app.boot()
-  bootDebug('app:boot:done')
-
-  await app.start(async () => {
-    bootDebug('app:start:callback:start')
-    const server = await app.container.make('server')
-    bootDebug('container:server:resolved')
-    await server.boot()
-    bootDebug('server:boot:done')
-
-    const httpServer = createServer(server.handle.bind(server))
-    server.setNodeServer(httpServer)
-    bootDebug('node:http:create:done')
-
-    const logger = await app.container.make('logger')
-    bootDebug('container:logger:resolved')
-    const emitter = await app.container.make('emitter')
-    bootDebug('container:emitter:resolved')
-
-    const payload = await listen(httpServer)
-    bootDebug('http:listen:done', payload)
-
-    app.notify({ isAdonisJS: true, environment: 'web', ...payload })
-    logger.info('started HTTP server on %s:%s', payload.host, payload.port)
-    emitter.emit('http:server_ready', payload)
-
-    app.terminating(async () => {
-      bootDebug('app:terminating')
-      await new Promise<void>((resolve) => httpServer.close(() => resolve()))
-    })
-
-    httpServer.once('error', (error) => {
-      logger.fatal({ err: error }, error.message)
-      process.exitCode = 1
-      void app.terminate()
-    })
+  await ignitor.httpServer().start((handler) => {
+    bootDebug('node:http:create:start')
+    return createServer(handler)
   })
-
   bootDebug('http:start:resolved')
 }
 

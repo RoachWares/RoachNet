@@ -446,7 +446,7 @@ export class ZimService {
           data: response.data,
         })
 
-        return validated.options
+        return validated.options as WikipediaOption[]
       } catch (error) {
         lastError = error
         logger.warn(

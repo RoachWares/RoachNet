@@ -1,5 +1,4 @@
 import { defineConfig } from '@adonisjs/inertia'
-import type { InferSharedProps } from '@adonisjs/inertia/types'
 
 if (process.env.ROACHNET_DEBUG_BOOT === '1') {
   console.log('[roachnet:config] inertia')
@@ -12,22 +11,6 @@ const inertiaConfig = defineConfig({
   rootView: 'inertia_layout',
 
   /**
-   * Data that should be shared with all rendered pages
-   */
-  sharedData: {
-    appVersion: async () => {
-      const { SystemService } = await import('#services/system_service')
-      return SystemService.getAppVersion()
-    },
-    environment: process.env.NODE_ENV || 'production',
-    aiAssistantName: async () => {
-      const { default: KVStore } = await import('#models/kv_store')
-      const customName = await KVStore.getValue('ai.assistantCustomName')
-      return (customName && customName.trim()) ? customName : 'AI Assistant'
-    },
-  },
-
-  /**
    * Options for the server-side rendering
    */
   ssr: {
@@ -37,7 +20,3 @@ const inertiaConfig = defineConfig({
 })
 
 export default inertiaConfig
-
-declare module '@adonisjs/inertia/types' {
-  export interface SharedProps extends InferSharedProps<typeof inertiaConfig> {}
-}

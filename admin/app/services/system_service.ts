@@ -229,7 +229,7 @@ export class SystemService {
           2000
         ),
         this.withTimeout('systeminformation.fsSize', () => si.fsSize(), [], 2000),
-        this.withTimeout('systeminformation.time', () => si.time(), fallbackUptime, 2000),
+        this.withTimeout('systeminformation.time', async () => si.time(), fallbackUptime, 2000),
         this.withTimeout('systeminformation.graphics', () => si.graphics(), fallbackGraphics, 2500),
       ])
 

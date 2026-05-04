@@ -256,7 +256,7 @@ export default class SettingsController {
 
   async legal({ inertia, response }: HttpContext) {
     if (this.canRenderInertia(inertia)) {
-      return inertia.render('settings/legal')
+      return inertia.render('settings/legal', {})
     }
 
     return this.renderFallbackPage(response, {
@@ -270,7 +270,7 @@ export default class SettingsController {
 
   async support({ inertia, response }: HttpContext) {
     if (this.canRenderInertia(inertia)) {
-      return inertia.render('settings/support')
+      return inertia.render('settings/support', {})
     }
 
     return this.renderFallbackPage(response, {
@@ -302,7 +302,7 @@ export default class SettingsController {
       sections: [
         {
           title: 'Installed Regions',
-          items: regionFiles.files,
+          items: regionFiles.files.map((file) => file.name),
         },
       ],
     })
@@ -424,7 +424,7 @@ export default class SettingsController {
 
   async zim({ inertia, response }: HttpContext) {
     if (this.canRenderInertia(inertia)) {
-      return inertia.render('settings/zim/index')
+      return inertia.render('settings/zim/index', {})
     }
 
     return this.renderFallbackPage(response, {
@@ -437,7 +437,7 @@ export default class SettingsController {
 
   async zimRemote({ inertia, response }: HttpContext) {
     if (this.canRenderInertia(inertia)) {
-      return inertia.render('settings/zim/remote-explorer')
+      return inertia.render('settings/zim/remote-explorer', {})
     }
 
     return this.renderFallbackPage(response, {

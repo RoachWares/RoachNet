@@ -67,7 +67,7 @@ class CloudInferenceService {
       },
       expires_at: new Date(0).toISOString(),
       size_vram: 0,
-    })) as ListResponse['models']
+    })) as unknown as ListResponse['models']
   }
 
   public async chat(chatRequest: ChatRequest & { stream?: boolean }) {

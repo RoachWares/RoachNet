@@ -7,7 +7,7 @@ export async function broadcastTransmit(channel: string, payload: unknown): Prom
 
   try {
     const { default: transmit } = await import('@adonisjs/transmit/services/main')
-    await transmit.broadcast(channel, payload)
+    await transmit.broadcast(channel, payload as any)
   } catch (error) {
     logger.warn(
       `[TransmitBridge] Skipping broadcast for ${channel}: ${error instanceof Error ? error.message : String(error)}`

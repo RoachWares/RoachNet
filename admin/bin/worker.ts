@@ -9,17 +9,8 @@
 |
 */
 
-import { createRequire } from 'node:module'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import 'reflect-metadata'
-
-const require = createRequire(import.meta.url)
-const adonisCoreRoot = path.dirname(require.resolve('@adonisjs/core/package.json'))
-const ignitorModuleUrl = pathToFileURL(
-  path.join(adonisCoreRoot, 'build', 'src', 'ignitor', 'main.js')
-).href
-const { Ignitor } = await import(ignitorModuleUrl)
+import { Ignitor } from '@adonisjs/core'
 
 function bootDebug(stage: string, details?: Record<string, unknown>) {
   if (process.env.ROACHNET_DEBUG_BOOT !== '1') {

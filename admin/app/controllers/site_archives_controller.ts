@@ -7,7 +7,7 @@ export default class SiteArchivesController {
   constructor(private siteArchiveService: SiteArchiveService) {}
 
   async index({ inertia }: HttpContext) {
-    return inertia.render('site-archives/index')
+    return inertia.render('site-archives/index', {})
   }
 
   async list({}: HttpContext) {

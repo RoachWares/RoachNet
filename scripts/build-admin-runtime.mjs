@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { access, mkdir, readFile, readdir, rm, stat, writeFile, copyFile, cp, rename } from 'node:fs/promises'
+import { statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import process from 'node:process'
@@ -84,13 +85,37 @@ async function pathExists(filePath) {
 }
 
 function getPreferredNodeBinary() {
-  const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/node'
-  return process.platform === 'darwin' ? macHomebrewNode22 : process.execPath
+  const explicitNodeBinary = process.env.ROACHNET_ADMIN_NODE_BINARY?.trim()
+  if (explicitNodeBinary) {
+    return explicitNodeBinary
+  }
+
+  if (process.execPath) {
+    return process.execPath
+  }
+
+  const macHomebrewNode24 = '/opt/homebrew/opt/node@24/bin/node'
+  return process.platform === 'darwin' ? macHomebrewNode24 : process.execPath
 }
 
 function getPreferredNpmBinary() {
-  const macHomebrewNode22 = '/opt/homebrew/opt/node@22/bin/npm'
-  return process.platform === 'darwin' ? macHomebrewNode22 : 'npm'
+  const nodeBinary = getPreferredNodeBinary()
+  const localNodeNpm = nodeBinary.includes(path.sep)
+    ? path.join(path.dirname(nodeBinary), process.platform === 'win32' ? 'npm.cmd' : 'npm')
+    : null
+  const macHomebrewNode24 = '/opt/homebrew/opt/node@24/bin/npm'
+
+  return [localNodeNpm, macHomebrewNode24, 'npm']
+    .filter(Boolean)
+    .find((candidate) => candidate === 'npm' || pathExistsSync(candidate)) || 'npm'
+}
+
+function pathExistsSync(filePath) {
+  try {
+    return Boolean(filePath) && statSync(filePath).isFile()
+  } catch {
+    return false
+  }
 }
 
 async function run(command, args, options = {}) {
