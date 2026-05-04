@@ -46,6 +46,6 @@ jobs:
           context: install/sidecar-disk-collector
           push: true
           tags: |
-            ghcr.io/ahgroach/roachnet-disk-collector:${{ inputs.version }}
-            ghcr.io/ahgroach/roachnet-disk-collector:v${{ inputs.version }}
-            ${{ inputs.tag_latest && 'ghcr.io/ahgroach/roachnet-disk-collector:latest' || '' }}
+            ghcr.io/roachwares/roachnet-disk-collector:${{ inputs.version }}
+            ghcr.io/roachwares/roachnet-disk-collector:v${{ inputs.version }}
+            ${{ inputs.tag_latest && 'ghcr.io/roachwares/roachnet-disk-collector:latest' || '' }}

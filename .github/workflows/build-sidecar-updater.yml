@@ -46,6 +46,6 @@ jobs:
           context: install/sidecar-updater
           push: true
           tags: |
-            ghcr.io/ahgroach/roachnet-sidecar-updater:${{ inputs.version }}
-            ghcr.io/ahgroach/roachnet-sidecar-updater:v${{ inputs.version }}
-            ${{ inputs.tag_latest && 'ghcr.io/ahgroach/roachnet-sidecar-updater:latest' || '' }}
+            ghcr.io/roachwares/roachnet-sidecar-updater:${{ inputs.version }}
+            ghcr.io/roachwares/roachnet-sidecar-updater:v${{ inputs.version }}
+            ${{ inputs.tag_latest && 'ghcr.io/roachwares/roachnet-sidecar-updater:latest' || '' }}

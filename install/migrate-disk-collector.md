@@ -28,7 +28,7 @@ Here's the disk-collector service configuration to add to your `compose.yml`:
 
 ```yml
   disk-collector:
-    image: ghcr.io/ahgroach/roachnet-disk-collector:latest
+    image: ghcr.io/roachwares/roachnet-disk-collector:latest
     pull_policy: always
     container_name: roachnet_disk_collector
     restart: unless-stopped

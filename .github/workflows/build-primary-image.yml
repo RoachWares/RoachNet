@@ -45,9 +45,9 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/ahgroach/roachnet:${{ inputs.version }}
-            ghcr.io/ahgroach/roachnet:v${{ inputs.version }}
-            ${{ inputs.tag_latest && 'ghcr.io/ahgroach/roachnet:latest' || '' }}
+            ghcr.io/roachwares/roachnet:${{ inputs.version }}
+            ghcr.io/roachwares/roachnet:v${{ inputs.version }}
+            ${{ inputs.tag_latest && 'ghcr.io/roachwares/roachnet:latest' || '' }}
           build-args: |
             VERSION=${{ inputs.version }}
             BUILD_DATE=${{ github.event.workflow_run.created_at }}

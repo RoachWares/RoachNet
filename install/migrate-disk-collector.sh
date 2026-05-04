@@ -161,7 +161,7 @@ add_disk_collector_service() {
   # Insert the disk-collector service block before the top-level `volumes:` key
   awk '/^volumes:/{
     print "  disk-collector:"
-    print "    image: ghcr.io/ahgroach/roachnet-disk-collector:latest"
+    print "    image: ghcr.io/roachwares/roachnet-disk-collector:latest"
     print "    pull_policy: always"
     print "    container_name: roachnet_disk_collector"
     print "    restart: unless-stopped"
