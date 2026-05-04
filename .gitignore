@@ -72,3 +72,5 @@ docs/BRAND_STYLE.md
 admin/.env.example
 install/*.zim
 native/windows/
+
+.env.local

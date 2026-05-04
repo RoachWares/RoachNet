@@ -7,7 +7,7 @@ const path = require('node:path')
 const { getConfigPath, readConfig } = require('../desktop/config.cjs')
 
 const setupUrlRegex = /RoachNet Setup is available at (http:\/\/\S+)/i
-const mainReleaseUrl = 'https://github.com/AHGRoach/RoachNet/releases'
+const mainReleaseUrl = 'https://github.com/RoachWares/RoachNet/releases'
 const dockerDesktopUrl = 'https://docs.docker.com/desktop/'
 const setupReadyPollIntervalMs = 250
 const setupReadyTimeoutMs = 30_000

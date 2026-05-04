@@ -98,7 +98,7 @@ export default function LegalPage() {
               publicly available resources.
             </p>
             <p className="text-text-primary mb-3">
-              AHGRoach does not create, control, verify, or guarantee the accuracy,
+              RoachWares does not create, control, verify, or guarantee the accuracy,
               completeness, or reliability of any third-party content. The inclusion of any content
               does not constitute an endorsement.
             </p>

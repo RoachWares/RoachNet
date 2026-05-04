@@ -60,7 +60,7 @@ export class MapService implements IMapService {
 
     const defaultTarFileURL = new URL(
       this.baseAssetsTarFile,
-      'https://github.com/AHGRoach/RoachNet-Maps/raw/refs/heads/master/'
+      'https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/'
     )
 
     const resolvedURL = url ? new URL(url) : defaultTarFileURL

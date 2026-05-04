@@ -26,7 +26,7 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const uiRoot = path.join(repoRoot, 'setup-ui')
 
-const DEFAULT_SOURCE_REPO_URL = 'https://github.com/AHGRoach/RoachNet.git'
+const DEFAULT_SOURCE_REPO_URL = 'https://github.com/RoachWares/RoachNet.git'
 const DEFAULT_SOURCE_REF = 'main'
 const TASK_LOG_LIMIT = 800
 const SERVER_HOST = '127.0.0.1'

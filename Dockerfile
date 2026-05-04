@@ -38,9 +38,9 @@ LABEL org.opencontainers.image.title="RoachNet" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.vendor="AHGRoach" \
-      org.opencontainers.image.documentation="https://github.com/AHGRoach/RoachNet/blob/main/README.md" \
-      org.opencontainers.image.source="https://github.com/AHGRoach/RoachNet" \
+      org.opencontainers.image.vendor="RoachWares" \
+      org.opencontainers.image.documentation="https://github.com/RoachWares/RoachNet/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/RoachWares/RoachNet" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ENV NODE_ENV=production

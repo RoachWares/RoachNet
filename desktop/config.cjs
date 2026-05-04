@@ -9,7 +9,7 @@ const EXO_NODE_ROLES = ['auto', 'coordinator', 'worker', 'hybrid']
 const DEFAULT_CONFIG = {
   installPath: '',
   sourceMode: 'clone',
-  sourceRepoUrl: 'https://github.com/AHGRoach/RoachNet.git',
+  sourceRepoUrl: 'https://github.com/RoachWares/RoachNet.git',
   sourceRef: 'main',
   autoInstallDependencies: true,
   installRoachClaw: true,

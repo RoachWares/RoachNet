@@ -4,7 +4,7 @@
 #
 # Script                | RoachNet One-Time Updater Fix Script
 # Version               | 1.0.4
-# Author                | AHGRoach
+# Author                | RoachWares
 # Website               | https://roachnet.org
 #
 # PURPOSE:
@@ -45,8 +45,8 @@ COMPOSE_FILE="${ROACHNET_DIR}/compose.yml"
 SIDECAR_DIR="${ROACHNET_DIR}/sidecar-updater"
 COMPOSE_PROJECT_NAME="roachnet"
 
-SIDECAR_DOCKERFILE_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/sidecar-updater/Dockerfile"
-SIDECAR_SCRIPT_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/sidecar-updater/update-watcher.sh"
+SIDECAR_DOCKERFILE_URL="https://raw.githubusercontent.com/RoachWares/RoachNet/refs/heads/main/install/sidecar-updater/Dockerfile"
+SIDECAR_SCRIPT_URL="https://raw.githubusercontent.com/RoachWares/RoachNet/refs/heads/main/install/sidecar-updater/update-watcher.sh"
 
 ###############################################################################
 # Pre-flight Checks

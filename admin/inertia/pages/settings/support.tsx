@@ -22,7 +22,7 @@ export default function SupportPage() {
               find the project.
             </p>
             <a
-              href="https://github.com/AHGRoach/RoachNet"
+              href="https://github.com/RoachWares/RoachNet"
               target="_blank"
               rel="noopener noreferrer"
               className="roachnet-button roachnet-button--primary inline-flex items-center gap-2 rounded-lg bg-desert-green px-5 py-2.5 font-semibold text-desert-green-darker transition-colors hover:bg-btn-green-hover"
@@ -42,7 +42,7 @@ export default function SupportPage() {
               details.
             </p>
             <a
-              href="https://github.com/AHGRoach/RoachNet/issues"
+              href="https://github.com/RoachWares/RoachNet/issues"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-desert-green hover:underline font-medium"
@@ -57,7 +57,7 @@ export default function SupportPage() {
             <ul className="space-y-2 text-text-muted">
               <li>
                 <a
-                  href="https://github.com/AHGRoach/RoachNet"
+                  href="https://github.com/RoachWares/RoachNet"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-desert-green hover:underline"
@@ -68,7 +68,7 @@ export default function SupportPage() {
               </li>
               <li>
                 <a
-                  href="https://github.com/AHGRoach/RoachNet/issues"
+                  href="https://github.com/RoachWares/RoachNet/issues"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-desert-green hover:underline"

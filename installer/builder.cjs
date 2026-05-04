@@ -1,5 +1,5 @@
 module.exports = {
-  appId: 'com.ahgroach.roachnet.setup',
+  appId: 'com.roachwares.roachnet.setup',
   productName: 'RoachNet Setup',
   asar: true,
   asarUnpack: [

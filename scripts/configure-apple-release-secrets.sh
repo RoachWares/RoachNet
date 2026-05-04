@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-REPO="${1:-AHGRoach/RoachNet}"
+REPO="${1:-RoachWares/RoachNet}"
 
 require_command() {
   local name="$1"

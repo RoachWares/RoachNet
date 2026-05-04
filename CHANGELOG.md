@@ -22,7 +22,7 @@
 ### Website refresh
 
 - Refined the public site polish pass with the updated support links, darker screenshot framing, and the current `v1.0` download/version language across `roachnet.org` and `apps.roachnet.org`.
-- Kept the AHG Records donation path intact while updating the RoachNet support CTA to the direct PayPal payment link.
+- Kept the RoachNet support path intact while updating the RoachNet support CTA to the direct PayPal payment link.
 
 ## v1.4 - 2026-04-03
 

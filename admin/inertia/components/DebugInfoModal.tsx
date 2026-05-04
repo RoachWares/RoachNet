@@ -92,7 +92,7 @@ export default function DebugInfoModal({ open, onClose }: DebugInfoModalProps) {
         </button>
 
         <a
-          href="https://github.com/AHGRoach/RoachNet/issues"
+          href="https://github.com/RoachWares/RoachNet/issues"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm text-desert-green hover:underline"

@@ -52,8 +52,8 @@ Yes. The project remains open source under the Apache License 2.0.
 
 Use the RoachNet repository:
 
-- Issues: [github.com/AHGRoach/RoachNet/issues](https://github.com/AHGRoach/RoachNet/issues)
-- Discussions: [github.com/AHGRoach/RoachNet/discussions](https://github.com/AHGRoach/RoachNet/discussions)
+- Issues: [github.com/RoachWares/RoachNet/issues](https://github.com/RoachWares/RoachNet/issues)
+- Discussions: [github.com/RoachWares/RoachNet/discussions](https://github.com/RoachWares/RoachNet/discussions)
 
 ## Where should I look before opening a bug?
 

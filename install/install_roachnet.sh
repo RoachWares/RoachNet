@@ -6,7 +6,7 @@
 
 # Script                | RoachNet Installation Script
 # Version               | 1.0.4
-# Author                | AHGRoach
+# Author                | RoachWares
 # Website               | https://roachnet.org
 
 ###################################################################################################################################################################################################
@@ -30,10 +30,10 @@ GREEN='\033[1;32m' # Light Green.
 
 WHIPTAIL_TITLE="RoachNet Installation"
 ROACHNET_DIR="/opt/roachnet"
-MANAGEMENT_COMPOSE_FILE_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/management_compose.yaml"
-START_SCRIPT_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/start_roachnet.sh"
-STOP_SCRIPT_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/stop_roachnet.sh"
-UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/update_roachnet.sh"
+MANAGEMENT_COMPOSE_FILE_URL="https://raw.githubusercontent.com/RoachWares/RoachNet/refs/heads/main/install/management_compose.yaml"
+START_SCRIPT_URL="https://raw.githubusercontent.com/RoachWares/RoachNet/refs/heads/main/install/start_roachnet.sh"
+STOP_SCRIPT_URL="https://raw.githubusercontent.com/RoachWares/RoachNet/refs/heads/main/install/stop_roachnet.sh"
+UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/RoachWares/RoachNet/refs/heads/main/install/update_roachnet.sh"
 script_option_debug='true'
 accepted_terms='false'
 local_ip_address=''

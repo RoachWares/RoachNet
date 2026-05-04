@@ -763,7 +763,7 @@ export class DockerService {
      * We'll download the lightweight mini Wikipedia Top 100 zim file for this purpose.
      **/
     const WIKIPEDIA_ZIM_URL =
-      'https://github.com/AHGRoach/RoachNet/raw/refs/heads/main/install/wikipedia_en_100_mini_2026-01.zim'
+      'https://github.com/RoachWares/RoachNet/raw/refs/heads/main/install/wikipedia_en_100_mini_2026-01.zim'
     const filename = 'wikipedia_en_100_mini_2026-01.zim'
     const filepath = resolveStoragePath(ZIM_STORAGE_PATH, filename)
     logger.info(`[DockerService] Kiwix Serve pre-install: Downloading ZIM file to ${filepath}`)

@@ -14,7 +14,11 @@
 - Shipped as an unsigned Apple Silicon build until a Developer ID is available. Gatekeeper may complain; the files still live on disk.
 
 ### iOS
-- Bumped RoachNetiOS to 0.1.4 with the current desktop companion contract and refreshed SideStore metadata.
+- Bumped RoachNetiOS to 0.1.4 with the current desktop companion contract, RoachWares bundle identity, and refreshed SideStore metadata.
+
+### Release Surface
+- Moved public repository, release, SideStore, and Homebrew references to the RoachWares GitHub organization.
+- Added the optional Convex control-plane scaffold for RoachWares release metadata and company status. RoachNet still runs locally without it.
 
 ## Version 1.30.3 - March 25, 2026
 
@@ -642,9 +646,9 @@
 ## Support
 
 - **Discord:** [Join the Community](https://roachnet.org/community) — Get help, share your builds, and connect with other RoachNet users
-- **Bug Reports:** [GitHub Issues](https://github.com/AHGRoach/RoachNet/issues)
+- **Bug Reports:** [GitHub Issues](https://github.com/RoachWares/RoachNet/issues)
 - **Website:** [www.roachnet.org](https://roachnet.org)
 
 ---
 
-*For the full changelog, see the [RoachNet GitHub releases](https://github.com/AHGRoach/RoachNet/releases).*
+*For the full changelog, see the [RoachNet GitHub releases](https://github.com/RoachWares/RoachNet/releases).*

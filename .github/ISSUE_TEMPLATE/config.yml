@@ -10,7 +10,7 @@ contact_links:
     url: https://benchmark.roachnet.org
     about: View the N.O.M.A.D. benchmark leaderboard
   - name: 🤝 Contributing Guide
-    url: https://github.com/AHGRoach/project-roachnet/blob/main/CONTRIBUTING.md
+    url: https://github.com/RoachWares/project-roachnet/blob/main/CONTRIBUTING.md
     about: Learn how to contribute to Project N.O.M.A.D.
   - name: 📅 Roadmap
     url: https://roadmap.roachnet.org

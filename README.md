@@ -4,13 +4,13 @@ Offline spine for the stuff that matters.
 
 RoachNet keeps AI, archive, media, games, notes, and dev tools on hardware you own instead of leaving them scattered across rented dashboards and dead logins.
 
-[roachnet.org](https://roachnet.org)  
-[RoachNet Apps](https://apps.roachnet.org)  
-[API Docs](https://roachnet.org/api/)  
-[GitHub Releases](https://github.com/AHGRoach/RoachNet/releases)  
-[RoachNet iOS](https://roachnet.org/iOS/)  
-[RoachNet SideStore Source](https://github.com/AHGRoach/RoachNet-SideStore)  
-[Public Website Source](https://github.com/AHGRoach/roachnet-org)
+[roachnet.org](https://roachnet.org)<br>
+[RoachNet Apps](https://apps.roachnet.org)<br>
+[API Docs](https://roachnet.org/api/)<br>
+[GitHub Releases](https://github.com/RoachWares/RoachNet/releases)<br>
+[RoachNet iOS](https://roachnet.org/iOS/)<br>
+[RoachNet SideStore Source](https://github.com/RoachWares/RoachNet-SideStore)<br>
+[Public Website Source](https://github.com/RoachWares/roachnet-org)
 
 ## What It Ships With
 
@@ -41,7 +41,7 @@ There is also a direct Homebrew lane for Apple Silicon Macs:
 
 ```bash
 brew update
-brew tap --force AHGRoach/roachnet
+brew tap --force RoachWares/roachnet
 brew install --cask roachnet
 open ~/RoachNet/app/RoachNet.app
 ```
@@ -52,9 +52,8 @@ The direct Homebrew lane stages its compiled runtime under `~/RoachNet/storage/s
 
 On first boot, the Homebrew profile marks the contained runtime as pending bootstrap, does one contained self-heal pass if the first runtime handoff fails, and then records the last healthy launch timestamp once `/api/health` is up.
 - Website: [roachnet.org](https://roachnet.org)
-- macOS installer: [RoachNet-Setup-macOS.dmg](https://github.com/AHGRoach/RoachNet/releases/latest/download/RoachNet-Setup-macOS.dmg)
-- Windows 11 beta: [RoachNet-Setup-windows-x64-beta.exe](https://github.com/AHGRoach/RoachNet/releases/latest/download/RoachNet-Setup-windows-x64-beta.exe)
-- Release feed: [github.com/AHGRoach/RoachNet/releases](https://github.com/AHGRoach/RoachNet/releases)
+- macOS installer: [RoachNet-Setup-macOS.dmg](https://github.com/RoachWares/RoachNet/releases/latest/download/RoachNet-Setup-macOS.dmg)
+- Release feed: [github.com/RoachWares/RoachNet/releases](https://github.com/RoachWares/RoachNet/releases)
 
 ## Support
 
@@ -67,7 +66,7 @@ GitHub does not host the support widgets used on the public site, so the repo ke
 - `macOS Apple Silicon`
   Current native release lane with the contained setup flow.
 - `Windows 11 x64`
-  Native beta lane with setup and shell scaffolding.
+  No public installer lane in v1.0.4. RoachArcade keeps Windows-game runner planning inside the macOS app instead of shipping another half-built desktop target.
 - `Linux`
   Runtime and packaging work still moving toward a native desktop lane.
 
@@ -77,14 +76,12 @@ GitHub does not host the support widgets used on the public site, so the repo ke
   Local API, runtime services, maps, archives, content installs, and RoachClaw plumbing.
 - [`native/macos/`](./native/macos)
   SwiftUI/AppKit shell, setup app, and desktop runtime bridge.
-- [`native/windows/`](./native/windows)
-  Windows beta shell and setup surfaces.
 - [`scripts/`](./scripts)
   Setup, runtime, packaging, companion, and release automation.
 - [`docs/`](./docs)
   Architecture, brand voice, upstream notes, and rewrite planning.
 
-The public site and Apps storefront live in [`AHGRoach/roachnet-org`](https://github.com/AHGRoach/roachnet-org) so this repo can stay focused on the desktop product and runtime.
+The public site and Apps storefront live in [`RoachWares/roachnet-org`](https://github.com/RoachWares/roachnet-org) so this repo can stay focused on the desktop product and runtime.
 
 ## Local Development
 

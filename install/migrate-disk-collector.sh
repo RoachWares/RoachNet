@@ -4,7 +4,7 @@
 #
 # Script                | RoachNet Disk Collector Migration Script
 # Version               | 1.0.4
-# Author                | AHGRoach
+# Author                | RoachWares
 # Website               | https://roachnet.org
 #
 # PURPOSE:

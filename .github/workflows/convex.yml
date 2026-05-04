@@ -1,0 +1,55 @@
+name: Convex
+
+on:
+  pull_request:
+    paths:
+      - "convex/**"
+      - "convex.json"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/convex.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "convex/**"
+      - "convex.json"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/convex.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  convex:
+    name: Validate Convex functions
+    runs-on: ubuntu-latest
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck Convex functions
+        run: npm run convex:typecheck
+
+      - name: Deploy Convex production
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.CONVEX_DEPLOY_KEY != '' }}
+        run: npm run convex:deploy
+
+      - name: Skip Convex deployment
+        if: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' || env.CONVEX_DEPLOY_KEY == '' }}
+        run: echo "Convex deploy skipped. Add CONVEX_DEPLOY_KEY to RoachWares secrets when the production deployment is ready."

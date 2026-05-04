@@ -10,6 +10,9 @@
     "setup:no-browser": "ROACHNET_SETUP_NO_BROWSER=1 node scripts/run-roachnet-setup.mjs",
     "start": "node scripts/run-roachnet.mjs",
     "start:no-browser": "ROACHNET_NO_BROWSER=1 node scripts/run-roachnet.mjs",
+    "convex:codegen": "convex codegen --typecheck enable",
+    "convex:typecheck": "tsc -p convex/tsconfig.json",
+    "convex:deploy": "convex deploy",
     "smoke:macos-install-lanes": "node scripts/smoke-test-macos-install-lanes.mjs",
     "smoke:ios-companion-compat": "node scripts/smoke-test-ios-companion-compat.mjs",
     "smoke:release-gates": "node scripts/smoke-test-release-gates.mjs",
@@ -25,16 +28,18 @@
     "installer:dist": "npm run desktop:dist:setup",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "AHGRoach",
+  "author": "RoachWares LLC",
   "license": "ISC",
   "devDependencies": {
+    "convex": "^1.37.0",
     "electron": "^41.1.0",
     "electron-builder": "^26.8.1",
     "icon-gen": "^5.0.0",
-    "png-to-ico": "^3.0.1"
+    "png-to-ico": "^3.0.1",
+    "typescript": "^6.0.3"
   },
   "build": {
-    "appId": "com.ahgroach.roachnet",
+    "appId": "com.roachwares.roachnet",
     "productName": "RoachNet",
     "asar": true,
     "asarUnpack": [
@@ -97,7 +102,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "AHGRoach",
+        "owner": "RoachWares",
         "repo": "RoachNet",
         "releaseType": "release"
       }

@@ -257,7 +257,7 @@ sudo bash /opt/roachnet/update_roachnet.sh
 
 **Uninstall RoachNet:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/uninstall_roachnet.sh -o uninstall_roachnet.sh
+curl -fsSL https://raw.githubusercontent.com/RoachWares/RoachNet/refs/heads/main/install/uninstall_roachnet.sh -o uninstall_roachnet.sh
 sudo bash uninstall_roachnet.sh
 ```
 *Warning: This cannot be undone. All data will be deleted.*
@@ -286,7 +286,7 @@ Try asking a question in [AI Chat](/chat). The local AI can answer questions abo
 You're in the docs now. Use the menu to find specific topics.
 
 ### Join the community
-For now, the main collaboration path is the [RoachNet issue tracker](https://github.com/AHGRoach/RoachNet/issues).
+For now, the main collaboration path is the [RoachNet issue tracker](https://github.com/RoachWares/RoachNet/issues).
 
 ### Release Notes
 See what's changed in each version: **[Release Notes](/docs/release-notes)**

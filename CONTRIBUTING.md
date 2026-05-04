@@ -41,7 +41,7 @@ cd RoachNet
 Point `origin` at your fork and keep the main RoachNet repo as the primary sync target:
 
 ```bash
-git remote add upstream https://github.com/AHGRoach/RoachNet.git
+git remote add upstream https://github.com/RoachWares/RoachNet.git
 ```
 
 If you are working on upstream-base synchronization, there is also a separate imported-source remote documented in [docs/UPSTREAM.md](docs/UPSTREAM.md).
@@ -125,7 +125,7 @@ Please avoid changes that:
 
 RoachNet coordination currently lives in the repository:
 
-- Issues: [github.com/AHGRoach/RoachNet/issues](https://github.com/AHGRoach/RoachNet/issues)
-- Discussions: [github.com/AHGRoach/RoachNet/discussions](https://github.com/AHGRoach/RoachNet/discussions)
+- Issues: [github.com/RoachWares/RoachNet/issues](https://github.com/RoachWares/RoachNet/issues)
+- Discussions: [github.com/RoachWares/RoachNet/discussions](https://github.com/RoachWares/RoachNet/discussions)
 
 RoachNet is licensed under the [Apache License 2.0](LICENSE).

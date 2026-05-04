@@ -423,8 +423,8 @@ export class SystemService {
 
       const earlyAccess = (await KVStore.getValue('system.earlyAccess')) ?? false
       const githubUrl = earlyAccess
-        ? 'https://api.github.com/repos/AHGRoach/RoachNet/releases'
-        : 'https://api.github.com/repos/AHGRoach/RoachNet/releases/latest'
+        ? 'https://api.github.com/repos/RoachWares/RoachNet/releases'
+        : 'https://api.github.com/repos/RoachWares/RoachNet/releases/latest'
       const response = await axios.get(githubUrl, {
         headers: { Accept: 'application/vnd.github+json' },
         timeout: 5000,

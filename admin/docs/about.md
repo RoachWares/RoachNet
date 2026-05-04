@@ -10,7 +10,7 @@ RoachNet currently preserves the upstream Apache 2.0 licensing and attribution w
 
 ## Links
 
-- **RoachNet Repo:** [AHGRoach/RoachNet](https://github.com/AHGRoach/RoachNet)
-- **Issue Tracker:** [RoachNet Issues](https://github.com/AHGRoach/RoachNet/issues)
-- **Upstream Provenance:** [docs/UPSTREAM.md](https://github.com/AHGRoach/RoachNet/blob/main/docs/UPSTREAM.md)
+- **RoachNet Repo:** [RoachWares/RoachNet](https://github.com/RoachWares/RoachNet)
+- **Issue Tracker:** [RoachNet Issues](https://github.com/RoachWares/RoachNet/issues)
+- **Upstream Provenance:** [docs/UPSTREAM.md](https://github.com/RoachWares/RoachNet/blob/main/docs/UPSTREAM.md)
 - **Benchmark Leaderboard:** [Community leaderboard](https://benchmark.roachnet.org)

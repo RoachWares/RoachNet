@@ -955,7 +955,7 @@ function renderSetupPanel(desktopState) {
           </label>
           <label class="field wide">
             <span class="field-label">Source Repository</span>
-            <input data-config-field name="sourceRepoUrl" value="${escapeHtml(config.sourceRepoUrl || '')}" placeholder="https://github.com/AHGRoach/RoachNet.git" />
+            <input data-config-field name="sourceRepoUrl" value="${escapeHtml(config.sourceRepoUrl || '')}" placeholder="https://github.com/RoachWares/RoachNet.git" />
           </label>
           <label class="field">
             <span class="field-label">Source Ref</span>
