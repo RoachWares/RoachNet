@@ -2,7 +2,6 @@ import { AIRuntimeService } from '#services/ai_runtime_service';
 import { DockerService } from '#services/docker_service';
 import { SystemService } from '#services/system_service'
 import { SystemUpdateService } from '#services/system_update_service'
-import { UpstreamSyncService } from '#services/upstream_sync_service'
 import { ContainerRegistryService } from '#services/container_registry_service'
 import { NativeRuntimeSnapshotService } from '#services/native_runtime_snapshot_service'
 import { CheckServiceUpdatesJob } from '#jobs/check_service_updates_job'
@@ -17,7 +16,6 @@ export default class SystemController {
         private aiRuntimeService: AIRuntimeService,
         private dockerService: DockerService,
         private systemUpdateService: SystemUpdateService,
-        private upstreamSyncService: UpstreamSyncService,
         private containerRegistryService: ContainerRegistryService,
         private nativeRuntimeSnapshotService: NativeRuntimeSnapshotService
     ) { }
@@ -120,31 +118,6 @@ export default class SystemController {
         const logs = this.systemUpdateService.getUpdateLogs();
         response.send({ logs });
     }
-
-    async getUpstreamSyncStatus({ request, response }: HttpContext) {
-        const force = request.qs().force === 'true' || request.qs().force === true
-        const status = await this.upstreamSyncService.getStatus(force)
-        response.send(status)
-    }
-
-    async requestUpstreamSync({ response }: HttpContext) {
-        const result = await this.upstreamSyncService.requestSync()
-
-        if (result.success) {
-            response.send(result)
-            return
-        }
-
-        response.status(409).send({
-            success: false,
-            error: result.message,
-        })
-    }
-
-    async getUpstreamSyncLogs({ response }: HttpContext) {
-        response.send({ logs: this.upstreamSyncService.getLogs() })
-    }
-
 
     async subscribeToReleaseNotes({ request }: HttpContext) {
         const reqData = await request.validateUsing(subscribeToReleaseNotesValidator);

@@ -2,7 +2,7 @@ import { Head, router, usePage } from '@inertiajs/react'
 import { useEffect, useRef, useState } from 'react'
 import StyledTable from '~/components/StyledTable'
 import SettingsLayout from '~/layouts/SettingsLayout'
-import { NomadOllamaModel } from '../../../types/ollama'
+import { RoachNetOllamaModel } from '../../../types/ollama'
 import StyledButton from '~/components/StyledButton'
 import Alert from '~/components/Alert'
 import { useNotifications } from '~/context/NotificationContext'
@@ -21,11 +21,11 @@ import { useSystemInfo } from '~/hooks/useSystemInfo'
 import type { AIRuntimeStatus } from '../../../types/ai'
 
 const GPU_BANNER_STORAGE_KEY = 'roachnet:gpu-banner-dismissed'
-const LEGACY_GPU_BANNER_STORAGE_KEY = 'nomad:gpu-banner-dismissed'
+const LEGACY_GPU_BANNER_STORAGE_KEY = 'roachnet:gpu-banner-dismissed'
 
 export default function ModelsPage(props: {
   models: {
-    availableModels: NomadOllamaModel[]
+    availableModels: RoachNetOllamaModel[]
     installedModels: ModelResponse[]
     runtimeStatus: AIRuntimeStatus
     settings: { chatSuggestionsEnabled: boolean; aiAssistantCustomName: string }
@@ -66,7 +66,7 @@ export default function ModelsPage(props: {
           closeAllModals()
           setReinstalling(true)
           try {
-            const response = await api.forceReinstallService('nomad_ollama')
+            const response = await api.forceReinstallService('roachnet_ollama')
             if (!response || !response.success) {
               throw new Error(response?.message || 'Force reinstall failed')
             }
@@ -483,7 +483,7 @@ export default function ModelsPage(props: {
               Refresh Models
             </StyledButton>
           </div>
-          <StyledTable<NomadOllamaModel>
+          <StyledTable<RoachNetOllamaModel>
             className="font-semibold mt-4"
             rowLines={true}
             columns={[

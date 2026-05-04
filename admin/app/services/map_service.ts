@@ -39,7 +39,7 @@ interface IMapService {
 
 export class MapService implements IMapService {
   private readonly mapStoragePath = MAPS_STORAGE_PATH
-  private readonly baseStylesFile = 'nomad-base-styles.json'
+  private readonly baseStylesFile = 'roachnet-base-styles.json'
   private readonly basemapsAssetsDir = 'basemaps-assets'
   private readonly baseAssetsTarFile = 'base-assets.tar.gz'
   private readonly baseDirPath = resolveStoragePath(this.mapStoragePath)
@@ -60,7 +60,7 @@ export class MapService implements IMapService {
 
     const defaultTarFileURL = new URL(
       this.baseAssetsTarFile,
-      'https://github.com/Crosstalk-Solutions/project-nomad-maps/raw/refs/heads/master/'
+      'https://github.com/AHGRoach/RoachNet-Maps/raw/refs/heads/master/'
     )
 
     const resolvedURL = url ? new URL(url) : defaultTarFileURL

@@ -30,7 +30,7 @@ import { broadcastTransmit } from '#services/transmit_bridge'
 
 // HMAC secret for signing submissions to the benchmark repository
 // This provides basic protection against casual API abuse.
-// Note: Since NOMAD is open source, a determined attacker could extract this.
+// Note: Since RoachNet is open source, a determined attacker could extract this.
 // For stronger protection, see challenge-response authentication.
 const BENCHMARK_HMAC_SECRET = '778ba65d0bc0e23119e5ffce4b3716648a7d071f0a47ec3f'
 
@@ -46,7 +46,7 @@ const SCORE_WEIGHTS = {
 
 // Benchmark configuration constants
 const SYSBENCH_IMAGE = 'severalnines/sysbench:latest'
-const SYSBENCH_CONTAINER_NAME = 'nomad_benchmark_sysbench'
+const SYSBENCH_CONTAINER_NAME = 'roachnet_benchmark_sysbench'
 
 // Reference model for AI benchmark - small but meaningful
 const AI_BENCHMARK_MODEL = 'llama3.2:1b'
@@ -150,8 +150,8 @@ export class BenchmarkService {
       disk_write_score: result.disk_write_score,
       ai_tokens_per_second: result.ai_tokens_per_second,
       ai_time_to_first_token: result.ai_time_to_first_token,
-      nomad_score: result.nomad_score,
-      nomad_version: SystemService.getAppVersion(),
+      roachnet_score: result.roachnet_score,
+      roachnet_version: SystemService.getAppVersion(),
       benchmark_version: '1.0.0',
       builder_tag: anonymous ? null : result.builder_tag,
     }
@@ -165,13 +165,13 @@ export class BenchmarkService {
         .digest('hex')
 
       const response = await axios.post(
-        'https://benchmark.projectnomad.us/api/v1/submit',
+        'https://benchmark.roachnet.org/api/v1/submit',
         submission,
         {
           timeout: 30000,
           headers: {
-            'X-NOMAD-Timestamp': timestamp,
-            'X-NOMAD-Signature': signature,
+            'X-RoachNet-Timestamp': timestamp,
+            'X-RoachNet-Signature': signature,
           },
         }
       )
@@ -203,7 +203,7 @@ export class BenchmarkService {
    */
   async getComparisonStats(): Promise<RepositoryStats | null> {
     try {
-      const response = await axios.get('https://benchmark.projectnomad.us/api/v1/stats', {
+      const response = await axios.get('https://benchmark.roachnet.org/api/v1/stats', {
         timeout: 10000,
       })
       return response.data as RepositoryStats
@@ -373,9 +373,9 @@ export class BenchmarkService {
         }
       }
 
-      // Calculate NOMAD score
-      this._updateStatus('calculating_score', 'Calculating NOMAD score...')
-      const nomadScore = this._calculateNomadScore(systemScores, aiScores)
+      // Calculate RoachNet score
+      this._updateStatus('calculating_score', 'Calculating RoachNet score...')
+      const roachNetScore = this._calculateRoachNetScore(systemScores, aiScores)
 
       // Save result
       const result = await BenchmarkResult.create({
@@ -394,7 +394,7 @@ export class BenchmarkService {
         ai_tokens_per_second: aiScores.ai_tokens_per_second || null,
         ai_model_used: aiScores.ai_model_used || null,
         ai_time_to_first_token: aiScores.ai_time_to_first_token || null,
-        nomad_score: nomadScore,
+        roachnet_score: roachNetScore,
         submitted_to_repository: false,
       })
 
@@ -522,9 +522,9 @@ export class BenchmarkService {
   }
 
   /**
-   * Calculate weighted NOMAD score
+   * Calculate weighted RoachNet score
    */
-  private _calculateNomadScore(systemScores: SystemScores, aiScores: Partial<AIScores>): number {
+  private _calculateRoachNetScore(systemScores: SystemScores, aiScores: Partial<AIScores>): number {
     let totalWeight = 0
     let weightedSum = 0
 
@@ -563,9 +563,9 @@ export class BenchmarkService {
     }
 
     // Normalize by actual weight used (in case AI benchmarks were skipped)
-    const nomadScore = totalWeight > 0 ? (weightedSum / totalWeight) * 100 : 0
+    const roachNetScore = totalWeight > 0 ? (weightedSum / totalWeight) * 100 : 0
 
-    return Math.round(Math.min(100, Math.max(0, nomadScore)) * 100) / 100
+    return Math.round(Math.min(100, Math.max(0, roachNetScore)) * 100) / 100
   }
 
   /**

@@ -485,7 +485,7 @@ export default function BenchmarkPage(props: {
                   <div className="flex flex-col md:flex-row items-center gap-8">
                     <div className="shrink-0">
                       <CircularGauge
-                        value={latestResult.nomad_score}
+                        value={latestResult.roachnet_score}
                         label="RoachNet Score"
                         size="lg"
                         variant="cpu"
@@ -495,9 +495,9 @@ export default function BenchmarkPage(props: {
                     </div>
                     <div className="flex-1 space-y-4">
                       <div
-                        className={`text-5xl font-bold ${getScoreColor(latestResult.nomad_score)}`}
+                        className={`text-5xl font-bold ${getScoreColor(latestResult.roachnet_score)}`}
                       >
-                        {latestResult.nomad_score.toFixed(1)}
+                        {latestResult.roachnet_score.toFixed(1)}
                       </div>
                       <p className="text-desert-stone-dark">
                         Your RoachNet Score is a weighted composite of all benchmark results.
@@ -583,7 +583,7 @@ export default function BenchmarkPage(props: {
                           variant="bordered"
                         >
                           <a
-                            href="https://benchmark.projectnomad.us"
+                            href="https://benchmark.roachnet.org"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-sm text-desert-green hover:underline mt-2 inline-block"
@@ -768,7 +768,7 @@ export default function BenchmarkPage(props: {
                       <div>
                         <div className="text-desert-stone-dark">RoachNet Score</div>
                         <div className="font-bold text-desert-green">
-                          {latestResult.nomad_score.toFixed(1)}
+                          {latestResult.roachnet_score.toFixed(1)}
                         </div>
                       </div>
                     </div>
@@ -950,7 +950,7 @@ export default function BenchmarkPage(props: {
                                   <td className="p-3 capitalize">{result.benchmark_type}</td>
                                   <td className="p-3">
                                     <span className="font-bold text-desert-green">
-                                      {result.nomad_score.toFixed(1)}
+                                      {result.roachnet_score.toFixed(1)}
                                     </span>
                                   </td>
                                   <td className="p-3 font-mono text-xs">

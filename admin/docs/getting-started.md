@@ -170,7 +170,7 @@ Test your hardware performance and see how your RoachNet build stacks up against
 2. Choose a benchmark type: Full, System Only, or AI Only
 3. View your RoachNet Score (a weighted composite of CPU, memory, disk, and AI performance)
 4. Create a Builder Tag (your RoachNet-themed identity, like "Neon-Hive-1234")
-5. Share your results with the [community leaderboard](https://benchmark.projectnomad.us)
+5. Share your results with the [community leaderboard](https://benchmark.roachnet.org)
 
 **Note:** Only Full Benchmarks with AI data can be shared to the community leaderboard.
 

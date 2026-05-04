@@ -80,7 +80,7 @@ export default class BenchmarkResults extends BaseCommand {
         }
         this.logger.info('')
 
-        this.logger.info(`RoachNet Score: ${result.nomad_score.toFixed(2)} / 100`)
+        this.logger.info(`RoachNet Score: ${result.roachnet_score.toFixed(2)} / 100`)
 
         if (result.submitted_to_repository) {
           this.logger.info(`Submitted: Yes (${result.repository_id})`)

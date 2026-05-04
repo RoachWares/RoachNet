@@ -31,7 +31,7 @@ export class RagService {
   private qdrantUnavailableReason: string | null = null
   private embeddingModelVerified = false
   public static UPLOADS_STORAGE_PATH = KB_UPLOADS_STORAGE_PATH
-  public static CONTENT_COLLECTION_NAME = 'nomad_knowledge_base'
+  public static CONTENT_COLLECTION_NAME = 'roachnet_knowledge_base'
   public static EMBEDDING_MODEL = 'nomic-embed-text:v1.5'
   public static EMBEDDING_DIMENSION = 768 // Nomic Embed Text v1.5 dimension is 768
   public static MODEL_CONTEXT_LENGTH = 2048 // nomic-embed-text has 2K token context
@@ -1053,7 +1053,7 @@ export class RagService {
         await deleteFileIfExists(resolvedSource)
         logger.info(`[RAG] Deleted uploaded file from disk: ${resolvedSource}`)
       } else {
-        logger.warn(`[RAG] File was removed from knowledge base but doesn't live in Nomad's uploads directory, so it can't be safely removed. Skipping deletion of physical file...`)
+        logger.warn(`[RAG] File was removed from knowledge base but doesn't live in RoachNet's uploads directory, so it can't be safely removed. Skipping deletion of physical file...`)
       }
 
       return { success: true, message: 'File removed from knowledge base.' }
@@ -1063,15 +1063,15 @@ export class RagService {
     }
   }
 
-  public async discoverNomadDocs(force?: boolean): Promise<{ success: boolean; message: string }> {
+  public async discoverRoachNetDocs(force?: boolean): Promise<{ success: boolean; message: string }> {
     try {
       const README_PATH = join(process.cwd(), 'README.md')
       const DOCS_DIR = join(process.cwd(), 'docs')
 
       const alreadyEmbeddedRaw = await KVStore.getValue('rag.docsEmbedded')
       if (alreadyEmbeddedRaw && !force) {
-        logger.info('[RAG] Nomad docs have already been discovered and queued. Skipping.')
-        return { success: true, message: 'Nomad docs have already been discovered and queued. Skipping.' }
+        logger.info('[RAG] RoachNet docs have already been discovered and queued. Skipping.')
+        return { success: true, message: 'RoachNet docs have already been discovered and queued. Skipping.' }
       }
 
       const filesToEmbed: Array<{ path: string; source: string }> = []
@@ -1088,7 +1088,7 @@ export class RagService {
         }
       }
 
-      logger.info(`[RAG] Discovered ${filesToEmbed.length} Nomad doc files to embed`)
+      logger.info(`[RAG] Discovered ${filesToEmbed.length} RoachNet doc files to embed`)
 
       // Import EmbedFileJob dynamically to avoid circular dependencies
       const { EmbedFileJob } = await import('#jobs/embed_file_job')
@@ -1113,10 +1113,10 @@ export class RagService {
       // Update KV store to mark docs as discovered so we don't redo this unnecessarily
       await KVStore.setValue('rag.docsEmbedded', true)
 
-      return { success: true, message: `Nomad docs discovery completed. Dispatched ${filesToEmbed.length} embedding jobs.` }
+      return { success: true, message: `RoachNet docs discovery completed. Dispatched ${filesToEmbed.length} embedding jobs.` }
     } catch (error) {
-      logger.error('Error discovering Nomad docs:', error)
-      return { success: false, message: 'Error discovering Nomad docs.' }
+      logger.error('Error discovering RoachNet docs:', error)
+      return { success: false, message: 'Error discovering RoachNet docs.' }
     }
   }
 
@@ -1141,9 +1141,9 @@ export class RagService {
 
       const filesInStorage: string[] = []
 
-      // Force resync of Nomad docs
-      await this.discoverNomadDocs(true).catch((error) => {
-        logger.error('[RAG] Error during Nomad docs discovery in sync process:', error)
+      // Force resync of RoachNet docs
+      await this.discoverRoachNetDocs(true).catch((error) => {
+        logger.error('[RAG] Error during RoachNet docs discovery in sync process:', error)
       })
 
       // Scan kb_uploads directory

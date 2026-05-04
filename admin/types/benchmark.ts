@@ -43,7 +43,7 @@ export type BenchmarkResultSlim = Pick<
   | 'id'
   | 'benchmark_id'
   | 'benchmark_type'
-  | 'nomad_score'
+  | 'roachnet_score'
   | 'submitted_to_repository'
   | 'created_at'
   | 'builder_tag'
@@ -126,9 +126,9 @@ export type RepositorySubmission = Pick<
   | 'disk_write_score'
   | 'ai_tokens_per_second'
   | 'ai_time_to_first_token'
-  | 'nomad_score'
+  | 'roachnet_score'
 > & {
-  nomad_version: string
+  roachnet_version: string
   benchmark_version: string
   ram_gb: number
   builder_tag: string | null // null = anonymous submission
@@ -155,7 +155,7 @@ export type RepositoryStats = {
   }
 }
 
-export type LeaderboardEntry = Pick<BenchmarkResult, 'cpu_model' | 'gpu_model' | 'nomad_score'> & {
+export type LeaderboardEntry = Pick<BenchmarkResult, 'cpu_model' | 'gpu_model' | 'roachnet_score'> & {
   rank: number
   submitted_at: string
 }

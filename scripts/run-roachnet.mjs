@@ -48,15 +48,15 @@ const DEFAULT_COMPANION_HOST = '0.0.0.0'
 const DEFAULT_COMPANION_PORT = '38111'
 const DEFAULT_ROACHNET_LOCAL_HOSTNAME = 'RoachNet'
 const MANAGED_PORT_FALLBACKS = ['8080', BUILD_RUNTIME_OLLAMA_PORT, BUILD_RUNTIME_OPENCLAW_PORT]
-const MANAGED_RUNTIME_DB_USER = 'nomad_user'
+const MANAGED_RUNTIME_DB_USER = 'roachnet_user'
 const MANAGED_RUNTIME_SECRETS_FILENAME = 'roachnet-managed-runtime-secrets.json'
-const MANAGED_RUNTIME_DB_DATABASE = 'nomad'
+const MANAGED_RUNTIME_DB_DATABASE = 'roachnet'
 const LEGACY_MANAGED_RUNTIME_DB_PASSWORD = '7154b9bbb511df8d89c1e1417d8427e3'
 const LEGACY_MANAGED_RUNTIME_DB_ROOT_PASSWORD = '00e17487a0231b35b6030087ecb9aaf5'
 const MANAGED_COMPOSE_SERVICE_NAMES = new Set(['mysql', 'redis', 'qdrant', 'ollama'])
 
 function getStorageLogsDir(envValues = process.env) {
-  return path.join(normalizeStorageRoot(envValues?.NOMAD_STORAGE_PATH), 'logs')
+  return path.join(normalizeStorageRoot(envValues?.ROACHNET_STORAGE_PATH), 'logs')
 }
 
 function getServerLogPath(envValues = process.env) {
@@ -423,7 +423,7 @@ function getPersistentStorageRoot() {
 }
 
 function getContainedRuntimeCacheRoot(runtimeEnvValues) {
-  const storageRoot = normalizeStorageRoot(runtimeEnvValues?.NOMAD_STORAGE_PATH)
+  const storageRoot = normalizeStorageRoot(runtimeEnvValues?.ROACHNET_STORAGE_PATH)
   return path.join(storageRoot, 'state', 'runtime-cache')
 }
 
@@ -473,7 +473,7 @@ function getManagedRuntimeStateRoot(envValues) {
     return explicitRoot
   }
 
-  return path.join(normalizeStorageRoot(getRuntimeEnvValues(envValues).NOMAD_STORAGE_PATH), 'state', 'runtime-state')
+  return path.join(normalizeStorageRoot(getRuntimeEnvValues(envValues).ROACHNET_STORAGE_PATH), 'state', 'runtime-state')
 }
 
 function getManagedComposeInstallKey(envValues) {
@@ -698,7 +698,7 @@ async function refreshBundledRuntimeDependencies(
 
 function getRuntimeEnvValues(envValues) {
   const storageRoot = normalizeStorageRoot(
-    process.env.NOMAD_STORAGE_PATH?.trim() || envValues.NOMAD_STORAGE_PATH?.trim()
+    process.env.ROACHNET_STORAGE_PATH?.trim() || envValues.ROACHNET_STORAGE_PATH?.trim()
   )
   const manifestsBaseUrl =
     process.env.ROACHNET_MANIFESTS_BASE_URL?.trim() ||
@@ -729,7 +729,7 @@ function getRuntimeEnvValues(envValues) {
 
   return {
     ...envValues,
-    NOMAD_STORAGE_PATH: storageRoot,
+    ROACHNET_STORAGE_PATH: storageRoot,
     ROACHNET_MANIFESTS_BASE_URL: manifestsBaseUrl,
     SQLITE_DB_PATH:
       process.env.SQLITE_DB_PATH?.trim() ||
@@ -880,7 +880,7 @@ function getBuildRuntimeEnvValues(envValues, options = {}) {
 
 function getOpenClawRuntimeEnvValues(runtimeEnvValues) {
   const workspacePath =
-    runtimeEnvValues.OPENCLAW_WORKSPACE_PATH || path.join(runtimeEnvValues.NOMAD_STORAGE_PATH, 'openclaw')
+    runtimeEnvValues.OPENCLAW_WORKSPACE_PATH || path.join(runtimeEnvValues.ROACHNET_STORAGE_PATH, 'openclaw')
   const stateDir = path.join(workspacePath, '.openclaw-runtime')
   const configPath = path.join(stateDir, 'openclaw.json')
 
@@ -976,7 +976,7 @@ function ensureOpenClawRuntimeConfig(runtimeEnvValues) {
 
 function getManagedRuntimeEnvValues(envValues) {
   const runtimeValues = getRuntimeEnvValues(envValues)
-  const storageRoot = runtimeValues.NOMAD_STORAGE_PATH
+  const storageRoot = runtimeValues.ROACHNET_STORAGE_PATH
   const runtimeSecrets = getManagedRuntimeSecrets(envValues)
 
   return {
@@ -2128,7 +2128,7 @@ async function maybeSpawnContainedOllama({ runtimeEnvValues, logFd }) {
   const parsedBaseUrl = new URL(baseUrl)
   const host = parsedBaseUrl.hostname || '127.0.0.1'
   const port = parsedBaseUrl.port || '11434'
-  const storageRoot = normalizeStorageRoot(runtimeEnvValues.NOMAD_STORAGE_PATH)
+  const storageRoot = normalizeStorageRoot(runtimeEnvValues.ROACHNET_STORAGE_PATH)
   const modelsPath =
     runtimeEnvValues.OLLAMA_MODELS?.trim() ||
     path.join(storageRoot || getPersistentStorageRoot(), 'ollama')
@@ -2453,7 +2453,7 @@ async function launchServer(target, envValues, healthUrls, timeoutMs, serverLogF
 async function main() {
   const envValues = await loadEnv()
   const runtimeEnvValues = getRuntimeEnvValues(envValues)
-  process.env.NOMAD_STORAGE_PATH = runtimeEnvValues.NOMAD_STORAGE_PATH
+  process.env.ROACHNET_STORAGE_PATH = runtimeEnvValues.ROACHNET_STORAGE_PATH
   process.env.OPENCLAW_WORKSPACE_PATH = runtimeEnvValues.OPENCLAW_WORKSPACE_PATH
   process.env.OLLAMA_MODELS = runtimeEnvValues.OLLAMA_MODELS
   process.env.ROACHNET_CONTAINERLESS_MODE = runtimeEnvValues.ROACHNET_CONTAINERLESS_MODE

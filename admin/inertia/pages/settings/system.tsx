@@ -17,7 +17,7 @@ import StatusCard from '~/components/systeminfo/StatusCard'
 import { IconCpu, IconDatabase, IconServer, IconDeviceDesktop, IconComponents } from '@tabler/icons-react'
 
 const GPU_BANNER_STORAGE_KEY = 'roachnet:gpu-banner-dismissed'
-const LEGACY_GPU_BANNER_STORAGE_KEY = 'nomad:gpu-banner-dismissed'
+const LEGACY_GPU_BANNER_STORAGE_KEY = 'roachnet:gpu-banner-dismissed'
 
 export default function SettingsPage(props: {
   system: { info: SystemInformationResponse | undefined }
@@ -55,7 +55,7 @@ export default function SettingsPage(props: {
           closeAllModals()
           setReinstalling(true)
           try {
-            const response = await api.forceReinstallService('nomad_ollama')
+            const response = await api.forceReinstallService('roachnet_ollama')
             if (!response || !response.success) {
               throw new Error(response?.message || 'Force reinstall failed')
             }

@@ -53,6 +53,14 @@ struct DeveloperWorkspaceShortcut: Identifiable {
     let accent: Color
 }
 
+struct DeveloperGuidebookResource: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let detail: String
+    let url: String
+    let tags: [String]
+}
+
 enum DeveloperTerminalTheme: String, CaseIterable, Identifiable {
     case roach = "Roach"
     case phosphor = "Phosphor"
@@ -2273,6 +2281,18 @@ struct DevWorkspaceView: View {
         return devModel.inlineCompletion.isEmpty ? devModel.inlineCompletionStatus : "Tail completion ready for the open file."
     }
 
+    private var guidebookResources: [DeveloperGuidebookResource] {
+        [
+            DeveloperGuidebookResource(
+                id: "raycast-developers",
+                title: "Raycast Developers",
+                detail: "React, TypeScript, command UX, extension structure, publishing, and review habits worth stealing for RoachNet Dev.",
+                url: "https://developers.raycast.com/",
+                tags: ["React", "TypeScript", "Command UX"]
+            ),
+        ]
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             devWorkspaceHeader
@@ -3421,6 +3441,8 @@ struct DevWorkspaceView: View {
                 accent: RoachPalette.magenta
             )
 
+            guidebookPanel
+
             VStack(alignment: .leading, spacing: 10) {
                 compactAssistModeButtons
 
@@ -3610,6 +3632,58 @@ struct DevWorkspaceView: View {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private var guidebookPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Guidebook")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .tracking(1.1)
+                        .foregroundStyle(RoachPalette.muted)
+                    Text("External patterns worth keeping close.")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(RoachPalette.text)
+                }
+                Spacer()
+                RoachTag("Docs", accent: RoachPalette.cyan)
+            }
+
+            ForEach(guidebookResources) { resource in
+                Button {
+                    model.openPublicURL(resource.url, title: resource.title)
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(resource.title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(RoachPalette.text)
+                        Text(resource.detail)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(RoachPalette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(resource.tags, id: \.self) { tag in
+                                    RoachTag(tag, accent: RoachPalette.green)
+                                }
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(RoachPalette.panelRaised.opacity(0.62))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(RoachPalette.border, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
     }

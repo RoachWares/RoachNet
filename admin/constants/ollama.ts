@@ -1,9 +1,9 @@
-import { NomadOllamaModel } from '../types/ollama.js'
+import { RoachNetOllamaModel } from '../types/ollama.js'
 
 /**
  * Fallback basic recommended Ollama models in case fetching from the service fails.
  */
-export const FALLBACK_RECOMMENDED_OLLAMA_MODELS: NomadOllamaModel[] = [
+export const FALLBACK_RECOMMENDED_OLLAMA_MODELS: RoachNetOllamaModel[] = [
   {
     name: 'llama3.1',
     description:

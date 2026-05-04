@@ -26,6 +26,7 @@ async function runScript(scriptName) {
 }
 
 async function main() {
+  await runScript('audit-public-release-surface.mjs')
   await runScript('smoke-test-macos-install-lanes.mjs')
   await runScript('smoke-test-command-bar-lane.mjs')
   await runScript('smoke-test-ios-companion-compat.mjs')

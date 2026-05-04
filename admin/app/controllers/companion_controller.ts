@@ -1993,7 +1993,7 @@ export default class CompanionController {
   }
 
   private storagePath() {
-    return process.env.NOMAD_STORAGE_PATH?.trim() || process.env.ROACHNET_HOST_STORAGE_PATH?.trim()
+    return process.env.ROACHNET_STORAGE_PATH?.trim() || process.env.ROACHNET_HOST_STORAGE_PATH?.trim()
   }
 
   private isPeerRoachTailRequest(request?: HttpContext['request']) {

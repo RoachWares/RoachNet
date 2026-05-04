@@ -34,7 +34,7 @@ ollama serve
 Create the local database and app user:
 
 ```bash
-mysql -u root -e "CREATE DATABASE IF NOT EXISTS nomad; CREATE USER IF NOT EXISTS 'nomad_user'@'localhost' IDENTIFIED BY 'nomad_dev_password'; GRANT ALL PRIVILEGES ON nomad.* TO 'nomad_user'@'localhost'; FLUSH PRIVILEGES;"
+mysql -u root -e "CREATE DATABASE IF NOT EXISTS roachnet; CREATE USER IF NOT EXISTS 'roachnet_user'@'localhost' IDENTIFIED BY 'roachnet_dev_password'; GRANT ALL PRIVILEGES ON roachnet.* TO 'roachnet_user'@'localhost'; FLUSH PRIVILEGES;"
 ```
 
 Quick checks:
@@ -60,15 +60,15 @@ NODE_ENV=development
 SESSION_DRIVER=cookie
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=nomad_user
-DB_DATABASE=nomad
-DB_PASSWORD=nomad_dev_password
+DB_USER=roachnet_user
+DB_DATABASE=roachnet
+DB_PASSWORD=roachnet_dev_password
 DB_SSL=false
 REDIS_HOST=localhost
 REDIS_PORT=6379
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OPENCLAW_BASE_URL=http://127.0.0.1:3001
-NOMAD_STORAGE_PATH=/absolute/path/to/RoachNet/admin/storage
+ROACHNET_STORAGE_PATH=/absolute/path/to/RoachNet/admin/storage
 ```
 
 Create the storage directories:

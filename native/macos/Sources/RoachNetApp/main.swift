@@ -13,6 +13,7 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
     case home = "Home"
     case dev = "Dev"
     case roachClaw = "RoachClaw"
+    case arcade = "RoachArcade"
     case maps = "Maps"
     case education = "Education"
     case knowledge = "Vault"
@@ -26,6 +27,7 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .dev: return "terminal.fill"
         case .roachClaw: return "sparkles"
+        case .arcade: return "gamecontroller.fill"
         case .maps: return "map.fill"
         case .education: return "graduationcap.fill"
         case .knowledge: return "books.vertical.fill"
@@ -48,6 +50,7 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
         case .home: return "Your stack"
         case .dev: return "Code and ship"
         case .roachClaw: return "Private AI"
+        case .arcade: return "Native games"
         case .maps: return "Offline atlas"
         case .education: return "Course packs"
         case .knowledge: return "Local shelf"
@@ -117,6 +120,27 @@ struct CommandGridItem: Identifiable {
     let systemImage: String
     let routePath: String
     let isInstalled: Bool
+    let pane: WorkspacePane?
+
+    init(
+        id: String,
+        title: String,
+        detail: String,
+        badge: String?,
+        systemImage: String,
+        routePath: String,
+        isInstalled: Bool,
+        pane: WorkspacePane? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.badge = badge
+        self.systemImage = systemImage
+        self.routePath = routePath
+        self.isInstalled = isInstalled
+        self.pane = pane
+    }
 }
 
 struct PresentedWebSurface {
@@ -144,6 +168,7 @@ private struct ReadinessStep: Identifiable {
 
 enum RoachClawContextScope: String, CaseIterable, Identifiable, Hashable {
     case vault
+    case arcade
     case archives
     case projects
     case roachnet
@@ -154,6 +179,8 @@ enum RoachClawContextScope: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .vault:
             return "Vault"
+        case .arcade:
+            return "RoachArcade"
         case .archives:
             return "Captured Sites"
         case .projects:
@@ -167,6 +194,8 @@ enum RoachClawContextScope: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .vault:
             return "Let RoachClaw read the contained library, imported Obsidian vaults, and currently opened vault asset."
+        case .arcade:
+            return "Let RoachClaw see the active game, controller state, cheats, mods, and compatibility runner."
         case .archives:
             return "Let RoachClaw see mirrored site titles and the captured web lane summary."
         case .projects:
@@ -180,6 +209,8 @@ enum RoachClawContextScope: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .vault:
             return "books.vertical.fill"
+        case .arcade:
+            return "gamecontroller.fill"
         case .archives:
             return "globe.badge.chevron.backward"
         case .projects:
@@ -193,6 +224,8 @@ enum RoachClawContextScope: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .vault:
             return RoachPalette.green
+        case .arcade:
+            return RoachPalette.magenta
         case .archives:
             return RoachPalette.cyan
         case .projects:
@@ -205,19 +238,22 @@ enum RoachClawContextScope: String, CaseIterable, Identifiable, Hashable {
 
 struct RoachClawContextPermissions: Codable, Hashable {
     var vault = true
+    var arcade = true
     var archives = true
     var projects = true
     var roachnet = true
 
     private enum CodingKeys: String, CodingKey {
         case vault
+        case arcade
         case archives
         case projects
         case roachnet
     }
 
-    init(vault: Bool = true, archives: Bool = true, projects: Bool = true, roachnet: Bool = true) {
+    init(vault: Bool = true, arcade: Bool = true, archives: Bool = true, projects: Bool = true, roachnet: Bool = true) {
         self.vault = vault
+        self.arcade = arcade
         self.archives = archives
         self.projects = projects
         self.roachnet = roachnet
@@ -226,6 +262,7 @@ struct RoachClawContextPermissions: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         vault = try container.decodeIfPresent(Bool.self, forKey: .vault) ?? true
+        arcade = try container.decodeIfPresent(Bool.self, forKey: .arcade) ?? true
         archives = try container.decodeIfPresent(Bool.self, forKey: .archives) ?? true
         projects = try container.decodeIfPresent(Bool.self, forKey: .projects) ?? true
         roachnet = try container.decodeIfPresent(Bool.self, forKey: .roachnet) ?? true
@@ -234,6 +271,7 @@ struct RoachClawContextPermissions: Codable, Hashable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(vault, forKey: .vault)
+        try container.encode(arcade, forKey: .arcade)
         try container.encode(archives, forKey: .archives)
         try container.encode(projects, forKey: .projects)
         try container.encode(roachnet, forKey: .roachnet)
@@ -243,6 +281,8 @@ struct RoachClawContextPermissions: Codable, Hashable {
         switch scope {
         case .vault:
             return vault
+        case .arcade:
+            return arcade
         case .archives:
             return archives
         case .projects:
@@ -256,6 +296,8 @@ struct RoachClawContextPermissions: Codable, Hashable {
         switch scope {
         case .vault:
             vault = enabled
+        case .arcade:
+            arcade = enabled
         case .archives:
             archives = enabled
         case .projects:
@@ -1319,6 +1361,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var presentedVaultAsset: PresentedVaultAsset?
     @Published var importedObsidianVaults: [ImportedObsidianVault] = []
     @Published var selectedImportedVaultID: String?
+    @Published var roachArcadeStore = RoachArcadeLibraryStore()
+    @Published var roachArchiveStore = RoachArchiveStore()
     private var attemptedRoachClawBootstrap = false
     private var attemptedRoachClawServiceBootstrap = false
     private var attemptedInstalledServiceBootstrap = false
@@ -2040,6 +2084,8 @@ final class WorkspaceModel: ObservableObject {
             storageURL,
             storageURL.appendingPathComponent("Vault", isDirectory: true),
             storageURL.appendingPathComponent("knowledge", isDirectory: true),
+            storageURL.appendingPathComponent("RoachArchive", isDirectory: true),
+            storageURL.appendingPathComponent("RoachArchive", isDirectory: true).appendingPathComponent("Books", isDirectory: true),
             storageURL.appendingPathComponent("docs", isDirectory: true),
             URL(fileURLWithPath: installPath),
         ]
@@ -2462,9 +2508,15 @@ final class WorkspaceModel: ObservableObject {
             let importedVaults = importedObsidianVaults.prefix(4).map { vault in
                 "\(vault.name) (\(VaultWorkspaceStore.noteCount(in: vault)) notes)"
             }
+            let archiveRecords = roachArchiveStore.vaultRecords.prefix(4).map { record in
+                "\(record.result.title) [\(record.status)]"
+            }
             var lines: [String] = []
             lines.append("Vault lane:")
             lines.append("- Indexed files: \(snapshot?.knowledgeFiles.count ?? 0)")
+            lines.append("- Roach's Archive records: \(roachArchiveStore.vaultRecords.count)")
+            lines.append("- Roach's Archive search results: \(roachArchiveStore.results.count)")
+            lines.append("- Roach's Archive metadata torrents: \(roachArchiveStore.metadataTorrentCount)")
             if !files.isEmpty {
                 lines.append("- File samples: \(files.joined(separator: ", "))")
             }
@@ -2473,6 +2525,9 @@ final class WorkspaceModel: ObservableObject {
             }
             if !importedVaults.isEmpty {
                 lines.append("- Imported vaults: \(importedVaults.joined(separator: " · "))")
+            }
+            if !archiveRecords.isEmpty {
+                lines.append("- Added books: \(archiveRecords.joined(separator: " · "))")
             }
             let wikiStatus = RoachBrainWikiStore.status(storagePath: storagePath)
             if wikiStatus.pageCount > 0 {
@@ -2523,6 +2578,36 @@ final class WorkspaceModel: ObservableObject {
             lines.append("- Archived sites: \(archives.count)")
             if !archiveSamples.isEmpty {
                 lines.append("- Archive samples: \(archiveSamples.joined(separator: ", "))")
+            }
+            sections.append(lines.joined(separator: "\n"))
+        }
+
+        if roachClawContextPermissions.arcade {
+            let games = roachArcadeStore.games
+            let selectedGame = roachArcadeStore.selectedGame
+            var lines: [String] = []
+            lines.append("RoachArcade lane:")
+            lines.append("- Library games: \(games.count)")
+            lines.append("- Playable games: \(games.filter { $0.status == .ready }.count)")
+            lines.append("- Connected controllers: \(roachArcadeStore.connectedControllerSummary)")
+            if let session = roachArcadeStore.activePlayerSession {
+                lines.append("- Active game session: \(session.title)")
+            }
+            if let selectedGame {
+                lines.append("- Selected game: \(selectedGame.title) [\(selectedGame.system), \(selectedGame.kind.label), \(selectedGame.status.label)]")
+                lines.append("- Runner: \(selectedGame.compatibilityRunner.label)")
+                if selectedGame.cheats.isEmpty {
+                    lines.append("- Cheats: none stored")
+                } else {
+                    let enabledCheats = selectedGame.cheats.filter(\.enabled).map(\.name)
+                    lines.append("- Enabled cheats: \(enabledCheats.isEmpty ? "none" : enabledCheats.joined(separator: ", "))")
+                }
+                let profiles = roachArcadeStore.profilesForSelectedGame.map { profile in
+                    "\(profile.name) (\(profile.mods.count) mods)"
+                }
+                if !profiles.isEmpty {
+                    lines.append("- Mod profiles: \(profiles.joined(separator: " · "))")
+                }
             }
             sections.append(lines.joined(separator: "\n"))
         }
@@ -2820,7 +2905,7 @@ final class WorkspaceModel: ObservableObject {
         guard config.useDockerContainerization else { return }
         guard let snapshot else { return }
 
-        let ollamaService = snapshot.services.first { $0.service_name == "nomad_ollama" }
+        let ollamaService = snapshot.services.first { $0.service_name == "roachnet_ollama" }
         guard let ollamaService, !(ollamaService.installed ?? false) else { return }
 
         attemptedRoachClawServiceBootstrap = true
@@ -2910,6 +2995,43 @@ final class WorkspaceModel: ObservableObject {
         } catch {
             errorLine = error.localizedDescription
             statusLine = "AI routing update failed."
+        }
+    }
+
+    func saveSettingsFromPreferences() async {
+        errorLine = nil
+        statusLine = "Saving settings."
+
+        var updatedConfig = config
+        updatedConfig.storagePath = updatedConfig.storagePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedConfig.roachClawDefaultModel = updatedConfig.roachClawDefaultModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedConfig.exoBaseUrl = updatedConfig.exoBaseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedConfig.exoModelId = updatedConfig.exoModelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedConfig.releaseChannel = updatedConfig.releaseChannel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "stable"
+            : updatedConfig.releaseChannel.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedConfig.companionAdvertisedURL = updatedConfig.companionAdvertisedURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedConfig.companionPort = min(max(updatedConfig.companionPort, 1_024), 65_535)
+
+        if updatedConfig.roachClawDefaultModel.isEmpty {
+            updatedConfig.roachClawDefaultModel = recommendedLocalModels.first ?? "qwen2.5-coder:1.5b"
+        }
+
+        if updatedConfig.storagePath.isEmpty {
+            updatedConfig.storagePath = RoachNetRepositoryLocator.defaultStoragePath(installPath: installPath)
+        }
+
+        do {
+            try RoachNetRepositoryLocator.writeConfig(updatedConfig)
+            config = updatedConfig
+            roachArcadeStore.configure(storagePath: storagePath)
+            roachArchiveStore.configure(storagePath: storagePath)
+            synchronizeSelectedChatModel()
+            await refreshRuntimeState(silently: true)
+            statusLine = "Settings saved."
+        } catch {
+            errorLine = error.localizedDescription
+            statusLine = "Settings save failed."
         }
     }
 
@@ -3870,6 +3992,14 @@ struct RoachNetMacApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+
+        Settings {
+            RoachNetSettingsView(model: model)
+                .frame(minWidth: 680, idealWidth: 760, maxWidth: 880, minHeight: 520, idealHeight: 600)
+                .onAppear {
+                    appDelegate.model = model
+                }
+        }
     }
 }
 
@@ -4003,6 +4133,8 @@ private struct RootWorkspaceView: View {
             return "A quieter desk for code, the shell, and the next real edit."
         case .roachClaw:
             return "A real chat lane first. Local by default, cloud only when it earns the trip."
+        case .arcade:
+            return "Backlog fossils, ROMs, macOS games, mods, and cheats in one local shelf."
         case .maps:
             return "Notes, captures, atlas packs, study shelves, and saved media under one library."
         case .education:
@@ -4120,9 +4252,33 @@ private struct RootWorkspaceView: View {
                     )
                     .zIndex(18)
                 }
+
+                if let arcadeSession = model.roachArcadeStore.activePlayerSession, activePane != .arcade {
+                    RoachArcadeFloatingPlayer(
+                        session: arcadeSession,
+                        onOpenArcade: {
+                            model.selectedPane = .arcade
+                        },
+                        onClose: {
+                            model.roachArcadeStore.activePlayerSession = nil
+                        }
+                    )
+                    .frame(
+                        width: max(360, min(proxy.size.width - 30, 620)),
+                        height: max(300, min(proxy.size.height - 40, 470))
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, isCompactShell ? 14 : 24)
+                    .padding(.bottom, isCompactShell ? 14 : 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(14)
+                }
             }
         }
         .task {
+            model.roachArcadeStore.configure(storagePath: model.storagePath)
+            model.roachArchiveStore.configure(storagePath: model.storagePath)
+
             if model.selectedPane == .maps || model.selectedPane == .education {
                 model.selectedPane = .knowledge
             } else if !visiblePanes.contains(model.selectedPane ?? .home) {
@@ -4142,6 +4298,14 @@ private struct RootWorkspaceView: View {
                     showLaunchGuide = true
                 }
             }
+        }
+        .onAppear {
+            model.roachArcadeStore.configure(storagePath: model.storagePath)
+            model.roachArchiveStore.configure(storagePath: model.storagePath)
+        }
+        .onChange(of: model.storagePath) { _, storagePath in
+            model.roachArcadeStore.configure(storagePath: storagePath)
+            model.roachArchiveStore.configure(storagePath: storagePath)
         }
         .onReceive(NotificationCenter.default.publisher(for: .roachNetOpenCommandPalette)) { _ in
             detachedPaletteCoordinator.dismiss()
@@ -4571,6 +4735,8 @@ private struct RootWorkspaceView: View {
                     DevWorkspaceView(model: model)
                 case .roachClaw:
                     roachClaw
+                case .arcade:
+                    RoachArcadeView(model: model, store: model.roachArcadeStore)
                 case .maps, .education:
                     knowledge
                 case .knowledge:
@@ -4691,6 +4857,7 @@ private struct RootWorkspaceView: View {
                     LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
                         suiteCard(title: "Home", detail: "The contained shell and the next useful move.", value: "Status, command bar, and launch deck", pane: .home)
                         suiteCard(title: "Dev", detail: "Native coding, shell, and secrets surfaces.", value: "Projects and AI assist", pane: .dev)
+                        suiteCard(title: "RoachArcade", detail: "ROMs, macOS games, mods, and cheats on disk.", value: "Built-in player and Vortex bridge", pane: .arcade)
                         suiteCard(
                             title: "Vault",
                             detail: "Files, captured sites, imported notes, atlas packs, and study shelves.",
@@ -4720,7 +4887,7 @@ private struct RootWorkspaceView: View {
             if !availableServices.isEmpty {
                 serviceModuleSection(
                     title: "Available Modules",
-                    detail: "Project NOMAD-derived modules can be installed directly from the native shell.",
+                    detail: "RoachNet modules can be installed directly from the native shell.",
                     services: availableServices
                 )
             }
@@ -4792,8 +4959,8 @@ private struct RootWorkspaceView: View {
 
                             RoachSectionHeader(
                                 "Home",
-                                title: "Home is where the Roach is!",
-                                detail: "RoachClaw, the vault, the dev desk, and the runtime stay under one root instead of dissolving into tabs, dashboards, and drift."
+                                title: "The offline spine is up.",
+                                detail: "RoachClaw, the vault, the dev desk, games, and the runtime stay under one roof instead of leaking into tabs, dashboards, and dead logins."
                             )
                         }
                     } actions: {
@@ -4851,7 +5018,11 @@ private struct RootWorkspaceView: View {
                         LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
                             ForEach(homeGridItems) { item in
                                 Button {
-                                    Task { await model.openRoute(item.routePath, title: item.title) }
+                                    if let pane = item.pane {
+                                        model.selectedPane = pane
+                                    } else {
+                                        Task { await model.openRoute(item.routePath, title: item.title) }
+                                    }
                                 } label: {
                                     commandGridCard(item)
                                 }
@@ -4862,7 +5033,7 @@ private struct RootWorkspaceView: View {
                         if installedServices.isEmpty {
                             emptyHomeMenuState(
                                 title: "No modules installed yet.",
-                                detail: "Use the Available Modules tab here on Home to stage the Project NOMAD-derived services you actually want."
+                                detail: "Use the Available Modules tab here on Home to stage the RoachNet services you actually want."
                             )
                         } else {
                             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 16) {
@@ -6565,6 +6736,8 @@ private struct RootWorkspaceView: View {
                 }
             }
 
+            RoachArchiveVaultPanel(model: model, store: model.roachArchiveStore)
+
             if !archives.isEmpty {
                 RoachInsetPanel {
                     VStack(alignment: .leading, spacing: 16) {
@@ -7376,6 +7549,16 @@ private struct RootWorkspaceView: View {
                 isInstalled: true
             ),
             CommandGridItem(
+                id: "roacharcade",
+                title: "RoachArcade",
+                detail: "Open the game shelf. ROMs, installs, mods, cheats, and collection profiles stay attached to files you own.",
+                badge: "Native",
+                systemImage: "gamecontroller.fill",
+                routePath: "",
+                isInstalled: true,
+                pane: .arcade
+            ),
+            CommandGridItem(
                 id: "ai-control",
                 title: "AI Control",
                 detail: "See the model lane, the runtime, and what RoachClaw can actually see.",
@@ -7487,7 +7670,7 @@ private struct RootWorkspaceView: View {
                 title: item.title,
                 detail: item.detail,
                 systemImage: item.systemImage,
-                target: .route(title: item.title, path: item.routePath),
+                target: item.pane.map { .pane($0) } ?? .route(title: item.title, path: item.routePath),
                 keywords: [item.title, item.detail, item.routePath]
             )
         }
@@ -8544,35 +8727,35 @@ private struct RootWorkspaceView: View {
         let defaultBadge = poweredBy.flatMap { $0.isEmpty ? nil : "Powered by \($0)" } ?? "RoachNet Module"
 
         switch service.service_name {
-        case "nomad_kiwix_server":
+        case "roachnet_kiwix_server":
             return (
                 title: "RoachNet Library",
                 detail: "Open offline encyclopedias, survival references, and field manuals without leaving the native shell.",
                 badge: defaultBadge,
                 systemImage: "books.vertical.fill"
             )
-        case "nomad_ollama":
+        case "roachnet_ollama":
             return (
                 title: "RoachNet Chat",
                 detail: "Run local AI chat and tooling with the model lane RoachNet is already managing.",
                 badge: defaultBadge,
                 systemImage: "sparkles"
             )
-        case "nomad_kolibri":
+        case "roachnet_kolibri":
             return (
                 title: "RoachNet Academy",
                 detail: "Launch structured education content and offline coursework from the same command grid.",
                 badge: defaultBadge,
                 systemImage: "graduationcap.fill"
             )
-        case "nomad_flatnotes":
+        case "roachnet_flatnotes":
             return (
                 title: "RoachNet Notes",
                 detail: "Keep quick notes, fragments, and working references local to the machine.",
                 badge: defaultBadge,
                 systemImage: "note.text"
             )
-        case "nomad_cyberchef":
+        case "roachnet_cyberchef":
             return (
                 title: "RoachNet Data Lab",
                 detail: "Use encoding, decoding, and analysis tools inside the broader RoachNet workflow.",

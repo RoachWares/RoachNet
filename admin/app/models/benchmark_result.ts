@@ -56,9 +56,9 @@ export default class BenchmarkResult extends BaseModel {
   @column()
   declare ai_time_to_first_token: number | null
 
-  // Composite NOMAD score (0-100)
+  // Composite RoachNet score (0-100)
   @column()
-  declare nomad_score: number
+  declare roachnet_score: number
 
   // Repository submission tracking
   @column({

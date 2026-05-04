@@ -747,6 +747,16 @@ async function clearMacQuarantine(targetPath) {
   if (isAppBundle) {
     // Unsigned installs need the copied app bundle itself normalized as the
     // actual launch boundary, not only the embedded Node subtree.
+    for (const args of [
+      ['-dr', 'com.apple.provenance', targetPath],
+      ['-dr', 'com.apple.quarantine', targetPath],
+    ]) {
+      await runProcess('xattr', args, {
+        env: getShellEnv(),
+        timeoutMs: 300_000,
+      }).catch(() => {})
+    }
+
     await runProcess('xattr', ['-cr', targetPath], {
       env: getShellEnv(),
       timeoutMs: 300_000,
@@ -2083,6 +2093,17 @@ function getDefaultConfig(overrides = {}) {
 }
 
 async function canBindPort(port, host = SERVER_HOST) {
+  const loopbackProbeHosts = host === SERVER_HOST
+    ? ['127.0.0.1', '::1', 'localhost']
+    : [host]
+  const portAlreadyOpen = await Promise.all(
+    loopbackProbeHosts.map((probeHost) => isPortOpen(probeHost, port).catch(() => false))
+  )
+
+  if (portAlreadyOpen.some(Boolean)) {
+    return false
+  }
+
   return new Promise((resolve) => {
     const server = net.createServer()
     server.once('error', () => resolve(false))
@@ -2143,11 +2164,17 @@ async function waitForPorts(ports, log) {
   throw new Error('Timed out while waiting for RoachNet support services to become reachable.')
 }
 
-async function waitForHttpOk(url, timeoutMs) {
+async function waitForHttpOk(url, timeoutMs, options = {}) {
   const startedAt = Date.now()
   let lastError = null
+  const exitWhen = typeof options.exitWhen === 'function' ? options.exitWhen : null
+  const exitMessage = typeof options.exitMessage === 'function' ? options.exitMessage : null
 
   while (Date.now() - startedAt < timeoutMs) {
+    if (exitWhen?.()) {
+      throw new Error(exitMessage?.() || `Stopped waiting for ${url} because the launch process exited.`)
+    }
+
     const controller = new AbortController()
     const timeoutHandle = setTimeout(() => controller.abort(), 3_000)
 
@@ -2167,6 +2194,10 @@ async function waitForHttpOk(url, timeoutMs) {
       lastError = error?.message || 'request failed'
     } finally {
       clearTimeout(timeoutHandle)
+    }
+
+    if (exitWhen?.()) {
+      throw new Error(exitMessage?.() || `Stopped waiting for ${url} because the launch process exited.`)
     }
 
     await new Promise((resolve) => setTimeout(resolve, PORT_WAIT_INTERVAL_MS))
@@ -2924,7 +2955,7 @@ async function smokeTestInstalledRuntime(config, envValues, task) {
   const nodeBinary = resolveInstalledAppNodeBinary(config)
   const launcherPath = path.join(config.installPath, 'scripts', 'run-roachnet.mjs')
   const healthUrl = new URL('/api/health', envValues.URL).toString()
-  const storagePath = normalizeInputPath(config.storagePath || envValues.NOMAD_STORAGE_PATH || path.join(config.installPath, 'storage'))
+  const storagePath = normalizeInputPath(config.storagePath || envValues.ROACHNET_STORAGE_PATH || path.join(config.installPath, 'storage'))
   const runtimeStateRoot = normalizeInputPath(path.join(storagePath, 'state', 'runtime-state'))
   const localBinPath = normalizeInputPath(path.join(config.installPath, 'bin'))
   const openClawWorkspacePath = normalizeInputPath(
@@ -2937,7 +2968,7 @@ async function smokeTestInstalledRuntime(config, envValues, task) {
   const containerlessMode = config.useDockerContainerization ? '0' : '1'
   const launchEnv = {
     ...getShellEnv(),
-    NOMAD_STORAGE_PATH: storagePath,
+    ROACHNET_STORAGE_PATH: storagePath,
     OPENCLAW_WORKSPACE_PATH: openClawWorkspacePath,
     OLLAMA_MODELS: ollamaModelsPath,
     OLLAMA_BASE_URL: envValues.OLLAMA_BASE_URL || 'http://127.0.0.1:36434',
@@ -2988,7 +3019,11 @@ async function smokeTestInstalledRuntime(config, envValues, task) {
     })
 
     try {
-      await waitForHttpOk(healthUrl, PORT_WAIT_TIMEOUT_MS + 120_000)
+      await waitForHttpOk(healthUrl, PORT_WAIT_TIMEOUT_MS + 120_000, {
+        exitWhen: () => launcherChild?.exitCode !== null,
+        exitMessage: () =>
+          `Contained runtime launcher exited before ${healthUrl} answered (code ${launcherChild?.exitCode ?? 'unknown'}).`,
+      })
     } catch (error) {
       const diagnostics = [launcherStderr.trim(), launcherStdout.trim()]
 
@@ -3085,13 +3120,13 @@ function buildManagementCompose({
       APP_KEY: "${resolvedAppKey}"
       DB_HOST: mysql
       DB_PORT: "3306"
-      DB_DATABASE: nomad
+      DB_DATABASE: roachnet
       DB_USER: "${resolvedDbUser}"
       DB_PASSWORD: "${resolvedDbPassword}"
       DB_SSL: "false"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      NOMAD_STORAGE_PATH: /app/storage
+      ROACHNET_STORAGE_PATH: /app/storage
       OPENCLAW_WORKSPACE_PATH: "${openClawWorkspaceRoot}"
       OLLAMA_BASE_URL: "http://ollama:11434"
       OPENCLAW_BASE_URL: "${resolvedOpenClawBaseUrl}"
@@ -3119,7 +3154,7 @@ function buildManagementCompose({
       - rm -f /var/run/mysqld/mysqld.sock.lock /var/run/mysqld/mysqlx.sock.lock /var/run/mysqld/mysqld.sock /var/run/mysqld/mysqlx.sock && exec docker-entrypoint.sh mysqld
     environment:
       MYSQL_ROOT_PASSWORD: "${resolvedDbRootPassword}"
-      MYSQL_DATABASE: nomad
+      MYSQL_DATABASE: roachnet
       MYSQL_USER: "${resolvedDbUser}"
       MYSQL_PASSWORD: "${resolvedDbPassword}"
     tmpfs:
@@ -3188,11 +3223,9 @@ async function prepareEnvironmentFiles(config, repoPath, task) {
   const envPath = path.join(adminPath, '.env')
   const managementComposePath = path.join(repoPath, 'ops', 'roachnet-management.compose.yml')
 
-  if (!existsSync(envExamplePath)) {
-    throw new Error(`Missing env template at ${envExamplePath}`)
-  }
-
-  const exampleValues = parseEnvFile(await readFile(envExamplePath, 'utf8'))
+  const exampleValues = existsSync(envExamplePath)
+    ? parseEnvFile(await readFile(envExamplePath, 'utf8'))
+    : {}
   const existingValues = existsSync(envPath) ? parseEnvFile(await readFile(envPath, 'utf8')) : {}
 
   await ensureDirectory(path.join(repoPath, 'ops'))
@@ -3207,7 +3240,7 @@ async function prepareEnvironmentFiles(config, repoPath, task) {
   const dbRootPassword = existingValues.ROACHNET_DB_ROOT_PASSWORD || randomSecret(16)
   const appKey = existingValues.APP_KEY || randomSecret(24)
   const host = existingValues.HOST || '127.0.0.1'
-  const storagePath = normalizeInputPath(config.storagePath || existingValues.NOMAD_STORAGE_PATH || path.join(repoPath, 'storage'))
+  const storagePath = normalizeInputPath(config.storagePath || existingValues.ROACHNET_STORAGE_PATH || path.join(repoPath, 'storage'))
   const openClawWorkspacePath = normalizeInputPath(path.join(storagePath, 'openclaw'))
   const sqliteDbPath = normalizeInputPath(path.join(storagePath, 'state', 'roachnet.sqlite'))
   const localToolsPath = normalizeInputPath(path.join(repoPath, 'bin'))
@@ -3243,14 +3276,14 @@ async function prepareEnvironmentFiles(config, repoPath, task) {
     DB_CONNECTION: containerlessMode === '1' ? 'sqlite' : 'mysql',
     DB_HOST: existingValues.DB_HOST || '127.0.0.1',
     DB_PORT: existingValues.DB_PORT || 3306,
-    DB_USER: existingValues.DB_USER || 'nomad_user',
-    DB_DATABASE: existingValues.DB_DATABASE || 'nomad',
+    DB_USER: existingValues.DB_USER || 'roachnet_user',
+    DB_DATABASE: existingValues.DB_DATABASE || 'roachnet',
     DB_PASSWORD: dbPassword,
     DB_SSL: existingValues.DB_SSL || 'false',
     SQLITE_DB_PATH: sqliteDbPath,
     REDIS_HOST: existingValues.REDIS_HOST || '127.0.0.1',
     REDIS_PORT: existingValues.REDIS_PORT || 6379,
-    NOMAD_STORAGE_PATH: storagePath,
+    ROACHNET_STORAGE_PATH: storagePath,
     OLLAMA_BASE_URL: ollamaBaseUrl,
     OLLAMA_MODELS: ollamaModelsPath,
     OPENCLAW_BASE_URL: openClawBaseUrl,
@@ -3371,7 +3404,7 @@ async function launchInstalledRoachNet(repoPath, openPath, installedAppPath) {
   const envPath = path.join(repoPath, 'admin', '.env')
   const envValues = existsSync(envPath) ? parseEnvFile(readFileSync(envPath, 'utf8')) : {}
   const storagePath = normalizeInputPath(
-    persistedConfig.storagePath || envValues.NOMAD_STORAGE_PATH || path.join(repoPath, 'storage')
+    persistedConfig.storagePath || envValues.ROACHNET_STORAGE_PATH || path.join(repoPath, 'storage')
   )
   const installProfile = persistedConfig.installProfile?.trim() || 'standard'
   const localBinPath = normalizeInputPath(path.join(repoPath, 'bin'))
@@ -3392,7 +3425,7 @@ async function launchInstalledRoachNet(repoPath, openPath, installedAppPath) {
     stdio: 'ignore',
     env: {
       ...getShellEnv(),
-      NOMAD_STORAGE_PATH: storagePath,
+      ROACHNET_STORAGE_PATH: storagePath,
       OPENCLAW_WORKSPACE_PATH: openClawWorkspacePath,
       OLLAMA_MODELS: ollamaModelsPath,
       OLLAMA_BASE_URL: envValues.OLLAMA_BASE_URL || 'http://127.0.0.1:36434',

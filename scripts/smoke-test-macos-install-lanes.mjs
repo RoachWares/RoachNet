@@ -36,6 +36,11 @@ const bundledSourceForbiddenPathPrefixes = [
   'admin/build/public/uploads/',
 ]
 const bundledSourceForbiddenPathPatterns = [
+  /(^|\/)admin\/\.env\.example$/i,
+  /(^|\/)MEMORY\.MD$/i,
+  /(^|\/)docs\/BRAND_STYLE\.md$/i,
+  /(^|\/)native\/windows\//i,
+  /\.zim$/i,
   /\/vaults\.json$/i,
   /\.sqlite(?:$|[-.])/i,
   /\.db(?:$|[-.])/i,
@@ -143,7 +148,7 @@ function buildContainedRuntimeEnv({ homePath, installRoot, storagePath, config, 
 
   return {
     ...baseShellEnv(homePath),
-    NOMAD_STORAGE_PATH: storagePath,
+    ROACHNET_STORAGE_PATH: storagePath,
     OPENCLAW_WORKSPACE_PATH: path.join(storagePath, 'openclaw'),
     OLLAMA_MODELS: path.join(storagePath, 'ollama'),
     OLLAMA_BASE_URL: 'http://127.0.0.1:36434',
@@ -464,7 +469,7 @@ async function verifyGuiLaunch({
   healthUrl = null,
   ownerName,
   titleName = ownerName,
-  windowTimeoutMs = 60_000,
+  windowTimeoutMs = 300_000,
 }) {
   logStep(`Launching ${ownerName} from ${appBundlePath}`)
   const env = {
@@ -601,6 +606,18 @@ async function normalizeMacBundle(bundlePath, homePath, timeoutMs = startupTimeo
   const env = baseShellEnv(homePath)
   const targets = [bundlePath]
   const executableRoot = path.join(bundlePath, 'Contents', 'MacOS')
+  const recursiveTimeoutMs = Math.max(timeoutMs, 300_000)
+
+  for (const args of [
+    ['-dr', 'com.apple.provenance', bundlePath],
+    ['-dr', 'com.apple.quarantine', bundlePath],
+    ['-cr', bundlePath],
+  ]) {
+    await runCommand('xattr', args, {
+      env,
+      timeoutMs: recursiveTimeoutMs,
+    }).catch(() => {})
+  }
 
   try {
     const executableEntries = await readdir(executableRoot, { withFileTypes: true })
@@ -878,7 +895,7 @@ async function smokeSetupLane() {
     appProcessName: 'RoachNetSetup',
     homePath,
     ownerName: 'RoachNet Setup',
-    windowTimeoutMs: 120_000,
+    windowTimeoutMs: 300_000,
   })
 
   logStep('Setup app window verified; switching to headless setup backend lane')

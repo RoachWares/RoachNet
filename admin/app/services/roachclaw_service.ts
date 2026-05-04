@@ -485,7 +485,7 @@ export class RoachClawService {
     const portableRoot = this.resolvePortableRoot(workspacePath)
     const contained =
       process.env.ROACHNET_NATIVE_ONLY === '1' ||
-      Boolean(process.env.ROACHNET_STORAGE_PATH?.trim() || process.env.NOMAD_STORAGE_PATH?.trim()) ||
+      Boolean(process.env.ROACHNET_STORAGE_PATH?.trim()) ||
       (path.basename(workspacePath) === 'openclaw' && path.basename(path.dirname(workspacePath)) === 'storage')
     const runtimeHints: RoachClawPortableProfile['runtimeHints'] = {
       contained,
@@ -525,8 +525,7 @@ export class RoachClawService {
   }
 
   private resolvePortableRoot(workspacePath: string): string {
-    const explicitPortableRoot =
-      process.env.ROACHNET_STORAGE_PATH?.trim() || process.env.NOMAD_STORAGE_PATH?.trim()
+    const explicitPortableRoot = process.env.ROACHNET_STORAGE_PATH?.trim()
 
     if (explicitPortableRoot) {
       return path.resolve(explicitPortableRoot)

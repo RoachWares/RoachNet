@@ -257,7 +257,7 @@ function buildRuntimeEnv({ homePath, storagePath, runtimePort, companionPort, co
     HOST: '127.0.0.1',
     PORT: String(runtimePort),
     URL: `http://127.0.0.1:${runtimePort}`,
-    NOMAD_STORAGE_PATH: storagePath,
+    ROACHNET_STORAGE_PATH: storagePath,
     OPENCLAW_WORKSPACE_PATH: path.join(storagePath, 'openclaw'),
     OLLAMA_MODELS: path.join(storagePath, 'ollama'),
     OLLAMA_BASE_URL: 'http://127.0.0.1:36434',

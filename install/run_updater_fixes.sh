@@ -3,16 +3,16 @@
 # RoachNet - One-Time Updater Fix Script
 #
 # Script                | RoachNet One-Time Updater Fix Script
-# Version               | 1.0.3
-# Author                | Crosstalk Solutions, LLC
-# Website               | https://crosstalksolutions.com
+# Version               | 1.0.4
+# Author                | AHGRoach
+# Website               | https://roachnet.org
 #
 # PURPOSE:
 #   This is a one-time migration script. It deploys two fixes to the sidecar
 #   updater that cannot be applied through the normal in-app update mechanism:
 #
 #   Fix 1 — Sidecar volume write access
-#     Removes the :ro (read-only) flag from the sidecar's /opt/project-nomad
+#     Removes the :ro (read-only) flag from the sidecar's /opt/roachnet
 #     volume mount in compose.yml. The sidecar must be able to write to
 #     compose.yml so it can set the correct Docker image tag when installing
 #     RC or stable versions.
@@ -40,10 +40,10 @@ WHITE_R='\033[39m'
 # Constants
 ###############################################################################
 
-NOMAD_DIR="/opt/project-nomad"
-COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
-SIDECAR_DIR="${NOMAD_DIR}/sidecar-updater"
-COMPOSE_PROJECT_NAME="project-nomad"
+ROACHNET_DIR="/opt/roachnet"
+COMPOSE_FILE="${ROACHNET_DIR}/compose.yml"
+SIDECAR_DIR="${ROACHNET_DIR}/sidecar-updater"
+COMPOSE_PROJECT_NAME="roachnet"
 
 SIDECAR_DOCKERFILE_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/sidecar-updater/Dockerfile"
 SIDECAR_SCRIPT_URL="https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/sidecar-updater/update-watcher.sh"
@@ -129,17 +129,17 @@ backup_compose_file() {
 
 fix_sidecar_volume_mount() {
   # Idempotent: skip if :ro is already absent from the sidecar mount line
-  if ! grep -q '/opt/project-nomad:/opt/project-nomad:ro' "$COMPOSE_FILE"; then
+  if ! grep -q '/opt/roachnet:/opt/roachnet:ro' "$COMPOSE_FILE"; then
     echo -e "${GREEN}#${RESET} Sidecar volume mount is already writable — no change needed.\n"
     return 0
   fi
 
   echo -e "${YELLOW}#${RESET} Removing :ro restriction from sidecar volume mount in compose.yml..."
-  sed -i 's|/opt/project-nomad:/opt/project-nomad:ro.*|/opt/project-nomad:/opt/project-nomad # Writable access required so the updater can set the correct image tag in compose.yml|' "$COMPOSE_FILE"
+  sed -i 's|/opt/roachnet:/opt/roachnet:ro.*|/opt/roachnet:/opt/roachnet # Writable access required so the updater can set the correct image tag in compose.yml|' "$COMPOSE_FILE"
 
-  if grep -q '/opt/project-nomad:/opt/project-nomad:ro' "$COMPOSE_FILE"; then
+  if grep -q '/opt/roachnet:/opt/roachnet:ro' "$COMPOSE_FILE"; then
     echo -e "${RED}#${RESET} Failed to remove :ro from compose.yml. Please update it manually:"
-    echo -e "${WHITE_R}    - /opt/project-nomad:/opt/project-nomad:ro${RESET}  →  ${WHITE_R}- /opt/project-nomad:/opt/project-nomad${RESET}"
+    echo -e "${WHITE_R}    - /opt/roachnet:/opt/roachnet:ro${RESET}  →  ${WHITE_R}- /opt/roachnet:/opt/roachnet${RESET}"
     exit 1
   fi
 
@@ -184,7 +184,7 @@ restart_sidecar() {
   docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" rm -f updater >> /dev/null 2>&1 || true
 
   # Force-remove any stale container still holding the name (e.g. hash-prefixed remnants)
-  docker rm -f nomad_updater >> /dev/null 2>&1 || true
+  docker rm -f roachnet_updater >> /dev/null 2>&1 || true
 
   echo -e "${YELLOW}#${RESET} Starting the updated updater container..."
   if ! docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up -d updater; then
@@ -197,11 +197,11 @@ restart_sidecar() {
 verify_sidecar_running() {
   sleep 3
   # Use exact name match to avoid false positives from hash-prefixed stale containers
-  if docker ps --filter "name=^nomad_updater$" --filter "status=running" --format '{{.Names}}' | grep -qx "nomad_updater"; then
+  if docker ps --filter "name=^roachnet_updater$" --filter "status=running" --format '{{.Names}}' | grep -qx "roachnet_updater"; then
     echo -e "${GREEN}#${RESET} Updater container is running.\n"
   else
     echo -e "${RED}#${RESET} Updater container does not appear to be running."
-    echo -e "${RED}#${RESET} Check its logs with: docker logs nomad_updater"
+    echo -e "${RED}#${RESET} Check its logs with: docker logs roachnet_updater"
     exit 1
   fi
 }

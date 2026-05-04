@@ -9,8 +9,8 @@ import {
   GpuHealthStatus,
   HardwareMemoryTier,
   HardwareProfile,
-  NomadDiskInfo,
-  NomadDiskInfoRaw,
+  RoachNetDiskInfo,
+  RoachNetDiskInfoRaw,
   SystemInformationResponse,
 } from '../../types/system.js'
 import { KV_STORE_SCHEMA, KVStoreKey } from '../../types/kv_store.js'
@@ -25,7 +25,7 @@ import si from 'systeminformation'
 @inject()
 export class SystemService {
   private static appVersion: string | null = null
-  private static readonly diskInfoFile = '/storage/nomad-disk-info.json'
+  private static readonly diskInfoFile = '/storage/roachnet-disk-info.json'
   private static internetStatusCache:
     | { value: boolean; expiresAt: number }
     | null = null
@@ -233,7 +233,7 @@ export class SystemService {
         this.withTimeout('systeminformation.graphics', () => si.graphics(), fallbackGraphics, 2500),
       ])
 
-      let disk: NomadDiskInfo[] = []
+      let disk: RoachNetDiskInfo[] = []
       try {
         const diskInfoRawString = await getFile(
           path.join(process.cwd(), SystemService.diskInfoFile),
@@ -243,7 +243,7 @@ export class SystemService {
           diskInfoRawString
             ? JSON.parse(diskInfoRawString.toString())
             : { diskLayout: { blockdevices: [] }, fsSize: [] }
-        ) as NomadDiskInfoRaw
+        ) as RoachNetDiskInfoRaw
         disk = this.calculateDiskUsage(diskInfo)
       } catch (error) {
         logger.error('Error reading disk info file:', error)
@@ -423,8 +423,8 @@ export class SystemService {
 
       const earlyAccess = (await KVStore.getValue('system.earlyAccess')) ?? false
       const githubUrl = earlyAccess
-        ? 'https://api.github.com/repos/Crosstalk-Solutions/project-nomad/releases'
-        : 'https://api.github.com/repos/Crosstalk-Solutions/project-nomad/releases/latest'
+        ? 'https://api.github.com/repos/AHGRoach/RoachNet/releases'
+        : 'https://api.github.com/repos/AHGRoach/RoachNet/releases/latest'
       const response = await axios.get(githubUrl, {
         headers: { Accept: 'application/vnd.github+json' },
         timeout: 5000,
@@ -464,7 +464,7 @@ export class SystemService {
   async subscribeToReleaseNotes(email: string): Promise<{ success: boolean; message: string }> {
     try {
       const response = await axios.post(
-        'https://api.projectnomad.us/api/v1/lists/release-notes/subscribe',
+        'https://api.roachnet.org/api/v1/lists/release-notes/subscribe',
         { email },
         { timeout: 5000 }
       )
@@ -721,13 +721,13 @@ export class SystemService {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`
   }
 
-  private calculateDiskUsage(diskInfo: NomadDiskInfoRaw): NomadDiskInfo[] {
+  private calculateDiskUsage(diskInfo: RoachNetDiskInfoRaw): RoachNetDiskInfo[] {
     const { diskLayout, fsSize } = diskInfo
     if (!diskLayout?.blockdevices || !fsSize) {
       return []
     }
 
-    const deduped = new Map<string, NomadDiskInfoRaw['fsSize'][0]>()
+    const deduped = new Map<string, RoachNetDiskInfoRaw['fsSize'][0]>()
     for (const entry of fsSize) {
       const existing = deduped.get(entry.fs)
       if (!existing || entry.size > existing.size) {

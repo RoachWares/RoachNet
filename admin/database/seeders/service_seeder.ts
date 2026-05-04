@@ -6,9 +6,9 @@ import { SERVICE_NAMES } from '../../constants/service_names.js'
 
 export default class ServiceSeeder extends BaseSeeder {
   // Use environment variable with fallback to production default
-  private static NOMAD_STORAGE_ABS_PATH = env.get(
-    'NOMAD_STORAGE_PATH',
-    '/opt/project-nomad/storage'
+  private static ROACHNET_STORAGE_ABS_PATH = env.get(
+    'ROACHNET_STORAGE_PATH',
+    '/opt/roachnet/storage'
   )
   private static DEFAULT_SERVICES: Omit<
     ModelAttributes<Service>,
@@ -28,7 +28,7 @@ export default class ServiceSeeder extends BaseSeeder {
       container_config: JSON.stringify({
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
-          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/zim:/data`],
+          Binds: [`${ServiceSeeder.ROACHNET_STORAGE_ABS_PATH}/zim:/data`],
           PortBindings: { '8080/tcp': [{ HostPort: '8090' }] },
         },
         ExposedPorts: { '8080/tcp': {} },
@@ -52,7 +52,7 @@ export default class ServiceSeeder extends BaseSeeder {
       container_config: JSON.stringify({
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
-          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/qdrant:/qdrant/storage`],
+          Binds: [`${ServiceSeeder.ROACHNET_STORAGE_ABS_PATH}/qdrant:/qdrant/storage`],
           PortBindings: { '6333/tcp': [{ HostPort: '6333' }], '6334/tcp': [{ HostPort: '6334' }] },
         },
         ExposedPorts: { '6333/tcp': {}, '6334/tcp': {} },
@@ -76,7 +76,7 @@ export default class ServiceSeeder extends BaseSeeder {
       container_config: JSON.stringify({
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
-          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/ollama:/root/.ollama`],
+          Binds: [`${ServiceSeeder.ROACHNET_STORAGE_ABS_PATH}/ollama:/root/.ollama`],
           PortBindings: { '11434/tcp': [{ HostPort: '11434' }] },
         },
         ExposedPorts: { '11434/tcp': {} },
@@ -124,7 +124,7 @@ export default class ServiceSeeder extends BaseSeeder {
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
           PortBindings: { '8080/tcp': [{ HostPort: '8200' }] },
-          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/flatnotes:/data`],
+          Binds: [`${ServiceSeeder.ROACHNET_STORAGE_ABS_PATH}/flatnotes:/data`],
         },
         ExposedPorts: { '8080/tcp': {} },
         Env: ['FLATNOTES_AUTH_TYPE=none'],
@@ -149,7 +149,7 @@ export default class ServiceSeeder extends BaseSeeder {
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
           PortBindings: { '8080/tcp': [{ HostPort: '8300' }] },
-          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/kolibri:/root/.kolibri`],
+          Binds: [`${ServiceSeeder.ROACHNET_STORAGE_ABS_PATH}/kolibri:/root/.kolibri`],
         },
         ExposedPorts: { '8080/tcp': {} },
       }),
@@ -179,8 +179,8 @@ export default class ServiceSeeder extends BaseSeeder {
             '21027/udp': [{ HostPort: '21027' }],
           },
           Binds: [
-            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/roachsync/config:/var/syncthing/config`,
-            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/vault:/var/syncthing/vault`,
+            `${ServiceSeeder.ROACHNET_STORAGE_ABS_PATH}/roachsync/config:/var/syncthing/config`,
+            `${ServiceSeeder.ROACHNET_STORAGE_ABS_PATH}/vault:/var/syncthing/vault`,
           ],
         },
         ExposedPorts: {

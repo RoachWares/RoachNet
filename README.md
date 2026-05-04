@@ -1,8 +1,8 @@
 # RoachNet
 
-Local-first desktop command center.
+Offline spine for the stuff that matters.
 
-RoachNet keeps maps, models, dev tools, and notes in one contained workspace instead of smearing them across the machine or leaving them in a stack of tabs.
+RoachNet keeps AI, archive, media, games, notes, and dev tools on hardware you own instead of leaving them scattered across rented dashboards and dead logins.
 
 [roachnet.org](https://roachnet.org)  
 [RoachNet Apps](https://apps.roachnet.org)  
@@ -17,11 +17,13 @@ RoachNet keeps maps, models, dev tools, and notes in one contained workspace ins
 - `Home`
   Command bar, launch tiles, runtime health, and the first surface you land in after setup.
 - `RoachClaw`
-  Local AI wired through Ollama and OpenClaw, with contained model lanes and an upgrade path that stays visible.
+  Local AI wired through Ollama first, with LM Studio-ready local endpoints and remote providers kept as explicit opt-in trips outside the bunker.
 - `Dev`
-  Native project lane with shell access, inline assist, secrets plumbing, and RoachClaw close by.
+  Native project lane with shell access, inline assist, secrets plumbing, Raycast-style guidebook references, and RoachClaw close by.
+- `RoachArcade`
+  ROMs, macOS games, mods, cheats, collection notes, and play counts in one local shelf. Every backlog has fossils.
 - `Maps & Vault`
-  Routes, references, saved notes, and offline material grouped into one shelf.
+  Routes, references, saved notes, Roach's Archive bulk-metadata search, and offline material grouped into one shelf.
 - `RoachTail`
   Secure device pairing between the desktop lane and RoachNetiOS.
 - `Contained install`
@@ -56,9 +58,8 @@ On first boot, the Homebrew profile marks the contained runtime as pending boots
 
 ## Support
 
-GitHub does not host the PayPal button script used on the public site, so the repo keeps direct support links here.
+GitHub does not host the support widgets used on the public site, so the repo keeps public support links here.
 
-- [Donate to AHG Records LLC](https://www.paypal.com/cgi-bin/webscr?business=lesherist%40gmail.com&cmd=_donations&currency_code=USD&item_name=Donation+to+AHG+Records&return=https%3A%2F%2Fahgrecords.com%2Fhome)
 - [Support RoachNet development](https://www.paypal.com/ncp/payment/ZV8RL9DWQXHGE)
 
 ## Platform Status
@@ -81,7 +82,7 @@ GitHub does not host the PayPal button script used on the public site, so the re
 - [`scripts/`](./scripts)
   Setup, runtime, packaging, companion, and release automation.
 - [`docs/`](./docs)
-  Architecture, upstream notes, and rewrite planning.
+  Architecture, brand voice, upstream notes, and rewrite planning.
 
 The public site and Apps storefront live in [`AHGRoach/roachnet-org`](https://github.com/AHGRoach/roachnet-org) so this repo can stay focused on the desktop product and runtime.
 
@@ -111,11 +112,10 @@ Run the setup backend:
 npm run setup:no-browser
 ```
 
-## Upstream Attribution
+## Public Source Boundary
 
-RoachNet started from an imported upstream base from [Crosstalk Solutions project-nomad](https://github.com/Crosstalk-Solutions/project-nomad) and is being rewritten into a contained local-first desktop product.
+RoachNet is now a native local-first desktop product. The old imported base is no longer a public source lane.
 
-- [`docs/UPSTREAM.md`](./docs/UPSTREAM.md)
 - [`docs/NATIVE_REWRITE_PLAN.md`](./docs/NATIVE_REWRITE_PLAN.md)
 - [`CHANGELOG.md`](./CHANGELOG.md)
 

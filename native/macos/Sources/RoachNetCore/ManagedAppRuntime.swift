@@ -1003,7 +1003,7 @@ public actor ManagedAppRuntimeBridge {
         environment["ROACHNET_REQUIRE_PORTABLE_NODE"] = "1"
         environment["ROACHNET_INSTALL_PROFILE"] = config.installProfile
         environment["ROACHNET_BOOTSTRAP_PENDING"] = config.bootstrapPending ? "1" : "0"
-        environment["NOMAD_STORAGE_PATH"] = normalizedStoragePath
+        environment["ROACHNET_STORAGE_PATH"] = normalizedStoragePath
         environment["OPENCLAW_WORKSPACE_PATH"] = normalizedWorkspacePath
         environment["OLLAMA_MODELS"] = normalizedOllamaModelsPath
         environment["OLLAMA_BASE_URL"] = "http://127.0.0.1:36434"

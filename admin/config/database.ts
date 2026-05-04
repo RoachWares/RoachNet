@@ -9,7 +9,7 @@ if (process.env.ROACHNET_DEBUG_BOOT === '1') {
 const connection = env.get('DB_CONNECTION') ?? 'mysql'
 const sqliteFilename =
   env.get('SQLITE_DB_PATH') ??
-  path.join(env.get('NOMAD_STORAGE_PATH') || process.cwd(), 'state', 'roachnet.sqlite')
+  path.join(env.get('ROACHNET_STORAGE_PATH') || process.cwd(), 'state', 'roachnet.sqlite')
 
 const dbConfig = defineConfig({
   connection,

@@ -3,21 +3,21 @@
 # RoachNet — Disk Collector Migration Script
 #
 # Script                | RoachNet Disk Collector Migration Script
-# Version               | 1.0.3
-# Author                | Crosstalk Solutions, LLC
-# Website               | https://crosstalksolutions.com
+# Version               | 1.0.4
+# Author                | AHGRoach
+# Website               | https://roachnet.org
 #
 # PURPOSE:
 #   One-time migration from the host-based disk info collector to the
 #   disk-collector Docker sidecar. The old approach used a nohup background
-#   process that wrote to /tmp/nomad-disk-info.json, which was bind-mounted
+#   process that wrote to /tmp/roachnet-disk-info.json, which was bind-mounted
 #   into the admin container. This broke on host reboots because /tmp is
 #   cleared and Docker would create a directory at the mount point instead of a file.
 #
 #   The new approach uses a disk-collector sidecar container that reads host
 #   disk info via the /:/host:ro,rslave bind-mount pattern (same pattern as Prometheus
 #   node-exporter, and no SYS_ADMIN or privileged capabilities required) and writes directly to
-#   /opt/project-nomad/storage/nomad-disk-info.json, which the admin container
+#   /opt/roachnet/storage/roachnet-disk-info.json, which the admin container
 #   already reads via its existing storage bind-mount. Thus, no admin image update
 #   or new volume mounts required.
 
@@ -35,9 +35,9 @@ WHITE_R='\033[39m'
 # Constants
 ###############################################################################
 
-NOMAD_DIR="/opt/project-nomad"
-COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
-COMPOSE_PROJECT_NAME="project-nomad"
+ROACHNET_DIR="/opt/roachnet"
+COMPOSE_FILE="${ROACHNET_DIR}/compose.yml"
+COMPOSE_PROJECT_NAME="roachnet"
 
 ###############################################################################
 # Pre-flight Checks
@@ -101,7 +101,7 @@ check_compose_file() {
 
 # Step 1: Stop old host process
 stop_old_host_process() {
-  local pid_file="${NOMAD_DIR}/nomad-collect-disk-info.pid"
+  local pid_file="${ROACHNET_DIR}/roachnet-collect-disk-info.pid"
 
   if [[ -f "$pid_file" ]]; then
     echo -e "${YELLOW}#${RESET} Stopping old collect-disk-info background process..."
@@ -132,17 +132,17 @@ backup_compose_file() {
 
 # Step 3: Remove old bind-mount from admin volumes
 remove_old_bind_mount() {
-  if ! grep -q 'nomad-disk-info\.json' "$COMPOSE_FILE"; then
-    echo -e "${GREEN}#${RESET} Old /tmp/nomad-disk-info.json bind-mount not found — already removed.\n"
+  if ! grep -q 'roachnet-disk-info\.json' "$COMPOSE_FILE"; then
+    echo -e "${GREEN}#${RESET} Old /tmp/roachnet-disk-info.json bind-mount not found — already removed.\n"
     return 0
   fi
 
-  echo -e "${YELLOW}#${RESET} Removing old /tmp/nomad-disk-info.json bind-mount from admin volumes..."
-  sed -i '/\/tmp\/nomad-disk-info\.json:\/app\/storage\/nomad-disk-info\.json/d' "$COMPOSE_FILE"
+  echo -e "${YELLOW}#${RESET} Removing old /tmp/roachnet-disk-info.json bind-mount from admin volumes..."
+  sed -i '/\/tmp\/roachnet-disk-info\.json:\/app\/storage\/roachnet-disk-info\.json/d' "$COMPOSE_FILE"
 
-  if grep -q 'nomad-disk-info\.json' "$COMPOSE_FILE"; then
+  if grep -q 'roachnet-disk-info\.json' "$COMPOSE_FILE"; then
     echo -e "${RED}#${RESET} Failed to remove old bind-mount from compose.yml. Please remove it manually:"
-    echo -e "${WHITE_R}      - /tmp/nomad-disk-info.json:/app/storage/nomad-disk-info.json${RESET}"
+    echo -e "${WHITE_R}      - /tmp/roachnet-disk-info.json:/app/storage/roachnet-disk-info.json${RESET}"
     exit 1
   fi
 
@@ -161,13 +161,13 @@ add_disk_collector_service() {
   # Insert the disk-collector service block before the top-level `volumes:` key
   awk '/^volumes:/{
     print "  disk-collector:"
-    print "    image: ghcr.io/crosstalk-solutions/project-nomad-disk-collector:latest"
+    print "    image: ghcr.io/ahgroach/roachnet-disk-collector:latest"
     print "    pull_policy: always"
-    print "    container_name: nomad_disk_collector"
+    print "    container_name: roachnet_disk_collector"
     print "    restart: unless-stopped"
     print "    volumes:"
     print "      - /:/host:ro,rslave  # Read-only view of host FS with rslave propagation so /sys and /proc submounts are visible"
-    print "      - /opt/project-nomad/storage:/storage  # Shared storage dir — disk info written here is read by the admin container"
+    print "      - /opt/roachnet/storage:/storage  # Shared storage dir — disk info written here is read by the admin container"
     print ""
   }
   {print}' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
@@ -202,11 +202,11 @@ restart_stack() {
 # Step 6: Verify
 verify_disk_collector_running() {
   sleep 3
-  if docker ps --filter "name=^nomad_disk_collector$" --filter "status=running" --format '{{.Names}}' | grep -qx "nomad_disk_collector"; then
+  if docker ps --filter "name=^roachnet_disk_collector$" --filter "status=running" --format '{{.Names}}' | grep -qx "roachnet_disk_collector"; then
     echo -e "${GREEN}#${RESET} disk-collector container is running.\n"
   else
     echo -e "${RED}#${RESET} disk-collector container does not appear to be running."
-    echo -e "${RED}#${RESET} Check its logs with: docker logs nomad_disk_collector"
+    echo -e "${RED}#${RESET} Check its logs with: docker logs roachnet_disk_collector"
     exit 1
   fi
 }

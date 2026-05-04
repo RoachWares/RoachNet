@@ -73,10 +73,10 @@ body:
       required: true
 
   - type: input
-    id: nomad-version
+    id: roachnet-version
     attributes:
       label: N.O.M.A.D. Version
-      description: What version of N.O.M.A.D. are you running? (Check Settings > Update or run `docker ps` and check nomad_admin image tag)
+      description: What version of N.O.M.A.D. are you running? (Check Settings > Update or run `docker ps` and check roachnet_admin image tag)
       placeholder: "e.g., 1.29.0"
     validations:
       required: true
@@ -150,10 +150,10 @@ body:
         Include any relevant logs or error messages. **Please redact any personal/sensitive information.**
         
         Useful commands for collecting logs:
-        - N.O.M.A.D. management app: `docker logs nomad_admin`
-        - Ollama: `docker logs nomad_ollama`
-        - Qdrant: `docker logs nomad_qdrant`
-        - Specific service: `docker logs nomad_<service-name>`
+        - N.O.M.A.D. management app: `docker logs roachnet_admin`
+        - Ollama: `docker logs roachnet_ollama`
+        - Qdrant: `docker logs roachnet_qdrant`
+        - Specific service: `docker logs roachnet_<service-name>`
       placeholder: Paste relevant log output here
       render: shell
 

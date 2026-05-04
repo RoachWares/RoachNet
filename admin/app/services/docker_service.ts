@@ -22,7 +22,7 @@ import { broadcastTransmit } from '#services/transmit_bridge'
 export class DockerService {
   public docker: Docker
   private activeInstallations: Set<string> = new Set()
-  public static FALLBACK_NOMAD_NETWORK = 'project-nomad_default'
+  public static FALLBACK_ROACHNET_NETWORK = 'roachnet_default'
   private static GPU_CACHE_TTL_MS = 24 * 60 * 60 * 1000
   private static GPU_NONE_INVALIDATION_THRESHOLD = 3
 
@@ -88,7 +88,7 @@ export class DockerService {
       return `${composeProjectName}_default`
     }
 
-    return DockerService.FALLBACK_NOMAD_NETWORK
+    return DockerService.FALLBACK_ROACHNET_NETWORK
   }
 
   private getHostStorageRoot(): string {
@@ -166,7 +166,7 @@ export class DockerService {
   }
 
   /**
-   * Fetches the status of all Docker containers related to Nomad services. (those prefixed with 'nomad_')
+   * Fetches the status of all Docker containers related to RoachNet services. (those prefixed with 'roachnet_')
    */
   async getServicesStatus(): Promise<
     {
@@ -179,7 +179,7 @@ export class DockerService {
       const containerMap = new Map<string, Docker.ContainerInfo>()
       containers.forEach((container) => {
         const name = container.Names[0]?.replace('/', '')
-        if (name && name.startsWith('nomad_')) {
+        if (name && name.startsWith('roachnet_')) {
           containerMap.set(name, container)
         }
       })
@@ -628,19 +628,19 @@ export class DockerService {
       // Remove from active installs tracking
       this.activeInstallations.delete(service.service_name)
 
-      // If Ollama was just installed, trigger Nomad docs discovery and embedding
+      // If Ollama was just installed, trigger RoachNet docs discovery and embedding
       if (service.service_name === SERVICE_NAMES.OLLAMA) {
         logger.info('[DockerService] Ollama installation complete. Default behavior is to not enable chat suggestions.')
         await KVStore.setValue('chat.suggestionsEnabled', false)
 
-        logger.info('[DockerService] Ollama installation complete. Triggering Nomad docs discovery...')
+        logger.info('[DockerService] Ollama installation complete. Triggering RoachNet docs discovery...')
         
         // Need to use dynamic imports here to avoid circular dependency
         const ollamaService = new (await import('./ollama_service.js')).OllamaService()
         const ragService = new (await import('./rag_service.js')).RagService(this, ollamaService)
 
-        ragService.discoverNomadDocs().catch((error) => {
-          logger.error('[DockerService] Failed to discover Nomad docs:', error)
+        ragService.discoverRoachNetDocs().catch((error) => {
+          logger.error('[DockerService] Failed to discover RoachNet docs:', error)
         })
       }
 
@@ -763,7 +763,7 @@ export class DockerService {
      * We'll download the lightweight mini Wikipedia Top 100 zim file for this purpose.
      **/
     const WIKIPEDIA_ZIM_URL =
-      'https://github.com/Crosstalk-Solutions/project-nomad/raw/refs/heads/main/install/wikipedia_en_100_mini_2026-01.zim'
+      'https://github.com/AHGRoach/RoachNet/raw/refs/heads/main/install/wikipedia_en_100_mini_2026-01.zim'
     const filename = 'wikipedia_en_100_mini_2026-01.zim'
     const filepath = resolveStoragePath(ZIM_STORAGE_PATH, filename)
     logger.info(`[DockerService] Kiwix Serve pre-install: Downloading ZIM file to ${filepath}`)

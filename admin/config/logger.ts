@@ -9,7 +9,7 @@ if (process.env.ROACHNET_DEBUG_BOOT === '1') {
 
 const isProduction = env.get('NODE_ENV') === 'production'
 const defaultStorageRoot = fileURLToPath(new URL('../storage', import.meta.url))
-const storageRoot = env.get('NOMAD_STORAGE_PATH')?.trim() || defaultStorageRoot
+const storageRoot = env.get('ROACHNET_STORAGE_PATH')?.trim() || defaultStorageRoot
 const logDestination = join(storageRoot, 'logs', 'admin.log')
 
 const loggerConfig = defineConfig({

@@ -36,7 +36,7 @@ const MIME_TYPES: Record<string, string> = {
 @inject()
 export class SiteArchiveService {
   private getStorageRoot() {
-    const storageBase = env.get('NOMAD_STORAGE_PATH') || path.join(process.cwd(), 'storage')
+    const storageBase = env.get('ROACHNET_STORAGE_PATH') || path.join(process.cwd(), 'storage')
     return path.resolve(storageBase, 'site-archives')
   }
 

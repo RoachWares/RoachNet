@@ -25,7 +25,7 @@ export default await Env.create(new URL('../', import.meta.url), {
   | Variables for configuring storage paths
   |----------------------------------------------------------
   */
-  NOMAD_STORAGE_PATH: Env.schema.string.optional(),
+  ROACHNET_STORAGE_PATH: Env.schema.string.optional(),
 
   /*
   |----------------------------------------------------------
@@ -61,7 +61,7 @@ export default await Env.create(new URL('../', import.meta.url), {
   | Variables for configuring external AI runtime URLs
   |----------------------------------------------------------
   */
-  NOMAD_API_URL: Env.schema.string.optional(),
+  ROACHNET_API_URL: Env.schema.string.optional(),
   OLLAMA_BASE_URL: Env.schema.string.optional(),
   OPENCLAW_BASE_URL: Env.schema.string.optional(),
   OPENCLAW_WORKSPACE_PATH: Env.schema.string.optional(),

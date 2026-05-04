@@ -15,8 +15,8 @@ interface UpdateStatus {
 
 export class SystemUpdateService {
   private static SHARED_DIR =
-    env.get('NOMAD_STORAGE_PATH')?.trim()
-      ? join(env.get('NOMAD_STORAGE_PATH')!, 'update-shared')
+    env.get('ROACHNET_STORAGE_PATH')?.trim()
+      ? join(env.get('ROACHNET_STORAGE_PATH')!, 'update-shared')
       : app.makePath('storage', 'update-shared')
   private static REQUEST_FILE = join(SystemUpdateService.SHARED_DIR, 'update-request')
   private static STATUS_FILE = join(SystemUpdateService.SHARED_DIR, 'update-status')

@@ -134,7 +134,7 @@ Defined in `admin/start/routes.ts`:
 - Route: `GET /chat`
 - Current behavior:
   - route is gated by AI runtime availability instead of Docker install state
-  - local Ollama is enough to unlock chat
+  - local Ollama is enough to open chat
 
 ### App Navigation Gating
 

@@ -4,7 +4,6 @@ import { BenchmarkService } from '#services/benchmark_service'
 import { MapService } from '#services/map_service'
 import { OllamaService } from '#services/ollama_service'
 import { SystemService } from '#services/system_service'
-import { UpstreamSyncService } from '#services/upstream_sync_service'
 import { updateSettingSchema } from '#validators/settings'
 import { inject } from '@adonisjs/core'
 import logger from '@adonisjs/core/services/logger'
@@ -18,8 +17,7 @@ export default class SettingsController {
     private mapService: MapService,
     private benchmarkService: BenchmarkService,
     private ollamaService: OllamaService,
-    private aiRuntimeService: AIRuntimeService,
-    private upstreamSyncService: UpstreamSyncService
+    private aiRuntimeService: AIRuntimeService
   ) {}
 
   private canRenderInertia(inertia: HttpContext['inertia'] | undefined) {
@@ -390,9 +388,8 @@ export default class SettingsController {
   }
 
   async update({ inertia, response }: HttpContext) {
-    const [updateInfo, upstreamSyncStatus, earlyAccess] = await Promise.all([
+    const [updateInfo, earlyAccess] = await Promise.all([
       this.systemService.checkLatestVersion(),
-      this.upstreamSyncService.getStatus(false),
       KVStore.getValue('system.earlyAccess'),
     ])
 
@@ -403,7 +400,6 @@ export default class SettingsController {
           latestVersion: updateInfo.latestVersion,
           currentVersion: updateInfo.currentVersion,
           earlyAccess: earlyAccess ?? false,
-          upstreamSync: upstreamSyncStatus,
         },
       })
     }
@@ -417,10 +413,9 @@ export default class SettingsController {
         : `current · ${updateInfo.currentVersion}`,
       sections: [
         {
-          title: 'Sync',
+          title: 'Release Channel',
           items: [
             `Early access: ${earlyAccess ?? false ? 'enabled' : 'disabled'}`,
-            `Upstream sync: ${upstreamSyncStatus.status}`,
           ],
         },
       ],

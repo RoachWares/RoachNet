@@ -10,7 +10,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - "${NOMAD_STORAGE_PATH}:/app/storage"
+      - "${ROACHNET_STORAGE_PATH}:/app/storage"
       - "/var/run/docker.sock:/var/run/docker.sock"
     environment:
       NODE_ENV: production
@@ -21,13 +21,13 @@ services:
       APP_KEY: "${APP_KEY}"
       DB_HOST: mysql
       DB_PORT: "3306"
-      DB_DATABASE: nomad
-      DB_USER: "nomad_user"
+      DB_DATABASE: roachnet
+      DB_USER: "roachnet_user"
       DB_PASSWORD: "${DB_PASSWORD}"
       DB_SSL: "false"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      NOMAD_STORAGE_PATH: /app/storage
+      ROACHNET_STORAGE_PATH: /app/storage
       ROACHNET_HOST_STORAGE_PATH: "${ROACHNET_HOST_STORAGE_PATH}"
       OPENCLAW_WORKSPACE_PATH: "${OPENCLAW_WORKSPACE_PATH}"
       ROACHNET_COMPOSE_PROJECT_NAME: "${ROACHNET_COMPOSE_PROJECT_NAME}"
@@ -57,8 +57,8 @@ services:
       - rm -f /var/run/mysqld/mysqld.sock.lock /var/run/mysqld/mysqlx.sock.lock /var/run/mysqld/mysqld.sock /var/run/mysqld/mysqlx.sock && exec docker-entrypoint.sh mysqld
     environment:
       MYSQL_ROOT_PASSWORD: "${ROACHNET_DB_ROOT_PASSWORD}"
-      MYSQL_DATABASE: nomad
-      MYSQL_USER: "nomad_user"
+      MYSQL_DATABASE: roachnet
+      MYSQL_USER: "roachnet_user"
       MYSQL_PASSWORD: "${DB_PASSWORD}"
     tmpfs:
       - /var/run/mysqld

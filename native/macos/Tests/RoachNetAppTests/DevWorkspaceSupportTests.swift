@@ -200,11 +200,11 @@ final class DevWorkspaceSupportTests: XCTestCase {
 
     func testTerminalBootstrapNoiseFilterRemovesPromptSetupEchoes() {
         let raw = """
-        Brennans-Mac-Mini% PPROMPT=$'%F{75}%n@%m%f %F{82}%~%f %# '
+        Roach-Mac% PPROMPT=$'%F{75}%n@%m%f %F{82}%~%f %# '
         %
-        roach@Brennans-Mac-Mini ~/project % RRPROMPT=''
+        roach@Roach-Mac ~/project % RRPROMPT=''
         %
-        roach@Brennans-Mac-Mini ~/project %
+        roach@Roach-Mac ~/project %
         """
 
         XCTAssertEqual(

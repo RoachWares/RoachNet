@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 1.0.4 - May 4, 2026
+
+### Native App
+- Added RoachArcade as a first-class native section for local game libraries, ROMs, emulators, cheats, mods, and Windows runner paths.
+- Added RoachArchive search/import plumbing for public preservation metadata, local book records, and a stronger built-in eBook reader lane.
+- Added native Settings from the macOS app menu, with local model, arcade runner, vault, companion, and privacy controls in one place.
+- Kept RoachClaw wired to local model lanes through Ollama. Remote providers stay optional; the bunker still boots without them.
+
+### Installer
+- Fixed unsigned setup installs so copied app bundles recursively clear macOS launch metadata before first run.
+- Verified the setup app install lane, Homebrew-style install lane, command bar lane, and iOS companion compatibility against the v1.0.4 DMG.
+- Shipped as an unsigned Apple Silicon build until a Developer ID is available. Gatekeeper may complain; the files still live on disk.
+
+### iOS
+- Bumped RoachNetiOS to 0.1.4 with the current desktop companion contract and refreshed SideStore metadata.
+
 ## Version 1.30.3 - March 25, 2026
 
 ### Features
@@ -8,25 +24,25 @@
 - **Benchmark**: Fixed an issue where CPU and Disk Write scores could be displayed as 0 if the measured values was less than half of the reference mark. Thanks @bortlesboat for the fix!
 - **Content Manager**: Fixed a missing API client method that was causing ZIM file deletions to fail. Thanks @LuisMIguelFurlanettoSousa for the fix!
 - **Install**: Fixed an issue where the install script could incorrectly report the Docker NVIDIA runtime as missing. Thanks @brenex for the fix!
-- **Support the Project**: Fixed a broken link to Rogue Support. Thanks @chriscrosstalk for the fix!
+- **Support the Project**: Fixed a broken link to Rogue Support. Thanks an upstream contributor for the fix!
 
 ### Improvements
-- **AI Assistant**: Improved error reporting and handling for model downloads. Thanks @chriscrosstalk for the contribution!
+- **AI Assistant**: Improved error reporting and handling for model downloads. Thanks an upstream contributor for the contribution!
 - **AI Assistant**: Bumped the default version of Ollama installed to v0.18.1 to take advantage of the latest performance improvements and bug fixes.
 - **Apps**: Improved error reporting and handling for service installation failures. Thanks @trek-e for the contribution!
 - **Collections**: Updated various curated collection links to their latest versions. Thanks @builder555 for the contribution!
 - **Cyberchef**: Bumped the default version of CyberChef installed to v10.22.1 to take advantage of the latest features and bug fixes.
-- **Docs**: Added a link to the step-by-step installation guide and video tutorial. Thanks @chriscrosstalk for the contribution!
+- **Docs**: Added a link to the step-by-step installation guide and video tutorial. Thanks an upstream contributor for the contribution!
 - **Install**: Increased the retries limit for the MySQL service in Docker Compose to improve stability during installation on systems with slower performance. Thanks @dx4956 for the contribution!
-- **Install**: Fixed an issue where stale data could cause credentials mismatch in MySQL on reinstall. Thanks @chriscrosstalk for the fix!
+- **Install**: Fixed an issue where stale data could cause credentials mismatch in MySQL on reinstall. Thanks an upstream contributor for the fix!
 
 ## Version 1.30.0 - March 20, 2026
 
 ### Features
-- **Night Ops**: Added our most requested feature — a dark mode theme for the Command Center interface! Activate it from the footer and enjoy the sleek new look during your late-night missions. Thanks @chriscrosstalk for the contribution!
-- **Debug Info**: Added a new "Debug Info" modal accessible from the footer that provides detailed system and application information for troubleshooting and support. Thanks @chriscrosstalk for the contribution!
+- **Night Ops**: Added our most requested feature — a dark mode theme for the Command Center interface! Activate it from the footer and enjoy the sleek new look during your late-night missions. Thanks an upstream contributor for the contribution!
+- **Debug Info**: Added a new "Debug Info" modal accessible from the footer that provides detailed system and application information for troubleshooting and support. Thanks an upstream contributor for the contribution!
 - **Support the Project**: Added a new "Support the Project" page in settings with links to community resources, donation options, and ways to contribute.
-- **Install**: The main Nomad image is now fully self-contained and directly usable with Docker Compose, allowing for more flexible and customizable installations without relying on external scripts. The image remains fully backwards compatible with existing installations, and the install script has been updated to reflect the simpler deployment process.
+- **Install**: The main RoachNet image is now fully self-contained and directly usable with Docker Compose, allowing for more flexible and customizable installations without relying on external scripts. The image remains fully backwards compatible with existing installations, and the install script has been updated to reflect the simpler deployment process.
 
 ### Bug Fixes
 - **Settings**: Storage usage display now prefers real block devices over tempfs. Thanks @Bortlesboat for the fix!
@@ -34,17 +50,17 @@
 - **Maps**: The Maps page now respects the request protocol (http vs https) to ensure map tiles load correctly. Thanks @davidgross for the bug report!
 - **Knowledge Base**: Fixed an issue where file embedding jobs could cause a retry storm if the Ollama service was unavailable. Thanks @skyam25 for the bug report!
 - **Curated Collections**: Fixed some broken links in the curated collections definitions (maps and ZIM files) that were causing some resources to fail to download.
-- **Easy Setup**: Fixed an issue where the "Start Here" badge would persist even after visiting the Easy Setup Wizard for the first time. Thanks @chriscrosstalk for the fix!
+- **Easy Setup**: Fixed an issue where the "Start Here" badge would persist even after visiting the Easy Setup Wizard for the first time. Thanks an upstream contributor for the fix!
 - **UI**: Fixed an issue where the loading spinner could look strange in certain use cases.
-- **System Updates**: Fixed an issue where the update banner would persist even after the system was updated successfully. Thanks @chriscrosstalk for the fix!
+- **System Updates**: Fixed an issue where the update banner would persist even after the system was updated successfully. Thanks an upstream contributor for the fix!
 - **Performance**: Various small memory leak fixes and performance improvements across the UI to ensure a smoother experience.
 
 ### Improvements
 - **Ollama**: Improved GPU detection logic to ensure the latest GPU config is always passed to the Ollama container on update
-- **Ollama**: The detected GPU type is now persisted in the database for more reliable configuration and troubleshooting across updates and restarts. Thanks @chriscrosstalk for the contribution!
-- **Downloads**: Users can now dismiss failed download notifications to reduce clutter in the UI. Thanks @chriscrosstalk for the contribution!
+- **Ollama**: The detected GPU type is now persisted in the database for more reliable configuration and troubleshooting across updates and restarts. Thanks an upstream contributor for the contribution!
+- **Downloads**: Users can now dismiss failed download notifications to reduce clutter in the UI. Thanks an upstream contributor for the contribution!
 - **Logging**: Changed the default log level to "info" to reduce noise and focus on important messages. Thanks @traxeon for the suggestion!
-- **Logging**: Nomad's internal logger now creates it's own log directory on startup if it doesn't already exist to prevent errors on fresh installs where the logs directory hasn't been created yet.
+- **Logging**: RoachNet's internal logger now creates it's own log directory on startup if it doesn't already exist to prevent errors on fresh installs where the logs directory hasn't been created yet.
 - **Dozzle**: Dozzle shell access and container actions are now disabled by default. Thanks @traxeon for the recommendation!
 - **MySQL & Redis**: Removed port exposure to host by default for improved security. Ports can still be exposed manually if needed. Thanks @traxeon for the recommendation!
 - **Dependencies**: Various dependency updates to close security vulnerabilities and improve stability
@@ -58,7 +74,7 @@
 ### Features
 - **AI Assistant**: Added improved user guidance for troubleshooting GPU pass-through issues
 - **AI Assistant**: The last used model is now automatically selected when a new chat is started
-- **Settings**: Nomad now automatically performs nightly checks for available app updates, and users can select and apply updates from the Apps page in Settings
+- **Settings**: RoachNet now automatically performs nightly checks for available app updates, and users can select and apply updates from the Apps page in Settings
 
 ### Bug Fixes
 - **Settings**: Fixed an issue where the AI Assistant settings page would be shown in navigation even if the AI Assistant was not installed, thus causing 404 errors when clicked
@@ -236,7 +252,7 @@
 
 ### ✨ Improvements
 
-- **Ollama**: Fallback list of recommended models if api.projectnomad.us is down
+- **Ollama**: Fallback list of recommended models if api.roachnet.org is down
 - **Ollama/Qdrant**: Docker images pinned to specific versions for stability
 - **README**: Added website and community links
 - Removed Open WebUI as a separate installable app (replaced by built-in AI Chat)
@@ -330,7 +346,7 @@
 - **Easy Setup Wizard**: Redesigned Step 1 with user-friendly capability cards instead of app names
 - **Tiered Collections**: Category-based content collections with Essential, Standard, and Comprehensive tiers
 - **Storage Projection Bar**: Visual disk usage indicator showing projected additions during Easy Setup
-- **Windows Support**: Docker Desktop support for local development with platform detection and `NOMAD_STORAGE_PATH` env var
+- **Windows Support**: Docker Desktop support for local development with platform detection and `ROACHNET_STORAGE_PATH` env var
 - **Documentation**: Comprehensive in-app documentation (Home, Getting Started, FAQ, Use Cases)
 
 ### ✨ Improvements
@@ -510,7 +526,7 @@
 
 ### 🚀 New Features
 
-- Uninstall script now removes non-management Nomad app containers
+- Uninstall script now removes non-management RoachNet app containers
 
 ### ✨ Improvements
 
@@ -625,9 +641,9 @@
 
 ## Support
 
-- **Discord:** [Join the Community](https://discord.com/invite/crosstalksolutions) — Get help, share your builds, and connect with other RoachNet users
+- **Discord:** [Join the Community](https://roachnet.org/community) — Get help, share your builds, and connect with other RoachNet users
 - **Bug Reports:** [GitHub Issues](https://github.com/AHGRoach/RoachNet/issues)
-- **Website:** [www.projectnomad.us](https://www.projectnomad.us)
+- **Website:** [www.roachnet.org](https://roachnet.org)
 
 ---
 

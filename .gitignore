@@ -59,3 +59,16 @@ native/macos/.cache
 # Local runtime state
 runtime
 storage
+
+# Local handoff memory. This file can contain machine paths, ship notes,
+# adjacent repo names, and private project context.
+MEMORY.MD
+
+# Internal copy system for release work. Public docs should use the voice,
+# not expose the private project map behind it.
+docs/BRAND_STYLE.md
+
+# Public repo boundary: source only, not local env templates or bundled data.
+admin/.env.example
+install/*.zim
+native/windows/

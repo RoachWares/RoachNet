@@ -42,12 +42,12 @@ export class RunBenchmarkJob {
           throw new Error(`Unknown benchmark type: ${benchmark_type}`)
       }
 
-      logger.info(`[RunBenchmarkJob] Benchmark ${benchmark_id} completed with NOMAD score: ${result.nomad_score}`)
+      logger.info(`[RunBenchmarkJob] Benchmark ${benchmark_id} completed with RoachNet score: ${result.roachnet_score}`)
 
       return {
         success: true,
         benchmark_id: result.benchmark_id,
-        nomad_score: result.nomad_score,
+        roachnet_score: result.roachnet_score,
       }
     } catch (error) {
       logger.error(`[RunBenchmarkJob] Benchmark ${benchmark_id} failed: ${error.message}`)

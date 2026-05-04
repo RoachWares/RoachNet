@@ -23,7 +23,7 @@ export type SystemInformationResponse = {
   cpu: Systeminformation.CpuData
   mem: Systeminformation.MemData
   os: Systeminformation.OsData
-  disk: NomadDiskInfo[]
+  disk: RoachNetDiskInfo[]
   currentLoad: Systeminformation.CurrentLoadData
   fsSize: Systeminformation.FsSizeData[]
   uptime: Systeminformation.TimeData
@@ -50,7 +50,7 @@ export type LSBlockDevice = {
   children?: LSBlockDevice[]
 }
 
-export type NomadDiskInfoRaw = {
+export type RoachNetDiskInfoRaw = {
   diskLayout: {
     blockdevices: LSBlockDevice[]
   }
@@ -64,7 +64,7 @@ export type NomadDiskInfoRaw = {
   }[]
 }
 
-export type NomadDiskInfo = {
+export type RoachNetDiskInfo = {
   name: string
   model: string
   vendor: string
@@ -88,35 +88,6 @@ export type SystemUpdateStatus = {
   progress: number
   message: string
   timestamp: string
-}
-
-export type UpstreamSyncStage =
-  | 'idle'
-  | 'checking'
-  | 'syncing'
-  | 'building'
-  | 'complete'
-  | 'error'
-
-export type UpstreamSyncStatus = {
-  stage: UpstreamSyncStage
-  progress: number
-  message: string
-  timestamp: string
-  supported: boolean
-  canSync: boolean
-  syncAvailable: boolean
-  currentBranch: string | null
-  currentCommit: string | null
-  upstreamBranch: string
-  upstreamCommit: string | null
-  baseUpstreamCommit: string | null
-  mergeBase: string | null
-  patchsetCommits: number
-  upstreamCommitsAhead: number
-  hasTrackedChanges: boolean
-  backupBranch: string | null
-  repoRoot: string | null
 }
 
 export type CheckLatestVersionResult = {

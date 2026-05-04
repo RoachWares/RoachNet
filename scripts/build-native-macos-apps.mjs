@@ -847,6 +847,11 @@ const bundledSourceForbiddenArchivePrefixes = [
 ]
 
 const bundledSourceForbiddenArchivePatterns = [
+  /\/admin\/\.env\.example$/i,
+  /\/MEMORY\.MD$/i,
+  /\/docs\/BRAND_STYLE\.md$/i,
+  /\/native\/windows\//i,
+  /\.zim$/i,
   /\/vaults\.json$/i,
   /\.sqlite(?:$|[-.])/i,
   /\.db(?:$|[-.])/i,
@@ -864,13 +869,11 @@ const bundledSourceDirectories = [
 
 const bundledSourceFiles = [
   'package.json',
-  'roachnet.upstream.json',
 ]
 
 const bundledAdminFiles = [
   'package.json',
   'package-lock.json',
-  '.env.example',
 ]
 
 async function syncTree(sourcePath, destinationPath, excludePatterns = bundledSourceExcludes) {
@@ -956,7 +959,7 @@ async function copyBundledSourceTree(destinationPath) {
     delete bundledEnvValues.NETLIFY_AUTH_TOKEN
     delete bundledEnvValues.OPENAI_API_KEY
     delete bundledEnvValues.ANTHROPIC_API_KEY
-    delete bundledEnvValues.NOMAD_STORAGE_PATH
+    delete bundledEnvValues.ROACHNET_STORAGE_PATH
     delete bundledEnvValues.OPENCLAW_WORKSPACE_PATH
     writeFileSync(bundledEnvDestination, serializeEnvFile(bundledEnvValues), 'utf8')
   }
@@ -990,7 +993,7 @@ async function createBundledSourceArchive(archivePath) {
       delete bundledEnvValues.NETLIFY_AUTH_TOKEN
       delete bundledEnvValues.OPENAI_API_KEY
       delete bundledEnvValues.ANTHROPIC_API_KEY
-      delete bundledEnvValues.NOMAD_STORAGE_PATH
+      delete bundledEnvValues.ROACHNET_STORAGE_PATH
       delete bundledEnvValues.OPENCLAW_WORKSPACE_PATH
       writeFileSync(bundledEnvDestination, serializeEnvFile(bundledEnvValues), 'utf8')
     }

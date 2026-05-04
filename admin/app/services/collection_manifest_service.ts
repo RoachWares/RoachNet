@@ -32,9 +32,9 @@ const SPEC_FILENAMES: Record<ManifestType, string> = {
 }
 
 const UPSTREAM_SPEC_URLS: Record<ManifestType, string> = {
-  zim_categories: 'https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/collections/kiwix-categories.json',
-  maps: 'https://github.com/Crosstalk-Solutions/project-nomad/raw/refs/heads/main/collections/maps.json',
-  wikipedia: 'https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/collections/wikipedia.json',
+  zim_categories: 'https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/collections/kiwix-categories.json',
+  maps: 'https://github.com/AHGRoach/RoachNet/raw/refs/heads/main/collections/maps.json',
+  wikipedia: 'https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/collections/wikipedia.json',
 }
 
 const VALIDATORS: Record<ManifestType, any> = {

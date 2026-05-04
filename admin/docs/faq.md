@@ -18,7 +18,7 @@ N.O.M.A.D. is designed for capable hardware, especially if you want to use the A
 - SSD storage (size depends on content — 500GB minimum, 1TB+ recommended)
 - NVIDIA or AMD GPU recommended for faster AI responses
 
-**For detailed build recommendations at three price points ($150–$1,000+), see the [Hardware Guide](https://www.projectnomad.us/hardware).**
+**For detailed build recommendations at three price points ($150–$1,000+), see the [Hardware Guide](https://roachnet.org/hardware).**
 
 ### How much storage do I need?
 It depends on what you download:
@@ -86,7 +86,7 @@ You can also remove documents from the Knowledge Base when they're no longer nee
 RoachNet documentation is automatically added to the Knowledge Base when the AI Assistant is installed.
 
 ### What is the System Benchmark?
-The System Benchmark tests your hardware performance and generates a RoachNet Score — a weighted composite of CPU, memory, disk, and AI performance. You can create a Builder Tag (a RoachNet-themed identity like "Neon-Hive-1234") and share your results with the [community leaderboard](https://benchmark.projectnomad.us).
+The System Benchmark tests your hardware performance and generates a RoachNet Score — a weighted composite of CPU, memory, disk, and AI performance. You can create a Builder Tag (a RoachNet-themed identity like "Neon-Hive-1234") and share your results with the [community leaderboard](https://benchmark.roachnet.org).
 
 Go to **[System Benchmark →](/settings/benchmark)** to run one.
 
@@ -237,28 +237,28 @@ The system is designed to recover gracefully. If an update fails:
 
 ### Command-Line Maintenance
 
-For advanced troubleshooting or when you can't access the web interface, RoachNet currently includes the imported upstream helper scripts in `/opt/project-nomad`:
+For advanced troubleshooting or when you can't access the web interface, RoachNet currently includes the imported upstream helper scripts in `/opt/roachnet`:
 
 **Start all services:**
 ```bash
-sudo bash /opt/project-nomad/start_nomad.sh
+sudo bash /opt/roachnet/start_roachnet.sh
 ```
 
 **Stop all services:**
 ```bash
-sudo bash /opt/project-nomad/stop_nomad.sh
+sudo bash /opt/roachnet/stop_roachnet.sh
 ```
 
 **Update Command Center:**
 ```bash
-sudo bash /opt/project-nomad/update_nomad.sh
+sudo bash /opt/roachnet/update_roachnet.sh
 ```
 *Note: This updates the Command Center only, not individual apps. Update apps through the web interface.*
 
 **Uninstall RoachNet:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/uninstall_nomad.sh -o uninstall_nomad.sh
-sudo bash uninstall_nomad.sh
+curl -fsSL https://raw.githubusercontent.com/AHGRoach/RoachNet/refs/heads/main/install/uninstall_roachnet.sh -o uninstall_roachnet.sh
+sudo bash uninstall_roachnet.sh
 ```
 *Warning: This cannot be undone. All data will be deleted.*
 

@@ -7,7 +7,7 @@ import ActiveDownloads from '~/components/ActiveDownloads'
 import Alert from '~/components/Alert'
 import { useEffect, useState } from 'react'
 import { IconAlertCircle, IconArrowBigUpLines, IconCheck, IconCircleCheck, IconReload } from '@tabler/icons-react'
-import { SystemUpdateStatus, UpstreamSyncStatus } from '../../../types/system'
+import { SystemUpdateStatus } from '../../../types/system'
 import type { ContentUpdateCheckResult, ResourceUpdateInfo } from '../../../types/collections'
 import api from '~/lib/api'
 import Input from '~/components/inputs/Input'
@@ -21,7 +21,6 @@ type Props = {
   latestVersion: string
   currentVersion: string
   earlyAccess: boolean
-  upstreamSync: UpstreamSyncStatus
 }
 
 type VersionInfo = Pick<Props, 'updateAvailable' | 'latestVersion' | 'currentVersion'>
@@ -226,284 +225,6 @@ function ContentUpdatesSection() {
   )
 }
 
-function UpstreamSyncSection({ initialStatus }: { initialStatus: UpstreamSyncStatus }) {
-  const { addNotification } = useNotifications()
-  const [status, setStatus] = useState<UpstreamSyncStatus>(initialStatus)
-  const [isChecking, setIsChecking] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(
-    initialStatus.stage === 'syncing' || initialStatus.stage === 'building'
-  )
-  const [showLogs, setShowLogs] = useState(false)
-  const [logs, setLogs] = useState('')
-
-  useEffect(() => {
-    if (!isSyncing) return
-
-    const interval = setInterval(async () => {
-      try {
-        const nextStatus = await api.getUpstreamSyncStatus(false)
-        if (!nextStatus) {
-          throw new Error('Failed to fetch upstream sync status')
-        }
-
-        setStatus(nextStatus)
-
-        if (nextStatus.stage === 'complete') {
-          setIsSyncing(false)
-          addNotification({
-            type: 'success',
-            message: 'Upstream sync completed. Restart RoachNet to load the refreshed build.',
-          })
-        } else if (nextStatus.stage === 'error') {
-          setIsSyncing(false)
-          addNotification({
-            type: 'error',
-            message: nextStatus.message,
-          })
-        }
-      } catch (error: any) {
-        console.error('Error polling upstream sync status:', error)
-      }
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [addNotification, isSyncing])
-
-  const handleCheck = async () => {
-    setIsChecking(true)
-    try {
-      const nextStatus = await api.getUpstreamSyncStatus(true)
-      if (!nextStatus) {
-        throw new Error('Failed to check upstream sync status')
-      }
-
-      setStatus(nextStatus)
-      addNotification({
-        type: nextStatus.syncAvailable ? 'success' : 'info',
-        message: nextStatus.message,
-      })
-    } catch (error: any) {
-      addNotification({
-        type: 'error',
-        message: error?.message || 'Failed to check upstream source state',
-      })
-    } finally {
-      setIsChecking(false)
-    }
-  }
-
-  const handleStartSync = async () => {
-    try {
-      const result = await api.startUpstreamSync()
-      if (!result?.success) {
-        throw new Error('Failed to start upstream sync')
-      }
-
-      addNotification({
-        type: 'success',
-        message: result.message,
-      })
-
-      setIsSyncing(true)
-      const nextStatus = await api.getUpstreamSyncStatus(false)
-      if (nextStatus) {
-        setStatus(nextStatus)
-      }
-    } catch (error: any) {
-      addNotification({
-        type: 'error',
-        message: error?.response?.data?.error || error?.message || 'Failed to start upstream sync',
-      })
-    }
-  }
-
-  const handleViewLogs = async () => {
-    try {
-      const response = await api.getUpstreamSyncLogs()
-      if (!response) {
-        throw new Error('Failed to fetch upstream sync logs')
-      }
-      setLogs(response.logs)
-      setShowLogs(true)
-    } catch (error: any) {
-      addNotification({
-        type: 'error',
-        message: error?.message || 'Failed to load upstream sync logs',
-      })
-    }
-  }
-
-  const canCheck = status.supported || status.repoRoot !== null
-  const shortSha = (sha: string | null) => (sha ? sha.slice(0, 8) : 'Unavailable')
-
-  return (
-    <div className="mt-8">
-      <StyledSectionHeader title="Source Upstream Sync" />
-
-      <div className="bg-surface-primary rounded-lg border shadow-md overflow-hidden p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-3xl">
-            <h3 className="text-xl font-bold text-desert-green">Separate upstream patchset sync</h3>
-            <p className="mt-3 text-sm leading-7 text-desert-stone-dark">
-              This path fetches the latest upstream source commits, creates a backup branch,
-              builds a temporary worktree from the refreshed source, and replays the RoachNet patchset onto that new base.
-            </p>
-            <p className="mt-3 text-sm leading-7 text-desert-stone-dark">
-              RoachNet branding, UI changes, and custom integrations stay persistent because the sync flow reapplies the RoachNet patchset instead of replacing your custom tree.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 lg:min-w-[18rem]">
-            <StyledButton
-              variant="primary"
-              icon="IconGitMerge"
-              onClick={handleStartSync}
-              disabled={!status.canSync || isSyncing}
-            >
-              {isSyncing ? 'Sync In Progress' : 'Sync From Upstream'}
-            </StyledButton>
-            <StyledButton
-              variant="ghost"
-              icon="IconRefresh"
-              onClick={handleCheck}
-              loading={isChecking}
-              disabled={!canCheck || isSyncing}
-            >
-              Check Upstream
-            </StyledButton>
-            <StyledButton
-              variant="ghost"
-              icon="IconLogs"
-              onClick={handleViewLogs}
-              disabled={false}
-            >
-              View Sync Logs
-            </StyledButton>
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[1.2rem] border border-border-default bg-surface-secondary/70 p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-text-secondary">Current Branch</p>
-            <p className="mt-2 text-lg font-semibold text-text-primary">{status.currentBranch || 'Unavailable'}</p>
-            <p className="mt-1 text-xs text-text-secondary">{shortSha(status.currentCommit)}</p>
-          </div>
-          <div className="rounded-[1.2rem] border border-border-default bg-surface-secondary/70 p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-text-secondary">Upstream Head</p>
-            <p className="mt-2 text-lg font-semibold text-text-primary">{status.upstreamBranch}</p>
-            <p className="mt-1 text-xs text-text-secondary">{shortSha(status.upstreamCommit)}</p>
-          </div>
-          <div className="rounded-[1.2rem] border border-border-default bg-surface-secondary/70 p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-text-secondary">RoachNet Patchset</p>
-            <p className="mt-2 text-lg font-semibold text-text-primary">{status.patchsetCommits}</p>
-            <p className="mt-1 text-xs text-text-secondary">commit(s) carried on top of upstream</p>
-          </div>
-          <div className="rounded-[1.2rem] border border-border-default bg-surface-secondary/70 p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-text-secondary">Upstream Ahead</p>
-            <p className="mt-2 text-lg font-semibold text-text-primary">{status.upstreamCommitsAhead}</p>
-            <p className="mt-1 text-xs text-text-secondary">
-              {status.syncAvailable ? 'Ready to sync' : 'No upstream commits pending'}
-            </p>
-          </div>
-        </div>
-
-        {status.backupBranch && (
-          <div className="mt-4 rounded-[1.1rem] border border-border-default bg-surface-secondary/70 px-4 py-3">
-            <p className="text-sm text-text-secondary">
-              Safety backup branch: <span className="font-mono text-desert-green-light">{status.backupBranch}</span>
-            </p>
-          </div>
-        )}
-
-        {(status.hasTrackedChanges || status.stage === 'error' || status.stage === 'complete') && (
-          <div className="mt-4">
-            <Alert
-              type={status.stage === 'error' ? 'error' : status.stage === 'complete' ? 'success' : 'warning'}
-              title={
-                status.stage === 'error'
-                  ? 'Upstream Sync Failed'
-                  : status.stage === 'complete'
-                    ? 'Upstream Sync Complete'
-                    : 'Tracked Changes Detected'
-              }
-              message={status.message}
-              variant="bordered"
-            />
-          </div>
-        )}
-
-        {!status.hasTrackedChanges && status.stage !== 'error' && status.stage !== 'complete' && (
-          <div className="mt-4 rounded-[1.1rem] border border-border-default bg-surface-secondary/70 px-4 py-3">
-            <p className="text-sm text-text-secondary">{status.message}</p>
-          </div>
-        )}
-
-        {(status.stage === 'syncing' || status.stage === 'building') && (
-          <div className="mt-6">
-            <div className="w-full bg-desert-stone-light rounded-full h-3 overflow-hidden">
-              <div
-                className="bg-desert-green h-full transition-all duration-500 ease-out"
-                style={{ width: `${status.progress}%` }}
-              />
-            </div>
-            <p className="mt-2 text-sm text-desert-stone-dark">
-              {status.progress}% complete: {status.message}
-            </p>
-          </div>
-        )}
-
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Alert
-            type="info"
-            title="How RoachNet Stays Persistent"
-            message="The sync flow rebuilds a fresh upstream worktree, reapplies the RoachNet patchset there, validates it, and only then switches your main branch over to the refreshed result."
-            variant="solid"
-          />
-          <Alert
-            type="warning"
-            title="Clean Branch Required"
-            message="Only tracked working-tree changes block the sync. Commit your RoachNet edits before syncing so the patchset replay can run safely."
-            variant="solid"
-          />
-        </div>
-      </div>
-
-      {showLogs && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface-primary rounded-lg shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
-            <div className="p-6 border-b border-desert-stone-light flex justify-between items-center">
-              <h3 className="text-xl font-bold text-desert-green">Upstream Sync Logs</h3>
-              <button
-                onClick={() => setShowLogs(false)}
-                className="text-desert-stone hover:text-desert-green transition-colors"
-              >
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="p-6 overflow-auto flex-1">
-              <pre className="bg-black text-green-400 p-4 rounded text-xs font-mono whitespace-pre-wrap">
-                {logs || 'No upstream sync logs available yet...'}
-              </pre>
-            </div>
-            <div className="p-6 border-t border-desert-stone-light">
-              <StyledButton variant="secondary" onClick={() => setShowLogs(false)} fullWidth>
-                Close
-              </StyledButton>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function SystemUpdatePage(props: { system: Props }) {
   const { addNotification } = useNotifications()
 
@@ -685,7 +406,7 @@ export default function SystemUpdatePage(props: { system: Props }) {
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-desert-green mb-2">RoachNet Updates</h1>
             <p className="text-desert-stone-dark">
-              Keep your RoachNet install current with release updates and upstream source syncs.
+              Keep your RoachNet install current with release updates.
             </p>
           </div>
 
@@ -885,7 +606,6 @@ export default function SystemUpdatePage(props: { system: Props }) {
               variant="solid"
             />
           </div>
-          <UpstreamSyncSection initialStatus={props.system.upstreamSync} />
           <StyledSectionHeader title="Early Access" className="mt-8" />
           <div className="bg-surface-primary rounded-lg border shadow-md overflow-hidden mt-6 p-6">
             <Switch

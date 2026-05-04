@@ -11,7 +11,7 @@ const port = Number(process.env.ROACHNET_COMPANION_PORT || '38111')
 const token = process.env.ROACHNET_COMPANION_TOKEN?.trim() || ''
 const targetOrigin = process.env.ROACHNET_COMPANION_TARGET_URL?.trim() || 'http://127.0.0.1:8080'
 const storagePath =
-  process.env.NOMAD_STORAGE_PATH?.trim() || process.env.ROACHNET_HOST_STORAGE_PATH?.trim() || ''
+  process.env.ROACHNET_STORAGE_PATH?.trim() || process.env.ROACHNET_HOST_STORAGE_PATH?.trim() || ''
 const roachTailStatePath = storagePath ? path.join(storagePath, 'vault', 'roachtail', 'state.json') : ''
 const roachNetAliasHost = process.env.ROACHNET_LOCAL_HOSTNAME?.trim() || 'RoachNet'
 

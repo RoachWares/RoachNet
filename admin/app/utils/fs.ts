@@ -2,14 +2,14 @@ import { mkdir, readdir, readFile, stat, unlink } from 'fs/promises'
 import path, { join } from 'path'
 import { FileEntry } from '../../types/files.js'
 import { createReadStream } from 'fs'
-import { LSBlockDevice, NomadDiskInfoRaw } from '../../types/system.js'
+import { LSBlockDevice, RoachNetDiskInfoRaw } from '../../types/system.js'
 
 export const ZIM_STORAGE_PATH = 'zim'
 export const MAPS_STORAGE_PATH = 'maps'
 export const KB_UPLOADS_STORAGE_PATH = 'kb_uploads'
 
 export function getStorageRoot(): string {
-  const configured = process.env.NOMAD_STORAGE_PATH?.trim()
+  const configured = process.env.ROACHNET_STORAGE_PATH?.trim()
   if (configured) {
     return path.resolve(configured)
   }
@@ -126,9 +126,9 @@ export async function deleteFileIfExists(path: string): Promise<void> {
 
 export function getAllFilesystems(
   device: LSBlockDevice,
-  fsSize: NomadDiskInfoRaw['fsSize']
-): NomadDiskInfoRaw['fsSize'] {
-  const filesystems: NomadDiskInfoRaw['fsSize'] = []
+  fsSize: RoachNetDiskInfoRaw['fsSize']
+): RoachNetDiskInfoRaw['fsSize'] {
+  const filesystems: RoachNetDiskInfoRaw['fsSize'] = []
   const seen = new Set()
 
   function traverse(dev: LSBlockDevice) {
