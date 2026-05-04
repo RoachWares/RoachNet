@@ -99,15 +99,21 @@ for (const file of trackedFiles) {
   }
 }
 
+function literalPattern(parts, flags = 'g') {
+  const value = parts.join('')
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(escaped, flags)
+}
+
 const personalPatterns = [
-  { pattern: /\/Users\/roach\b/g, label: 'local user path /Users/roach' },
-  { pattern: /\/Volumes\/Parodox\b/g, label: 'local volume path /Volumes/Parodox' },
-  { pattern: /\/Volumes\/Black\b/g, label: 'local volume path /Volumes/Black' },
-  { pattern: /Brennans-Mac/gi, label: 'personal machine name' },
-  { pattern: /lesherist/gi, label: 'personal contact handle' },
-  { pattern: /gmail\.com/gi, label: 'personal email domain in repo text' },
-  { pattern: /RoachManSky/gi, label: 'private adjacent project name' },
-  { pattern: /TG\$Regime/gi, label: 'private label/project context' },
+  { pattern: literalPattern(['/', 'Users', '/', 'ro', 'ach']), label: 'local user path' },
+  { pattern: literalPattern(['/', 'Volumes', '/', 'Par', 'odox']), label: 'local volume path' },
+  { pattern: literalPattern(['/', 'Volumes', '/', 'Bl', 'ack']), label: 'local volume path' },
+  { pattern: literalPattern(['Bren', 'nans', '-', 'Mac'], 'gi'), label: 'personal machine name' },
+  { pattern: literalPattern(['les', 'her', 'ist'], 'gi'), label: 'personal contact handle' },
+  { pattern: literalPattern(['gm', 'ail', '.', 'com'], 'gi'), label: 'personal email domain in repo text' },
+  { pattern: literalPattern(['Roach', 'Man', 'Sky'], 'gi'), label: 'private adjacent project name' },
+  { pattern: literalPattern(['TG', '$', 'Regime'], 'gi'), label: 'private label/project context' },
 ]
 
 const upstreamIdentityPatterns = [
