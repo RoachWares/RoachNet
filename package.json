@@ -1,6 +1,7 @@
 {
   "name": "roachnet",
-  "version": "1.0.5",
+  "version": "1.0.6",
+  "buildNumber": 106,
   "description": "RoachNet offline operations platform",
   "main": "scripts/run-roachnet-native-api.mjs",
   "scripts": {
@@ -18,6 +19,7 @@
     "convex:typecheck": "tsc -p convex/tsconfig.json",
     "convex:deploy": "convex deploy",
     "audit:upstreams": "node scripts/audit-upstream-projects.mjs",
+    "audit:release": "node scripts/audit-release-configuration.mjs",
     "smoke:macos-install-lanes": "node scripts/smoke-test-macos-install-lanes.mjs",
     "smoke:ios-companion-compat": "node scripts/smoke-test-ios-companion-compat.mjs",
     "smoke:release-gates": "node scripts/smoke-test-release-gates.mjs",
@@ -37,6 +39,6 @@
     "@xmldom/xmldom": "^0.9.10",
     "ip-address": "^10.1.1",
     "lodash": "^4.18.1",
-    "ws": "8.20.1"
+    "ws": "8.21.3"
   }
 }

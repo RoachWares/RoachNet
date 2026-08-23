@@ -21,6 +21,227 @@ public struct AIRuntimeProvidersResponse: Decodable, Sendable {
     public let providers: [String: AIRuntimeStatusResponse]
 }
 
+public struct RoachClawPlaybookLaneResponse: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let summary: String
+    public let status: String
+    public let icon: String?
+    public let accent: String?
+    public let localFirst: Bool?
+    public let actions: [String]?
+}
+
+public struct RoachClawFeatureGroupResponse: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let summary: String
+    public let status: String
+    public let nativeSurface: String?
+    public let capabilities: [String]?
+}
+
+public struct RoachClawReferenceSourceResponse: Decodable, Sendable {
+    public let repository: String
+    public let commit: String
+    public let latestSeenCommit: String?
+    public let posture: String?
+    public let sourceKind: String?
+}
+
+public struct RoachClawReferenceModuleResponse: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let category: String
+    public let source: String
+    public let nativeSurface: String
+    public let status: String
+}
+
+public struct RoachClawReferenceInventoryGroupResponse: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let label: String
+    public let prefix: String
+    public let fileCount: Int
+    public let nativeSurface: String
+    public let status: String
+    public let notes: String?
+}
+
+public struct RoachClawReferenceInventoryResponse: Decodable, Sendable {
+    public let schema: String
+    public let repository: String
+    public let commit: String
+    public let latestSeenCommit: String?
+    public let sourceKind: String?
+    public let observedFileCount: Int
+    public let functionalFileCount: Int
+    public let coverageGroups: [RoachClawReferenceInventoryGroupResponse]
+    public let nonShippingPolicy: String?
+}
+
+public struct RoachClawPlaybookResponse: Decodable, Sendable {
+    public let schema: String
+    public let source: String?
+    public let updatedAt: String?
+    public let capabilities: [String]?
+    public let referenceSource: RoachClawReferenceSourceResponse?
+    public let featureGroups: [RoachClawFeatureGroupResponse]?
+    public let referenceModules: [RoachClawReferenceModuleResponse]?
+    public let referenceInventory: RoachClawReferenceInventoryResponse?
+    public let lanes: [RoachClawPlaybookLaneResponse]
+}
+
+public struct RoachClawOperationsResponse: Decodable, Sendable {
+    public struct Probe: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let label: String
+        public let available: Bool
+        public let detail: String?
+    }
+
+    public struct Diagnostics: Decodable, Sendable {
+        public let status: String
+        public let probes: [Probe]
+        public let warnings: [String]?
+    }
+
+    public struct Contacts: Decodable, Sendable {
+        public let status: String
+        public let storagePath: String?
+        public let recordCount: Int?
+        public let scopes: [String]
+        public let notes: [String]?
+    }
+
+    public struct HookEndpoint: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let method: String
+        public let path: String
+        public let scope: String
+    }
+
+    public struct Hooks: Decodable, Sendable {
+        public let status: String
+        public let storagePath: String?
+        public let endpoints: [HookEndpoint]
+        public let secretsPolicy: String?
+    }
+
+    public struct JobSummary: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let kind: String?
+        public let status: String
+        public let progress: Int?
+        public let target: String?
+        public let updatedAt: String?
+    }
+
+    public struct Scheduler: Decodable, Sendable {
+        public let status: String
+        public let storagePath: String?
+        public let pending: Int
+    }
+
+    public struct Jobs: Decodable, Sendable {
+        public let status: String
+        public let downloads: [JobSummary]
+        public let scheduler: Scheduler
+    }
+
+    public struct Reports: Decodable, Sendable {
+        public let status: String
+        public let root: String?
+        public let formats: [String]
+        public let templates: [String]
+        public let count: Int?
+    }
+
+    public struct CollectionLane: Decodable, Sendable {
+        public let status: String
+        public let storagePath: String?
+        public let count: Int?
+        public let open: Int?
+        public let messages: Int?
+        public let drafts: Int?
+        public let active: Int?
+        public let queued: Int?
+        public let stalled: Int?
+        public let priority: String?
+        public let route: String?
+        public let hotkey: String?
+        public let summaryItems: [String]?
+        public let detail: String?
+        public let actions: [String]?
+    }
+
+    public struct Uploads: Decodable, Sendable {
+        public let status: String
+        public let root: String?
+        public let maxRequestBytes: Int?
+        public let ownership: String?
+        public let isolation: String?
+    }
+
+    public struct Preferences: Decodable, Sendable {
+        public let status: String
+        public let storagePath: String?
+        public let scrubPolicy: String?
+        public let appearance: [String]?
+    }
+
+    public struct AdminRecovery: Decodable, Sendable {
+        public let status: String
+        public let actions: [String]
+        public let remoteAccess: Bool
+    }
+
+    public let schema: String
+    public let updatedAt: String?
+    public let diagnostics: Diagnostics?
+    public let serviceHealth: CollectionLane?
+    public let contacts: Contacts?
+    public let hooks: Hooks?
+    public let jobs: Jobs?
+    public let notesTasks: CollectionLane?
+    public let calendar: CollectionLane?
+    public let reports: Reports?
+    public let memories: CollectionLane?
+    public let skills: CollectionLane?
+    public let editorDrafts: CollectionLane?
+    public let migrationDocumentTools: CollectionLane?
+    public let searchCache: CollectionLane?
+    public let gallery: CollectionLane?
+    public let webhooks: CollectionLane?
+    public let agentRuns: CollectionLane?
+    public let contextCompactions: CollectionLane?
+    public let toolIndex: CollectionLane?
+    public let events: CollectionLane?
+    public let commandDeck: CollectionLane?
+    public let contextRail: CollectionLane?
+    public let vaultNavigator: CollectionLane?
+    public let agentMonitor: CollectionLane?
+    public let orchestrationDashboard: CollectionLane?
+    public let mail: CollectionLane?
+    public let presets: CollectionLane?
+    public let signatures: CollectionLane?
+    public let apiTokens: CollectionLane?
+    public let cloudProviders: CollectionLane?
+    public let workspaceBrowser: CollectionLane?
+    public let userTime: CollectionLane?
+    public let cookbookServeLifecycle: CollectionLane?
+    public let scopedToolBridge: CollectionLane?
+    public let tlsOverrides: CollectionLane?
+    public let uploadLimits: CollectionLane?
+    public let memoryProvider: CollectionLane?
+    public let providerOAuth: CollectionLane?
+    public let embeddingLanes: CollectionLane?
+    public let toolPolicy: CollectionLane?
+    public let backups: CollectionLane?
+    public let uploads: Uploads?
+    public let preferences: Preferences?
+    public let adminRecovery: AdminRecovery?
+}
+
 public struct ManagedSystemService: Decodable, Identifiable, Sendable {
     public let service_name: String
     public let friendly_name: String?
@@ -97,6 +318,8 @@ public struct RoachClawStatusResponse: Decodable, Sendable {
     public let preferredModels: [String]?
     public let configFilePath: String?
     public let portableProfile: PortableProfile?
+    public let playbook: RoachClawPlaybookResponse?
+    public let operations: RoachClawOperationsResponse?
 }
 
 public struct ManagedRoachTailPeer: Decodable, Identifiable, Sendable {
@@ -108,6 +331,53 @@ public struct ManagedRoachTailPeer: Decodable, Identifiable, Sendable {
     public let lastSeenAt: String?
     public let allowsExitNode: Bool?
     public let tags: [String]
+}
+
+public struct ManagedRoachTailControlPlane: Decodable, Sendable {
+    public let provider: String
+    public let designReference: String?
+    public let namespace: String?
+    public let nodeApproval: String?
+    public let routeApproval: String?
+    public let authKeyTtlSeconds: Int?
+    public let joinCodeTtlSeconds: Int?
+    public let policyMode: String?
+    public let dnsName: String?
+}
+
+public struct ManagedRoachTailPreAuthKey: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let createdAt: String?
+    public let expiresAt: String?
+    public let reusable: Bool?
+    public let ephemeral: Bool?
+    public let used: Bool?
+    public let tags: [String]?
+    public let capabilities: [String]?
+}
+
+public struct ManagedRoachTailRoute: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let type: String?
+    public let target: String?
+    public let approved: Bool?
+    public let advertised: Bool?
+    public let primary: Bool?
+    public let tags: [String]?
+    public let description: String?
+}
+
+public struct ManagedRoachTailDERPRegion: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String?
+    public let host: String?
+    public let url: String?
+    public let embedded: Bool?
+}
+
+public struct ManagedRoachTailDERPMap: Decodable, Sendable {
+    public let mode: String?
+    public let regions: [ManagedRoachTailDERPRegion]?
 }
 
 public struct ManagedRoachTailStatusResponse: Decodable, Sendable {
@@ -129,6 +399,10 @@ public struct ManagedRoachTailStatusResponse: Decodable, Sendable {
     public let lastUpdatedAt: String?
     public let notes: [String]
     public let peers: [ManagedRoachTailPeer]
+    public let controlPlane: ManagedRoachTailControlPlane?
+    public let preAuthKeys: [ManagedRoachTailPreAuthKey]?
+    public let routes: [ManagedRoachTailRoute]?
+    public let derpMap: ManagedRoachTailDERPMap?
 }
 
 public struct ManagedRoachTailActionResponse: Decodable, Sendable {
@@ -1504,7 +1778,9 @@ public actor ManagedAppRuntimeBridge {
             installedModels: [],
             preferredModels: [],
             configFilePath: nil,
-            portableProfile: nil
+            portableProfile: nil,
+            playbook: nil,
+            operations: nil
         )
     }
 
@@ -1562,7 +1838,43 @@ public actor ManagedAppRuntimeBridge {
             notes: config.companionEnabled
                 ? ["RoachTail is still warming up inside the local runtime."]
                 : ["RoachTail is off in this runtime configuration."],
-            peers: []
+            peers: [],
+            controlPlane: ManagedRoachTailControlPlane(
+                provider: "roachnet-native",
+                designReference: "headscale",
+                namespace: "roachnet",
+                nodeApproval: "owner-local",
+                routeApproval: "owner-local",
+                authKeyTtlSeconds: 86_400,
+                joinCodeTtlSeconds: 600,
+                policyMode: "local-owner",
+                dnsName: "roachnet-desktop.roachtail.local"
+            ),
+            preAuthKeys: [],
+            routes: [
+                ManagedRoachTailRoute(
+                    id: "companion-bridge",
+                    type: "service",
+                    target: serverInfo.companionAdvertisedUrl ?? serverInfo.companionUrl,
+                    approved: true,
+                    advertised: config.companionEnabled,
+                    primary: true,
+                    tags: ["tag:companion"],
+                    description: "Companion control bridge"
+                )
+            ],
+            derpMap: ManagedRoachTailDERPMap(
+                mode: "local-only",
+                regions: [
+                    ManagedRoachTailDERPRegion(
+                        id: "roachnet-local",
+                        name: "RoachTail local bridge",
+                        host: "RoachNet",
+                        url: serverInfo.companionAdvertisedUrl ?? serverInfo.companionUrl,
+                        embedded: true
+                    )
+                ]
+            )
         )
     }
 

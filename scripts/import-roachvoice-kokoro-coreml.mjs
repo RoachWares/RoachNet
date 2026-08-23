@@ -124,7 +124,8 @@ async function importKokoro(args) {
   writeJson(path.join(outputRoot, 'RoachSpeechPack.json'), {
     packID,
     displayName: args['display-name'] || 'RoachVoice Kokoro 82M INT8',
-    version: args.version || '1.0.5',
+    version: args.version || '1.0.6',
+    license: 'Apache-2.0',
     kind: 'roachVoice',
     nativeFormat: 'coreML',
     features: ['customVoiceSynthesis'],

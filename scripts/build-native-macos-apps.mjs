@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { cp, mkdtemp, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -33,8 +34,14 @@ const installerHelperPath = path.join(
   'installer-support',
   'RoachNet Fix.command'
 )
-const appVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version || '1.0.0'
-const bundledNodeVersion = 'v26.1.0'
+const packageManifest = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
+const runtimePins = JSON.parse(
+  readFileSync(path.join(repoRoot, 'docs', 'release-gates', 'runtime-freshness.json'), 'utf8')
+)
+const appVersion = packageManifest.version || '1.0.0'
+const appBuildNumber = String(packageManifest.buildNumber || '')
+const releaseBuild = process.env.ROACHNET_RELEASE_BUILD === '1'
+const bundledNodeVersion = runtimePins.node?.bundledVersion
 const bundledOpenClawPackage = process.env.ROACHNET_BUNDLED_OPENCLAW_PACKAGE?.trim() || 'openclaw@2026.5.18'
 const codesignIdentity = process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || ''
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
@@ -54,6 +61,31 @@ const OLLAMA_DIRECT_DOWNLOAD_URL =
   process.env.ROACHNET_BUNDLED_OLLAMA_URL?.trim() || 'https://ollama.com/download/ollama-darwin.tgz'
 const OLLAMA_FALLBACK_VERSION =
   process.env.ROACHNET_BUNDLED_OLLAMA_VERSION?.trim() || 'contained'
+
+if (!/^\d+$/.test(appBuildNumber)) {
+  throw new Error('package.json buildNumber must be a positive integer for native packaging.')
+}
+
+async function sha256File(filePath) {
+  const hash = createHash('sha256')
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(filePath)
+    stream.on('data', (chunk) => hash.update(chunk))
+    stream.on('error', reject)
+    stream.on('end', resolve)
+  })
+  return hash.digest('hex')
+}
+
+async function requireFileSha256(filePath, expectedSha256, label) {
+  if (!/^[a-f0-9]{64}$/i.test(String(expectedSha256 || ''))) {
+    throw new Error(`${label} does not have a reviewed SHA-256 pin.`)
+  }
+  const actualSha256 = await sha256File(filePath)
+  if (actualSha256 !== expectedSha256.toLowerCase()) {
+    throw new Error(`${label} checksum mismatch. Expected ${expectedSha256}, found ${actualSha256}.`)
+  }
+}
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -240,6 +272,16 @@ async function downloadFile(url, destinationPath) {
 }
 
 async function getLatestOllamaRelease() {
+  if (releaseBuild) {
+    const artifact = runtimePins.ollama?.artifact
+    return {
+      version: runtimePins.ollama?.bundledVersion,
+      assetName: artifact?.filename,
+      url: artifact?.url,
+      sha256: artifact?.sha256,
+    }
+  }
+
   try {
     const release = await fetchJson(OLLAMA_RELEASE_API_URL)
     const asset = Array.isArray(release.assets)
@@ -250,6 +292,7 @@ async function getLatestOllamaRelease() {
       version: release.tag_name?.replace(/^v/i, '') || OLLAMA_FALLBACK_VERSION,
       assetName: asset?.name || path.basename(new URL(OLLAMA_DIRECT_DOWNLOAD_URL).pathname) || 'ollama-darwin.tgz',
       url: asset?.browser_download_url || OLLAMA_DIRECT_DOWNLOAD_URL,
+      sha256: String(asset?.digest || '').replace(/^sha256:/, '') || null,
     }
   } catch (error) {
     console.warn(
@@ -265,6 +308,9 @@ async function getLatestOllamaRelease() {
 }
 
 async function ensureBundledOpenClawCache() {
+  if (releaseBuild) {
+    throw new Error('Public release builds cannot bundle OpenClaw from an unlocked npm install.')
+  }
   const cacheRoot = path.join(repoRoot, 'native', 'macos', '.cache', 'bundled-openclaw')
   const cacheKey = sanitizeCacheKey(bundledOpenClawPackage)
   const packageRoot = path.join(cacheRoot, cacheKey)
@@ -325,6 +371,7 @@ async function ensureBundledOllamaCache() {
     rmSync(extractedRoot, { recursive: true, force: true })
     mkdirSync(cacheRoot, { recursive: true })
     await downloadFile(release.url, archivePath)
+    if (releaseBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
     mkdirSync(extractedRoot, { recursive: true })
     await run('tar', ['-xzf', archivePath, '-C', extractedRoot], {
       stdio: 'pipe',
@@ -332,6 +379,8 @@ async function ensureBundledOllamaCache() {
   } else {
     console.log(`Using cached bundled Ollama payload from ${extractedRoot}...`)
   }
+
+  if (releaseBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
 
   await pruneBundledToolCache(cacheRoot, new Set([release.assetName, sanitizeCacheKey(release.version)]))
   return extractedRoot
@@ -758,10 +807,19 @@ async function ensureBundledNodeRuntime() {
   mkdirSync(cacheRoot, { recursive: true })
 
   if (!existsSync(archivePath)) {
-    const downloadURL = `https://nodejs.org/dist/${bundledNodeVersion}/${archiveName}`
+    const pinKey = process.arch === 'arm64' ? 'darwinArm64' : 'darwinX64'
+    const downloadURL = runtimePins.node?.artifacts?.[pinKey]?.url
+    if (!downloadURL) throw new Error(`Missing reviewed Node runtime URL for ${pinKey}.`)
     console.log(`Downloading bundled Node runtime from ${downloadURL}...`)
     await downloadFile(downloadURL, archivePath)
   }
+
+  const pinKey = process.arch === 'arm64' ? 'darwinArm64' : 'darwinX64'
+  await requireFileSha256(
+    archivePath,
+    runtimePins.node?.artifacts?.[pinKey]?.sha256,
+    `Node ${bundledNodeVersion} ${pinKey}`
+  )
 
   discardPath(extractedPath)
   await run('tar', ['-xzf', archivePath, '-C', cacheRoot], { stdio: 'pipe' })
@@ -1538,7 +1596,7 @@ ${urlSchemes.map((scheme) => `        <string>${scheme}</string>`).join('\n')}
   <key>CFBundleShortVersionString</key>
   <string>${appVersion}</string>
   <key>CFBundleVersion</key>
-  <string>${appVersion}</string>
+  <string>${appBuildNumber}</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
@@ -1568,6 +1626,9 @@ ${urlSchemes.map((scheme) => `        <string>${scheme}</string>`).join('\n')}
 
 async function notarizeArtifact(artifactPath) {
   if (!codesignIdentity || !notaryProfile) {
+    if (releaseBuild) {
+      throw new Error('Public release builds require Developer ID signing and a configured notary profile.')
+    }
     return
   }
 
@@ -1576,12 +1637,19 @@ async function notarizeArtifact(artifactPath) {
     submitArgs.push('--keychain', notaryKeychain)
   }
 
-  await run('xcrun', submitArgs, { stdio: 'pipe' })
+  const result = await run('xcrun', submitArgs, { stdio: 'pipe' })
+  if (!/status:\s*Accepted/i.test(`${result.stdout}\n${result.stderr}`)) {
+    throw new Error(`Apple notarization did not return Accepted for ${artifactPath}.`)
+  }
 
   await run('xcrun', ['stapler', 'staple', artifactPath], { stdio: 'pipe' })
+  await run('xcrun', ['stapler', 'validate', artifactPath], { stdio: 'pipe' })
 }
 
 async function main() {
+  if (releaseBuild && (!codesignIdentity || !notaryProfile || skipDmg)) {
+    throw new Error('Public release mode requires Developer ID signing, notarization, and DMG creation.')
+  }
   assertAppleSiliconNativeBuildHost()
   mkdirSync(distPath, { recursive: true })
   await ensureLaunchGuideVideo()

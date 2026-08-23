@@ -1,100 +1,187 @@
-name: Release SemVer
+name: Promote Verified Native Release
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing quarantined draft tag'
+        required: true
+        type: string
+      candidate_sha:
+        description: 'Full 40-character tested candidate SHA'
+        required: true
+        type: string
+      expected_dmg_sha256:
+        description: 'SHA-256 approved from quarantined exact-byte verification'
+        required: true
+        type: string
+      release_notes_path:
+        description: 'Tracked finalized release notes path'
+        required: true
+        default: 'docs/releases/1.0.6.md'
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: roachnet-public-release
+  cancel-in-progress: false
+
 jobs:
-  check_authorization:
-    name: Check authorization to release new version
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+  promote:
+    name: Verify quarantined bytes and promote
+    runs-on: blacksmith-6vcpu-macos-15
+    environment: roachnet-release-production
     permissions:
-      contents: read
-    outputs:
-      isAuthorized: ${{ steps.check-auth.outputs.is_authorized }}
-    steps:
-      - name: check-auth
-        id: check-auth
-        env:
-          IS_AUTHORIZED: ${{ contains(secrets.DEPLOYMENT_AUTHORIZED_USERS, github.triggering_actor) }}
-        run: echo "is_authorized=${IS_AUTHORIZED}" >> "$GITHUB_OUTPUT"
-  release:
-    name: Release
-    needs: check_authorization
-    if: needs.check_authorization.outputs.isAuthorized == 'true'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    permissions:
+      actions: read
       contents: write
-    outputs:
-      didRelease: ${{ steps.semver.outputs.new_release_published }}
-      newVersion: ${{ steps.semver.outputs.new_release_version }}
+    env:
+      DEPLOYMENT_AUTHORIZED_USERS: ${{ secrets.DEPLOYMENT_AUTHORIZED_USERS }}
+      APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+      APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+      APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      EXPECTED_DMG_SHA256: ${{ inputs.expected_dmg_sha256 }}
+      RELEASE_NOTES_PATH: ${{ inputs.release_notes_path }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Fail closed on exact authorization and promotion inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          authorized=false
+          while IFS= read -r allowed_actor; do
+            if [[ -n "$allowed_actor" && "$allowed_actor" == "$GITHUB_TRIGGERING_ACTOR" ]]; then authorized=true; fi
+          done < <(printf '%s' "$DEPLOYMENT_AUTHORIZED_USERS" | tr ',[:space:]' '\n' | sed '/^$/d')
+          [[ "$authorized" == true ]] || { echo 'Triggering actor is not an exact release allowlist member.' >&2; exit 1; }
+          for name in APPLE_NOTARY_TEAM_ID APPLE_NOTARY_APPLE_ID APPLE_NOTARY_APP_PASSWORD RELEASE_TAG CANDIDATE_SHA EXPECTED_DMG_SHA256 RELEASE_NOTES_PATH; do
+            [[ -n "${!name:-}" ]] || { echo "Missing required promotion prerequisite: $name" >&2; exit 1; }
+          done
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_DMG_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$GITHUB_SHA" == "$CANDIDATE_SHA" ]] || { echo 'Dispatch promotion from the exact candidate SHA/tag.' >&2; exit 1; }
+      - name: Prove production environment has required reviewers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REVIEWER_COUNT="$(gh api "repos/$GITHUB_REPOSITORY/environments/roachnet-release-production" --jq '[.protection_rules[] | select(.type == "required_reviewers") | .reviewers[]] | length')"
+          [[ "$REVIEWER_COUNT" -ge 1 ]] || { echo 'roachnet-release-production must have at least one required reviewer.' >&2; exit 1; }
+      - name: Checkout exact tested candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: semantic-release
-        uses: cycjimmy/semantic-release-action@v3
-        id: semver
+      - name: Setup Node 26
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 26
+          cache: npm
+      - name: Prove tag, draft release, release copy, and candidate identity
         env:
-          GITHUB_TOKEN: ${{ secrets.ROACHNET_RELEASE_TOKEN || github.token }}
-          GIT_AUTHOR_NAME: roachnet-bot
-          GIT_AUTHOR_EMAIL: releases@roachnet.org
-          GIT_COMMITTER_NAME: roachnet-bot
-          GIT_COMMITTER_EMAIL: releases@roachnet.org
-
-      - name: Finalize release notes
-        # Skip for pre-releases (versions containing a hyphen, e.g. 1.27.0-rc.1)
-        if: |
-          steps.semver.outputs.new_release_published == 'true' &&
-          !contains(steps.semver.outputs.new_release_version, '-')
-        id: finalize-notes
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$CANDIDATE_SHA" ]]
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [[ "$(git rev-parse "$RELEASE_TAG^{commit}")" == "$CANDIDATE_SHA" ]]
+          VERSION="$(node -p 'require("./package.json").version')"
+          [[ "$RELEASE_TAG" == "v$VERSION" && "$VERSION" != '1.0.5' ]]
+          git ls-files --error-unmatch "$RELEASE_NOTES_PATH"
+          [[ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease --jq '.isDraft and .isPrerelease')" == true ]]
+          EXPECTED_ASSETS=$'RoachNet-Setup-macOS.dmg\nRoachNet-Setup-macOS.dmg.sha256\nbinary-license-inventory.json\nrelease-provenance.json\nsbom.spdx.json\nvulnerability-scan.json'
+          ACTUAL_ASSETS="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort)"
+          [[ "$ACTUAL_ASSETS" == "$EXPECTED_ASSETS" ]] || { printf 'Unexpected staged assets:\n%s\n' "$ACTUAL_ASSETS" >&2; exit 1; }
+      - name: Download exact quarantined release assets
         env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git pull origin main
-          chmod +x .github/scripts/finalize-release-notes.sh
-          EXIT_CODE=0
-          .github/scripts/finalize-release-notes.sh \
-            "${{ steps.semver.outputs.new_release_version }}" \
-            admin/docs/release-notes.md || EXIT_CODE=$?
-          if [[ "$EXIT_CODE" -eq 0 ]]; then
-            echo "has_notes=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_notes=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Commit finalized release notes
-        if: |
-          steps.semver.outputs.new_release_published == 'true' &&
-          steps.finalize-notes.outputs.has_notes == 'true' &&
-          !contains(steps.semver.outputs.new_release_version, '-')
-        run: |
-          git config user.name "roachnet-bot"
-          git config user.email "releases@roachnet.org"
-          git remote set-url origin https://x-access-token:${{ secrets.ROACHNET_RELEASE_TOKEN || github.token }}@github.com/${{ github.repository }}.git
-          git add admin/docs/release-notes.md
-          git commit -m "docs(release): finalize v${{ steps.semver.outputs.new_release_version }} release notes [skip ci]"
-          git push origin main
-
-      - name: Update GitHub release body
-        if: |
-          steps.semver.outputs.new_release_published == 'true' &&
-          steps.finalize-notes.outputs.has_notes == 'true' &&
-          !contains(steps.semver.outputs.new_release_version, '-')
+          mkdir -p "$RUNNER_TEMP/quarantine"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/quarantine"
+      - name: Verify checksum, immutable stage-run provenance, release notes, and staged evidence
         env:
-          GH_TOKEN: ${{ secrets.ROACHNET_RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          gh release edit "v${{ steps.semver.outputs.new_release_version }}" \
-            --notes-file admin/docs/release-notes.md.section
-
-      # Future: Send release notes email
-      # - name: Send release notes email
-      #   if: steps.semver.outputs.new_release_published == 'true' && steps.finalize-notes.outputs.has_notes == 'true'
-      #   run: |
-      #     curl -X POST "https://api.roachnet.org/api/v1/newsletter/release" \
-      #       -H "Authorization: Bearer ${{ secrets.ROACHNET_API_KEY }}" \
-      #       -H "Content-Type: application/json" \
-      #       -d "{\"version\": \"${{ steps.semver.outputs.new_release_version }}\", \"body\": $(cat admin/docs/release-notes.md.section | jq -Rs .)}"
+          set -euo pipefail
+          Q="$RUNNER_TEMP/quarantine"
+          (cd "$Q" && shasum -a 256 -c RoachNet-Setup-macOS.dmg.sha256)
+          ACTUAL_DMG_SHA256="$(shasum -a 256 "$Q/RoachNet-Setup-macOS.dmg" | awk '{print $1}')"
+          [[ "$ACTUAL_DMG_SHA256" == "$EXPECTED_DMG_SHA256" ]]
+          NOTES_SHA256="$(shasum -a 256 "$RELEASE_NOTES_PATH" | awk '{print $1}')"
+          node -e 'const fs=require("fs"),path=require("path"),crypto=require("crypto"); const [file,root,sha,tag,dmg,notes]=process.argv.slice(1),p=JSON.parse(fs.readFileSync(file)); const expected=["RoachNet-Setup-macOS.dmg","RoachNet-Setup-macOS.dmg.sha256","sbom.spdx.json","binary-license-inventory.json","vulnerability-scan.json"].sort(); if(p.candidateSha!==sha||p.tag!==tag||p.dmgSha256!==dmg||p.releaseNotesSha256!==notes||p.workflowPath!==".github/workflows/native-packages.yml"||!Number.isSafeInteger(p.workflowRunId)||!Number.isSafeInteger(p.workflowRunAttempt)||JSON.stringify(Object.keys(p.assets||{}).sort())!==JSON.stringify(expected)) process.exit(1); for(const name of expected){const target=path.join(root,name),bytes=fs.statSync(target).size,digest=crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex"); if(p.assets[name]?.bytes!==bytes||p.assets[name]?.sha256!==digest) process.exit(1)}' \
+            "$Q/release-provenance.json" "$Q" "$CANDIDATE_SHA" "$RELEASE_TAG" "$ACTUAL_DMG_SHA256" "$NOTES_SHA256"
+          STAGE_RUN_ID="$(node -p 'require(process.argv[1]).workflowRunId' "$Q/release-provenance.json")"
+          STAGE_RUN_ATTEMPT="$(node -p 'require(process.argv[1]).workflowRunAttempt' "$Q/release-provenance.json")"
+          RUN_STATE="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGE_RUN_ID" --jq '[.conclusion,.event,.head_sha,.path,(.run_attempt|tostring)] | @tsv')"
+          [[ "$RUN_STATE" == $'success\tworkflow_dispatch\t'"$CANDIDATE_SHA"$'\t.github/workflows/native-packages.yml\t'"$STAGE_RUN_ATTEMPT" ]]
+          JOB_COUNT="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGE_RUN_ID/jobs" --paginate --jq '[.jobs[] | select(.name == "Build, verify, and quarantine signed RC" and .conclusion == "success")] | length')"
+          [[ "$JOB_COUNT" -eq 1 ]] || { echo 'Provenance does not resolve to one successful protected stage-release job.' >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/stage-run-provenance"
+          gh run download "$STAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "roachnet-release-provenance-$CANDIDATE_SHA-$STAGE_RUN_ATTEMPT" --dir "$RUNNER_TEMP/stage-run-provenance"
+          cmp "$Q/release-provenance.json" "$RUNNER_TEMP/stage-run-provenance/release-provenance.json"
+      - name: Configure notarization verification profile
+        run: |
+          xcrun notarytool store-credentials roachnet-promotion-notary \
+            --apple-id "$APPLE_NOTARY_APPLE_ID" \
+            --team-id "$APPLE_NOTARY_TEAM_ID" \
+            --password "$APPLE_NOTARY_APP_PASSWORD"
+      - name: Verify exact staged Developer ID signatures and hardened runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          Q="$RUNNER_TEMP/quarantine"
+          MOUNT="$RUNNER_TEMP/roachnet-promotion-mount"
+          EXTRACTED="$RUNNER_TEMP/roachnet-promotion-extracted"
+          mkdir -p "$MOUNT" "$EXTRACTED"
+          hdiutil attach "$Q/RoachNet-Setup-macOS.dmg" -readonly -nobrowse -mountpoint "$MOUNT"
+          trap 'hdiutil detach "$MOUNT" || true' EXIT
+          SETUP_APP="$MOUNT/RoachNet Setup/RoachNet Setup.app"
+          codesign --verify --deep --strict --verbose=2 "$SETUP_APP"
+          APP_ZIP="$(find "$SETUP_APP/Contents/Resources/InstallerAssets" -maxdepth 1 -name 'RoachNet-*-mac-arm64.zip' -print -quit)"
+          [[ -n "$APP_ZIP" ]]
+          ditto -x -k "$APP_ZIP" "$EXTRACTED"
+          DESKTOP_APP="$EXTRACTED/RoachNet.app"
+          codesign --verify --deep --strict --verbose=2 "$DESKTOP_APP"
+          for app in "$SETUP_APP" "$DESKTOP_APP"; do
+            DETAILS="$(codesign -dv --verbose=4 "$app" 2>&1)"
+            grep -Fq 'Authority=Developer ID Application:' <<<"$DETAILS"
+            grep -Eq 'flags=.*runtime' <<<"$DETAILS"
+            grep -Eq '^Timestamp=' <<<"$DETAILS"
+            grep -Fq "TeamIdentifier=$APPLE_NOTARY_TEAM_ID" <<<"$DETAILS"
+          done
+          xcrun notarytool history --keychain-profile roachnet-promotion-notary | grep -Fq 'Accepted'
+          xcrun stapler validate "$SETUP_APP"
+          xcrun stapler validate "$Q/RoachNet-Setup-macOS.dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$Q/RoachNet-Setup-macOS.dmg"
+          hdiutil detach "$MOUNT"
+          trap - EXIT
+      - name: Re-audit exact staged SBOM and supply-chain evidence
+        run: |
+          npm ci
+          npm audit --audit-level=high
+          npm run audit:release
+          node scripts/audit-release-supply-chain.mjs \
+            --inventory "$RUNNER_TEMP/quarantine/binary-license-inventory.json" \
+            --sbom "$RUNNER_TEMP/quarantine/sbom.spdx.json" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --tag "$RELEASE_TAG" \
+            --dmg-sha256 "$EXPECTED_DMG_SHA256" \
+            --online verify
+      - name: Revalidate remote tag and asset digests, then promote without mutation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          Q="$RUNNER_TEMP/quarantine"
+          REMOTE_TAG_SHA="$(git ls-remote origin "refs/tags/$RELEASE_TAG^{}" | awk 'NR == 1 {print $1}')"
+          if [[ -z "$REMOTE_TAG_SHA" ]]; then REMOTE_TAG_SHA="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk 'NR == 1 {print $1}')"; fi
+          [[ "$REMOTE_TAG_SHA" == "$CANDIDATE_SHA" ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/live-release.json"
+          node -e 'const fs=require("fs"),path=require("path"),crypto=require("crypto"); const [releaseFile,provenanceFile,root,tag]=process.argv.slice(1),release=JSON.parse(fs.readFileSync(releaseFile)),p=JSON.parse(fs.readFileSync(provenanceFile)); if(release.tag_name!==tag||release.draft!==true||release.prerelease!==true) process.exit(1); const expected=[...Object.keys(p.assets),"release-provenance.json"].sort(),actual=release.assets.map(a=>a.name).sort(); if(JSON.stringify(expected)!==JSON.stringify(actual)) process.exit(1); for(const asset of release.assets){const file=path.join(root,asset.name),bytes=fs.statSync(file).size,digest=crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); if(asset.size!==bytes||asset.digest!==`sha256:${digest}`) process.exit(1); if(p.assets[asset.name]&&(p.assets[asset.name].bytes!==bytes||p.assets[asset.name].sha256!==digest)) process.exit(1)}' \
+            "$RUNNER_TEMP/live-release.json" "$Q/release-provenance.json" "$Q" "$RELEASE_TAG"
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --notes-file "$RELEASE_NOTES_PATH" --repo "$GITHUB_REPOSITORY"

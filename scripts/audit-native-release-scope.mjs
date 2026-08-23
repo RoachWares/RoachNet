@@ -459,7 +459,7 @@ function requireManifestFields(manifest, expectedKind, expectedFeatures, label) 
     failures.push(`${label} manifest must guarantee noNetwork and noPackagedBinary`)
   }
   if (manifest.nativeInferenceReady !== true) {
-    failures.push(`${label} manifest must set nativeInferenceReady true for v1.0.5`)
+    failures.push(`${label} manifest must set nativeInferenceReady true for v${rootPackage.version}`)
   }
   if (expectedKind === 'roachWhisper' && manifest.parityValidated !== true) {
     failures.push(`${label} manifest must set parityValidated true before RoachWhisper ships`)
@@ -475,7 +475,11 @@ function requireManifestFields(manifest, expectedKind, expectedFeatures, label) 
 function loadModelPackManifests() {
   const modelPacksRoot = path.join(repoRoot, 'native/macos/Vendor/RoachSpeech/ModelPacks')
   if (!fs.existsSync(modelPacksRoot)) {
-    failures.push('RoachSpeech v1.0.5 requires native model packs under native/macos/Vendor/RoachSpeech/ModelPacks')
+    if (process.platform !== 'darwin' && process.env.ROACHNET_REQUIRE_GENERATED_ROACHSPEECH_PACKS !== '1') {
+      console.log('RoachSpeech generated model packs are absent on this non-macOS source audit; Gate C must generate and validate them on Apple Silicon.')
+      return null
+    }
+    failures.push(`RoachSpeech v${rootPackage.version} requires generated native model packs under native/macos/Vendor/RoachSpeech/ModelPacks`)
     return []
   }
   return fs.readdirSync(modelPacksRoot, { withFileTypes: true })
@@ -597,26 +601,27 @@ function requireCompleteRoachVoicePack(pack) {
 
 function requireCompleteRoachSpeechModelPacks() {
   const packs = loadModelPackManifests()
+  if (packs === null) return
   const whisperPack = packs.find((pack) => pack.manifest.kind === 'roachWhisper')
   const voicePack = packs.find((pack) => pack.manifest.kind === 'roachVoice')
   if (!whisperPack) {
-    failures.push('RoachSpeech v1.0.5 requires a complete native RoachWhisper Core ML model pack')
+    failures.push(`RoachSpeech v${rootPackage.version} requires a complete native RoachWhisper Core ML model pack`)
   } else {
     requireCompleteRoachWhisperPack(whisperPack)
   }
   if (!voicePack) {
-    failures.push('RoachSpeech v1.0.5 requires a complete native RoachVoice Core ML model pack')
+    failures.push(`RoachSpeech v${rootPackage.version} requires a complete native RoachVoice Core ML model pack`)
   } else {
     requireCompleteRoachVoicePack(voicePack)
   }
 }
 
 const rootPackage = readJson('package.json')
-const adminPackage = readJson('admin/package.json')
 requirePackageLockMatchesManifest('package.json', 'package-lock.json', 'root')
-requirePackageLockMatchesManifest('admin/package.json', 'admin/package-lock.json', 'admin')
 requireNodeEngine(rootPackage, 'root', '>=26 <27')
-requireNodeEngine(adminPackage, 'admin legacy WebUI lane', '>=24 <25')
+if (fs.existsSync(path.join(repoRoot, 'admin'))) {
+  failures.push('legacy admin/WebUI source must remain outside the public native candidate')
+}
 if (readText('.nvmrc').trim() !== '26') {
   failures.push('.nvmrc must keep local installs on Node 26 while the release bundle freshness gate owns the exact bundled Node patch')
 }
@@ -626,7 +631,7 @@ if (rootPackage.main !== 'scripts/run-roachnet-native-api.mjs') {
 requireNoKeys(rootPackage.dependencies, ['electron', 'electron-builder', 'electron-log', 'electron-updater'], 'root dependencies')
 requireNoKeys(rootPackage.devDependencies, ['electron', 'electron-builder', 'electron-log', 'electron-updater'], 'root devDependencies')
 requireNoPackagePattern(rootPackage, /^electron(?:-|$)/, 'root package')
-requireNoPackagePattern(adminPackage, /^(?:@tanstack\/react-query-devtools|@types\/stopword|autoprefixer|postcss|stopword|tar|url-join)$/, 'admin package top-level manifest')
+
 
 for (const [scriptName, command] of Object.entries(rootPackage.scripts || {})) {
   if (/electron|electron-builder|desktop:|installer:|build:web|npm\s+--prefix\s+admin|run-roachnet\.mjs/i.test(`${scriptName} ${command}`)) {
@@ -670,14 +675,6 @@ for (const requiredToken of [
   if (!setupScript.includes(requiredToken)) {
     failures.push(`setup backend is missing native transition guard: ${requiredToken}`)
   }
-}
-
-const adminBuildScript = readText('scripts/build-admin-runtime.mjs')
-if (!adminBuildScript.includes('const supportedAdminNodeMajorRange = { minimum: 24, maximumExclusive: 25 }')) {
-  failures.push('legacy admin build script must keep an explicit Node 24 guard')
-}
-if (!adminBuildScript.includes('ROACHNET_ADMIN_NODE_BINARY')) {
-  failures.push('legacy admin build script must keep an explicit admin Node override for isolated CI/debug use')
 }
 
 if (/bundled-admin-build-node-modules|ensureAdminBuildRuntimeDependencies|build-admin-runtime\.mjs/.test(buildScript + setupScript)) {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -142,18 +142,9 @@ test('setup dependency diagnostics track the Node 26 native lane', () => {
   assert.doesNotMatch(source, /setup_24\.x/)
 })
 
-test('legacy admin build helper is quarantined to Node 24', () => {
-  const source = readRepoFile('scripts/build-admin-runtime.mjs')
-  const workflow = readRepoFile('.github/workflows/build-admin-on-pr.yml')
-  const doctor = readRepoFile('scripts/check-admin-node-runtime.mjs')
-
-  assert.match(source, /supportedAdminNodeMajorRange = \{ minimum: 24, maximumExclusive: 25 \}/)
-  assert.match(source, /ROACHNET_ADMIN_NODE_BINARY/)
-  assert.match(source, /legacy admin\/WebUI lane requires Node 24/)
-  assert.match(doctor, /brew install node@24/)
-  assert.match(doctor, /native RoachNet shipping lane uses Node 26 and does not need this/)
-  assert.match(workflow, /node-version:\s*'24'/)
-  assert.doesNotMatch(workflow, /node-version:\s*'26'/)
+test('legacy admin source and CI lane are absent from the public candidate', () => {
+  assert.equal(existsSync(path.join(repoRoot, 'admin')), false)
+  assert.equal(existsSync(path.join(repoRoot, '.github/workflows/build-admin-on-pr.yml')), false)
 })
 
 test('runtime freshness audit explains stale dist rebuild failures without weakening the gate', () => {

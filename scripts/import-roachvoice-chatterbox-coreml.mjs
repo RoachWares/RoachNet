@@ -220,7 +220,8 @@ async function importChatterbox(args) {
   writeJson(path.join(outputRoot, 'RoachSpeechPack.json'), {
     packID,
     displayName: args['display-name'] || 'RoachVoice Chatterbox Core ML',
-    version: args.version || '1.0.5',
+    version: args.version || '1.0.6',
+    license: 'MIT',
     kind: 'roachVoice',
     nativeFormat: 'coreML',
     features: ['customVoiceSynthesis', 'voiceCloning'],

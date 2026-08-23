@@ -503,12 +503,14 @@ public struct RoachBackground: View {
 }
 
 private struct RoachAnimatedChrome: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let cornerRadius: CGFloat
     let accent: Color
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 16.0, paused: false)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : 1.0 / 16.0, paused: reduceMotion)) { timeline in
+            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
 
             Canvas { context, size in
                 let rect = CGRect(origin: .zero, size: size).insetBy(dx: 0.5, dy: 0.5)
@@ -630,6 +632,8 @@ public struct RoachPanel<Content: View>: View {
 }
 
 public struct RoachSpotlightPanel<Content: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private let accent: Color
     private let content: Content
     private let radius: CGFloat = 18
@@ -671,9 +675,9 @@ public struct RoachSpotlightPanel<Content: View>: View {
                             )
                         )
 
-                    TimelineView(.animation(minimumInterval: 1.0 / 18.0, paused: false)) { timeline in
+                    TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : 1.0 / 18.0, paused: reduceMotion)) { timeline in
                         Canvas { context, size in
-                            let time = timeline.date.timeIntervalSinceReferenceDate
+                            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
                             let cell: CGFloat = size.width < 620 ? 6 : 7
                             let columns = max(1, Int(ceil(size.width / cell)))
                             let rows = max(1, Int(ceil(size.height / cell)))
@@ -1145,19 +1149,22 @@ public struct RoachDigestRow: View {
     private let detail: String
     private let systemName: String
     private let accent: Color
+    private let metadata: [String]
 
     public init(
         _ label: String,
         value: String,
         detail: String,
         systemName: String,
-        accent: Color = RoachPalette.green
+        accent: Color = RoachPalette.green,
+        metadata: [String] = []
     ) {
         self.label = label
         self.value = value
         self.detail = detail
         self.systemName = systemName
         self.accent = accent
+        self.metadata = metadata
     }
 
     public var body: some View {
@@ -1199,6 +1206,23 @@ public struct RoachDigestRow: View {
                     .foregroundStyle(RoachPalette.muted)
                     .lineSpacing(1.4)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if !metadata.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 5) {
+                            ForEach(Array(metadata.prefix(3)), id: \.self) { item in
+                                roachDigestChip(item)
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            ForEach(Array(metadata.prefix(3)), id: \.self) { item in
+                                roachDigestChip(item)
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                }
             }
 
             Spacer(minLength: 0)
@@ -1223,6 +1247,23 @@ public struct RoachDigestRow: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(accent.opacity(0.16), lineWidth: 1)
         )
+    }
+
+    private func roachDigestChip(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .lineLimit(1)
+            .foregroundStyle(accent.opacity(0.92))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(accent.opacity(0.10))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(accent.opacity(0.16), lineWidth: 1)
+            )
     }
 }
 
@@ -1265,6 +1306,90 @@ private func roachTemplateImage(from image: NSImage) -> NSImage {
     let template = (image.copy() as? NSImage) ?? image
     template.isTemplate = true
     return template
+}
+
+private struct RoachFallbackBrandMark: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let size = min(proxy.size.width, proxy.size.height)
+            let lineWidth = max(1.4, size * 0.028)
+            let inset = max(2, size * 0.08)
+
+            ZStack {
+                Canvas { context, canvasSize in
+                    let rect = CGRect(
+                        x: (canvasSize.width - size) * 0.5 + inset,
+                        y: (canvasSize.height - size) * 0.5 + inset,
+                        width: size - inset * 2,
+                        height: size - inset * 2
+                    )
+                    let cut = rect.width * 0.17
+                    var shield = Path()
+                    shield.move(to: CGPoint(x: rect.midX, y: rect.minY))
+                    shield.addLine(to: CGPoint(x: rect.maxX - cut, y: rect.minY + cut * 0.38))
+                    shield.addLine(to: CGPoint(x: rect.maxX, y: rect.midY - cut * 0.18))
+                    shield.addLine(to: CGPoint(x: rect.maxX - cut * 0.48, y: rect.maxY - cut * 0.28))
+                    shield.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+                    shield.addLine(to: CGPoint(x: rect.minX + cut * 0.48, y: rect.maxY - cut * 0.28))
+                    shield.addLine(to: CGPoint(x: rect.minX, y: rect.midY - cut * 0.18))
+                    shield.addLine(to: CGPoint(x: rect.minX + cut, y: rect.minY + cut * 0.38))
+                    shield.closeSubpath()
+
+                    let innerRect = rect.insetBy(dx: rect.width * 0.13, dy: rect.height * 0.13)
+                    var inner = Path()
+                    inner.move(to: CGPoint(x: innerRect.midX, y: innerRect.minY))
+                    inner.addLine(to: CGPoint(x: innerRect.maxX - cut * 0.52, y: innerRect.minY + cut * 0.22))
+                    inner.addLine(to: CGPoint(x: innerRect.maxX, y: innerRect.midY - cut * 0.1))
+                    inner.addLine(to: CGPoint(x: innerRect.maxX - cut * 0.28, y: innerRect.maxY - cut * 0.2))
+                    inner.addLine(to: CGPoint(x: innerRect.midX, y: innerRect.maxY))
+                    inner.addLine(to: CGPoint(x: innerRect.minX + cut * 0.28, y: innerRect.maxY - cut * 0.2))
+                    inner.addLine(to: CGPoint(x: innerRect.minX, y: innerRect.midY - cut * 0.1))
+                    inner.addLine(to: CGPoint(x: innerRect.minX + cut * 0.52, y: innerRect.minY + cut * 0.22))
+                    inner.closeSubpath()
+
+                    context.stroke(shield, with: .color(RoachPalette.green.opacity(0.86)), lineWidth: lineWidth)
+                    context.stroke(inner, with: .color(RoachPalette.text.opacity(0.46)), lineWidth: max(1, lineWidth * 0.72))
+
+                    let railWidth = max(1, size * 0.032)
+                    let railHeight = rect.height * 0.56
+                    let railY = rect.midY - railHeight * 0.5
+                    for offset in [CGFloat(-0.18), CGFloat(0.18)] {
+                        let railRect = CGRect(
+                            x: rect.midX + rect.width * offset - railWidth * 0.5,
+                            y: railY,
+                            width: railWidth,
+                            height: railHeight
+                        )
+                        context.fill(
+                            Path(roundedRect: railRect, cornerRadius: railWidth),
+                            with: .color(RoachPalette.green.opacity(0.58))
+                        )
+                    }
+
+                    let base = CGRect(
+                        x: rect.midX - rect.width * 0.2,
+                        y: rect.maxY - rect.height * 0.25,
+                        width: rect.width * 0.4,
+                        height: max(1, size * 0.024)
+                    )
+                    context.fill(
+                        Path(roundedRect: base, cornerRadius: base.height),
+                        with: .color(RoachPalette.magenta.opacity(0.68))
+                    )
+                }
+                .shadow(color: RoachPalette.green.opacity(0.28), radius: size * 0.12, y: size * 0.04)
+
+                Text("RN")
+                    .font(.system(size: max(9, size * 0.21), weight: .black, design: .monospaced))
+                    .tracking(size * 0.006)
+                    .foregroundStyle(RoachPalette.text)
+                    .shadow(color: RoachPalette.green.opacity(0.28), radius: size * 0.07)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .accessibilityHidden(true)
+    }
 }
 
 public struct RoachModuleMark: View {
@@ -1321,6 +1446,8 @@ public struct RoachModuleMark: View {
 }
 
 public struct RoachOrbitMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     public init() {}
 
     public var body: some View {
@@ -1329,9 +1456,9 @@ public struct RoachOrbitMark: View {
             let iconSize = size * 0.90
 
             ZStack {
-                TimelineView(.animation(minimumInterval: 1.0 / 18.0, paused: false)) { timeline in
+                TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : 1.0 / 18.0, paused: reduceMotion)) { timeline in
                     Canvas { context, canvasSize in
-                        let time = timeline.date.timeIntervalSinceReferenceDate
+                        let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
                         let cell = max(3.5, size * 0.036)
                         let columns = max(1, Int(ceil(canvasSize.width / cell)))
                         let rows = max(1, Int(ceil(canvasSize.height / cell)))
@@ -1369,26 +1496,15 @@ public struct RoachOrbitMark: View {
                         .frame(width: iconSize, height: iconSize)
                         .shadow(color: RoachPalette.green.opacity(0.20), radius: size * 0.12, y: size * 0.04)
                 } else {
-                    VStack(spacing: size * 0.04) {
-                        Image(systemName: "ant.fill")
-                            .font(.system(size: size * 0.22, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [RoachPalette.green, RoachPalette.magenta],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                        Text("RN")
-                            .font(.system(size: size * 0.08, weight: .black, design: .monospaced))
-                            .tracking(size * 0.008)
-                            .foregroundStyle(RoachPalette.text)
-                    }
+                    RoachFallbackBrandMark()
+                        .frame(width: iconSize, height: iconSize)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .aspectRatio(1, contentMode: .fit)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("RoachNet logo")
     }
 }
 

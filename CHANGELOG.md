@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- No unreleased changes.
+- Prepared the v1.0.6 / build 106 candidate without moving or reusing the published v1.0.5 tag.
+- Reconciled the native performance, motion, runtime-cache, RoachTail, documentation, and upstream-audit work onto the latest upstream source state.
+- Replaced semantic-release and direct asset clobbering with one protected, serialized draft-stage and exact-byte promotion path that fails closed on Apple signing/notary prerequisites.
+- Added candidate/tag/SHA proof, immutable action pins, full native and aggregate gates, Developer ID/hardened-runtime/notary/stapler/Gatekeeper checks, checksum verification, and mounted-artifact supply-chain evidence before publication.
+- Removed the vulnerable legacy `admin/` WebUI from the public candidate while preserving its v1.0.5 provenance and local uncommitted reference work outside the candidate.
 
 ## v1.0.5 - 2026-05-18
 

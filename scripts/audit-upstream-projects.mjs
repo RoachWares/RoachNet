@@ -76,13 +76,23 @@ async function fetchHuggingFaceModel(project) {
   }
 }
 
-function compareRelease(projectId, expected, actual) {
-  for (const field of ['tag', 'name', 'publishedAt']) {
+function releaseTimestampSeconds(value) {
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? value : Math.floor(timestamp / 1_000)
+}
+
+export function compareRelease(projectId, expected, actual) {
+  for (const field of ['tag', 'name']) {
     assert(
       expected[field] === actual[field],
       `${projectId} upstream release drift: metadata ${field}=${expected[field] || 'missing'}, latest ${field}=${actual[field] || 'missing'}`
     )
   }
+
+  assert(
+    releaseTimestampSeconds(expected.publishedAt) === releaseTimestampSeconds(actual.publishedAt),
+    `${projectId} upstream release drift: metadata publishedAt=${expected.publishedAt || 'missing'}, latest publishedAt=${actual.publishedAt || 'missing'}`
+  )
 
   if (expected.commit || actual.commit) {
     assert(
@@ -139,7 +149,9 @@ async function main() {
   console.log(`Upstream project audit passed for ${projects.length} stable release references.${branchContext}`)
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error)
-  process.exitCode = 1
-})
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error)
+    process.exitCode = 1
+  })
+}

@@ -97,16 +97,20 @@ async function fetchLatestNpmPackage(packageName) {
 function assertBuildScriptMatchesMetadata(metadata) {
   const source = readFileSync(buildScriptPath, 'utf8')
   assert(
-    source.includes(`const bundledNodeVersion = '${metadata.node.bundledVersion}'`),
-    `Bundled Node version in scripts/build-native-macos-apps.mjs does not match ${metadataPath}.`
+    source.includes('const bundledNodeVersion = runtimePins.node?.bundledVersion') &&
+      source.includes('requireFileSha256') &&
+      source.includes('ROACHNET_RELEASE_BUILD'),
+    `Native builder does not source checksum-pinned runtime metadata in fail-closed release mode.`
   )
   assert(
-    source.includes(`'${metadata.openclaw.bundledPackage}'`),
-    `Bundled OpenClaw package in scripts/build-native-macos-apps.mjs does not match ${metadataPath}.`
+    /^[a-f0-9]{64}$/i.test(metadata.node.artifacts.darwinArm64.sha256) &&
+      /^[a-f0-9]{64}$/i.test(metadata.node.artifacts.darwinX64.sha256) &&
+      /^[a-f0-9]{64}$/i.test(metadata.ollama.artifact.sha256),
+    'Node and Ollama release artifacts must have reviewed SHA-256 pins.'
   )
   assert(
-    metadata.openclaw.bundledPackage === `openclaw@${metadata.openclaw.latestVersion}`,
-    `OpenClaw bundled package must pin the latest package exactly; found ${metadata.openclaw.bundledPackage} and latestVersion ${metadata.openclaw.latestVersion}.`
+    metadata.openclaw.mode === 'deferred-not-bundled' && metadata.openclaw.bundledPackage === null,
+    'OpenClaw must remain explicitly absent from the public candidate artifact.'
   )
 }
 
@@ -225,7 +229,7 @@ function assertDistributionMatchesMetadata(metadata) {
     const openclawDeferred = path.join(setupBundleAssetsPath, 'openclaw-deferred.marker')
     assert(existsSync(ollamaArchive), 'Setup bundle is missing bundled-ollama.tar.gz.')
 
-    if (metadata.openclaw.mode === 'deferred') {
+    if (metadata.openclaw.mode === 'deferred-not-bundled') {
       assert(existsSync(openclawDeferred), 'Setup bundle must include openclaw-deferred.marker when OpenClaw is deferred.')
       assert(!existsSync(openclawArchive), 'Setup bundle should not include bundled-openclaw.tar.gz while OpenClaw is deferred.')
     } else {
@@ -261,8 +265,8 @@ async function main() {
     `Bundled Ollama is stale: metadata has ${metadata.ollama.bundledVersion}, latest ${latestOllama}.`
   )
   assert(
-    stripVersionPrefix(metadata.openclaw.latestVersion) === stripVersionPrefix(latestOpenClaw),
-    `OpenClaw metadata is stale: metadata has ${metadata.openclaw.latestVersion}, latest ${latestOpenClaw}.`
+    stripVersionPrefix(metadata.openclaw.reviewedVersion) === stripVersionPrefix(latestOpenClaw),
+    `OpenClaw metadata is stale: metadata has ${metadata.openclaw.reviewedVersion}, latest ${latestOpenClaw}.`
   )
 
   console.log(
@@ -270,7 +274,7 @@ async function main() {
       `Runtime freshness audit passed.`,
       `Node ${metadata.node.bundledVersion}.`,
       `Ollama ${metadata.ollama.bundledVersion}.`,
-      `OpenClaw ${metadata.openclaw.latestVersion} (${metadata.openclaw.mode}).`,
+      `OpenClaw ${metadata.openclaw.reviewedVersion} (${metadata.openclaw.mode}).`,
       `RoachClaw native agent rewrite.`,
       `Hermes reference ${metadata.roachClawAgent.hermesReference.reviewedHead.slice(0, 12)}.`,
     ].join(' ')

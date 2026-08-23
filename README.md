@@ -1,6 +1,6 @@
 # RoachNet
 
-Offline on purpose.
+Offline spine for the stuff that matters.
 
 RoachNet keeps AI, archive, media, games, notes, and dev tools on hardware you own instead of leaving them scattered across rented dashboards and dead logins.
 
@@ -25,7 +25,7 @@ RoachNet keeps AI, archive, media, games, notes, and dev tools on hardware you o
 - `Maps & Vault`
   Routes, references, saved notes, Roach's Archive bulk-metadata search, and offline material grouped into one shelf.
 - `RoachTail`
-  Secure device pairing between the desktop lane and RoachNetiOS.
+  Native device lane for RoachNetiOS and nearby machines: expiring join keys, private peer tokens, approved local routes, and a relay map shaped after Headscale without handing your work to a hosted control plane.
 - `Contained install`
   App, runtime, models, workspace, and support services stay grouped near the RoachNet root.
 
@@ -64,14 +64,67 @@ GitHub does not host the support widgets used on the public site, so the repo ke
 ## Platform Status
 
 - `macOS Apple Silicon`
-  Current v1.0.5 native release lane with the contained setup flow and verified Homebrew-style install path.
+  v1.0.5 remains the current stable release. The v1.0.6 candidate is pre-release only until Developer ID, notarization, install, accessibility, performance, and exact-public-byte gates pass.
 - `Windows 11 x64`
-  No public installer lane in v1.0.5. RoachArcade keeps Windows-game runner planning inside the macOS app instead of shipping another half-built desktop target.
+  No public installer lane in this candidate. RoachArcade keeps Windows-game runner planning inside the macOS app instead of shipping another half-built desktop target.
 - `Linux`
   Runtime and packaging work still moving toward a native desktop lane.
 
+## Repo Layout
+
+- [`native/macos/`](./native/macos)
+  SwiftUI/AppKit shell, setup app, and desktop runtime bridge.
+- [`scripts/`](./scripts)
+  Setup, runtime, packaging, companion, and release automation.
+- [`docs/`](./docs)
+  Architecture, brand voice, upstream notes, and rewrite planning.
+
+The public site and Apps storefront live in [`RoachWares/roachnet-org`](https://github.com/RoachWares/roachnet-org) so this repo can stay focused on the desktop product and runtime.
+
+## Local Development
+
+Start the dependency-free native API bridge:
+
+```bash
+npm start
+```
+
+RoachTail is served from the same native bridge. The desktop owns the local control-plane state, the join key is one-use/expiring, and paired devices only receive peer-scoped tokens. The API surface is intentionally small:
+
+- `GET /api/companion/roachtail`
+  Returns the current RoachTail status, join payload, route map, relay map, and paired peer list.
+- `POST /api/companion/roachtail/pair`
+  Exchanges a fresh join code for a peer token. The token is returned once and only its hash is stored.
+- `POST /api/companion/roachtail/affect`
+  Enables, disables, refreshes the join code, clears peers, sets a relay host, or removes a peer.
+
+No-browser boot:
+
+```bash
+npm run start:no-browser
+```
+
+Build the native macOS packages:
+
+```bash
+node scripts/build-native-macos-apps.mjs
+```
+
+Run the setup backend:
+
+```bash
+npm run setup:no-browser
+```
+
+## Public Source Boundary
+
 RoachNet is now a native local-first desktop product. The old imported base is no longer a public source lane.
+
+The vulnerable legacy `admin/` WebUI was removed from the post-v1.0.5 public candidate. Its last tracked public provenance remains available from tag `v1.0.5`; uncommitted local reference work was preserved outside this candidate rather than discarded.
+
+- [`docs/NATIVE_REWRITE_PLAN.md`](./docs/NATIVE_REWRITE_PLAN.md)
+- [`CHANGELOG.md`](./CHANGELOG.md)
 
 ## License
 
-RoachNet is licensed under the [Apache License 2.0](LICENSE).
+This repository still carries the upstream Apache 2.0 license. Review [`LICENSE`](./LICENSE) and [`docs/UPSTREAM.md`](./docs/UPSTREAM.md) before changing attribution or licensing details.

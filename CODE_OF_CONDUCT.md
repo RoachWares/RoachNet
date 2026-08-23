@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project maintainer at
-[support@roachnet.org](mailto:support@roachnet.org). For general project
+[contact@roachwares.org](mailto:contact@roachwares.org). For general project
 coordination, contributors can also use
 [github.com/RoachWares/RoachNet/issues](https://github.com/RoachWares/RoachNet/issues)
 or

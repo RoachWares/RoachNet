@@ -330,6 +330,7 @@ struct RoachNetAboutView: View {
 }
 
 private struct RoachWaresHeartMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
     var body: some View {
@@ -364,6 +365,21 @@ private struct RoachWaresHeartMark: View {
                 .scaleEffect(pulse ? 1.08 : 0.96)
         }
         .onAppear {
+            updatePulse(reduceMotion: reduceMotion)
+        }
+        .onChange(of: reduceMotion) { _, isEnabled in
+            updatePulse(reduceMotion: isEnabled)
+        }
+    }
+
+    private func updatePulse(reduceMotion: Bool) {
+        if reduceMotion {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                pulse = false
+            }
+        } else {
             withAnimation(.easeInOut(duration: 1.55).repeatForever(autoreverses: true)) {
                 pulse = true
             }
@@ -372,6 +388,7 @@ private struct RoachWaresHeartMark: View {
 }
 
 private struct AboutBackdropView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var drift = false
 
     var body: some View {
@@ -419,6 +436,21 @@ private struct AboutBackdropView: View {
         }
         .ignoresSafeArea()
         .onAppear {
+            updateDrift(reduceMotion: reduceMotion)
+        }
+        .onChange(of: reduceMotion) { _, isEnabled in
+            updateDrift(reduceMotion: isEnabled)
+        }
+    }
+
+    private func updateDrift(reduceMotion: Bool) {
+        if reduceMotion {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                drift = false
+            }
+        } else {
             withAnimation(.easeInOut(duration: 9.0).repeatForever(autoreverses: true)) {
                 drift = true
             }
@@ -427,6 +459,7 @@ private struct AboutBackdropView: View {
 }
 
 private struct AboutSignalMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase = false
 
     var body: some View {
@@ -442,8 +475,8 @@ private struct AboutSignalMark: View {
                     .tracking(1.1)
                     .foregroundStyle(RoachPalette.green)
 
-                TimelineView(.animation(minimumInterval: 1.0 / 18.0, paused: false)) { context in
-                    let now = context.date.timeIntervalSinceReferenceDate
+                TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : 1.0 / 18.0, paused: reduceMotion)) { context in
+                    let now = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
                     HStack(alignment: .bottom, spacing: 4) {
                         ForEach(0..<8, id: \.self) { index in
                             let strength = 0.28 + (abs(sin(now * 1.5 + Double(index) * 0.42)) * 0.72)
@@ -464,6 +497,21 @@ private struct AboutSignalMark: View {
             .padding(12)
         }
         .onAppear {
+            updatePhase(reduceMotion: reduceMotion)
+        }
+        .onChange(of: reduceMotion) { _, isEnabled in
+            updatePhase(reduceMotion: isEnabled)
+        }
+    }
+
+    private func updatePhase(reduceMotion: Bool) {
+        if reduceMotion {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                phase = false
+            }
+        } else {
             withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
                 phase = true
             }

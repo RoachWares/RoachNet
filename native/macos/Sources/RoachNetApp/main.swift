@@ -3416,7 +3416,10 @@ final class WorkspaceModel: ObservableObject {
         do {
             let result = try await ManagedAppRuntimeBridge.shared.affectRoachTail(
                 using: config,
-                action: trimmedAction
+                action: trimmedAction,
+                relayHost: config.companionAdvertisedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil
+                    : config.companionAdvertisedURL
             )
             try? await Task.sleep(for: .milliseconds(250))
             snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: config)
@@ -4615,6 +4618,8 @@ private struct HomeMascotDialogBubble: View {
 }
 
 private struct RoachHomeMascotView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let isThinking: Bool
     let isListening: Bool
     let nudge: Bool
@@ -4623,8 +4628,8 @@ private struct RoachHomeMascotView: View {
     @State private var isHovering = false
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : 1.0 / 24.0, paused: reduceMotion)) { timeline in
+            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
 
             Canvas { context, size in
                 drawMascot(context: &context, size: size, time: time)
@@ -5335,7 +5340,7 @@ private struct LaunchGuideHero: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        RoachKicker("v1.0.5 Native Guide")
+                        RoachKicker("Native Guide")
                         RoachTag(RoachNetGlobalHotKey.hint, accent: RoachPalette.cyan)
                     }
 
@@ -5956,6 +5961,7 @@ private struct LaunchGuideVideoColumn: View {
 }
 
 private struct LaunchGuideReelCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var playbackController: LaunchGuidePlaybackController
 
     var body: some View {
@@ -5973,9 +5979,9 @@ private struct LaunchGuideReelCard: View {
                     )
                 )
 
-            TimelineView(.animation(minimumInterval: 1.0 / 16.0, paused: false)) { timeline in
+            TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : 1.0 / 16.0, paused: reduceMotion)) { timeline in
                 Canvas { context, size in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
                     let stripeHeight: CGFloat = 8
                     let rowCount = Int(ceil(size.height / stripeHeight))
 
@@ -8909,7 +8915,782 @@ private struct RootWorkspaceView: View {
                         accent: RoachPalette.cyan
                     )
                 }
+
+                if let lanes = roachClaw?.playbook?.lanes, !lanes.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        RoachSectionHeader(
+                            "Playbook",
+                            title: "Cookbook, research, compare.",
+                            detail: "RoachClaw-native moves for model fit, research, blind comparison, and RoachBrain cleanup."
+                        )
+
+                        if let capabilities = roachClaw?.playbook?.capabilities, !capabilities.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(capabilities.prefix(6), id: \.self) { capability in
+                                        RoachTag(
+                                            roachClawCapabilityLabel(capability),
+                                            accent: capability.contains("voice") ? RoachPalette.cyan : RoachPalette.green
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal, 1)
+                            }
+                        }
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+                            ForEach(lanes.prefix(4)) { lane in
+                                RoachDigestRow(
+                                    lane.title,
+                                    value: roachClawPlaybookStatus(lane.status),
+                                    detail: lane.summary,
+                                    systemName: roachClawPlaybookIcon(lane.icon),
+                                    accent: roachClawPlaybookAccent(lane.accent)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if let featureGroups = roachClaw?.playbook?.featureGroups, !featureGroups.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        RoachSectionHeader(
+                            "Native parity map",
+                            title: "Every self-hosted AI lane gets a RoachNet home.",
+                            detail: "Chat, agents, docs, memory, mail, calendar, media, voice, security, and iOS are tracked as native RoachNet surfaces."
+                        )
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10)], spacing: 10) {
+                            ForEach(featureGroups) { feature in
+                                RoachDigestRow(
+                                    feature.title,
+                                    value: roachClawPlaybookStatus(feature.status),
+                                    detail: feature.nativeSurface.map { "\($0): \(feature.summary)" } ?? feature.summary,
+                                    systemName: roachClawFeatureGroupIcon(feature.id),
+                                    accent: roachClawFeatureGroupAccent(feature.status, id: feature.id)
+                                )
+                                .accessibilityLabel("\(feature.title), \(roachClawPlaybookStatus(feature.status)). \(feature.summary)")
+                            }
+                        }
+                    }
+                }
+
+                if let operations = roachClaw?.operations {
+                    VStack(alignment: .leading, spacing: 10) {
+                        RoachSectionHeader(
+                            "Operations",
+                            title: "Diagnostics, hooks, jobs, and reports are real state now.",
+                            detail: "The planned-native lanes expose local payloads so macOS and iOS can inspect what is armed, idle, queued, or ready."
+                        )
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10)], spacing: 10) {
+                            if let commandDeck = operations.commandDeck {
+                                RoachDigestRow(
+                                    "Command Deck",
+                                    value: "\(commandDeck.count ?? 0) actions",
+                                    detail: commandDeck.detail ?? "Fast command launch with local previews and approval boundaries.",
+                                    systemName: "command.circle",
+                                    accent: RoachPalette.magenta,
+                                    metadata: roachClawShellSurfaceMetadata(commandDeck)
+                                )
+                            }
+
+                            if let contextRail = operations.contextRail {
+                                RoachDigestRow(
+                                    "Context Rail",
+                                    value: "\(contextRail.count ?? 0) crumbs",
+                                    detail: contextRail.detail ?? "Visible context, compactions, search crumbs, and drafts.",
+                                    systemName: "sidebar.trailing",
+                                    accent: RoachPalette.cyan,
+                                    metadata: roachClawShellSurfaceMetadata(contextRail)
+                                )
+                            }
+
+                            if let vaultNavigator = operations.vaultNavigator {
+                                RoachDigestRow(
+                                    "Vault Navigator",
+                                    value: "\(vaultNavigator.count ?? 0) local",
+                                    detail: vaultNavigator.detail ?? "Finder-like vault browsing with previews and real paths.",
+                                    systemName: "folder.badge.gearshape",
+                                    accent: RoachPalette.green,
+                                    metadata: roachClawShellSurfaceMetadata(vaultNavigator)
+                                )
+                            }
+
+                            if let agentMonitor = operations.agentMonitor {
+                                RoachDigestRow(
+                                    "Agent Monitor",
+                                    value: "\(agentMonitor.active ?? 0) live",
+                                    detail: agentMonitor.detail ?? "Run history, replay crumbs, stops, retries, and event pressure.",
+                                    systemName: "waveform.path.ecg.rectangle",
+                                    accent: (agentMonitor.stalled ?? 0) > 0 ? RoachPalette.bronze : RoachPalette.green,
+                                    metadata: roachClawShellSurfaceMetadata(agentMonitor)
+                                )
+                            }
+
+                            if let orchestration = operations.orchestrationDashboard {
+                                RoachDigestRow(
+                                    "Orchestration",
+                                    value: "\(orchestration.open ?? 0) handoffs",
+                                    detail: orchestration.detail ?? "Local agent roles, context budgets, handoffs, and outcomes.",
+                                    systemName: "rectangle.3.group",
+                                    accent: RoachPalette.cyan,
+                                    metadata: roachClawShellSurfaceMetadata(orchestration)
+                                )
+                            }
+
+                            if let workspace = operations.workspaceBrowser {
+                                RoachDigestRow(
+                                    "Workspace Browser",
+                                    value: roachClawPlaybookStatus(workspace.status),
+                                    detail: workspace.detail ?? "Folder context for Dev and RoachClaw, kept native and local.",
+                                    systemName: "folder.badge.gearshape",
+                                    accent: RoachPalette.cyan,
+                                    metadata: roachClawShellSurfaceMetadata(workspace)
+                                )
+                            }
+                        }
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+                            if let diagnostics = operations.diagnostics {
+                                RoachDigestRow(
+                                    "Diagnostics",
+                                    value: roachClawPlaybookStatus(diagnostics.status),
+                                    detail: diagnostics.warnings?.first ?? "\(diagnostics.probes.count) runtime probes available.",
+                                    systemName: "stethoscope",
+                                    accent: diagnostics.warnings?.isEmpty == false ? RoachPalette.bronze : RoachPalette.green
+                                )
+                            }
+
+                            if let serviceHealth = operations.serviceHealth {
+                                RoachDigestRow(
+                                    "Service Health",
+                                    value: roachClawPlaybookStatus(serviceHealth.status),
+                                    detail: serviceHealth.detail ?? "Secret-safe health report for native runtime lanes.",
+                                    systemName: "waveform.path.ecg.rectangle",
+                                    accent: serviceHealth.status == "ok" ? RoachPalette.green : RoachPalette.bronze,
+                                    metadata: roachClawShellSurfaceMetadata(serviceHealth)
+                                )
+                            }
+
+                            if let hooks = operations.hooks {
+                                RoachDigestRow(
+                                    "Hooks",
+                                    value: roachClawPlaybookStatus(hooks.status),
+                                    detail: "\(hooks.endpoints.count) local endpoints, secrets \(hooks.secretsPolicy ?? "redacted").",
+                                    systemName: "point.3.connected.trianglepath.dotted",
+                                    accent: RoachPalette.cyan
+                                )
+                            }
+
+                            if let jobs = operations.jobs {
+                                RoachDigestRow(
+                                    "Jobs",
+                                    value: jobs.scheduler.pending == 0 ? "Idle" : "\(jobs.scheduler.pending) queued",
+                                    detail: "\(jobs.downloads.count) downloads tracked by the local scheduler.",
+                                    systemName: "clock.arrow.circlepath",
+                                    accent: jobs.status == "idle" ? RoachPalette.muted : RoachPalette.green
+                                )
+                            }
+
+                            if let cookbookServe = operations.cookbookServeLifecycle {
+                                RoachDigestRow(
+                                    "Cookbook Serve",
+                                    value: "\(cookbookServe.active ?? 0) active",
+                                    detail: cookbookServe.detail ?? "Model serve schedules with explicit stop windows.",
+                                    systemName: "timer",
+                                    accent: (cookbookServe.active ?? 0) > 0 ? RoachPalette.green : RoachPalette.muted,
+                                    metadata: roachClawShellSurfaceMetadata(cookbookServe)
+                                )
+                            }
+
+                            if let scopedTools = operations.scopedToolBridge {
+                                RoachDigestRow(
+                                    "Scoped Tools",
+                                    value: "\(scopedTools.count ?? 0) scopes",
+                                    detail: scopedTools.detail ?? "Local tool bridge with explicit scopes and approvals.",
+                                    systemName: "wrench.adjustable",
+                                    accent: RoachPalette.magenta,
+                                    metadata: roachClawShellSurfaceMetadata(scopedTools)
+                                )
+                            }
+
+                            if let userTime = operations.userTime {
+                                RoachDigestRow(
+                                    "Time Context",
+                                    value: roachClawPlaybookStatus(userTime.status),
+                                    detail: userTime.detail ?? "Timezone and local clock context for schedulers and prompts.",
+                                    systemName: "clock.badge.checkmark",
+                                    accent: RoachPalette.bronze,
+                                    metadata: roachClawShellSurfaceMetadata(userTime)
+                                )
+                            }
+
+                            if let tls = operations.tlsOverrides {
+                                RoachDigestRow(
+                                    "Provider TLS",
+                                    value: roachClawPlaybookStatus(tls.status),
+                                    detail: tls.detail ?? "Extra CA bundle metadata without disabling verification.",
+                                    systemName: "lock.shield",
+                                    accent: tls.status == "invalid-path" ? RoachPalette.bronze : RoachPalette.cyan,
+                                    metadata: roachClawShellSurfaceMetadata(tls)
+                                )
+                            }
+
+                            if let uploadLimits = operations.uploadLimits {
+                                RoachDigestRow(
+                                    "Intake Policy",
+                                    value: roachClawPlaybookStatus(uploadLimits.status),
+                                    detail: uploadLimits.detail ?? "Bounded chat, vault, media, speech, calendar, and installer intake.",
+                                    systemName: "tray.and.arrow.down.fill",
+                                    accent: RoachPalette.green,
+                                    metadata: roachClawShellSurfaceMetadata(uploadLimits)
+                                )
+                            }
+
+                            if let memoryProvider = operations.memoryProvider {
+                                RoachDigestRow(
+                                    "Memory Provider",
+                                    value: "\(memoryProvider.active ?? 0) active",
+                                    detail: memoryProvider.detail ?? "RoachBrain native memory plus opt-in external providers.",
+                                    systemName: "brain.head.profile",
+                                    accent: RoachPalette.bronze,
+                                    metadata: roachClawShellSurfaceMetadata(memoryProvider)
+                                )
+                            }
+
+                            if let providerOAuth = operations.providerOAuth {
+                                RoachDigestRow(
+                                    "Provider OAuth",
+                                    value: roachClawPlaybookStatus(providerOAuth.status),
+                                    detail: providerOAuth.detail ?? "User-owned remote tool auth metadata.",
+                                    systemName: "person.badge.key",
+                                    accent: providerOAuth.status == "needs-user-action" ? RoachPalette.bronze : RoachPalette.muted,
+                                    metadata: roachClawShellSurfaceMetadata(providerOAuth)
+                                )
+                            }
+
+                            if let embeddingLanes = operations.embeddingLanes {
+                                RoachDigestRow(
+                                    "Embedding Lanes",
+                                    value: "\(embeddingLanes.active ?? embeddingLanes.count ?? 0) active",
+                                    detail: embeddingLanes.detail ?? "Separate local and custom vector lanes with safe reset metadata.",
+                                    systemName: "point.3.filled.connected.trianglepath.dotted",
+                                    accent: embeddingLanes.status == "healthy" ? RoachPalette.green : RoachPalette.bronze,
+                                    metadata: roachClawShellSurfaceMetadata(embeddingLanes)
+                                )
+                            }
+
+                            if let toolPolicy = operations.toolPolicy {
+                                RoachDigestRow(
+                                    "Tool Policy",
+                                    value: roachClawPlaybookStatus(toolPolicy.status),
+                                    detail: toolPolicy.detail ?? "Guide-only and disabled-tool state for the local tool lane.",
+                                    systemName: "shield.lefthalf.filled",
+                                    accent: toolPolicy.status == "guide-only" ? RoachPalette.bronze : RoachPalette.cyan,
+                                    metadata: roachClawShellSurfaceMetadata(toolPolicy)
+                                )
+                            }
+
+                            if let contacts = operations.contacts {
+                                RoachDigestRow(
+                                    "Contacts",
+                                    value: "\(contacts.recordCount ?? 0) local",
+                                    detail: contacts.scopes.prefix(2).joined(separator: " · "),
+                                    systemName: "person.2.wave.2",
+                                    accent: RoachPalette.cyan
+                                )
+                            }
+
+                            if let tasks = operations.notesTasks {
+                                RoachDigestRow(
+                                    "Tasks",
+                                    value: "\(tasks.open ?? tasks.count ?? 0) open",
+                                    detail: "Stored in the local RoachClaw queue.",
+                                    systemName: "checklist",
+                                    accent: RoachPalette.green
+                                )
+                            }
+
+                            if let calendar = operations.calendar {
+                                RoachDigestRow(
+                                    "Calendar",
+                                    value: "\(calendar.count ?? 0) events",
+                                    detail: "Planning data stays in the local workspace.",
+                                    systemName: "calendar.badge.clock",
+                                    accent: RoachPalette.bronze
+                                )
+                            }
+
+                            if let reports = operations.reports {
+                                RoachDigestRow(
+                                    "Reports",
+                                    value: "\(reports.count ?? 0) saved",
+                                    detail: reports.formats.joined(separator: ", "),
+                                    systemName: "chart.bar.doc.horizontal",
+                                    accent: RoachPalette.green
+                                )
+                            }
+
+                            if let memories = operations.memories {
+                                RoachDigestRow(
+                                    "Memories",
+                                    value: "\(memories.count ?? 0) saved",
+                                    detail: "Durable RoachBrain notes for context that should survive the session.",
+                                    systemName: "brain.head.profile",
+                                    accent: RoachPalette.bronze
+                                )
+                            }
+
+                            if let skills = operations.skills {
+                                RoachDigestRow(
+                                    "Skills",
+                                    value: "\(skills.count ?? 0) procedures",
+                                    detail: "Reusable instructions RoachClaw can keep close without calling home.",
+                                    systemName: "sparkles.square.filled.on.square",
+                                    accent: RoachPalette.green
+                                )
+                            }
+
+                            if let drafts = operations.editorDrafts {
+                                RoachDigestRow(
+                                    "Drafts",
+                                    value: "\(drafts.open ?? drafts.count ?? 0) open",
+                                    detail: "Native editor drafts staged for Vault, Dev, and RoachClaw handoff.",
+                                    systemName: "doc.text",
+                                    accent: RoachPalette.cyan
+                                )
+                            }
+
+                            if let migrationTools = operations.migrationDocumentTools {
+                                RoachDigestRow(
+                                    "Migration Tools",
+                                    value: roachClawPlaybookStatus(migrationTools.status),
+                                    detail: migrationTools.detail ?? "Office imports, active docs, migration previews, validators, and output tails stay native.",
+                                    systemName: "doc.badge.gearshape",
+                                    accent: RoachPalette.cyan,
+                                    metadata: roachClawShellSurfaceMetadata(migrationTools)
+                                )
+                            }
+
+                            if let searchCache = operations.searchCache {
+                                RoachDigestRow(
+                                    "Search Cache",
+                                    value: "\(searchCache.count ?? 0) entries",
+                                    detail: "Cached source lookups and ranked crumbs for local research.",
+                                    systemName: "magnifyingglass.circle",
+                                    accent: RoachPalette.magenta
+                                )
+                            }
+
+                            if let gallery = operations.gallery {
+                                RoachDigestRow(
+                                    "Gallery",
+                                    value: "\(gallery.count ?? 0) assets",
+                                    detail: "Vault media index for reports and context.",
+                                    systemName: "photo.on.rectangle.angled",
+                                    accent: RoachPalette.magenta
+                                )
+                            }
+
+                            if let webhooks = operations.webhooks {
+                                RoachDigestRow(
+                                    "Webhooks",
+                                    value: "\(webhooks.active ?? 0) armed",
+                                    detail: "Inbound hooks store only secret digests, never raw signing keys.",
+                                    systemName: "point.3.connected.trianglepath.dotted",
+                                    accent: RoachPalette.cyan
+                                )
+                            }
+
+                            if let runs = operations.agentRuns {
+                                RoachDigestRow(
+                                    "Agent Runs",
+                                    value: "\(runs.active ?? 0) live",
+                                    detail: "Detached RoachClaw run metadata and replay crumbs stay local.",
+                                    systemName: "bolt.badge.clock",
+                                    accent: RoachPalette.green
+                                )
+                            }
+
+                            if let compactions = operations.contextCompactions {
+                                RoachDigestRow(
+                                    "Compactions",
+                                    value: "\(compactions.count ?? 0) saved",
+                                    detail: "Dense summaries preserve goals, paths, and decisions when context gets fat.",
+                                    systemName: "text.badge.checkmark",
+                                    accent: RoachPalette.bronze
+                                )
+                            }
+
+                            if let toolIndex = operations.toolIndex {
+                                RoachDigestRow(
+                                    "Tool Index",
+                                    value: "\(toolIndex.active ?? toolIndex.count ?? 0) armed",
+                                    detail: "Local tool cards keep RoachClaw from stuffing every trick into every prompt.",
+                                    systemName: "wrench.and.screwdriver",
+                                    accent: RoachPalette.magenta
+                                )
+                            }
+
+                            if let events = operations.events {
+                                RoachDigestRow(
+                                    "Events",
+                                    value: "\(events.count ?? 0) counters",
+                                    detail: "Local event counters gate reminders and agent follow-through.",
+                                    systemName: "dot.radiowaves.left.and.right",
+                                    accent: RoachPalette.cyan
+                                )
+                            }
+
+                            if let mail = operations.mail {
+                                RoachDigestRow(
+                                    "RoachMail",
+                                    value: "\(mail.messages ?? 0) msg · \(mail.drafts ?? 0) drafts",
+                                    detail: "Local inbox and draft state without a WebUI mail bridge.",
+                                    systemName: "envelope.badge",
+                                    accent: RoachPalette.cyan
+                                )
+                            }
+
+                            if let presets = operations.presets {
+                                RoachDigestRow(
+                                    "Presets",
+                                    value: "\(presets.count ?? 0) saved",
+                                    detail: "Reusable RoachClaw prompt setups live in the local vault.",
+                                    systemName: "slider.horizontal.3",
+                                    accent: RoachPalette.green
+                                )
+                            }
+
+                            if let signatures = operations.signatures {
+                                RoachDigestRow(
+                                    "Signatures",
+                                    value: "\(signatures.count ?? 0) saved",
+                                    detail: "Local signature payloads for docs, mail, and vault notes.",
+                                    systemName: "signature",
+                                    accent: RoachPalette.bronze
+                                )
+                            }
+
+                            if let tokens = operations.apiTokens {
+                                RoachDigestRow(
+                                    "API Tokens",
+                                    value: "\(tokens.active ?? 0) active",
+                                    detail: "Scoped local keys; plaintext is only shown once.",
+                                    systemName: "key.horizontal",
+                                    accent: RoachPalette.magenta
+                                )
+                            }
+
+                            if let backups = operations.backups {
+                                RoachDigestRow(
+                                    "Backups",
+                                    value: "\(backups.count ?? 0) snapshots",
+                                    detail: "Exportable RoachClaw state for moving or restoring the lane.",
+                                    systemName: "externaldrive.badge.timemachine",
+                                    accent: RoachPalette.cyan
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if let referenceInventory = roachClaw?.playbook?.referenceInventory {
+                    VStack(alignment: .leading, spacing: 10) {
+                        RoachSectionHeader(
+                            "GitHub upstream inventory",
+                            title: "\(referenceInventory.functionalFileCount) functional files tracked.",
+                            detail: "\(referenceInventory.observedFileCount) files observed at GitHub HEAD. The Python/WebUI stack is reference material; RoachNet owns native rewrites."
+                        )
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+                            ForEach(referenceInventory.coverageGroups) { group in
+                                RoachDigestRow(
+                                    group.label,
+                                    value: "\(group.fileCount) files",
+                                    detail: "\(group.nativeSurface): \(group.prefix)",
+                                    systemName: roachClawInventoryGroupIcon(group.id),
+                                    accent: RoachPalette.green
+                                )
+                                .accessibilityLabel("\(group.label), \(group.fileCount) files, \(group.nativeSurface)")
+                            }
+                        }
+                    }
+                }
+
+                if let referenceModules = roachClaw?.playbook?.referenceModules, !referenceModules.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        RoachSectionHeader(
+                            "Coverage ledger",
+                            title: "\(referenceModules.count) upstream modules tracked.",
+                            detail: "Routes, helpers, UI modules, services, and tests are mapped into RoachNet-native owners so nothing hides in a vague backlog."
+                        )
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+                            ForEach(referenceModules.prefix(12)) { module in
+                                RoachDigestRow(
+                                    roachClawModuleName(module.source),
+                                    value: module.nativeSurface,
+                                    detail: "\(module.category.capitalized): \(roachClawPlaybookStatus(module.status))",
+                                    systemName: roachClawModuleIcon(module.category),
+                                    accent: roachClawFeatureGroupAccent(module.status, id: module.id)
+                                )
+                                .accessibilityLabel("\(module.source), \(module.nativeSurface), \(roachClawPlaybookStatus(module.status))")
+                            }
+
+                            if referenceModules.count > 12 {
+                                RoachDigestRow(
+                                    "Remaining modules",
+                                    value: "+\(referenceModules.count - 12)",
+                                    detail: "Kept in the native playbook payload and parity map for implementation tracking.",
+                                    systemName: "square.stack.3d.up.fill",
+                                    accent: RoachPalette.bronze
+                                )
+                            }
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    private func roachClawCapabilityLabel(_ capability: String) -> String {
+        switch capability {
+        case "roachclaw-cookbook":
+            return "Cookbook"
+        case "roachclaw-quant-aware-fit":
+            return "Quant Fit"
+        case "roachclaw-deep-research":
+            return "Research"
+        case "roachclaw-model-compare":
+            return "Compare"
+        case "roachbrain-memory-skills-audit":
+            return "RoachBrain"
+        case "vault-document-assist":
+            return "Vault Docs"
+        case "roachspeech-voice-lane":
+            return "Voice"
+        case "roachclaw-upload-limits":
+            return "Intake Policy"
+        case "roachclaw-service-health":
+            return "Service Health"
+        default:
+            return capability
+                .replacingOccurrences(of: "roachclaw-", with: "")
+                .replacingOccurrences(of: "roachbrain-", with: "")
+                .replacingOccurrences(of: "-", with: " ")
+                .capitalized
+        }
+    }
+
+    private func roachClawPlaybookStatus(_ status: String) -> String {
+        status
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+            .map { $0.prefix(1).uppercased() + String($0.dropFirst()) }
+            .joined(separator: " ")
+    }
+
+    private func roachClawShellSurfaceMetadata(_ lane: RoachClawOperationsResponse.CollectionLane) -> [String] {
+        var metadata: [String] = []
+
+        if let priority = lane.priority, !priority.isEmpty {
+            metadata.append(roachClawPlaybookStatus(priority))
+        }
+
+        if let hotkey = lane.hotkey, !hotkey.isEmpty {
+            metadata.append(hotkey)
+        }
+
+        if let firstSummary = lane.summaryItems?.first, !firstSummary.isEmpty {
+            metadata.append(firstSummary)
+        } else if let route = lane.route, !route.isEmpty {
+            metadata.append(route.replacingOccurrences(of: "roachnet://", with: ""))
+        }
+
+        return metadata
+    }
+
+    private func roachClawPlaybookIcon(_ icon: String?) -> String {
+        switch icon {
+        case "rectangle.stack.badge.person.crop":
+            return "rectangle.stack.badge.person.crop"
+        case "slider.horizontal.below.rectangle":
+            return "slider.horizontal.below.rectangle"
+        case "cpu":
+            return "cpu.fill"
+        case "doc.text.magnifyingglass":
+            return "doc.text.magnifyingglass"
+        case "rectangle.split.2x1":
+            return "rectangle.split.2x1.fill"
+        case "brain.head.profile":
+            return "brain.head.profile"
+        case "doc.richtext":
+            return "doc.richtext.fill"
+        case "doc.badge.gearshape":
+            return "doc.badge.gearshape"
+        case "waveform":
+            return "waveform"
+        case "paintpalette":
+            return "paintpalette.fill"
+        case "stethoscope":
+            return "wrench.and.screwdriver.fill"
+        case "waveform.path.ecg.rectangle":
+            return "waveform.path.ecg.rectangle.fill"
+        case "person.2.wave.2":
+            return "person.2.fill"
+        case "chart.bar.doc.horizontal":
+            return "chart.bar.fill"
+        case "person.3.sequence":
+            return "person.3.sequence.fill"
+        case "externaldrive.badge.timemachine":
+            return "externaldrive.badge.timemachine"
+        case "rectangle.3.group":
+            return "rectangle.3.group.fill"
+        case "bolt.badge.clock":
+            return "bolt.badge.clock.fill"
+        default:
+            return "sparkles"
+        }
+    }
+
+    private func roachClawFeatureGroupIcon(_ id: String) -> String {
+        switch id {
+        case "chat":
+            return "bubble.left.and.bubble.right.fill"
+        case "session-board":
+            return "rectangle.stack.badge.person.crop.fill"
+        case "agent-tools":
+            return "hammer.fill"
+        case "cookbook":
+            return "cpu.fill"
+        case "deep-research":
+            return "doc.text.magnifyingglass"
+        case "compare":
+            return "rectangle.split.2x1.fill"
+        case "model-bench":
+            return "slider.horizontal.below.rectangle"
+        case "documents":
+            return "doc.richtext.fill"
+        case "migration-document-tools":
+            return "doc.badge.gearshape"
+        case "memory-skills":
+            return "brain.head.profile"
+        case "email":
+            return "envelope.fill"
+        case "notes-tasks":
+            return "checklist"
+        case "calendar":
+            return "calendar"
+        case "search-rag":
+            return "magnifyingglass.circle.fill"
+        case "voice":
+            return "waveform"
+        case "gallery-editor":
+            return "photo.on.rectangle"
+        case "security":
+            return "lock.shield.fill"
+        case "mobile":
+            return "iphone"
+        case "contacts":
+            return "person.crop.circle.badge.checkmark"
+        case "diagnostics":
+            return "wrench.and.screwdriver.fill"
+        case "preferences":
+            return "slider.horizontal.3"
+        case "session-history":
+            return "clock.arrow.circlepath"
+        case "model-providers":
+            return "network"
+        case "assistant-crew":
+            return "person.3.sequence.fill"
+        case "orchestration":
+            return "rectangle.3.group.fill"
+        case "signatures":
+            return "signature"
+        case "backup-restore":
+            return "externaldrive.badge.timemachine"
+        case "local-api-keys":
+            return "key.horizontal.fill"
+        case "font-emoji-assets":
+            return "textformat.alt"
+        case "housekeeping":
+            return "sparkles.rectangle.stack.fill"
+        case "theme-studio":
+            return "paintpalette.fill"
+        case "uploads-personal-docs":
+            return "tray.and.arrow.down.fill"
+        case "webhooks-integrations":
+            return "point.3.connected.trianglepath.dotted"
+        case "background-jobs":
+            return "clock.arrow.circlepath"
+        case "visual-reports":
+            return "chart.bar.doc.horizontal"
+        case "admin-recovery":
+            return "lock.rotation"
+        default:
+            return "square.grid.2x2.fill"
+        }
+    }
+
+    private func roachClawPlaybookAccent(_ accent: String?) -> Color {
+        switch accent {
+        case "cyan":
+            return RoachPalette.cyan
+        case "magenta":
+            return RoachPalette.magenta
+        case "bronze":
+            return RoachPalette.bronze
+        default:
+            return RoachPalette.green
+        }
+    }
+
+    private func roachClawFeatureGroupAccent(_ status: String, id: String) -> Color {
+        if status.contains("planned") { return RoachPalette.bronze }
+        if status.contains("warmup") || status.contains("needs") { return RoachPalette.magenta }
+        if id == "voice" || id == "search-rag" || id == "calendar" { return RoachPalette.cyan }
+        return RoachPalette.green
+    }
+
+    private func roachClawModuleName(_ source: String) -> String {
+        source.split(separator: "/").last.map(String.init) ?? source
+    }
+
+    private func roachClawModuleIcon(_ category: String) -> String {
+        switch category {
+        case "route":
+            return "arrow.triangle.branch"
+        case "web":
+            return "globe"
+        case "source":
+            return "curlybraces"
+        default:
+            return "shippingbox.fill"
+        }
+    }
+
+    private func roachClawInventoryGroupIcon(_ id: String) -> String {
+        switch id {
+        case "routes":
+            return "arrow.triangle.branch"
+        case "core":
+            return "cpu.fill"
+        case "source":
+            return "curlybraces"
+        case "services":
+            return "server.rack"
+        case "mcp-servers":
+            return "point.3.connected.trianglepath.dotted"
+        case "scripts":
+            return "terminal.fill"
+        case "companion":
+            return "iphone.gen3"
+        case "static-js":
+            return "rectangle.3.group.bubble.left"
+        default:
+            return "square.stack.3d.up.fill"
         }
     }
 
@@ -8986,10 +9767,10 @@ private struct RootWorkspaceView: View {
 
     private var roachClawStarterPrompts: [String] {
         [
-            "Summarize current runtime state.",
-            "What should I do next?",
-            "Search local context for blockers.",
-            "Save the useful part to memory.",
+            "Run a Cookbook check: what model fits this Mac and why?",
+            "Plan a deep research pass and save the useful brief.",
+            "Compare two model routes on the same prompt without model-label bias.",
+            "Audit memory and skills for stale, duplicated, or useful context.",
         ]
     }
 
@@ -10914,10 +11695,33 @@ private struct RootWorkspaceView: View {
                             )
                         }
 
+                        if let controlPlane = roachTail.controlPlane {
+                            let policy = controlPlane.policyMode ?? "local-owner"
+                            let approval = controlPlane.routeApproval ?? "owner-local"
+                            RoachStatusRow(
+                                title: "Control Plane",
+                                value: "\(controlPlane.provider) · \(policy) · routes \(approval)",
+                                accent: RoachPalette.green
+                            )
+
+                            if let dnsName = controlPlane.dnsName, !dnsName.isEmpty {
+                                RoachStatusRow(title: "RoachTail DNS", value: dnsName, accent: RoachPalette.green)
+                            }
+                        }
+
                         if let bridgeURL = roachTail.advertisedUrl, !bridgeURL.isEmpty {
                             RoachStatusRow(title: "Bridge URL", value: bridgeURL, accent: RoachPalette.green)
                         } else if let companionURL = serverInfo?.companionAdvertisedUrl ?? serverInfo?.companionUrl {
                             RoachStatusRow(title: "Bridge URL", value: companionURL, accent: RoachPalette.green)
+                        }
+
+                        if let relayMode = roachTail.derpMap?.mode, !relayMode.isEmpty {
+                            let relayHost = roachTail.derpMap?.regions?.first?.host ?? roachTail.relayHost ?? "local bridge"
+                            RoachStatusRow(
+                                title: "Relay Map",
+                                value: "\(relayMode.replacingOccurrences(of: "-", with: " ")) · \(relayHost)",
+                                accent: relayMode == "custom-relay" ? RoachPalette.magenta : RoachPalette.green
+                            )
                         }
 
                         HStack(spacing: 12) {
@@ -10932,6 +11736,38 @@ private struct RootWorkspaceView: View {
                             }
                             .buttonStyle(RoachSecondaryButtonStyle())
                             .disabled(model.roachTailActionInFlight || roachTail.peers.isEmpty)
+                        }
+
+                        if let keys = roachTail.preAuthKeys, !keys.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Join Keys")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(RoachPalette.text)
+
+                                ForEach(keys.prefix(3)) { key in
+                                    RoachStatusRow(
+                                        title: key.used == true ? "Spent key" : "Active key",
+                                        value: key.expiresAt.map { "Expires \($0)" } ?? "No expiry reported",
+                                        accent: key.used == true ? RoachPalette.muted : RoachPalette.green
+                                    )
+                                }
+                            }
+                        }
+
+                        if let routes = roachTail.routes, !routes.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Approved Routes")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(RoachPalette.text)
+
+                                ForEach(routes.prefix(4)) { route in
+                                    RoachStatusRow(
+                                        title: route.id.replacingOccurrences(of: "-", with: " ").capitalized,
+                                        value: "\(route.type ?? "route") · \(route.target ?? "pending")",
+                                        accent: route.advertised == true ? RoachPalette.green : RoachPalette.muted
+                                    )
+                                }
+                            }
                         }
 
                         if !roachTail.peers.isEmpty {
@@ -11467,7 +12303,7 @@ private struct RootWorkspaceView: View {
                     id: "action-launch-guide",
                     section: "Open",
                     title: "Open Guided Tour",
-                    detail: "Open the v1.0.5 native field guide for lanes, packs, vault, games, maps, and updates.",
+                    detail: "Open the native field guide for lanes, packs, vault, games, maps, and updates.",
                     systemImage: "play.rectangle.fill",
                     target: .launchGuide,
                     keywords: ["guide", "tour", "help", "walkthrough", "field", "v105", "model", "packs", "updates"],
@@ -11540,6 +12376,102 @@ private struct RootWorkspaceView: View {
                     keywords: ["models", "ollama", "cloud", "store", "ai"],
                     aliases: ["llm", "local ai", "weights"],
                     previewNote: "Model weights belong on disk first. Cloud can wait outside."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-cookbook-check",
+                    section: "RoachClaw",
+                    title: "Stage Cookbook Check",
+                    detail: "Ask RoachClaw to scan the machine, pick a model lane, and explain the fit without hardware theater.",
+                    systemImage: "cpu.fill",
+                    target: .stagePrompt("Run a RoachClaw Cookbook check for this machine. Use the current hardware, installed models, and runtime state. Recommend the best local model lane, explain the tradeoffs briefly, and name the next install if one is missing."),
+                    badge: "Fit",
+                    keywords: ["cookbook", "model fit", "hardware", "recommend", "roachclaw", "local model"],
+                    aliases: ["model recommendation", "hardware scan", "fit check"],
+                    previewNote: "RoachNet-native model fit, contained in the local runtime."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-deep-research",
+                    section: "RoachClaw",
+                    title: "Stage Deep Research Brief",
+                    detail: "Queue a research plan that gathers sources, reads them, and saves the answer instead of spraying tabs.",
+                    systemImage: "doc.text.magnifyingglass",
+                    target: .stagePrompt("Plan a RoachClaw Deep Research run. Start with the question, identify the source types to gather, define how you will verify them, then produce a concise brief I can save to the vault."),
+                    badge: "Research",
+                    keywords: ["deep research", "research", "sources", "brief", "summarize"],
+                    aliases: ["source brief", "research plan", "investigate"],
+                    previewNote: "Designed for local notes and captured web context first."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-model-compare",
+                    section: "RoachClaw",
+                    title: "Stage Model Compare",
+                    detail: "Set up a blind model comparison so the loudest answer does not win by default.",
+                    systemImage: "rectangle.split.2x1.fill",
+                    target: .stagePrompt("Compare two RoachClaw model routes on the same task. Hide the model labels until after scoring, judge accuracy, speed, clarity, and local suitability, then recommend the route I should keep."),
+                    badge: "A/B",
+                    keywords: ["compare", "models", "blind", "benchmark", "route"],
+                    aliases: ["model a b", "blind compare", "route compare"],
+                    previewNote: "Useful when one model sounds confident and the other may actually be right."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-memory-skills-audit",
+                    section: "RoachClaw",
+                    title: "Stage Memory and Skills Audit",
+                    detail: "Ask RoachClaw to find useful context, stale habits, and saved procedures worth keeping.",
+                    systemImage: "brain.head.profile",
+                    target: .stagePrompt("Audit the current RoachBrain memories and skills. Identify stale or duplicated context, name the useful procedures worth keeping, and suggest one cleanup action that will make future prompts sharper."),
+                    badge: "Memory",
+                    keywords: ["memory", "skills", "roachbrain", "audit", "context"],
+                    aliases: ["skill audit", "memory cleanup", "context audit"],
+                    previewNote: "Keeps the agent useful without letting the memory shelf become a junk drawer."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-agent-monitor",
+                    section: "RoachClaw",
+                    title: "Stage Agent Monitor Review",
+                    detail: "Review live runs, replay crumbs, tool cards, and event counters from the local RoachClaw lane.",
+                    systemImage: "bolt.badge.clock.fill",
+                    target: .stagePrompt("Review the RoachClaw Agent Monitor lane. Summarize active runs, replay crumbs, tool-index coverage, local event counters, and anything that looks noisy or stuck. Keep it practical and name the next safe action."),
+                    badge: "Monitor",
+                    keywords: ["agent", "monitor", "runs", "activity", "events", "tool index", "orchestration"],
+                    aliases: ["activity monitor", "run history", "agent runs", "local agents"],
+                    previewNote: "Activity Monitor energy, but for local RoachClaw work instead of random processes."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-context-compaction",
+                    section: "RoachClaw",
+                    title: "Stage Context Compaction",
+                    detail: "Compress the thread into goals, decisions, files, blockers, and next moves before the context gets bloated.",
+                    systemImage: "text.badge.checkmark",
+                    target: .stagePrompt("Create a RoachClaw context compaction. Preserve the user goal, files touched, decisions, blockers, validation evidence, and the next move. Remove chatter and keep only what future work needs."),
+                    badge: "Context",
+                    keywords: ["context", "compaction", "summary", "memory", "thread", "cursor", "side panel"],
+                    aliases: ["summarize context", "compact thread", "context rail"],
+                    previewNote: "The contextual side panel should remember the useful bits, not every sentence."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-tool-index",
+                    section: "RoachClaw",
+                    title: "Stage Tool Index Entry",
+                    detail: "Turn a native action into a searchable RoachClaw tool card with scope and safety boundaries.",
+                    systemImage: "wrench.and.screwdriver.fill",
+                    target: .stagePrompt("Design a RoachClaw tool-index entry for the current task. Include name, category, trigger hints, what it can touch, what it must never touch, and when it should be suggested by the command bar."),
+                    badge: "Tools",
+                    keywords: ["tool", "index", "mcp", "actions", "raycast", "command bar"],
+                    aliases: ["tool card", "action index", "command index"],
+                    previewNote: "A Raycast-style index is only useful if the actions are scoped and easy to find."
+                ),
+                CommandPaletteEntry(
+                    id: "action-stage-orchestration",
+                    section: "RoachClaw",
+                    title: "Stage Multi-Agent Orchestration",
+                    detail: "Assign local agents roles, context budgets, handoffs, and finish lines before they start making noise.",
+                    systemImage: "rectangle.3.group.fill",
+                    target: .stagePrompt("Plan a RoachClaw multi-agent orchestration pass. Define each agent role, allowed context, tool boundaries, handoff format, success evidence, and stop condition. Keep it local-first and RoachNet branded."),
+                    badge: "Orchestrate",
+                    keywords: ["orchestration", "multi agent", "monet", "agents", "handoff", "roles"],
+                    aliases: ["agent team", "multi-agent", "orchestrate"],
+                    previewNote: "Multi-agent work should look managed, not like a pile of tabs arguing."
                 ),
                 CommandPaletteEntry(
                     id: "action-open-roachclaw-anywhere",

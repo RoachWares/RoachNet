@@ -5,7 +5,7 @@ RoachNet is being built into an offline-first command center with local AI, maps
 ## Before You Start
 
 1. Open or review an issue first so the work is aligned before code lands.
-2. Read [README.md](README.md), [docs/LOCAL_BOOT.md](docs/LOCAL_BOOT.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
+2. Read [README.md](README.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 3. Keep privacy, offline capability, and local-first operation in mind when proposing changes.
 
 ## Development Priorities
@@ -13,21 +13,22 @@ RoachNet is being built into an offline-first command center with local AI, maps
 Changes are especially valuable when they improve one of these areas:
 
 - Apple Silicon performance and efficiency
-- Local runtime management, especially for Ollama and OpenClaw
-- Guided onboarding, video guides, and settings UX
+- Local runtime management for Ollama and OpenClaw, or overall improvement of the RoachClaw local AI implementation
+- Guided onboarding and settings UX
 - Offline content workflows
 - Stability and clear diagnostics
 
 ## Local Setup
 
-Follow the boot guide in [docs/LOCAL_BOOT.md](docs/LOCAL_BOOT.md). The current local development flow uses:
+Follow [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the current native product lane. It uses:
 
-- Node.js 22
-- MySQL
-- Redis
-- The `admin/` app for the current backend and Inertia UI
+- Node.js 26 and npm 10 or later for the root API, scripts, audits, and tests
+- Xcode with Swift 6 for the macOS 14 native app and setup package
+- The dependency-free native API bridge for local runtime development
 
-Apple Silicon contributors should prefer arm64-native tools and local AI runtimes where possible.
+The legacy `admin/` WebUI is not part of the post-v1.0.5 public candidate. Use tag `v1.0.5` and [docs/LOCAL_BOOT.md](docs/LOCAL_BOOT.md) only for historical migration research; do not reintroduce that vulnerable Node 24 lane into the native release.
+
+Apple Silicon contributors should use arm64-native tools. Public distribution artifacts must be built and verified on native Apple Silicon.
 
 ## Fork, Clone, and Remotes
 
@@ -69,7 +70,7 @@ git checkout -b feature/your-change
 - dark RoachNet brand styling
 - maintainable, explicit code over clever shortcuts
 
-4. Add release notes for user-facing changes in [admin/docs/release-notes.md](admin/docs/release-notes.md).
+4. Add release notes for user-facing changes under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 
 5. Test what you changed locally.
 
@@ -93,7 +94,7 @@ docs: refresh local boot guide for RoachNet branding
 
 ## Release Notes
 
-Human-readable release notes live in [admin/docs/release-notes.md](admin/docs/release-notes.md).
+Release notes live in [CHANGELOG.md](CHANGELOG.md).
 
 When the change affects users, add an entry under `## Unreleased` using:
 
@@ -116,9 +117,10 @@ If the change touches performance, call out the target hardware and whether Appl
 
 Please avoid changes that:
 
+- reintroduce upstream branding
 - assume Docker is the only valid runtime path
 - add unnecessary network dependencies to offline workflows
-- weaken local privacy guarantees
+- weaken local privacy guarantees without a strong reason
 
 ## Community
 

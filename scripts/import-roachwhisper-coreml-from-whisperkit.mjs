@@ -166,6 +166,7 @@ async function importWhisperKitCoreML(args) {
     packID,
     displayName: args['display-name'] || `RoachWhisper ${modelName}`,
     version: args.version || '0.1.0',
+    license: 'MIT',
     kind: 'roachWhisper',
     nativeFormat: 'coreML',
     features: ['speechToText', 'transcriptSidecars', 'lyricExtraction'],

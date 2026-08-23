@@ -15,6 +15,9 @@ import { requestHttp } from '../lib/roachnet_http.mjs'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..', '..')
+const macOSDittoTest = process.platform === 'darwin'
+  ? {}
+  : { skip: 'Requires macOS ditto archive semantics.' }
 
 function readRepoFile(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8')
@@ -453,6 +456,470 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     const bootstrap = await requestJson(`${processInfo.companionUrl}/api/companion/bootstrap`, { token })
     assert.equal(bootstrap.appName, 'RoachNet')
     assert.match(bootstrap.appsCatalogUrl, /^https:\/\/apps\.roachnet\.org\//)
+
+    const companionRuntime = await requestJson(`${processInfo.companionUrl}/api/companion/runtime`, { token })
+    assert.equal(companionRuntime.systemInfo.hardwareProfile.recommendedRuntime, 'native_local')
+    assert.equal(Array.isArray(companionRuntime.services), true)
+    assert.equal(Array.isArray(companionRuntime.downloads), true)
+    assert.equal(Array.isArray(companionRuntime.installedModels), true)
+    assert.equal(companionRuntime.roachClaw.playbook.schema, 'org.roachnet.roachclaw.playbook.v1')
+    assert.equal(companionRuntime.roachClaw.playbook.source, 'roachnet-native')
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-cookbook'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-quant-aware-fit'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-secure-actions'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-provider-diagnostics'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-agent-run-monitor'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-contextual-side-panel'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-vault-navigator'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-agent-activity-monitor'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-orchestration-dashboard'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-session-board'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-model-bench'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-document-lab'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-theme-studio'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-assistant-crew'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-backup-restore'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-user-cloud-provider-keys'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-workspace-browser'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-user-time-context'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-cookbook-serve-lifecycle'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-url-security'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-scoped-tool-bridge'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-tls-overrides'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-upload-limits'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachbrain-memory-provider'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-provider-oauth'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachbrain-embedding-lanes'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-tool-policy'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-service-health'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-streaming-markdown'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.capabilities.includes('roachclaw-migration-document-tools'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceSource.repository, 'https://github.com/pewdiepie-archdaemon/odysseus')
+    assert.equal(companionRuntime.roachClaw.playbook.referenceSource.commit, 'd9ebdd6fbba31b5f3c2cbae90f650f183958660e')
+    assert.equal(companionRuntime.roachClaw.playbook.referenceSource.latestSeenCommit, 'd9ebdd6fbba31b5f3c2cbae90f650f183958660e')
+    assert.equal(companionRuntime.roachClaw.playbook.referenceSource.sourceKind, 'github-upstream')
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.schema, 'org.roachnet.roachclaw.github-reference-inventory.v1')
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.repository, 'https://github.com/pewdiepie-archdaemon/odysseus')
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.commit, 'd9ebdd6fbba31b5f3c2cbae90f650f183958660e')
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.observedFileCount, 1141)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.functionalFileCount, 416)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.coverageGroups.length, 8)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.coverageGroups.some((group) => group.id === 'routes' && group.fileCount === 54), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.coverageGroups.some((group) => group.id === 'source' && group.fileCount === 108), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.coverageGroups.some((group) => group.id === 'mcp-servers' && group.fileCount === 5), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.coverageGroups.some((group) => group.id === 'services' && group.fileCount === 40), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.coverageGroups.some((group) => group.id === 'scripts' && group.fileCount === 43), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceInventory.coverageGroups.some((group) => group.id === 'static-js' && group.fileCount === 152), true)
+    assert.match(companionRuntime.roachClaw.playbook.referenceInventory.nonShippingPolicy, /reference material only/)
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.schema, 'org.roachnet.roachclaw.reference-coverage.v1')
+    assert.deepEqual(companionRuntime.roachClaw.playbook.coverage.missingFamilies, [])
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.posture, 'native-rewrite-no-python-webui-dependency')
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.featureGroupCount >= 39, true)
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.moduleCount >= 90, true)
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.repository, 'https://github.com/pewdiepie-archdaemon/odysseus')
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.sourceKind, 'github-upstream')
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.observedFileCount, 1141)
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.functionalFileCount, 416)
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.inventoryGroupCount, 8)
+    assert.equal(companionRuntime.roachClaw.playbook.coverage.inventoryCoverageMode, 'full-github-functional-surface')
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'cookbook'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'workspace-browser'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'migration-document-tools'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'time-context'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'inbox-calendar'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'diagnostics-control'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'service-health'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'agent-monitor'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'orchestration'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'session-board'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'model-bench'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'theme-studio'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'assistant-crew'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.lanes.some((lane) => lane.id === 'backup-restore'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'email'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'mobile'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'security'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'diagnostics'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'webhooks-integrations'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'orchestration'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'session-board'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'model-bench'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'theme-studio'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'assistant-crew'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'backup-restore'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'workspace-browser'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'user-time'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'memory-provider'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'embedding-lanes'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'provider-security'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'tool-policy'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'diagnostics' && group.capabilities.includes('service-health-rollup')), true)
+    assert.equal(companionRuntime.roachClaw.playbook.featureGroups.some((group) => group.id === 'font-emoji-assets'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'routes/webhook_routes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'routes/assistant_routes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'routes/api_token_routes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'routes/codex_routes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'routes/workspace_routes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'routes/stt_routes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'routes/tts_routes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/action_intents.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/agent_runs.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/agent_tools/filesystem_tools.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/service_health.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/cookbook_serve_lifecycle.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/event_bus.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/embedding_lanes.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/url_security.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/url_safety.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/user_time.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/pdf_runtime.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/settings.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/settings_scrub.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'src/tool_policy.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'services/hwfit/fit.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'services/faces/__init__.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'services/hwfit/image_models.py'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'static/js/compare/scoreboard.js'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'static/js/emailLibrary.js'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'static/js/cookbookProgressSignal.js'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'static/js/workspace.js'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'static/js/streamingSegmenter.js'), true)
+    assert.equal(companionRuntime.roachClaw.playbook.referenceModules.some((module) => module.source === 'static/js/streamingRenderer.js'), true)
+    assert.equal(companionRuntime.roachClaw.operations.schema, 'org.roachnet.roachclaw.operations.v1')
+    assert.equal(companionRuntime.roachClaw.operations.diagnostics.probes.some((probe) => probe.id === 'roachclaw-native-agent'), true)
+    assert.equal(companionRuntime.roachClaw.operations.contacts.scopes.includes('reply-recipient-context'), true)
+    assert.equal(companionRuntime.roachClaw.operations.hooks.endpoints.some((endpoint) => endpoint.path === '/api/roachclaw/agent/run'), true)
+    assert.equal(companionRuntime.roachClaw.operations.jobs.scheduler.status, 'local-queue')
+    assert.equal(companionRuntime.roachClaw.operations.reports.templates.includes('diagnostics-report'), true)
+    assert.equal(companionRuntime.roachClaw.operations.commandDeck.status, 'ready')
+    assert.equal(companionRuntime.roachClaw.operations.commandDeck.hotkey, 'Ctrl-Cmd-R')
+    assert.equal(companionRuntime.roachClaw.operations.commandDeck.route, 'roachnet://command')
+    assert.equal(companionRuntime.roachClaw.operations.contextRail.status, 'empty')
+    assert.equal(companionRuntime.roachClaw.operations.vaultNavigator.status, 'empty')
+    assert.equal(companionRuntime.roachClaw.operations.agentMonitor.status, 'idle')
+    assert.equal(companionRuntime.roachClaw.operations.orchestrationDashboard.status, 'ready')
+    assert.equal(companionRuntime.roachClaw.operations.workspaceBrowser.status, 'ready')
+    assert.equal(companionRuntime.roachClaw.operations.userTime.status, 'system-default')
+    assert.equal(companionRuntime.roachClaw.operations.cookbookServeLifecycle.status, 'idle')
+    assert.equal(companionRuntime.roachClaw.operations.scopedToolBridge.status, 'ready')
+    assert.equal(companionRuntime.roachClaw.operations.tlsOverrides.status, 'default-trust')
+    assert.equal(companionRuntime.roachClaw.operations.uploadLimits.status, 'enforced')
+    assert.equal(companionRuntime.roachClaw.operations.migrationDocumentTools.status, 'native-state')
+    assert.equal(companionRuntime.roachClaw.operations.migrationDocumentTools.summaryItems.includes('Office docs become vault docs'), true)
+    assert.equal(companionRuntime.roachClaw.operations.memoryProvider.status, 'native-provider')
+    assert.equal(companionRuntime.roachClaw.operations.providerOAuth.status, 'idle')
+    assert.equal(companionRuntime.roachClaw.operations.embeddingLanes.status, 'healthy')
+    assert.equal(companionRuntime.roachClaw.operations.embeddingLanes.count, 2)
+    assert.equal(companionRuntime.roachClaw.operations.toolPolicy.status, 'enforced')
+    assert.equal(['ok', 'degraded', 'down'].includes(companionRuntime.roachClaw.operations.serviceHealth.status), true)
+    assert.equal(companionRuntime.roachClaw.operations.serviceHealth.report.source, 'github-upstream-service-health-native-rewrite')
+    assert.equal(companionRuntime.roachClaw.operations.serviceHealth.report.services.some((service) => service.name === 'intake-policy' && service.status === 'ok'), true)
+    assert.equal(companionRuntime.roachClaw.operations.adminRecovery.remoteAccess, false)
+    const reportOps = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/operations/reports`)
+    assert.equal(reportOps.formats.includes('markdown'), true)
+    const commandDeckOps = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/operations/commandDeck`)
+    assert.equal(commandDeckOps.actions.includes('Search commands'), true)
+    assert.equal(commandDeckOps.summaryItems.includes('0 armed tools'), true)
+    const workspaceBrowse = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/workspace/browse?path=${encodeURIComponent(storagePath)}`)
+    assert.equal(workspaceBrowse.schema, 'org.roachnet.roachclaw.workspace-browser.v1')
+    assert.equal(workspaceBrowse.policy.includes('directories-only'), true)
+    const userTime = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/user-time`, {
+      method: 'POST',
+      body: { timeZoneName: 'America/Indiana/Indianapolis', utcOffsetMinutes: -240 },
+    })
+    assert.equal(userTime.utcOffset, '-04:00')
+    assert.match(userTime.promptContext, /America\/Indiana\/Indianapolis/)
+    const cookbookSchedule = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cookbook/schedules`, {
+      method: 'POST',
+      body: { model: 'qwen2.5-coder:1.5b', days: ['monday'], durationMinutes: 45, mirrorToCalendar: true },
+    })
+    assert.equal(cookbookSchedule.schedules[0].model, 'qwen2.5-coder:1.5b')
+    assert.equal(cookbookSchedule.active, 1)
+    const progressSignal = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cookbook/progress-signal`, {
+      method: 'POST',
+      body: { lastPercent: 42, snapshot: 'compile step still moving' },
+    })
+    assert.equal(progressSignal.mode, 'snapshot-tail')
+    assert.match(progressSignal.signal, /compile step/)
+    const scopedTools = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/scoped-tools/capabilities`)
+    assert.equal(scopedTools.localOnly, true)
+    assert.equal(scopedTools.scopes.includes('memory:write'), true)
+    assert.equal(scopedTools.scopes.includes('migration:read'), true)
+    assert.equal(scopedTools.endpoints.some((endpoint) => endpoint.path === '/api/roachclaw/diagnostics/services'), true)
+    assert.equal(scopedTools.endpoints.some((endpoint) => endpoint.path === '/api/roachclaw/migration-document-tools'), true)
+    const serviceHealth = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/diagnostics/services`)
+    assert.equal(serviceHealth.schema, 'org.roachnet.roachclaw.service-health.v1')
+    assert.equal(serviceHealth.upstreamModule, 'src/service_health.py')
+    assert.equal(serviceHealth.budgets.secretPolicy, 'redacted-endpoints-no-raw-exceptions')
+    assert.equal(serviceHealth.services.some((service) => service.name === 'roachclaw-native-agent' && service.status === 'ok'), true)
+    assert.equal(JSON.stringify(serviceHealth).includes('sk-'), false)
+    const uploadLimits = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/security/upload-limits`)
+    assert.equal(uploadLimits.schema, 'org.roachnet.roachclaw.upload-limits.v1')
+    assert.equal(uploadLimits.source, 'github-upstream-upload-limits-native-rewrite')
+    assert.equal(uploadLimits.upstreamModule, 'src/upload_limits.py')
+    assert.equal(uploadLimits.policy, 'centralized-hard-caps-public-413-clean-partial-files')
+    assert.equal(uploadLimits.limits.some((limit) => limit.id === 'json-body'), true)
+    assert.equal(uploadLimits.limits.some((limit) => limit.id === 'chat-upload' && limit.bytes === 10 * 1024 * 1024), true)
+    assert.equal(uploadLimits.limits.some((limit) => limit.id === 'gallery-upload' && limit.bytes === 100 * 1024 * 1024), true)
+    assert.equal(uploadLimits.limits.some((limit) => limit.id === 'speech-audio' && limit.env === 'ROACHNET_STT_AUDIO_MAX_BYTES'), true)
+    assert.equal(uploadLimits.limits.some((limit) => limit.id === 'calendar-import' && limit.formatted === '10 MB'), true)
+    assert.equal(uploadLimits.laneCounts['vault-gallery'], 2)
+    assert.equal(uploadLimits.summaryItems.includes('Chat attachment: 10 MB'), true)
+    const migrationDocumentTools = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/migration-document-tools`)
+    assert.equal(migrationDocumentTools.schema, 'org.roachnet.roachclaw.migration-document-tools.v1')
+    assert.equal(migrationDocumentTools.upstreamModules.includes('src/agent_tools/document_tools.py'), true)
+    assert.equal(migrationDocumentTools.documentTools.supportedFormats.includes('docx'), true)
+    assert.equal(migrationDocumentTools.validators.remoteHost, 'host-or-user-at-host-only-no-ssh-options')
+    assert.equal(migrationDocumentTools.cookbookOutput.errorTailLines, 50)
+    assert.equal(JSON.stringify(migrationDocumentTools).includes('Odysseus'), false)
+    const pemPath = path.join(storagePath, 'test-provider-ca.pem')
+    writeFileSync(pemPath, '-----BEGIN CERTIFICATE-----\\nroachnet-test\\n-----END CERTIFICATE-----\\n')
+    const tlsOverride = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/security/tls-overrides`, {
+      method: 'POST',
+      body: { bundlePath: pemPath },
+    })
+    assert.equal(tlsOverride.valid, true)
+    assert.equal(tlsOverride.insecureDisableAllowed, false)
+    assert.equal(JSON.stringify(tlsOverride).includes(pemPath), false)
+    const memoryProvider = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/memory-provider`, {
+      method: 'POST',
+      body: { id: 'external-lab', displayName: 'External Lab Memory', enabled: false, tools: ['recall'] },
+    })
+    assert.equal(memoryProvider.providers.some((provider) => provider.id === 'roachbrain-native' && provider.enabled), true)
+    assert.equal(memoryProvider.providers.some((provider) => provider.id === 'external-lab' && provider.enabled === false), true)
+    const oauthFlow = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/provider-oauth`, {
+      method: 'POST',
+      body: { provider: 'mcp-lab', serverUrl: 'https://mcp.example.com', scopes: ['tools'], authUrl: 'https://mcp.example.com/authorize?secret=do-not-export' },
+    })
+    assert.equal(oauthFlow.flows[0].provider, 'mcp-lab')
+    assert.equal(oauthFlow.flows[0].authUrl, '[redacted-user-auth-url]')
+    assert.equal(JSON.stringify(oauthFlow).includes('do-not-export'), false)
+    const embeddingLanes = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/embedding-lanes`)
+    assert.equal(embeddingLanes.schema, 'org.roachnet.roachbrain.embedding-lanes.v1')
+    assert.equal(embeddingLanes.pythonRuntimeDependency, 'none')
+    assert.equal(embeddingLanes.lanes.some((lane) => lane.id === 'custom'), true)
+    assert.equal(embeddingLanes.lanes.some((lane) => lane.id === 'local' && lane.dimension === 384), true)
+    assert.equal(embeddingLanes.resetSafety.destructiveResetAllowed, false)
+    const configuredEmbeddingLanes = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/embedding-lanes`, {
+      method: 'POST',
+      body: { url: 'https://embeddings.example.com/v1?key=do-not-export', model: 'nomic-embed-text', dimension: 768, reset: true },
+    })
+    const configuredCustomLane = configuredEmbeddingLanes.lanes.find((lane) => lane.id === 'custom')
+    assert.equal(configuredCustomLane.dimension, 768)
+    assert.equal(configuredCustomLane.health.status, 'healthy')
+    assert.equal(configuredCustomLane.endpoint, '[user-owned-endpoint-redacted]')
+    assert.equal(JSON.stringify(configuredEmbeddingLanes).includes('do-not-export'), false)
+    const toolPolicy = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/tool-policy/evaluate`, {
+      method: 'POST',
+      body: { lastUserMessage: 'GUIDE-ONLY MODE. DO NOT USE TOOLS.', disabledTools: ['web_search'] },
+    })
+    assert.equal(toolPolicy.mode, 'guide_only')
+    assert.equal(toolPolicy.blockAllToolCalls, true)
+    assert.equal(toolPolicy.disableMcp, true)
+    assert.equal(toolPolicy.disabledTools.includes('bash'), true)
+    assert.equal(toolPolicy.hiddenTools.includes('bash'), true)
+    assert.equal(toolPolicy.disabledTools.includes('web_search'), true)
+    const contacts = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/contacts`, {
+      method: 'POST',
+      body: { name: 'Roach Support', email: 'support@roachnet.local', tags: ['support', 'local'] },
+    })
+    assert.equal(contacts.contacts.length, 1)
+    assert.equal(contacts.contacts[0].name, 'Roach Support')
+    const tasks = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/tasks`, {
+      method: 'POST',
+      body: { title: 'Finish native feature port', priority: 'high', dueAt: '2026-06-02' },
+    })
+    assert.equal(tasks.tasks[0].status, 'open')
+    const calendar = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/calendar`, {
+      method: 'POST',
+      body: { title: 'Release review', startAt: '2026-06-02T13:00:00-04:00', location: 'RoachNet' },
+    })
+    assert.equal(calendar.events[0].title, 'Release review')
+    const reports = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/reports`, {
+      method: 'POST',
+      body: { title: 'Diagnostics brief', kind: 'diagnostics-report', formats: ['markdown', 'json'] },
+    })
+    assert.equal(reports.reports[0].kind, 'diagnostics-report')
+    const memory = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/memories`, {
+      method: 'POST',
+      body: { title: 'Useful habit', content: 'Check local runtime state before claiming release readiness.', tags: ['release'] },
+    })
+    assert.equal(memory.memories[0].title, 'Useful habit')
+    const skill = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/skills`, {
+      method: 'POST',
+      body: { name: 'Release gate sweep', category: 'release', body: 'Run native, iOS, site, and diff gates before shipping.' },
+    })
+    assert.equal(skill.skills[0].category, 'release')
+    const editorDraft = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/editor-drafts`, {
+      method: 'POST',
+      body: { title: 'RoachClaw note', format: 'markdown', body: '# RoachClaw\nKeep the stack local.' },
+    })
+    assert.equal(editorDraft.drafts[0].format, 'markdown')
+    const searchCache = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/search-cache`, {
+      method: 'POST',
+      body: { query: 'local-first release checklist', provider: 'vault', sources: ['README.md', 'MEMORY.MD'] },
+    })
+    assert.equal(searchCache.entries[0].sourceCount, 2)
+    const gallery = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/gallery`, {
+      method: 'POST',
+      body: { title: 'Vault cover', kind: 'image', path: '/tmp/vault-cover.png', tags: ['vault'] },
+    })
+    assert.equal(gallery.assets[0].title, 'Vault cover')
+    const webhook = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/webhooks`, {
+      method: 'POST',
+      body: { name: 'Local build hook', secret: 'do-not-store-me', target: 'release-check' },
+    })
+    assert.equal(webhook.webhooks[0].isActive, true)
+    assert.equal(webhook.webhooks[0].secretDigest.length, 64)
+    assert.equal(JSON.stringify(webhook).includes('do-not-store-me'), false)
+    const trackedRun = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/agent-runs`, {
+      method: 'POST',
+      body: { sessionId: 'session-test', title: 'Detached local run', status: 'running', model: 'qwen2.5-coder:1.5b', events: ['start', 'tool:read_file'] },
+    })
+    assert.equal(trackedRun.runs[0].status, 'running')
+    assert.equal(trackedRun.runs[0].eventCount, 2)
+    const compaction = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/context-compactions`, {
+      method: 'POST',
+      body: { sessionId: 'session-test', title: 'Release context', summary: 'Keep the native conversion plan and open gates.', turnsSummarized: 8, tokensBefore: 9000, tokensAfter: 1200 },
+    })
+    assert.equal(compaction.compactions[0].turnsSummarized, 8)
+    const toolIndex = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/tool-index`, {
+      method: 'POST',
+      body: { name: 'vault_context', category: 'vault', description: 'Reads local vault excerpts for RoachClaw.', alwaysAvailable: true, tags: ['vault', 'context'] },
+    })
+    assert.equal(toolIndex.tools[0].alwaysAvailable, true)
+    const eventCounter = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/events`, {
+      method: 'POST',
+      body: { id: 'event-message-sent', name: 'message.sent', owner: 'local-owner', increment: 1, actions: ['update-context'] },
+    })
+    assert.equal(eventCounter.events[0].count, 1)
+    const mailMessage = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/mail/messages`, {
+      method: 'POST',
+      body: { from: 'builder@roachnet.local', to: ['support@roachnet.local'], subject: 'Native lane', preview: 'Mail is local state now.' },
+    })
+    assert.equal(mailMessage.messages[0].subject, 'Native lane')
+    const mailDraft = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/mail/drafts`, {
+      method: 'POST',
+      body: { to: ['support@roachnet.local'], subject: 'Reply draft', body: 'Ship the native route.' },
+    })
+    assert.equal(mailDraft.drafts[0].status, 'draft')
+    const preset = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/presets`, {
+      method: 'POST',
+      body: { name: 'Release reviewer', systemPrompt: 'Be direct. Find release blockers.', temperature: 0.2 },
+    })
+    assert.equal(preset.templates[0].name, 'Release reviewer')
+    const signature = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/signatures`, {
+      method: 'POST',
+      body: { name: 'RoachWares', dataUrl: 'data:image/png;base64,cm9hY2huZXQ=' },
+    })
+    assert.equal(signature.signatures[0].name, 'RoachWares')
+    const tokenResult = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/tokens`, {
+      method: 'POST',
+      body: { name: 'Local test token', scopes: ['chat', 'vault'] },
+    })
+    assert.match(tokenResult.token, /^rn_/)
+    assert.equal(JSON.stringify(tokenResult).includes('tokenHash'), false)
+    const tokenStore = JSON.parse(readFileSync(path.join(storagePath, 'vault', 'roachclaw', 'api-tokens.json'), 'utf8'))
+    assert.equal(tokenStore.tokens[0].tokenHash.length, 64)
+    assert.equal(JSON.stringify(tokenStore).includes(tokenResult.token), false)
+    const providerResult = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers`, {
+      method: 'POST',
+      body: { provider: 'openai', key: 'sk-test-roachnet-local-provider-key', scopes: ['chat', 'models'] },
+    })
+    assert.equal(providerResult.success, true)
+    assert.equal(providerResult.provider.id, 'openai')
+    assert.equal(providerResult.provider.configured, true)
+    assert.equal(providerResult.provider.configuredVia, 'local-secret-file')
+    assert.equal(JSON.stringify(providerResult).includes('sk-test-roachnet-local-provider-key'), false)
+    assert.equal(JSON.stringify(providerResult).includes('keyHash'), false)
+    const providerStore = JSON.parse(readFileSync(path.join(storagePath, 'vault', 'roachclaw', 'cloud-provider-keys.json'), 'utf8'))
+    assert.equal(providerStore.providers[0].keyHash.length, 64)
+    assert.equal(JSON.stringify(providerStore).includes('sk-test-roachnet-local-provider-key'), false)
+    const rejectedProviderResponse = await requestHttp(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'openrouter', key: 'sk-test-local-private-url', baseUrl: 'http://127.0.0.1:9999/v1' }),
+      timeoutMs: 5_000,
+    })
+    assert.equal(rejectedProviderResponse.ok, false)
+    assert.equal(rejectedProviderResponse.status, 400)
+    const providerSecretPath = path.join(storagePath, 'vault', 'roachclaw', 'provider-secrets', 'openai.key')
+    assert.equal(readFileSync(providerSecretPath, 'utf8'), 'sk-test-roachnet-local-provider-key')
+    const aiProviders = await requestJson(`http://127.0.0.1:${port}/api/system/ai/providers`)
+    assert.equal(aiProviders.cloudProviders.providers.some((provider) => provider.id === 'openai' && provider.configured), true)
+    assert.equal(JSON.stringify(aiProviders).includes('sk-test-roachnet-local-provider-key'), false)
+    const backup = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/backups`, {
+      method: 'POST',
+      body: { title: 'Native feature backup' },
+    })
+    assert.equal(backup.success, true)
+    assert.equal(backup.snapshots.snapshots[0].title, 'Native feature backup')
+    const exportPayload = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/export`)
+    assert.equal(exportPayload.schema, 'org.roachnet.roachclaw.export.v1')
+    assert.equal(exportPayload.mail.messages.length, 1)
+    assert.equal(exportPayload.agentRuns.length, 1)
+    assert.equal(exportPayload.contextCompactions.length, 1)
+    assert.equal(exportPayload.cloudProviders.some((provider) => provider.id === 'openai' && provider.configured), true)
+    assert.equal(JSON.stringify(exportPayload).includes('sk-test-roachnet-local-provider-key'), false)
+    assert.equal(exportPayload.scopedToolBridge.scopes.includes('documents:write'), true)
+    assert.equal(exportPayload.tlsOverrides.bundlePath, '[local-path-redacted]')
+    assert.equal(JSON.stringify(exportPayload.providerOAuth).includes('do-not-export'), false)
+    assert.equal(exportPayload.embeddingLanes.lanes.some((lane) => lane.id === 'custom' && lane.fingerprint), true)
+    assert.equal(JSON.stringify(exportPayload.embeddingLanes).includes('do-not-export'), false)
+    assert.equal(exportPayload.toolPolicy.mode, 'normal')
+    const updatedOps = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/operations`)
+    assert.equal(updatedOps.contacts.recordCount, 1)
+    assert.equal(updatedOps.notesTasks.count, 1)
+    assert.equal(updatedOps.calendar.count, 1)
+    assert.equal(updatedOps.reports.count, 1)
+    assert.equal(updatedOps.memories.count, 1)
+    assert.equal(updatedOps.skills.count, 1)
+    assert.equal(updatedOps.editorDrafts.open, 1)
+    assert.equal(updatedOps.searchCache.count, 1)
+    assert.equal(updatedOps.gallery.count, 1)
+    assert.equal(updatedOps.webhooks.active, 1)
+    assert.equal(JSON.stringify(updatedOps.webhooks).includes('do-not-store-me'), false)
+    assert.equal(updatedOps.agentRuns.active, 1)
+    assert.equal(updatedOps.contextCompactions.count, 1)
+    assert.equal(updatedOps.toolIndex.active, 1)
+    assert.equal(updatedOps.events.count, 1)
+    assert.equal(updatedOps.commandDeck.count, 4)
+    assert.equal(updatedOps.commandDeck.active, 1)
+    assert.equal(updatedOps.commandDeck.summaryItems.includes('1 armed tools'), true)
+    assert.equal(updatedOps.contextRail.hotkey, 'Cmd-Shift-C')
+    assert.equal(updatedOps.contextRail.count, 4)
+    assert.equal(updatedOps.vaultNavigator.route, 'roachnet://vault')
+    assert.equal(updatedOps.vaultNavigator.count, 4)
+    assert.equal(updatedOps.agentMonitor.active, 1)
+    assert.equal(updatedOps.agentMonitor.summaryItems.includes('1 running'), true)
+    assert.equal(updatedOps.orchestrationDashboard.open, 4)
+    assert.equal(updatedOps.orchestrationDashboard.priority, 'coordinate')
+    assert.equal(updatedOps.mail.messages, 1)
+    assert.equal(updatedOps.mail.drafts, 1)
+    assert.equal(updatedOps.presets.count, 1)
+    assert.equal(updatedOps.signatures.count, 1)
+    assert.equal(updatedOps.apiTokens.active, 1)
+    assert.equal(JSON.stringify(updatedOps.apiTokens).includes('tokenHash'), false)
+    assert.equal(updatedOps.cloudProviders.active, 1)
+    assert.equal(updatedOps.cloudProviders.configured, 1)
+    assert.equal(JSON.stringify(updatedOps.cloudProviders).includes('sk-test-roachnet-local-provider-key'), false)
+    assert.equal(JSON.stringify(updatedOps.cloudProviders).includes('keyHash'), false)
+    assert.equal(updatedOps.userTime.status, 'configured')
+    assert.equal(updatedOps.cookbookServeLifecycle.active, 1)
+    assert.equal(updatedOps.scopedToolBridge.active, 6)
+    assert.equal(updatedOps.tlsOverrides.status, 'configured')
+    assert.equal(updatedOps.memoryProvider.count, 2)
+    assert.equal(updatedOps.providerOAuth.status, 'needs-user-action')
+    assert.equal(updatedOps.embeddingLanes.active, 2)
+    assert.equal(updatedOps.embeddingLanes.summaryItems.some((item) => item.includes('768d')), true)
+    assert.equal(updatedOps.toolPolicy.status, 'enforced')
+    assert.equal(updatedOps.backups.count, 1)
+    const deleteContact = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/contacts/${encodeURIComponent(contacts.contacts[0].id)}`, {
+      method: 'DELETE',
+    })
+    assert.equal(deleteContact.deleted, true)
+    assert.equal(deleteContact.state.contacts.length, 0)
+    assert.equal(companionRuntime.roachTail.enabled, true)
   } finally {
     await stopNativeApi(child, env)
     assert.equal(child.exitCode === 0 || child.signalCode === 'SIGTERM', true)
@@ -460,6 +927,84 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(existsSync(processInfoPath), false)
     await rm(tempRoot, { recursive: true, force: true })
     await new Promise((resolve) => releaseServer.close(resolve))
+  }
+})
+
+test('native RoachTail control plane supports join-key pairing and peer tokens', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachtail-test-'))
+  const storagePath = path.join(tempRoot, 'storage')
+  const runtimeStateRoot = path.join(tempRoot, 'state')
+  const port = await resolveAvailablePort()
+  const companionPort = await resolveAvailablePort()
+  const companionToken = 'native-api-roachtail-primary-token'
+  const processInfoPath = path.join(storagePath, 'logs', 'roachnet-runtime-processes.json')
+  const env = {
+    ...process.env,
+    ROACHNET_STORAGE_PATH: storagePath,
+    ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
+    ROACHNET_COMPANION_ENABLED: '1',
+    ROACHNET_COMPANION_HOST: '127.0.0.1',
+    ROACHNET_COMPANION_PORT: String(companionPort),
+    ROACHNET_COMPANION_TOKEN: companionToken,
+    HOST: '127.0.0.1',
+    PORT: String(port),
+  }
+  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+    cwd: repoRoot,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/health`, child)
+    await waitForPath(processInfoPath, child)
+    const processInfo = JSON.parse(readFileSync(processInfoPath, 'utf8'))
+
+    const initial = await requestJson(`http://127.0.0.1:${port}/api/companion/roachtail`)
+    assert.equal(initial.enabled, true)
+    assert.equal(initial.controlPlane.provider, 'roachnet-native')
+    assert.equal(initial.controlPlane.designReference, 'headscale')
+    assert.equal(initial.preAuthKeys.length, 1)
+    assert.equal(initial.preAuthKeys[0].ephemeral, true)
+    assert.equal(initial.routes.some((route) => route.id === 'companion-bridge' && route.approved), true)
+    assert.match(initial.pairingPayload, /roachnet\.roachtail\.v2/)
+    assert.equal(typeof initial.joinCode, 'string')
+
+    const paired = await requestJson(`${processInfo.companionUrl}/api/companion/roachtail/pair`, {
+      method: 'POST',
+      body: {
+        joinCode: initial.joinCode,
+        peerName: 'RoachPhone',
+        platform: 'ios',
+        endpoint: 'roachphone.local',
+      },
+    })
+    assert.equal(paired.success, true)
+    assert.match(paired.peerToken, /^rtpeer_/)
+    assert.equal(paired.state.peers.length, 1)
+    assert.equal(paired.state.peers[0].name, 'RoachPhone')
+    assert.equal(JSON.stringify(paired).includes('tokenHash'), false)
+
+    const peerView = await requestJson(`${processInfo.companionUrl}/api/companion/roachtail`, {
+      token: paired.peerToken,
+    })
+    assert.equal(peerView.joinCode, null)
+    assert.equal(peerView.peers.length, 1)
+    assert.equal(peerView.peers[0].status, 'connected')
+
+    const refreshed = await requestJson(`http://127.0.0.1:${port}/api/companion/roachtail/affect`, {
+      method: 'POST',
+      body: { action: 'refresh-join-code' },
+    })
+    assert.equal(refreshed.success, true)
+    assert.notEqual(refreshed.state.joinCode, initial.joinCode)
+
+    const stateFile = JSON.parse(readFileSync(path.join(storagePath, 'vault', 'roachtail', 'state.json'), 'utf8'))
+    assert.equal(typeof stateFile.peers[0].tokenHash, 'string')
+    assert.equal(stateFile.peers[0].tokenHash.length, 64)
+  } finally {
+    await stopNativeApi(child, env)
+    await rm(tempRoot, { recursive: true, force: true })
   }
 })
 
@@ -624,7 +1169,7 @@ test('native API cancels active download jobs and removes partial files', async 
   }
 })
 
-test('native API installs downloaded RoachSpeech packs into the active model shelf', async () => {
+test('native API installs downloaded RoachSpeech packs into the active model shelf', macOSDittoTest, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachspeech-test-'))
   const packID = 'test-roachvoice-pack'
   const archivePath = await createTestRoachSpeechPackZip(tempRoot, packID)
@@ -683,7 +1228,7 @@ test('native API installs downloaded RoachSpeech packs into the active model she
   }
 })
 
-test('native API resolves Apps download descriptors before installing RoachSpeech packs', async () => {
+test('native API resolves Apps download descriptors before installing RoachSpeech packs', macOSDittoTest, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachspeech-descriptor-test-'))
   const packID = 'test-roachvoice-descriptor-pack'
   const archivePath = await createTestRoachSpeechPackZip(tempRoot, packID)
@@ -756,7 +1301,7 @@ test('native API resolves Apps download descriptors before installing RoachSpeec
   }
 })
 
-test('native API reassembles chunked Apps descriptors before installing RoachSpeech packs', async () => {
+test('native API reassembles chunked Apps descriptors before installing RoachSpeech packs', macOSDittoTest, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachspeech-chunked-test-'))
   const packID = 'test-roachvoice-chunked-pack'
   const archivePath = await createTestRoachSpeechPackZip(tempRoot, packID)

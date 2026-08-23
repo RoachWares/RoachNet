@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
+const releaseVersion = readJson(path.join(repoRoot, 'package.json')).version
 const whisperPackRoot = path.join(
   repoRoot,
   'native',
@@ -90,15 +91,15 @@ function promoteWhisperPackToReleaseReady() {
     ],
     notes: [
       'RoachWhisper runs fully in RoachNet Swift/Core ML code. No whisper.cpp binary, Python runtime, ONNX runtime, or server process is required by the app.',
-      'This pack starts with a small base.en model so v1.0.5 can ship a native speech lane without bloating the installer past the Apple Silicon memory target.',
+      `This pack starts with a small base.en model so v${releaseVersion} can ship a native speech lane without bloating the installer past the Apple Silicon memory target.`,
       'Larger V3 Turbo-class packs stay optional until installer size and 16 GB RAM gates pass.',
     ],
   })
 }
 
 function main() {
-  run('import-roachvoice-chatterbox-coreml.mjs', ['--version', '1.0.5'])
-  run('import-roachvoice-kokoro-coreml.mjs', ['--version', '1.0.5'])
+  run('import-roachvoice-chatterbox-coreml.mjs', ['--version', releaseVersion])
+  run('import-roachvoice-kokoro-coreml.mjs', ['--version', releaseVersion])
   run('import-roachwhisper-coreml-from-whisperkit.mjs', [
     '--model',
     'openai_whisper-base.en',
@@ -106,7 +107,7 @@ function main() {
     '0.2.0',
   ])
   promoteWhisperPackToReleaseReady()
-  console.log('RoachSpeech release packs hydrated for v1.0.5.')
+  console.log(`RoachSpeech release packs hydrated for v${releaseVersion}.`)
 }
 
 try {
