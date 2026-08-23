@@ -108,6 +108,7 @@ export function auditReleaseConfiguration() {
   const packageManifest = JSON.parse(read('package.json'))
   const packageLock = JSON.parse(read('package-lock.json'))
   const buildScript = read('scripts/build-native-macos-apps.mjs')
+  const provenanceScript = read('scripts/release-provenance.mjs')
   const runtimePins = JSON.parse(read('docs/release-gates/runtime-freshness.json'))
 
   auditActionPins(failures, nativeWorkflow, 'native-packages.yml')
@@ -141,11 +142,31 @@ export function auditReleaseConfiguration() {
   requirePattern(failures, nativeWorkflow, /ROACHNET_RELEASE_BUILD:\s*['"]?1/, 'Staging does not enable fail-closed release build mode.')
   requirePattern(failures, nativeWorkflow, /GITHUB_SHA[\s\S]*CANDIDATE_SHA/, 'Staging is not dispatched from the exact candidate SHA.')
   requirePattern(failures, nativeWorkflow, /roachnet-release-staging[\s\S]*required_reviewers/, 'Staging does not verify protected-environment reviewers.')
-  requirePattern(failures, nativeWorkflow, /workflowRunId[\s\S]*workflowRunAttempt[\s\S]*workflowPath[\s\S]*assets/, 'Staging provenance does not bind every asset to the Actions run.')
+  requirePattern(failures, provenanceScript, /releaseNotes[\s\S]*workflow[\s\S]*artifact[\s\S]*signing[\s\S]*notarization[\s\S]*assets[\s\S]*renderedReleaseBody/, 'Release provenance does not bind notes, workflow, artifact, signing/notary evidence, assets, and rendered body.')
   requirePattern(failures, nativeWorkflow, /roachnet-release-provenance-\$\{\{ inputs\.candidate_sha \}\}-\$\{\{ github\.run_attempt \}\}/, 'Staging does not preserve attempt-specific immutable run-bound provenance.')
-  requirePattern(failures, promotionWorkflow, /roachnet-release-production[\s\S]*required_reviewers/, 'Promotion does not verify protected-environment reviewers.')
+  requirePattern(failures, nativeWorkflow, /finalize-release-provenance\.mjs[\s\S]*stable-release-body\.md[\s\S]*verify-release-body\.mjs/, 'Staging does not render and verify an artifact-bound stable body before draft creation.')
+  requirePattern(failures, nativeWorkflow, /staged-release-snapshot\.json[\s\S]*roachnet-staged-release-snapshot-\$\{\{ inputs\.candidate_sha \}\}-\$\{\{ github\.run_attempt \}\}/, 'Staging does not bind the draft release ID and asset IDs to the successful run.')
+  requirePattern(failures, nativeWorkflow, /finalize-release-gate-results\.mjs[\s\S]*release-gate-records\.json[\s\S]*verify-release-gate-materials\.mjs[\s\S]*actions\/create-github-app-token@[a-f0-9]{40}[\s\S]*permission-contents:\s*write[\s\S]*permission-workflows:\s*write[\s\S]*gh release create/, 'Staging does not verify externally supplied P0/P1 evidence and mint the scoped release App token just before draft creation.')
+  requirePattern(failures, nativeWorkflow, /roachnet-release-gate-materials-\$\{\{ inputs\.candidate_sha \}\}-\$\{\{ github\.run_attempt \}\}/, 'Staging does not preserve immutable P0/P1 evidence materials.')
+  requirePattern(failures, nativeWorkflow, /finalize-release-gate-evidence\.mjs[\s\S]*release-gate-evidence\.json/, 'Staging does not bind the exact gate matrix to the immutable release snapshot.')
+  requirePattern(failures, promotionWorkflow, /verify-staged-candidate:[\s\S]*authorize-and-promote:[\s\S]*needs:\s*verify-staged-candidate[\s\S]*environment:\s*roachnet-release-production/, 'Protected production approval does not occur after a successful read-only verification job.')
+  requirePattern(failures, promotionWorkflow, /go_live_decision:[\s\S]*GO_LIVE_DECISION[\s\S]*== 'GO-LIVE'/, 'Promotion does not require the exact GO-LIVE dispatch literal.')
+  requirePattern(failures, promotionWorkflow, /roachnet-release-production[\s\S]*required_reviewers[\s\S]*prevent_self_review/, 'Promotion does not verify protected-environment reviewers and prevent-self-review.')
   requirePattern(failures, promotionWorkflow, /actions\/runs\/\$STAGE_RUN_ID[\s\S]*gh run download/, 'Promotion does not authenticate provenance against a successful stage run.')
-  requirePattern(failures, promotionWorkflow, /asset\.digest[\s\S]*gh release edit/, 'Promotion does not revalidate live remote asset digests immediately before publication.')
+  requirePattern(failures, promotionWorkflow, /verify-release-gate-evidence\.mjs[\s\S]*prepare-go-live-attestation\.mjs[\s\S]*actions\/attest@[a-f0-9]{40}[\s\S]*attestations\/go-live\/v1/, 'Promotion does not validate exact gates and persist the custom GO-LIVE attestation.')
+  requirePattern(failures, promotionWorkflow, /roachnet-release-gate-materials-\$CANDIDATE_SHA-\$STAGE_RUN_ATTEMPT[\s\S]*verify-release-gate-materials\.mjs/, 'Promotion does not download and verify immutable P0/P1 evidence file digests.')
+  requirePattern(failures, promotionWorkflow, /gh attestation verify[\s\S]*--signer-workflow[\s\S]*--source-digest[\s\S]*actions\/create-github-app-token@[a-f0-9]{40}/, 'Promotion does not verify persisted Sigstore/workflow identity before minting the release token.')
+  requirePattern(failures, promotionWorkflow, /permission-contents:\s*write[\s\S]*permission-workflows:\s*write[\s\S]*--method PATCH/, 'Promotion does not use the repository-scoped Contents+Workflows release App token.')
+  requirePattern(failures, promotionWorkflow, /immediate-pre-patch-release\.json[\s\S]*staged-release-snapshot\.mjs[\s\S]*--method PATCH[\s\S]*authenticated-release\.json[\s\S]*unauthenticated-release\.json[\s\S]*public-RoachNet-Setup-macOS\.dmg/, 'Promotion does not perform exact preflight, a single update, and authenticated/unauthenticated exact-byte readback.')
+  requirePattern(failures, promotionWorkflow, /promotion-result\.v1[\s\S]*decision:\s*"NO-GO"[\s\S]*draft=true[\s\S]*decision:\s*"GO"/, 'Promotion does not emit separate GO/NO-GO evidence and best-effort quarantine failures.')
+  requirePattern(failures, promotionWorkflow, /roachnet-staged-release-snapshot-\$CANDIDATE_SHA-\$STAGE_RUN_ATTEMPT[\s\S]*staged-release-snapshot\.mjs[\s\S]*verify-release-gate-evidence\.mjs/, 'Promotion does not authenticate exact draft release and asset IDs against the stage run.')
+  requirePattern(failures, promotionWorkflow, /verify-published-release\.mjs[\s\S]*REMOTE_TAG_SHA/, 'Promotion readback does not prove release, assets, body, and tag retained staged identity.')
+  if (/If-Match|RELEASE_ETAG|\bETag\b/.test(promotionWorkflow)) {
+    failures.push('Promotion must not claim unsupported conditional Update Release or ETag compare-and-swap semantics.')
+  }
+  if (/gh release edit[^\n]*--notes-file "\$RELEASE_NOTES_PATH"/.test(promotionWorkflow)) {
+    failures.push('Promotion must never publish tracked RC notes unchanged as the stable body.')
+  }
 
   requireOrder(failures, nativeWorkflow, [
     'npm ci',
@@ -154,7 +175,7 @@ export function auditReleaseConfiguration() {
     'npm run native:dist',
     'npm run smoke:release-gates',
     'codesign --verify',
-    'xcrun notarytool history',
+    'xcrun notarytool info',
     'stapler validate',
     'spctl --assess',
     'shasum -a 256 -c RoachNet-Setup-macOS.dmg.sha256',
@@ -169,11 +190,13 @@ export function auditReleaseConfiguration() {
     'gh release download',
     'shasum -a 256 -c RoachNet-Setup-macOS.dmg.sha256',
     'codesign --verify',
-    'xcrun notarytool history',
     'stapler validate',
     'spctl --assess',
     'audit-release-supply-chain.mjs',
-    'gh release edit "$RELEASE_TAG" --draft=false --prerelease=false',
+    'xcrun notarytool info',
+    'actions/attest@',
+    'actions/create-github-app-token@',
+    'gh api --method PATCH',
   ], 'release.yml')
   if (/gh release (?:create|upload)/.test(promotionWorkflow)) {
     failures.push('Promotion workflow must only promote exact staged bytes; it cannot create or upload assets.')

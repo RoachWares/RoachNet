@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 import { writeSha256Sidecar } from './build-native-macos-packaging-support.mjs'
 import { downloadHttpToFile, requestHttp } from './lib/roachnet_http.mjs'
+import { parseAcceptedNotarySubmission } from './lib/roachnet_notary_evidence.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -56,6 +57,7 @@ const baselineRoachSpeechPackIDs = new Set([
   'roachwhisper-openai-whisper-base-en-coreml',
   'roachvoice-kokoro-82m-int8-coreml',
 ])
+const notarizationSubmissions = []
 const OLLAMA_RELEASE_API_URL = 'https://api.github.com/repos/ollama/ollama/releases/latest'
 const OLLAMA_DIRECT_DOWNLOAD_URL =
   process.env.ROACHNET_BUNDLED_OLLAMA_URL?.trim() || 'https://ollama.com/download/ollama-darwin.tgz'
@@ -1632,15 +1634,22 @@ async function notarizeArtifact(artifactPath) {
     return
   }
 
-  const submitArgs = ['notarytool', 'submit', artifactPath, '--keychain-profile', notaryProfile, '--wait']
+  const submitArgs = [
+    'notarytool',
+    'submit',
+    artifactPath,
+    '--keychain-profile',
+    notaryProfile,
+    '--wait',
+    '--output-format',
+    'json',
+  ]
   if (notaryKeychain) {
     submitArgs.push('--keychain', notaryKeychain)
   }
 
   const result = await run('xcrun', submitArgs, { stdio: 'pipe' })
-  if (!/status:\s*Accepted/i.test(`${result.stdout}\n${result.stderr}`)) {
-    throw new Error(`Apple notarization did not return Accepted for ${artifactPath}.`)
-  }
+  notarizationSubmissions.push(parseAcceptedNotarySubmission(result.stdout, artifactPath))
 
   await run('xcrun', ['stapler', 'staple', artifactPath], { stdio: 'pipe' })
   await run('xcrun', ['stapler', 'validate', artifactPath], { stdio: 'pipe' })
@@ -1719,6 +1728,25 @@ async function main() {
       await writeSha256Sidecar(dmgPath)
       builtBundles.push(dmgPath)
     }
+  }
+
+  if (releaseBuild) {
+    const dmgSubmission = notarizationSubmissions.find(
+      (entry) => entry.artifact === 'RoachNet-Setup-macOS.dmg'
+    )
+    if (!dmgSubmission) {
+      throw new Error('Public release build is missing candidate-specific DMG notarization evidence.')
+    }
+    const evidenceRoot = path.join(distPath, 'release-evidence')
+    mkdirSync(evidenceRoot, { recursive: true })
+    writeFileSync(
+      path.join(evidenceRoot, 'notarization-submissions.json'),
+      `${JSON.stringify({
+        schema: 'org.roachnet.notarization-submissions.v1',
+        submissions: notarizationSubmissions,
+      }, null, 2)}\n`,
+      'utf8'
+    )
   }
 
   for (const bundle of builtBundles) {

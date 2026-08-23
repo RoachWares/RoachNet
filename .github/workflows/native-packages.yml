@@ -92,7 +92,7 @@ jobs:
     runs-on: blacksmith-6vcpu-macos-15
     environment: roachnet-release-staging
     permissions:
-      contents: write
+      contents: read
     env:
       DEPLOYMENT_AUTHORIZED_USERS: ${{ secrets.DEPLOYMENT_AUTHORIZED_USERS }}
       APPLE_DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_BASE64 }}
@@ -104,6 +104,7 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       RELEASE_NOTES_PATH: ${{ inputs.release_notes_path }}
+      ROACHNET_RELEASE_APP_CLIENT_ID: ${{ vars.ROACHNET_RELEASE_APP_CLIENT_ID }}
       ROACHNET_RELEASE_BUILD: '1'
     steps:
       - name: Fail closed on authorization and release prerequisites
@@ -115,7 +116,7 @@ jobs:
             if [[ -n "$allowed_actor" && "$allowed_actor" == "$GITHUB_TRIGGERING_ACTOR" ]]; then authorized=true; fi
           done < <(printf '%s' "$DEPLOYMENT_AUTHORIZED_USERS" | tr ',[:space:]' '\n' | sed '/^$/d')
           [[ "$authorized" == true ]] || { echo 'Triggering actor is not an exact release allowlist member.' >&2; exit 1; }
-          for name in APPLE_DEVELOPER_ID_APP_CERT_BASE64 APPLE_DEVELOPER_ID_APP_CERT_PASSWORD APPLE_DEVELOPER_ID_APP_IDENTITY APPLE_NOTARY_APPLE_ID APPLE_NOTARY_APP_PASSWORD APPLE_NOTARY_TEAM_ID RELEASE_TAG CANDIDATE_SHA RELEASE_NOTES_PATH; do
+          for name in APPLE_DEVELOPER_ID_APP_CERT_BASE64 APPLE_DEVELOPER_ID_APP_CERT_PASSWORD APPLE_DEVELOPER_ID_APP_IDENTITY APPLE_NOTARY_APPLE_ID APPLE_NOTARY_APP_PASSWORD APPLE_NOTARY_TEAM_ID RELEASE_TAG CANDIDATE_SHA RELEASE_NOTES_PATH ROACHNET_RELEASE_APP_CLIENT_ID; do
             [[ -n "${!name:-}" ]] || { echo "Missing required release prerequisite: $name" >&2; exit 1; }
           done
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'candidate_sha must be a full lowercase SHA.' >&2; exit 1; }
@@ -125,8 +126,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          REVIEWER_COUNT="$(gh api "repos/$GITHUB_REPOSITORY/environments/roachnet-release-staging" --jq '[.protection_rules[] | select(.type == "required_reviewers") | .reviewers[]] | length')"
-          [[ "$REVIEWER_COUNT" -ge 1 ]] || { echo 'roachnet-release-staging must have at least one required reviewer.' >&2; exit 1; }
+          ENVIRONMENT_JSON="$(gh api "repos/$GITHUB_REPOSITORY/environments/roachnet-release-staging")"
+          REVIEWER_COUNT="$(node -e 'const p=JSON.parse(process.argv[1]); process.stdout.write(String((p.protection_rules||[]).filter(r=>r.type==="required_reviewers").flatMap(r=>r.reviewers||[]).length))' "$ENVIRONMENT_JSON")"
+          PREVENT_SELF_REVIEW="$(node -e 'const p=JSON.parse(process.argv[1]),r=(p.protection_rules||[]).find(r=>r.type==="required_reviewers"); process.stdout.write(String(r?.prevent_self_review===true))' "$ENVIRONMENT_JSON")"
+          [[ "$REVIEWER_COUNT" -ge 1 && "$PREVENT_SELF_REVIEW" == true ]] || { echo 'roachnet-release-staging requires reviewers with prevent-self-review enabled.' >&2; exit 1; }
       - name: Checkout exact candidate
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -149,7 +152,7 @@ jobs:
           BUILD_NUMBER="$(node -p 'require("./package.json").buildNumber')"
           [[ "$RELEASE_TAG" == "v$VERSION" ]]
           node -e 'const p=require("./package.json"),l=require("./package-lock.json"); if(p.version!==l.version||p.version!==l.packages[""].version||p.version==="1.0.5"||Number(p.buildNumber)<=105) process.exit(1)'
-          git ls-files --error-unmatch "$RELEASE_NOTES_PATH"
+          git ls-files --error-unmatch -- "$RELEASE_NOTES_PATH"
           grep -Fq "$VERSION" "$RELEASE_NOTES_PATH"
           if grep -Eiq '\b(TODO|TBD|PLACEHOLDER)\b' "$RELEASE_NOTES_PATH"; then echo 'Release notes are not finalized.' >&2; exit 1; fi
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo 'Release already exists; staging never replaces assets.' >&2; exit 1; fi
@@ -221,18 +224,32 @@ jobs:
           DMG="$DIST/RoachNet-Setup-macOS.dmg"
           codesign --verify --deep --strict --verbose=2 "$DIST/RoachNet.app"
           codesign --verify --deep --strict --verbose=2 "$DIST/RoachNet Setup.app"
+          DEVELOPER_ID_LABEL=''
+          VERIFIED_TEAM_ID=''
           for app in "$DIST/RoachNet.app" "$DIST/RoachNet Setup.app"; do
             DETAILS="$(codesign -dv --verbose=4 "$app" 2>&1)"
             grep -Fq 'Authority=Developer ID Application:' <<<"$DETAILS"
             grep -Eq 'flags=.*runtime' <<<"$DETAILS"
             grep -Eq '^Timestamp=' <<<"$DETAILS"
             grep -Fq "TeamIdentifier=$APPLE_NOTARY_TEAM_ID" <<<"$DETAILS"
+            APP_LABEL="$(sed -n 's/^Authority=\(Developer ID Application:.*\)$/\1/p' <<<"$DETAILS" | head -n 1)"
+            APP_TEAM="$(sed -n 's/^TeamIdentifier=//p' <<<"$DETAILS" | head -n 1)"
+            [[ -n "$APP_LABEL" && -n "$APP_TEAM" ]]
+            if [[ -z "$DEVELOPER_ID_LABEL" ]]; then
+              DEVELOPER_ID_LABEL="$APP_LABEL"
+              VERIFIED_TEAM_ID="$APP_TEAM"
+            else
+              [[ "$DEVELOPER_ID_LABEL" == "$APP_LABEL" && "$VERIFIED_TEAM_ID" == "$APP_TEAM" ]]
+            fi
           done
-          xcrun notarytool history --keychain-profile roachnet-notary --keychain "$ROACHNET_SIGNING_KEYCHAIN" | grep -Fq 'Accepted'
+          NOTARY_SUBMISSION_ID="$(node -e 'const fs=require("fs"),p=JSON.parse(fs.readFileSync(process.argv[1])); const match=p.submissions?.find(e=>e.artifact==="RoachNet-Setup-macOS.dmg"&&e.status==="Accepted"); if(!match) process.exit(1); process.stdout.write(match.submissionId)' "$DIST/release-evidence/notarization-submissions.json")"
+          xcrun notarytool info "$NOTARY_SUBMISSION_ID" --keychain-profile roachnet-notary --keychain "$ROACHNET_SIGNING_KEYCHAIN" --output-format json > "$RUNNER_TEMP/dmg-notary-info.json"
+          node -e 'const fs=require("fs"),p=JSON.parse(fs.readFileSync(process.argv[1])); if(p.id!==process.argv[2]||p.status!=="Accepted") process.exit(1)' "$RUNNER_TEMP/dmg-notary-info.json" "$NOTARY_SUBMISSION_ID"
           xcrun stapler validate "$DIST/RoachNet Setup.app"
           xcrun stapler validate "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
           (cd "$DIST" && shasum -a 256 -c RoachNet-Setup-macOS.dmg.sha256)
+          DEVELOPER_ID_LABEL="$DEVELOPER_ID_LABEL" VERIFIED_TEAM_ID="$VERIFIED_TEAM_ID" NOTARY_SUBMISSION_ID="$NOTARY_SUBMISSION_ID" node -e 'const fs=require("fs"); const out={schema:"org.roachnet.release-signing-evidence.v1",artifact:"RoachNet-Setup-macOS.dmg",developerIdLabel:process.env.DEVELOPER_ID_LABEL,teamId:process.env.VERIFIED_TEAM_ID,verified:true,hardenedRuntime:true,timestamped:true,notarization:{submissionId:process.env.NOTARY_SUBMISSION_ID,status:"Accepted"},stapled:true,gatekeeper:"verified"}; fs.writeFileSync(process.argv[1],JSON.stringify(out,null,2)+"\n")' "$DIST/release-evidence/release-signing-evidence.json"
       - name: Mount exact DMG and generate candidate-bound SBOM, binary, license, and vulnerability evidence
         shell: bash
         run: |
@@ -267,27 +284,70 @@ jobs:
             --online true
           hdiutil detach "$MOUNT"
           trap - EXIT
-      - name: Finalize immutable provenance before draft staging
+      - name: Finalize immutable artifact-bound provenance and stable body before draft staging
         shell: bash
         run: |
           set -euo pipefail
           DIST="$GITHUB_WORKSPACE/native/macos/dist"
-          VERSION="$(node -p 'require("./package.json").version')"
-          BUILD_NUMBER="$(node -p 'require("./package.json").buildNumber')"
-          DMG_SHA256="$(shasum -a 256 "$DIST/RoachNet-Setup-macOS.dmg" | awk '{print $1}')"
-          NOTES_SHA256="$(shasum -a 256 "$RELEASE_NOTES_PATH" | awk '{print $1}')"
-          node -e 'const fs=require("fs"),path=require("path"),crypto=require("crypto"); const [out,sha,tag,version,build,dmg,notes,run,attempt,workflowRef,dist]=process.argv.slice(1); const names=["RoachNet-Setup-macOS.dmg","RoachNet-Setup-macOS.dmg.sha256","release-evidence/sbom.spdx.json","release-evidence/binary-license-inventory.json","release-evidence/vulnerability-scan.json"]; const assets=Object.fromEntries(names.map(relative=>{const file=path.join(dist,relative),bytes=fs.statSync(file).size,digest=crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); return [path.basename(relative),{bytes,sha256:digest}]})); fs.writeFileSync(out,JSON.stringify({schema:"org.roachnet.release-provenance.v1",candidateSha:sha,tag,version,buildNumber:Number(build),dmgSha256:dmg,releaseNotesSha256:notes,workflowRunId:Number(run),workflowRunAttempt:Number(attempt),workflowPath:".github/workflows/native-packages.yml",workflowRef,assets},null,2)+"\n")' \
-            "$DIST/release-evidence/release-provenance.json" "$CANDIDATE_SHA" "$RELEASE_TAG" "$VERSION" "$BUILD_NUMBER" "$DMG_SHA256" "$NOTES_SHA256" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_WORKFLOW_REF" "$DIST"
-      - name: Bind provenance to this immutable Actions run
+          node scripts/finalize-release-provenance.mjs \
+            --dist "$DIST" \
+            --notes "$RELEASE_NOTES_PATH" \
+            --signing-evidence "$DIST/release-evidence/release-signing-evidence.json" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --tag "$RELEASE_TAG" \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --workflow-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --workflow-ref "$GITHUB_WORKFLOW_REF" \
+            --provenance-out "$DIST/release-evidence/release-provenance.json" \
+            --body-out "$DIST/release-evidence/stable-release-body.md"
+          node scripts/verify-release-body.mjs \
+            --notes "$RELEASE_NOTES_PATH" \
+            --provenance "$DIST/release-evidence/release-provenance.json" \
+            --body "$DIST/release-evidence/stable-release-body.md"
+      - name: Bind provenance and rendered body to this immutable Actions run
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: roachnet-release-provenance-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
-          path: native/macos/dist/release-evidence/release-provenance.json
+          path: |
+            native/macos/dist/release-evidence/release-provenance.json
+            native/macos/dist/release-evidence/stable-release-body.md
           if-no-files-found: error
           retention-days: 30
+      - name: Finalize independently supplied exact P0/P1 gate results before staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIST="$GITHUB_WORKSPACE/native/macos/dist"
+          DMG_SHA256="$(shasum -a 256 "$DIST/RoachNet-Setup-macOS.dmg" | awk '{print $1}')"
+          node scripts/finalize-release-gate-results.mjs \
+            --records "$DIST/release-evidence/release-gate-records.json" \
+            --evidence-root "$DIST/release-evidence/gate-evidence" \
+            --repository "$GITHUB_REPOSITORY" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --artifact-sha256 "$DMG_SHA256" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --output "$DIST/release-evidence/release-gate-results.json"
+          node scripts/verify-release-gate-materials.mjs \
+            --results "$DIST/release-evidence/release-gate-results.json" \
+            --evidence-root "$DIST/release-evidence/gate-evidence" \
+            --repository "$GITHUB_REPOSITORY" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --artifact-sha256 "$DMG_SHA256"
+      - name: Mint repository-scoped staging release App token just in time
+        id: release-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ vars.ROACHNET_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ROACHNET_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: RoachNet
+          permission-contents: write
+          permission-workflows: write
       - name: Create quarantined draft prerelease and upload without replacement
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -301,7 +361,7 @@ jobs:
             "$DIST/release-evidence/binary-license-inventory.json" \
             "$DIST/release-evidence/vulnerability-scan.json" \
             "$DIST/release-evidence/release-provenance.json"
-      - name: Download and verify exact quarantined bytes
+      - name: Download and verify exact quarantined bytes, RC body, and staged URLs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -314,3 +374,37 @@ jobs:
           (cd "$QUARANTINE" && shasum -a 256 -c RoachNet-Setup-macOS.dmg.sha256)
           cmp native/macos/dist/RoachNet-Setup-macOS.dmg "$QUARANTINE/RoachNet-Setup-macOS.dmg"
           cmp native/macos/dist/release-evidence/release-provenance.json "$QUARANTINE/release-provenance.json"
+          node scripts/verify-release-body.mjs \
+            --notes "$RELEASE_NOTES_PATH" \
+            --provenance "$QUARANTINE/release-provenance.json" \
+            --body native/macos/dist/release-evidence/stable-release-body.md
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/staged-release.json"
+          node scripts/staged-release-snapshot.mjs \
+            --mode create \
+            --release-json "$RUNNER_TEMP/staged-release.json" \
+            --provenance "$QUARANTINE/release-provenance.json" \
+            --notes "$RELEASE_NOTES_PATH" \
+            --snapshot "$RUNNER_TEMP/staged-release-snapshot.json"
+          node scripts/finalize-release-gate-evidence.mjs \
+            --results native/macos/dist/release-evidence/release-gate-results.json \
+            --provenance "$QUARANTINE/release-provenance.json" \
+            --snapshot "$RUNNER_TEMP/staged-release-snapshot.json" \
+            --output "$RUNNER_TEMP/release-gate-evidence.json"
+      - name: Bind exact draft release and asset IDs to this immutable Actions run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: roachnet-staged-release-snapshot-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/staged-release-snapshot.json
+            ${{ runner.temp }}/release-gate-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Bind independently supplied P0/P1 evidence materials to this immutable Actions run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: roachnet-release-gate-materials-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
+          path: |
+            native/macos/dist/release-evidence/release-gate-results.json
+            native/macos/dist/release-evidence/gate-evidence
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,24 @@
+{
+  "schema": "org.roachnet.go-live-gate-policy.v1",
+  "policy": "org.roachnet.go-live-gates.v1",
+  "source": "docs/release-gates/public-release-checklist.md#required-fixes-before-a-public-stable-release",
+  "requiredGates": [
+    { "id": "P0-01-source-candidate", "priority": "P0", "requirement": "Clean intentional candidate commit" },
+    { "id": "P0-02-version-and-tag", "priority": "P0", "requirement": "New aligned version, build, and immutable tag" },
+    { "id": "P0-03-release-path-bypasses", "priority": "P0", "requirement": "Every release-capable path is inventoried and protected" },
+    { "id": "P0-04-fail-closed-release-ci", "priority": "P0", "requirement": "Public-release CI fails closed before staging" },
+    { "id": "P0-05-native-apple-silicon-build", "priority": "P0", "requirement": "Candidate is built and tested on native Apple Silicon" },
+    { "id": "P0-06-signing-notarization-and-stapling", "priority": "P0", "requirement": "Developer ID, hardened runtime, notarization, stapling, and Gatekeeper pass" },
+    { "id": "P0-07-fresh-install-upgrade-and-rollback", "priority": "P0", "requirement": "Fresh install, upgrade, data preservation, and rollback pass" },
+    { "id": "P0-08-checksum-reconciliation", "priority": "P0", "requirement": "Artifact URL, bytes, digest, sidecar, body, and staged metadata agree" },
+    { "id": "P0-09-quarantined-exact-artifact", "priority": "P0", "requirement": "Downloaded quarantined bytes pass exact artifact verification" },
+    { "id": "P0-10-staged-reversible-publication", "priority": "P0", "requirement": "Publication is serialized, immutable, fail-closed, and reversible" },
+    { "id": "P1-01-release-notes-and-support-copy", "priority": "P1", "requirement": "Release notes and support copy are complete and accurate" },
+    { "id": "P1-02-legacy-admin-source-risk", "priority": "P1", "requirement": "Legacy admin source risk is removed or resolved" },
+    { "id": "P1-03-final-artifact-supply-chain", "priority": "P1", "requirement": "Mounted artifact SBOM, binary, license, and vulnerability evidence pass" },
+    { "id": "P1-04-target-device-product-quality", "priority": "P1", "requirement": "Accessibility, responsive layout, visual, offline, and failure review pass" },
+    { "id": "P1-05-target-hardware-performance", "priority": "P1", "requirement": "Frozen target-hardware performance and soak budgets pass" },
+    { "id": "P1-06-public-routing-and-discovery", "priority": "P1", "requirement": "Public routing/discovery preflight is complete and post-promotion checks are armed" },
+    { "id": "P1-07-independent-hostile-review", "priority": "P1", "requirement": "Independent hostile review has no unresolved blocker" }
+  ]
+}

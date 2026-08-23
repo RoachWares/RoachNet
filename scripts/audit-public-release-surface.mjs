@@ -50,13 +50,6 @@ function isTextCandidate(filePath) {
   }
 }
 
-const trackedFiles = git(['ls-files'])
-  .split('\n')
-  .map((line) => line.trim())
-  .filter(Boolean)
-
-const failures = []
-
 const blockedExactFiles = new Map([
   ['MEMORY.MD', 'local handoff memory can contain machine paths, adjacent repos, and release notes not meant for public GitHub'],
   ['docs/BRAND_STYLE.md', 'brand/copy strategy is internal guidance; public pages should use the voice without exposing the project map'],
@@ -77,28 +70,6 @@ const blockedGlobs = [
   },
 ]
 
-for (const file of trackedFiles) {
-  const exactReason = blockedExactFiles.get(file)
-  if (exactReason) {
-    failures.push(`${file}: ${exactReason}`)
-    continue
-  }
-
-  for (const [prefix, reason] of blockedPrefixes) {
-    if (file.startsWith(prefix)) {
-      failures.push(`${file}: ${reason}`)
-      break
-    }
-  }
-
-  for (const rule of blockedGlobs) {
-    if (rule.test(file)) {
-      failures.push(`${file}: ${rule.reason}`)
-      break
-    }
-  }
-}
-
 function literalPattern(parts, flags = 'g') {
   const value = parts.join('')
   const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -117,29 +88,33 @@ const personalPatterns = [
 ]
 
 const upstreamIdentityPatterns = [
-  { pattern: /cosmistack/gi, label: 'private upstream organization identity' },
-  { pattern: /project[-_ ]nomad/gi, label: 'old imported upstream identity' },
-  { pattern: /projectnomad/gi, label: 'old imported upstream domain' },
-  { pattern: /\bNOMAD\b/g, label: 'old imported upstream environment prefix' },
-  { pattern: /\bNomad\b/g, label: 'old imported upstream product name' },
-  { pattern: /Crosstalk[- ]Solutions/gi, label: 'old imported upstream publisher identity' },
-  { pattern: /crosstalksolutions/gi, label: 'old imported upstream community URL' },
-  { pattern: /chriscrosstalk/gi, label: 'old imported upstream maintainer handle' },
+  { pattern: literalPattern(['cosmi', 'stack'], 'gi'), label: 'private upstream organization identity' },
+  { pattern: new RegExp(['project', '[-_ ]', 'nomad'].join(''), 'gi'), label: 'old imported upstream identity' },
+  { pattern: literalPattern(['project', 'nomad'], 'gi'), label: 'old imported upstream domain' },
+  { pattern: new RegExp(['\\b', 'NOM', 'AD', '\\b'].join(''), 'g'), label: 'old imported upstream environment prefix' },
+  { pattern: new RegExp(['\\b', 'Nom', 'ad', '\\b'].join(''), 'g'), label: 'old imported upstream product name' },
+  { pattern: literalPattern(['Cross', 'talk', ' Solutions'], 'gi'), label: 'old imported upstream publisher identity' },
+  { pattern: literalPattern(['cross', 'talk', 'solutions'], 'gi'), label: 'old imported upstream community URL' },
+  { pattern: literalPattern(['chris', 'cross', 'talk'], 'gi'), label: 'old imported upstream maintainer handle' },
 ]
 
-for (const file of trackedFiles) {
-  if (file === 'scripts/audit-public-release-surface.mjs') continue
-  if (file === 'LICENSE') continue
-  if (!isTextCandidate(file)) continue
+const upstreamPublisher = ['Cross', 'talk Solutions LLC'].join('')
+const authorizedAttributionLines = new Map([
+  ['LICENSE', new Set([`   Copyright 2024-2026 ${upstreamPublisher}`])],
+  ['docs/UPSTREAM.md', new Set([`- Its retained copyright notice names ${upstreamPublisher} for 2024–2026.`])],
+])
 
-  const absolute = path.join(repoRoot, file)
-  let contents = ''
-  try {
-    contents = fs.readFileSync(absolute, 'utf8')
-  } catch {
-    continue
-  }
+function redactAuthorizedAttributionLines(file, contents) {
+  const allowed = authorizedAttributionLines.get(file)
+  if (!allowed) return contents
+  return contents
+    .split(/\r?\n/)
+    .map((line) => allowed.has(line) ? '' : line)
+    .join('\n')
+}
 
+export function auditTextForPublicRelease(file, contents) {
+  const failures = []
   for (const { pattern, label } of personalPatterns) {
     pattern.lastIndex = 0
     if (pattern.test(contents)) {
@@ -147,9 +122,10 @@ for (const file of trackedFiles) {
     }
   }
 
+  const textWithoutAuthorizedAttribution = redactAuthorizedAttributionLines(file, contents)
   for (const { pattern, label } of upstreamIdentityPatterns) {
     pattern.lastIndex = 0
-    if (pattern.test(contents)) {
+    if (pattern.test(textWithoutAuthorizedAttribution)) {
       failures.push(`${file}: contains ${label}`)
     }
   }
@@ -157,17 +133,68 @@ for (const file of trackedFiles) {
   if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(contents)) {
     failures.push(`${file}: contains private key material`)
   }
+
+  return failures
 }
 
-if (failures.length > 0) {
-  console.error('Public release surface audit failed.')
-  console.error('')
-  for (const failure of failures) {
-    console.error(`- ${failure}`)
+export function auditPublicReleaseSurface() {
+  const trackedFiles = git(['ls-files'])
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const failures = []
+
+  for (const file of trackedFiles) {
+    const exactReason = blockedExactFiles.get(file)
+    if (exactReason) {
+      failures.push(`${file}: ${exactReason}`)
+      continue
+    }
+
+    for (const [prefix, reason] of blockedPrefixes) {
+      if (file.startsWith(prefix)) {
+        failures.push(`${file}: ${reason}`)
+        break
+      }
+    }
+
+    for (const rule of blockedGlobs) {
+      if (rule.test(file)) {
+        failures.push(`${file}: ${rule.reason}`)
+        break
+      }
+    }
   }
-  console.error('')
-  console.error('Fix these before pushing to GitHub, Homebrew, or roachnet.org.')
-  process.exit(1)
+
+  for (const file of trackedFiles) {
+    if (!isTextCandidate(file)) continue
+
+    const absolute = path.join(repoRoot, file)
+    let contents = ''
+    try {
+      contents = fs.readFileSync(absolute, 'utf8')
+    } catch {
+      continue
+    }
+
+    failures.push(...auditTextForPublicRelease(file, contents))
+  }
+
+  return failures
 }
 
-console.log('Public release surface audit passed.')
+if (process.argv[1] === __filename) {
+  const failures = auditPublicReleaseSurface()
+  if (failures.length > 0) {
+    console.error('Public release surface audit failed.')
+    console.error('')
+    for (const failure of failures) {
+      console.error(`- ${failure}`)
+    }
+    console.error('')
+    console.error('Fix these before pushing to GitHub, Homebrew, or roachnet.org.')
+    process.exitCode = 1
+  } else {
+    console.log('Public release surface audit passed.')
+  }
+}
