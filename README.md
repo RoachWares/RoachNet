@@ -64,7 +64,7 @@ GitHub does not host the support widgets used on the public site, so the repo ke
 ## Platform Status
 
 - `macOS Apple Silicon`
-  v1.0.5 remains the current stable release. The v1.0.6 candidate is pre-release only until Developer ID, notarization, install, accessibility, performance, and exact-public-byte gates pass.
+  v1.0.5 remains the current stable release. The [v1.0.6 candidate notes](./docs/releases/1.0.6.md) and [publication matrix](./docs/releases/1.0.6-publication-matrix.md) are draft-only until Developer ID, notarization, install, accessibility, performance, and exact-public-byte gates pass.
 - `Windows 11 x64`
   No public installer lane in this candidate. RoachArcade keeps Windows-game runner planning inside the macOS app instead of shipping another half-built desktop target.
 - `Linux`

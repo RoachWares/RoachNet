@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## Unreleased — v1.0.6 release candidate
 
-- Prepared the v1.0.6 / build 106 candidate without moving or reusing the published v1.0.5 tag.
-- Reconciled the native performance, motion, runtime-cache, RoachTail, documentation, and upstream-audit work onto the latest upstream source state.
-- Replaced semantic-release and direct asset clobbering with one protected, serialized draft-stage and exact-byte promotion path that fails closed on Apple signing/notary prerequisites.
-- Added candidate/tag/SHA proof, immutable action pins, full native and aggregate gates, Developer ID/hardened-runtime/notary/stapler/Gatekeeper checks, checksum verification, and mounted-artifact supply-chain evidence before publication.
-- Removed the vulnerable legacy `admin/` WebUI from the public candidate while preserving its v1.0.5 provenance and local uncommitted reference work outside the candidate.
+- Expanded the native RoachClaw surface with local playbooks, service health, jobs, reports, memory, backups, scoped tools, provider routes, and agent-run summaries.
+- Added a native RoachTail control-plane state with expiring join codes, peer-scoped tokens, approved routes, relay metadata, and stored token hashes instead of reusable plaintext peer tokens.
+- Coalesced duplicate Ollama reachability and model-list probes during concurrent status refreshes and invalidated stale model state after failed or ambiguous pulls.
+- Made every macOS `TimelineView` honor Reduce Motion, including changes made while affected views remain open.
+- Removed the stale v1.0.5 launch-guide label and added a neutral fallback brand mark for missing packaged icon assets.
+- Prepared the v1.0.6 / build 106 source candidate without moving or reusing the published v1.0.5 tag.
+- Replaced semantic-release and direct asset clobbering with one protected draft-stage and exact-byte promotion path that fails closed on Apple signing/notary prerequisites.
+- Removed the vulnerable legacy `admin/` WebUI from the public candidate while preserving its v1.0.5 provenance outside the candidate.
+- Added [draft candidate notes](docs/releases/1.0.6.md) and the [artifact-bound publication matrix](docs/releases/1.0.6-publication-matrix.md). Apple-host product, signing, packaging, and publication gates remain unrun.
 
 ## v1.0.5 - 2026-05-18
 
