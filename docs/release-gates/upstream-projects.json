@@ -44,10 +44,10 @@
       "repository": "Nexus-Mods/Vortex",
       "source": "https://api.github.com/repos/Nexus-Mods/Vortex/releases/latest",
       "latestRelease": {
-        "tag": "v2.5.0",
-        "name": "2.5.0",
-        "publishedAt": "2026-08-10T12:24:50Z",
-        "observedHead": "1bf7eddb04c2e73cd936cb586a9c991a7e36203c"
+        "tag": "v2.6.0",
+        "name": "2.6.0",
+        "publishedAt": "2026-08-25T13:15:11Z",
+        "observedHead": "67878926683fc03c17d64341dec13bbeb0c0d060"
       }
     },
     "owncast": {
