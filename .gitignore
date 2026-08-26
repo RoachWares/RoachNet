@@ -22,6 +22,7 @@ node_modules_node*_partial_*/
 dist
 build
 tmp
+.tmp/
 website-apps-dist
 
 # macOS Metafiles
