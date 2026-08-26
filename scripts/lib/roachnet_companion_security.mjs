@@ -65,6 +65,14 @@ export function isLocalRuntimeTargetHost(rawValue) {
   return LOOPBACK_TARGET_HOSTS.has(host)
 }
 
+export function assertCompanionBindHost(rawValue) {
+  const host = String(rawValue || '').trim()
+  if (!host || !isLocalRuntimeTargetHost(host)) {
+    throw new Error('RoachNet companion server must bind only to a loopback address.')
+  }
+  return host
+}
+
 export function resolveCompanionTargetOrigin(rawValue) {
   const parsed = new URL(String(rawValue || '').trim())
   if (!['http:', 'https:'].includes(parsed.protocol)) {

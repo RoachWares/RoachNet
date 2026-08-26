@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const defaultRepository = 'aufklarer/Kokoro-82M-CoreML-INT8'
+const defaultRevision = '4bc7df470ea4612a5b6539af16ebf301a027f491'
 const defaultPackID = 'roachvoice-kokoro-82m-int8-coreml'
 
 function parseArgs(argv) {
@@ -87,7 +88,7 @@ function writeJson(destinationPath, value) {
 
 async function importKokoro(args) {
   const repository = typeof args.repository === 'string' ? args.repository : defaultRepository
-  const revision = typeof args.revision === 'string' ? args.revision : 'main'
+  const revision = typeof args.revision === 'string' ? args.revision : defaultRevision
   const packID = typeof args['pack-id'] === 'string' ? args['pack-id'] : defaultPackID
   const outputRoot = resolveRepoPath(args.output || `native/macos/Vendor/RoachSpeech/ModelPacks/${packID}`)
   const treeURL = `https://huggingface.co/api/models/${repository}/tree/${revision}?recursive=1`
@@ -137,8 +138,8 @@ async function importKokoro(args) {
       upstreamProject: 'RoachWares/RoachNet',
       upstreamModelName: 'RoachVoice Kokoro 82M INT8',
       sourceFormat: 'Kokoro 82M Core ML INT8 pack',
-      conversionCommand: `node scripts/import-roachvoice-kokoro-coreml.mjs --repository ${repository}`,
-      upstreamCommit: revision === 'main' ? null : revision,
+      conversionCommand: `node scripts/import-roachvoice-kokoro-coreml.mjs --repository ${repository} --revision ${revision}`,
+      upstreamCommit: revision,
       importedAt: new Date().toISOString(),
       referenceProject: `${repository}; base model hexgrad/Kokoro-82M Apache-2.0`,
     },

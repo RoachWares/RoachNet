@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const defaultRepository = 'argmaxinc/whisperkit-coreml'
+const defaultRevision = '0f63a7800b00dd0226abd051b906c246e1907482'
 const defaultModel = 'openai_whisper-base.en'
 const tokenizerModelMap = new Map([
   ['openai_whisper-base.en', 'openai/whisper-base.en'],
@@ -17,6 +18,9 @@ const tokenizerModelMap = new Map([
   ['openai_whisper-tiny', 'openai/whisper-tiny'],
   ['openai_whisper-small.en', 'openai/whisper-small.en'],
   ['openai_whisper-small', 'openai/whisper-small'],
+])
+const tokenizerRevisionMap = new Map([
+  ['openai_whisper-base.en', '911407f4214e0e1d82085af863093ec0b66f9cd6'],
 ])
 
 function parseArgs(argv) {
@@ -86,6 +90,13 @@ function tokenizerRepositoryForModel(modelName, args) {
   return tokenizerModelMap.get(modelName) || null
 }
 
+function tokenizerRevisionForModel(modelName, args) {
+  if (typeof args['tokenizer-revision'] === 'string') {
+    return args['tokenizer-revision']
+  }
+  return tokenizerRevisionMap.get(modelName) || null
+}
+
 function targetPathForModelFile(modelFilePath, modelName, outputRoot) {
   const relativePath = modelFilePath.slice(modelName.length + 1)
   if (relativePath.startsWith('AudioEncoder.mlmodelc/')) {
@@ -102,13 +113,9 @@ function targetPathForModelFile(modelFilePath, modelName, outputRoot) {
 
 async function downloadTokenizerAssets(args, modelName, outputRoot) {
   const tokenizerRepository = tokenizerRepositoryForModel(modelName, args)
-  if (!tokenizerRepository) {
-    writeJson(path.join(outputRoot, 'RoachWhisper', 'RoachWhisperTokenizer.json'), {
-      status: 'staged',
-      source: 'unmapped',
-      note: 'No tokenizer repository mapping exists for this model. Add --tokenizer-repository before parity validation.',
-    })
-    return 'unmapped'
+  const tokenizerRevision = tokenizerRevisionForModel(modelName, args)
+  if (!tokenizerRepository || !tokenizerRevision) {
+    throw new Error(`No immutable tokenizer source is configured for ${modelName}. Supply --tokenizer-repository and --tokenizer-revision.`)
   }
 
   const tokenizerFiles = [
@@ -123,20 +130,20 @@ async function downloadTokenizerAssets(args, modelName, outputRoot) {
   ]
 
   for (const tokenizerFile of tokenizerFiles) {
-    const sourceURL = `https://huggingface.co/${tokenizerRepository}/resolve/main/${encodePathSegment(tokenizerFile)}`
+    const sourceURL = `https://huggingface.co/${tokenizerRepository}/resolve/${tokenizerRevision}/${encodePathSegment(tokenizerFile)}`
     const destination = tokenizerFile === 'tokenizer.json'
       ? path.join(outputRoot, 'RoachWhisper', 'RoachWhisperTokenizer.json')
       : path.join(outputRoot, 'RoachWhisper', 'Reference', 'Tokenizer', tokenizerFile)
     await downloadFile(sourceURL, destination)
   }
 
-  return tokenizerRepository
+  return { tokenizerRepository, tokenizerRevision }
 }
 
 async function importWhisperKitCoreML(args) {
   const repository = typeof args.repository === 'string' ? args.repository : defaultRepository
   const modelName = typeof args.model === 'string' ? args.model : defaultModel
-  const revision = typeof args.revision === 'string' ? args.revision : 'main'
+  const revision = typeof args.revision === 'string' ? args.revision : defaultRevision
   const packID = typeof args['pack-id'] === 'string' ? args['pack-id'] : packIDForModel(modelName)
   const outputRoot = resolveRepoPath(args.output || `native/macos/Vendor/RoachSpeech/ModelPacks/${packID}`)
   const treeURL = `https://huggingface.co/api/models/${repository}/tree/${revision}/${encodePathSegment(modelName)}?recursive=1`
@@ -156,7 +163,7 @@ async function importWhisperKitCoreML(args) {
     await downloadFile(sourceURL, destinationPath)
   }
 
-  const tokenizerRepository = await downloadTokenizerAssets(args, modelName, outputRoot)
+  const tokenizerSource = await downloadTokenizerAssets(args, modelName, outputRoot)
   writeJson(path.join(outputRoot, 'RoachWhisper', 'RoachWhisperParity.json'), {
     status: 'staged',
     validated: false,
@@ -178,10 +185,10 @@ async function importWhisperKitCoreML(args) {
       upstreamProject: 'RoachWares/RoachNet',
       upstreamModelName: modelName,
       sourceFormat: 'Whisper Core ML model bundle',
-      conversionCommand: `node scripts/import-roachwhisper-coreml-from-whisperkit.mjs --repository ${repository} --model ${modelName}`,
-      upstreamCommit: revision === 'main' ? null : revision,
+      conversionCommand: `node scripts/import-roachwhisper-coreml-from-whisperkit.mjs --repository ${repository} --revision ${revision} --model ${modelName} --tokenizer-repository ${tokenizerSource.tokenizerRepository} --tokenizer-revision ${tokenizerSource.tokenizerRevision}`,
+      upstreamCommit: revision,
       importedAt: new Date().toISOString(),
-      referenceProject: `ggml-org/whisper.cpp native ASR architecture reference; staged Core ML source ${repository}; tokenizer source ${tokenizerRepository}`,
+      referenceProject: `ggml-org/whisper.cpp native ASR architecture reference; staged Core ML source ${repository}@${revision}; tokenizer source ${tokenizerSource.tokenizerRepository}@${tokenizerSource.tokenizerRevision}`,
     },
   })
 

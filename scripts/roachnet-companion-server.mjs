@@ -6,6 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import {
+  assertCompanionBindHost,
   buildUpstreamCompanionUrl,
   isCompanionProxyPath,
   resolveCompanionTargetOrigin,
@@ -13,7 +14,7 @@ import {
 } from './lib/roachnet_companion_security.mjs'
 import { requestLocalRuntimeHttp } from './lib/roachnet_http.mjs'
 
-const host = process.env.ROACHNET_COMPANION_HOST?.trim() || '127.0.0.1'
+const host = assertCompanionBindHost(process.env.ROACHNET_COMPANION_HOST?.trim() || '127.0.0.1')
 const port = Number(process.env.ROACHNET_COMPANION_PORT || '38111')
 const token = process.env.ROACHNET_COMPANION_TOKEN?.trim() || ''
 const maxRequestBodyBytes = positiveIntegerEnv('ROACHNET_COMPANION_MAX_BODY_BYTES', 2 * 1024 * 1024)

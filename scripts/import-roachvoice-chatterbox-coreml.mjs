@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const defaultRepository = 'yepher/screen-cut-pro-tts-coreml'
+const defaultRevision = 'f4fae0751b59970c170ca8d40cbf0c53dc20ad37'
 const defaultPackID = 'roachvoice-chatterbox-coreml'
 
 const modelPackages = new Map([
@@ -104,6 +105,23 @@ function writeJson(destinationPath, value) {
   fs.writeFileSync(destinationPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
+function requireCoreMLCompiler() {
+  const result = spawnSync('xcrun', ['--find', 'coremlcompiler'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+  if (result.status !== 0 || result.error) {
+    const detail = [result.stdout, result.stderr, result.error?.message]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .join('\n')
+    throw new Error([
+      'RoachVoice Chatterbox import requires Xcode Command Line Tools with coremlcompiler.',
+      'Run this command on supported macOS with Xcode selected: xcode-select --switch /Applications/Xcode.app/Contents/Developer',
+      detail,
+    ].filter(Boolean).join('\n'))
+  }
+}
+
 function runCoreMLCompiler(packagePath, outputDirectory, destinationPath) {
   fs.rmSync(outputDirectory, { recursive: true, force: true })
   fs.mkdirSync(outputDirectory, { recursive: true })
@@ -129,8 +147,9 @@ function runCoreMLCompiler(packagePath, outputDirectory, destinationPath) {
     throw new Error(
       [
         `coremlcompiler failed for ${path.relative(repoRoot, packagePath)}`,
-        result.stdout.trim(),
-        result.stderr.trim(),
+        typeof result.stdout === 'string' ? result.stdout.trim() : '',
+        typeof result.stderr === 'string' ? result.stderr.trim() : '',
+        result.error?.message || '',
       ].filter(Boolean).join('\n')
     )
   }
@@ -172,11 +191,12 @@ async function downloadPackage(repository, revision, packageName, files, staging
 
 async function importChatterbox(args) {
   const repository = typeof args.repository === 'string' ? args.repository : defaultRepository
-  const revision = typeof args.revision === 'string' ? args.revision : 'main'
+  const revision = typeof args.revision === 'string' ? args.revision : defaultRevision
   const packID = typeof args['pack-id'] === 'string' ? args['pack-id'] : defaultPackID
   const outputRoot = resolveRepoPath(args.output || `native/macos/Vendor/RoachSpeech/ModelPacks/${packID}`)
   const stagingRoot = resolveRepoPath(args.staging || `.tmp/roachvoice-chatterbox-coreml/${revision}`)
   const compileRoot = path.join(stagingRoot, '.compiled')
+  requireCoreMLCompiler()
   const treeURL = `https://huggingface.co/api/models/${repository}/tree/${revision}?recursive=1`
   const files = (await fetchJson(treeURL)).filter((entry) => entry.type === 'file')
 
@@ -233,8 +253,8 @@ async function importChatterbox(args) {
       upstreamProject: 'RoachWares/RoachNet',
       upstreamModelName: 'RoachVoice Chatterbox Core ML',
       sourceFormat: 'Chatterbox TTS Core ML component pack',
-      conversionCommand: `node scripts/import-roachvoice-chatterbox-coreml.mjs --repository ${repository}`,
-      upstreamCommit: revision === 'main' ? null : revision,
+      conversionCommand: `node scripts/import-roachvoice-chatterbox-coreml.mjs --repository ${repository} --revision ${revision}`,
+      upstreamCommit: revision,
       importedAt: new Date().toISOString(),
       referenceProject: `${repository}; base model ResembleAI/chatterbox MIT; Chatterbox-Turbo target evaluated from ResembleAI/chatterbox-turbo and ResembleAI/chatterbox-turbo-ONNX`,
     },
@@ -245,7 +265,12 @@ async function importChatterbox(args) {
 
 try {
   const args = parseArgs(process.argv.slice(2))
-  await importChatterbox(args)
+  if (args['check-compiler'] === true) {
+    requireCoreMLCompiler()
+    console.log('coremlcompiler is available.')
+  } else {
+    await importChatterbox(args)
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
   process.exit(1)

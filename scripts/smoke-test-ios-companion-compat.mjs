@@ -9,6 +9,7 @@ import process from 'node:process'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { requestHttp } from './lib/roachnet_http.mjs'
+import { runCommand } from './lib/roachnet_child_process.mjs'
 import {
   redactSensitiveObject,
   redactSensitiveText,
@@ -136,6 +137,10 @@ function formatLogs(label, logs) {
   }
 
   return sections.join('\n\n')
+}
+
+async function runSmokeCommand(command, args, options = {}) {
+  return await runCommand(command, args, { ...options, formatLogs })
 }
 
 async function stopChild(child, signal = 'SIGTERM') {
@@ -368,17 +373,6 @@ async function waitForRuntimeEndpoints({
   return { runtimeBaseUrl: null, companionBaseUrl: null }
 }
 
-async function runCommand(command, args, options = {}) {
-  const handle = spawnProcess(command, args, options)
-  const exitCode = await new Promise((resolve) => {
-    handle.child.once('exit', (code) => resolve(code ?? 0))
-  })
-
-  if (exitCode !== 0) {
-    throw new Error(formatLogs(`${path.basename(command)} ${args.join(' ')}`, handle.getLogs()) || `${command} ${args.join(' ')} failed with exit code ${exitCode}`)
-  }
-}
-
 async function verifyIOSFixtures(fixturesDir) {
   if (!existsSync(iosRepoRoot)) {
     console.warn(`Skipping iOS compatibility smoke because ${iosRepoRoot} does not exist.`)
@@ -428,8 +422,8 @@ struct CompanionFixtureCheck {
 `.trimStart()
   )
 
-  await runCommand('ruby', [path.join(iosRepoRoot, 'scripts', 'generate_xcodeproj.rb')], { cwd: iosRepoRoot })
-  await runCommand(
+  await runSmokeCommand('ruby', [path.join(iosRepoRoot, 'scripts', 'generate_xcodeproj.rb')], { cwd: iosRepoRoot })
+  await runSmokeCommand(
     'xcodebuild',
     [
       '-project',
@@ -465,7 +459,7 @@ struct CompanionFixtureCheck {
     }
   )
 
-  await runCommand(
+  await runSmokeCommand(
     'swiftc',
     [
       '-parse-as-library',
@@ -477,7 +471,7 @@ struct CompanionFixtureCheck {
     { cwd: iosRepoRoot }
   )
 
-  await runCommand(
+  await runSmokeCommand(
     checkerPath,
     [
       path.join(fixturesDir, 'bootstrap.json'),
@@ -666,7 +660,7 @@ async function main() {
     throw error
   } finally {
     try {
-      await runCommand(runtimeNodeBinary, [runtimeLauncherPath, '--stop'], {
+      await runSmokeCommand(runtimeNodeBinary, [runtimeLauncherPath, '--stop'], {
         cwd: repoRoot,
         env: runtimeEnv,
       })
@@ -684,6 +678,7 @@ async function main() {
 
 main().catch((error) => {
   console.error('RoachNet desktop/iOS companion compatibility smoke failed. Re-run with ROACHNET_SMOKE_KEEP_TEMP=1 for local diagnostic artifacts.')
-  console.error(error?.stack || error?.message || String(error))
+  const message = error?.message || String(error)
+  console.error(message.startsWith('Unable to start ') ? message : error?.stack || message)
   process.exitCode = 1
 })

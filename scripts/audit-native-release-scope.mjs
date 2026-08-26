@@ -474,11 +474,12 @@ function requireManifestFields(manifest, expectedKind, expectedFeatures, label) 
 
 function loadModelPackManifests() {
   const modelPacksRoot = path.join(repoRoot, 'native/macos/Vendor/RoachSpeech/ModelPacks')
+  const mustValidateGeneratedPacks = process.platform === 'darwin' || process.env.ROACHNET_REQUIRE_GENERATED_ROACHSPEECH_PACKS === '1'
+  if (!mustValidateGeneratedPacks) {
+    console.log('RoachSpeech generated model packs are not audited on this non-macOS source host; Gate C must hydrate and validate them on Apple Silicon.')
+    return null
+  }
   if (!fs.existsSync(modelPacksRoot)) {
-    if (process.platform !== 'darwin' && process.env.ROACHNET_REQUIRE_GENERATED_ROACHSPEECH_PACKS !== '1') {
-      console.log('RoachSpeech generated model packs are absent on this non-macOS source audit; Gate C must generate and validate them on Apple Silicon.')
-      return null
-    }
     failures.push(`RoachSpeech v${rootPackage.version} requires generated native model packs under native/macos/Vendor/RoachSpeech/ModelPacks`)
     return []
   }

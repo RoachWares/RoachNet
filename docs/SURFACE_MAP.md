@@ -1,6 +1,10 @@
-# Settings, Onboarding, And Ollama Surface Map
+# Historical v1.0.5 Settings, Onboarding, And Ollama Surface Map
 
-This map captures the current surfaces before the first OpenClaw integration layer.
+Historical reference only. This map describes the removed `admin/` WebUI at tag
+`v1.0.5`; none of the routes, files, or Docker-oriented assumptions below are
+part of the post-v1.0.5 native shipping candidate. Use it only for migration
+research. The current public implementation is the macOS native surface under
+`native/macos/` plus the loopback bridge in `scripts/run-roachnet-native-api.mjs`.
 
 ## Verified Route Status
 

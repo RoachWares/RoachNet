@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  assertCompanionBindHost,
   buildUpstreamCompanionUrl,
   isCompanionProxyPath,
   resolveCompanionTargetOrigin,
@@ -17,6 +18,16 @@ test('resolveCompanionTargetOrigin only allows loopback desktop runtime origins'
   assert.throws(() => resolveCompanionTargetOrigin('http://192.168.1.20:8080'), /local desktop runtime/)
   assert.throws(() => resolveCompanionTargetOrigin('file:///tmp/runtime.sock'), /http or https/)
   assert.throws(() => resolveCompanionTargetOrigin('http://user:pass@127.0.0.1:8080'), /credentials/)
+})
+
+test('assertCompanionBindHost only allows loopback listener addresses', () => {
+  for (const host of ['127.0.0.1', 'localhost', '::1', '[::1]', '::ffff:127.0.0.1']) {
+    assert.equal(assertCompanionBindHost(host), host)
+  }
+
+  for (const host of ['', '0.0.0.0', '::', '192.168.1.20', '10.0.0.5', 'example.test']) {
+    assert.throws(() => assertCompanionBindHost(host), /must bind only to a loopback address/)
+  }
 })
 
 test('buildUpstreamCompanionUrl preserves only the companion API path family', () => {

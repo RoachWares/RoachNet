@@ -53,7 +53,7 @@ function promoteWhisperPackToReleaseReady() {
     provenance: {
       ...manifest.provenance,
       conversionCommand:
-        'node scripts/import-roachwhisper-coreml-from-whisperkit.mjs --repository argmaxinc/whisperkit-coreml --model openai_whisper-base.en && node scripts/smoke-test-roachspeech-coreml-packs.mjs',
+        'node scripts/import-roachwhisper-coreml-from-whisperkit.mjs --repository argmaxinc/whisperkit-coreml --revision 0f63a7800b00dd0226abd051b906c246e1907482 --model openai_whisper-base.en --tokenizer-repository openai/whisper-base.en --tokenizer-revision 911407f4214e0e1d82085af863093ec0b66f9cd6 && node scripts/smoke-test-roachspeech-coreml-packs.mjs',
       referenceProject:
         'ggml-org/whisper.cpp native ASR architecture reference; staged Core ML source argmaxinc/whisperkit-coreml; tokenizer source openai/whisper-base.en; native Swift/Core ML smoke and transcript parity fixtures passed',
     },
@@ -98,6 +98,7 @@ function promoteWhisperPackToReleaseReady() {
 }
 
 function main() {
+  run('import-roachvoice-chatterbox-coreml.mjs', ['--check-compiler'])
   run('import-roachvoice-chatterbox-coreml.mjs', ['--version', releaseVersion])
   run('import-roachvoice-kokoro-coreml.mjs', ['--version', releaseVersion])
   run('import-roachwhisper-coreml-from-whisperkit.mjs', [
