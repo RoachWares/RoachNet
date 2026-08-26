@@ -69,6 +69,18 @@ test('native package trims installer-only source and build-only Node runtime pay
   assert.match(source, /await pruneNodeRuntimePayload\(path\.join\(nodeRuntimeRoot,\s*'lib',\s*'node_modules'\)\)/)
 })
 
+test('native package carries the repository license and reports its actual SPDX identifier', () => {
+  const source = readRepoFile('scripts/build-native-macos-apps.mjs')
+  const packageManifest = JSON.parse(readRepoFile('package.json'))
+  const packageLock = JSON.parse(readRepoFile('package-lock.json'))
+  const license = readRepoFile('LICENSE')
+
+  assert.equal(packageManifest.license, 'Apache-2.0')
+  assert.equal(packageLock.packages[''].license, packageManifest.license)
+  assert.equal(license.includes('Apache License, Version 2.0'), true)
+  assert.equal(source.includes("'LICENSE',"), true)
+})
+
 test('companion compatibility smoke prefers the dependency-free native API launcher', () => {
   const source = readRepoFile('scripts/smoke-test-ios-companion-compat.mjs')
 

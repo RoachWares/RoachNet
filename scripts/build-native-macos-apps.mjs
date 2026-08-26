@@ -1118,6 +1118,7 @@ const bundledSourceDirectories = [
 
 const bundledSourceFiles = [
   'package.json',
+  'LICENSE',
 ]
 
 function createBundledPackageManifest(packageJson) {
