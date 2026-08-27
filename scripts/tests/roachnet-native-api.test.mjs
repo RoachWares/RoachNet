@@ -367,6 +367,9 @@ test('native API exposes app catalogs and companion payloads without the legacy 
   const releaseServer = await startReleaseServer(releasesPort)
   const token = 'native-api-companion-test-token'
   const statePath = path.join(runtimeStateRoot, 'roachnet-native-api-state.json')
+  const vaultFixture = path.join(storagePath, 'Vault', 'bootstrap-contract.md')
+  mkdirSync(path.dirname(vaultFixture), { recursive: true })
+  writeFileSync(vaultFixture, '# Bootstrap contract fixture\n')
   const processInfoPath = path.join(storagePath, 'logs', 'roachnet-runtime-processes.json')
   const env = {
     ...process.env,
@@ -456,8 +459,22 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     const bootstrap = await requestJson(`${processInfo.companionUrl}/api/companion/bootstrap`, { token })
     assert.equal(bootstrap.appName, 'RoachNet')
     assert.match(bootstrap.appsCatalogUrl, /^https:\/\/apps\.roachnet\.org\//)
-
     const companionRuntime = await requestJson(`${processInfo.companionUrl}/api/companion/runtime`, { token })
+    const companionVault = await requestJson(`${processInfo.companionUrl}/api/companion/vault`, { token })
+    assert.deepEqual(Object.keys(bootstrap.runtime).sort(), Object.keys(companionRuntime).sort())
+    assert.deepEqual(Object.keys(bootstrap.vault).sort(), Object.keys(companionVault).sort())
+    assert.equal(bootstrap.runtime.systemInfo.hardwareProfile.recommendedRuntime, 'native_local')
+    assert.equal(typeof bootstrap.runtime.providers.providers, 'object')
+    assert.notEqual(bootstrap.runtime.providers.providers, null)
+    assert.equal(typeof bootstrap.runtime.roachClaw.label, 'string')
+    assert.equal(bootstrap.runtime.roachClaw.playbook.schema, 'org.roachnet.roachclaw.playbook.v1')
+    assert.equal(Array.isArray(bootstrap.runtime.services), true)
+    assert.equal(Array.isArray(bootstrap.runtime.downloads), true)
+    assert.equal(Array.isArray(bootstrap.runtime.installedModels), true)
+    assert.equal(Array.isArray(bootstrap.runtime.issues), true)
+    assert.equal(bootstrap.vault.vaultPath, path.join(storagePath, 'Vault'))
+    assert.deepEqual(bootstrap.vault.knowledgeFiles, ['bootstrap-contract.md'])
+    assert.equal(Array.isArray(bootstrap.vault.roachBrain), true)
     assert.equal(companionRuntime.systemInfo.hardwareProfile.recommendedRuntime, 'native_local')
     assert.equal(Array.isArray(companionRuntime.services), true)
     assert.equal(Array.isArray(companionRuntime.downloads), true)

@@ -4911,18 +4911,15 @@ async function systemServices(ollamaStatus = null) {
   })
 }
 
-function companionBootstrapState() {
+async function companionBootstrapState() {
   return {
     appName: 'RoachNet',
     machineName: os.hostname(),
     appsCatalogUrl: 'https://apps.roachnet.org/app-store-catalog.json',
     sessions: [],
     account: accountState(),
-    runtime: {
-      target: 'native-api',
-      version: packageJson.version,
-      storagePath: storageRoot,
-    },
+    runtime: await companionRuntimeState(),
+    vault: companionVaultState(),
   }
 }
 
@@ -6096,7 +6093,7 @@ async function route(request, response) {
   if (method === 'POST' && pathname === '/api/roachclaw/backups') return sendJson(response, 200, createRoachClawBackup(await readRequestJson(request)))
   if (method === 'GET' && pathname === '/api/roachclaw/export') return sendJson(response, 200, roachClawExportPayload())
   if (method === 'GET' && pathname === '/api/site-archives') return sendJson(response, 200, { archives: siteArchives() })
-  if (method === 'GET' && pathname === '/api/companion/bootstrap') return sendJson(response, 200, companionBootstrapState())
+  if (method === 'GET' && pathname === '/api/companion/bootstrap') return sendJson(response, 200, await companionBootstrapState())
   if (method === 'GET' && pathname === '/api/companion/runtime') return sendJson(response, 200, await companionRuntimeState())
   if (method === 'GET' && pathname === '/api/companion/vault') return sendJson(response, 200, companionVaultState())
   if (method === 'GET' && pathname === '/api/companion/account') return sendJson(response, 200, accountState())
