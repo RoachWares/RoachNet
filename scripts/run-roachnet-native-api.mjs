@@ -27,7 +27,10 @@ const logRoot = path.join(storageRoot, 'logs')
 const logPath = path.join(logRoot, 'roachnet-native-api.log')
 const statePath = path.join(runtimeStateRoot, 'roachnet-native-api-state.json')
 const processInfoPath = path.join(logRoot, 'roachnet-runtime-processes.json')
-const roachTailStatePath = path.join(storageRoot, 'vault', 'roachtail', 'state.json')
+const roachTailStatePath = path.join(runtimeStateRoot, 'roachtail', 'state.json')
+const legacyRoachTailStatePath = path.join(storageRoot, 'vault', 'roachtail', 'state.json')
+const roachClawStateRoot = path.join(runtimeStateRoot, 'roachclaw')
+const legacyRoachClawStateRoot = path.join(storageRoot, 'vault', 'roachclaw')
 const ROACHTAIL_JOIN_CODE_TTL_MS = positiveIntegerEnv('ROACHTAIL_JOIN_CODE_TTL_MS', 10 * 60 * 1000)
 const ROACHTAIL_AUTH_KEY_TTL_MS = positiveIntegerEnv('ROACHTAIL_AUTH_KEY_TTL_MS', 24 * 60 * 60 * 1000)
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:36434'
@@ -1164,7 +1167,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     contacts: {
       status: 'local-first',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'contacts.json'),
+      storagePath: roachClawVaultPath('contacts.json'),
       recordCount: contacts.contacts.length,
       records: contacts.contacts.slice(0, 12),
       scopes: ['local-address-book', 'reply-recipient-context', 'account-owned-routing'],
@@ -1172,7 +1175,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     hooks: {
       status: 'armed-local-only',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'hooks.json'),
+      storagePath: roachClawVaultPath('hooks.json'),
       endpoints: [
         {
           id: 'companion-install',
@@ -1195,26 +1198,26 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
       downloads: jobs,
       scheduler: {
         status: 'local-queue',
-        storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'jobs.json'),
+        storagePath: roachClawVaultPath('jobs.json'),
         pending: jobs.filter((job) => ['queued', 'downloading'].includes(job.status)).length + tasks.tasks.filter((task) => !['done', 'cancelled', 'archived'].includes(String(task.status || '').toLowerCase())).length,
       },
     },
     notesTasks: {
       status: tasks.tasks.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'tasks.json'),
+      storagePath: roachClawVaultPath('tasks.json'),
       count: tasks.tasks.length,
       open: tasks.tasks.filter((task) => !['done', 'cancelled', 'archived'].includes(String(task.status || '').toLowerCase())).length,
       records: tasks.tasks.slice(0, 12),
     },
     calendar: {
       status: calendar.events.length ? 'planned' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'calendar.json'),
+      storagePath: roachClawVaultPath('calendar.json'),
       count: calendar.events.length,
       records: calendar.events.slice(0, 12),
     },
     reports: {
       status: reports.reports.length ? 'tracking' : 'ready',
-      root: path.join(storageRoot, 'vault', 'roachclaw', 'reports'),
+      root: roachClawVaultPath('reports'),
       formats: ['markdown', 'json', 'pdf-ready-html'],
       templates: [
         'research-brief',
@@ -1227,19 +1230,19 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     memories: {
       status: memories.memories.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'memories.json'),
+      storagePath: roachClawVaultPath('memories.json'),
       count: memories.memories.length,
       records: memories.memories.slice(0, 12),
     },
     skills: {
       status: skills.skills.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'skills.json'),
+      storagePath: roachClawVaultPath('skills.json'),
       count: skills.skills.length,
       records: skills.skills.slice(0, 12),
     },
     editorDrafts: {
       status: editorDrafts.drafts.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'editor-drafts.json'),
+      storagePath: roachClawVaultPath('editor-drafts.json'),
       count: editorDrafts.drafts.length,
       open: editorDrafts.drafts.filter((draft) => !['archived', 'published', 'discarded'].includes(String(draft.status || '').toLowerCase())).length,
       records: editorDrafts.drafts.slice(0, 12),
@@ -1247,19 +1250,19 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     migrationDocumentTools,
     searchCache: {
       status: searchCache.entries.length ? 'warm' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'search-cache.json'),
+      storagePath: roachClawVaultPath('search-cache.json'),
       count: searchCache.entries.length,
       records: searchCache.entries.slice(0, 12),
     },
     gallery: {
       status: gallery.assets.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'gallery.json'),
+      storagePath: roachClawVaultPath('gallery.json'),
       count: gallery.assets.length,
       records: gallery.assets.slice(0, 12),
     },
     webhooks: {
       status: webhooks.webhooks.some((hook) => hook.isActive) ? 'armed' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'webhooks.json'),
+      storagePath: roachClawVaultPath('webhooks.json'),
       count: webhooks.webhooks.length,
       active: webhooks.webhooks.filter((hook) => hook.isActive).length,
       records: webhooks.webhooks.slice(0, 12),
@@ -1267,7 +1270,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     agentRuns: {
       status: agentRuns.runs.some((run) => ['running', 'queued'].includes(String(run.status || '').toLowerCase())) ? 'running' : (agentRuns.runs.length ? 'tracked' : 'empty'),
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'agent-runs.json'),
+      storagePath: roachClawVaultPath('agent-runs.json'),
       count: agentRuns.runs.length,
       active: agentRuns.runs.filter((run) => ['running', 'queued'].includes(String(run.status || '').toLowerCase())).length,
       records: agentRuns.runs.slice(0, 12),
@@ -1275,14 +1278,14 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     contextCompactions: {
       status: contextCompactions.compactions.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'context-compactions.json'),
+      storagePath: roachClawVaultPath('context-compactions.json'),
       count: contextCompactions.compactions.length,
       records: contextCompactions.compactions.slice(0, 12),
       retention: 'summary-plus-token-budget',
     },
     toolIndex: {
       status: toolIndex.tools.length ? 'indexed' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'tool-index.json'),
+      storagePath: roachClawVaultPath('tool-index.json'),
       count: toolIndex.tools.length,
       active: toolIndex.tools.filter((tool) => tool.enabled).length,
       records: toolIndex.tools.slice(0, 12),
@@ -1290,7 +1293,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     events: {
       status: events.events.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'events.json'),
+      storagePath: roachClawVaultPath('events.json'),
       count: events.events.length,
       active: events.events.filter((event) => event.enabled).length,
       records: events.events.slice(0, 12),
@@ -1303,7 +1306,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     orchestrationDashboard: shellSurfaces.orchestrationDashboard,
     mail: {
       status: mail.messages.length || mail.drafts.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'mail.json'),
+      storagePath: roachClawVaultPath('mail.json'),
       count: mail.messages.length + mail.drafts.length,
       messages: mail.messages.length,
       drafts: mail.drafts.length,
@@ -1311,19 +1314,19 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     presets: {
       status: presets.templates.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'presets.json'),
+      storagePath: roachClawVaultPath('presets.json'),
       count: presets.templates.length,
       templates: presets.templates.slice(0, 12),
     },
     signatures: {
       status: signatures.signatures.length ? 'tracking' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'signatures.json'),
+      storagePath: roachClawVaultPath('signatures.json'),
       count: signatures.signatures.length,
       records: signatures.signatures.slice(0, 12),
     },
     apiTokens: {
       status: apiTokens.tokens.some((token) => token.isActive) ? 'armed' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'api-tokens.json'),
+      storagePath: roachClawVaultPath('api-tokens.json'),
       count: apiTokens.tokens.length,
       active: apiTokens.tokens.filter((token) => token.isActive).length,
       records: apiTokens.tokens.slice(0, 12),
@@ -1331,7 +1334,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     cloudProviders: {
       status: cloudProviders.active ? 'user-armed' : 'local-default',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'cloud-provider-keys.json'),
+      storagePath: roachClawVaultPath('cloud-provider-keys.json'),
       count: cloudProviders.count,
       active: cloudProviders.active,
       configured: cloudProviders.configured,
@@ -1351,7 +1354,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     userTime: {
       status: userTime.configured ? 'configured' : 'system-default',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'user-time.json'),
+      storagePath: roachClawVaultPath('user-time.json'),
       count: userTime.configured ? 1 : 0,
       route: 'roachnet://settings/time',
       summaryItems: [userTime.timeZoneName, userTime.utcOffset, userTime.localDateTime].filter(Boolean),
@@ -1360,7 +1363,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     cookbookServeLifecycle: {
       status: cookbookServe.active ? 'scheduled' : 'idle',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'cookbook-serve-schedules.json'),
+      storagePath: roachClawVaultPath('cookbook-serve-schedules.json'),
       count: cookbookServe.schedules.length,
       active: cookbookServe.active,
       queued: cookbookServe.pending,
@@ -1389,7 +1392,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     contextBudget: {
       status: contextBudget.explicit ? 'user-set' : 'adaptive',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'context-budget.json'),
+      storagePath: roachClawVaultPath('context-budget.json'),
       count: contextBudget.effectiveBudget,
       active: contextBudget.modelContextLength,
       route: 'roachnet://roachclaw/context-budget',
@@ -1411,7 +1414,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     scopedToolBridge: {
       status: 'ready',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'scoped-tool-bridge.json'),
+      storagePath: roachClawVaultPath('scoped-tool-bridge.json'),
       count: scopedToolBridge.scopes.length,
       active: scopedToolBridge.endpoints.length,
       route: 'roachnet://roachclaw/tools',
@@ -1421,7 +1424,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     tlsOverrides: {
       status: tlsOverrides.configured ? (tlsOverrides.valid ? 'configured' : 'invalid-path') : 'default-trust',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'tls-overrides.json'),
+      storagePath: roachClawVaultPath('tls-overrides.json'),
       count: tlsOverrides.configured ? 1 : 0,
       active: tlsOverrides.valid ? 1 : 0,
       route: 'roachnet://settings/provider-security',
@@ -1439,7 +1442,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     memoryProvider: {
       status: memoryProvider.providers.some((provider) => provider.enabled) ? 'native-provider' : 'empty',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'memory-provider.json'),
+      storagePath: roachClawVaultPath('memory-provider.json'),
       count: memoryProvider.providers.length,
       active: memoryProvider.providers.filter((provider) => provider.enabled).length,
       route: 'roachnet://roachbrain/providers',
@@ -1449,7 +1452,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     providerOAuth: {
       status: providerOAuth.flows.some((flow) => flow.needsUserAction) ? 'needs-user-action' : 'idle',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'provider-oauth.json'),
+      storagePath: roachClawVaultPath('provider-oauth.json'),
       count: providerOAuth.flows.length,
       active: providerOAuth.flows.filter((flow) => flow.isActive).length,
       route: 'roachnet://settings/provider-oauth',
@@ -1459,7 +1462,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     embeddingLanes: {
       status: embeddingLanes.health.status,
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'embedding-lanes.json'),
+      storagePath: roachClawVaultPath('embedding-lanes.json'),
       count: embeddingLanes.lanes.length,
       active: embeddingLanes.lanes.filter((lane) => lane.enabled).length,
       route: 'roachnet://roachbrain/embedding-lanes',
@@ -1469,7 +1472,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     toolPolicy: {
       status: toolPolicy.mode === 'guide_only' ? 'guide-only' : 'enforced',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'tool-policy.json'),
+      storagePath: roachClawVaultPath('tool-policy.json'),
       count: toolPolicy.knownToolCount,
       active: toolPolicy.disabledCount,
       route: 'roachnet://roachclaw/tool-policy',
@@ -1479,7 +1482,7 @@ function roachClawOperationsState({ ollama, openclaw, models = [], modelNames = 
     },
     backups: {
       status: backups.snapshots.length ? 'tracking' : 'ready',
-      storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'backups.json'),
+      storagePath: roachClawVaultPath('backups.json'),
       count: backups.snapshots.length,
       snapshots: backups.snapshots.slice(0, 12),
     },
@@ -2566,17 +2569,33 @@ function compactStringList(value, maxItems = 12) {
 }
 
 function roachClawVaultPath(...parts) {
-  return path.join(storageRoot, 'vault', 'roachclaw', ...parts)
+  return path.join(roachClawStateRoot, ...parts)
+}
+
+function legacyRoachClawVaultPath(...parts) {
+  return path.join(legacyRoachClawStateRoot, ...parts)
 }
 
 function readRoachClawState(filename, fallback) {
-  const target = roachClawVaultPath(filename)
-  try {
-    if (existsSync(target)) {
-      return JSON.parse(readFileSync(target, 'utf8'))
-    }
-  } catch {}
+  for (const target of [roachClawVaultPath(filename), legacyRoachClawVaultPath(filename)]) {
+    try {
+      if (existsSync(target)) {
+        return JSON.parse(readFileSync(target, 'utf8'))
+      }
+    } catch {}
+  }
   return fallback
+}
+
+function readRoachTailStateFile() {
+  for (const target of [roachTailStatePath, legacyRoachTailStatePath]) {
+    try {
+      if (existsSync(target)) {
+        return JSON.parse(readFileSync(target, 'utf8'))
+      }
+    } catch {}
+  }
+  return null
 }
 
 function writeRoachClawState(filename, state) {
@@ -3359,7 +3378,7 @@ function roachClawMigrationDocumentToolsState() {
       'static/js/cookbook-deps-recipes.js',
     ],
     status: 'native-state',
-    storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'migration-document-tools.json'),
+    storagePath: roachClawVaultPath('migration-document-tools.json'),
     count: 10,
     active: 6,
     route: 'roachnet://vault/document-tools',
@@ -3638,7 +3657,7 @@ function roachClawMemoryProviderState() {
     providerId: 'native',
     displayName: 'RoachBrain native memory',
     enabled: true,
-    storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'memories.json'),
+    storagePath: roachClawVaultPath('memories.json'),
     tools: ['remember', 'recall', 'list', 'delete'],
     localFirst: true,
   }
@@ -3819,7 +3838,7 @@ function roachClawEmbeddingLanesState() {
     updatedAt: state.updatedAt,
     localFirst: true,
     pythonRuntimeDependency: 'none',
-    storagePath: path.join(storageRoot, 'vault', 'roachclaw', 'embedding-lanes.json'),
+    storagePath: roachClawVaultPath('embedding-lanes.json'),
     preferredOrder: ['custom', 'local'],
     lanes,
     stats: {
@@ -4394,12 +4413,7 @@ function defaultRoachTailState() {
 }
 
 function readRoachTailStateRaw({ persistIfMissing = false } = {}) {
-  let state = null
-  try {
-    if (existsSync(roachTailStatePath)) {
-      state = JSON.parse(readFileSync(roachTailStatePath, 'utf8'))
-    }
-  } catch {}
+  const state = readRoachTailStateFile()
 
   const fallback = defaultRoachTailState()
   const merged = {
@@ -4978,7 +4992,7 @@ function companionVaultState() {
   const vaultPath = path.join(storageRoot, 'Vault')
   return {
     vaultPath,
-    knowledgeFiles: listFiles(vaultPath),
+    knowledgeFiles: listVaultKnowledgeFiles(vaultPath),
     roachBrain: [],
   }
 }
@@ -4999,6 +5013,32 @@ function listFiles(root, limit = 80) {
   }
   walk(root)
   return out
+}
+
+function listVaultKnowledgeFiles(root, limit = 80) {
+  const out = []
+  function walk(current, relativeRoot = '') {
+    if (out.length >= limit || !existsSync(current)) return
+    const entries = readdirSync(current, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name))
+    for (const entry of entries) {
+      const relativePath = relativeRoot ? path.join(relativeRoot, entry.name) : entry.name
+      if (isReservedVaultPath(relativePath)) continue
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        walk(full, relativePath)
+      } else if (entry.isFile()) {
+        out.push(relativePath)
+      }
+      if (out.length >= limit) return
+    }
+  }
+  walk(root)
+  return out
+}
+
+function isReservedVaultPath(relativePath) {
+  return /^(?:roachtail|roachclaw)(?:[\\/]|$)/i.test(relativePath)
 }
 
 function mapCollections() {
@@ -5929,7 +5969,7 @@ async function route(request, response) {
     return sendJson(response, 200, { workspacePath: process.env.OPENCLAW_WORKSPACE_PATH || path.join(storageRoot, 'RoachClaw'), skills: [] })
   }
   if (method === 'GET' && pathname === '/api/rag/files') {
-    return sendJson(response, 200, { files: listFiles(path.join(storageRoot, 'Vault')) })
+    return sendJson(response, 200, { files: listVaultKnowledgeFiles(path.join(storageRoot, 'Vault')) })
   }
   if (method === 'GET' && pathname === '/api/maps/curated-collections') return sendJson(response, 200, mapCollections())
   if (method === 'POST' && pathname === '/api/maps/download-base-assets') {

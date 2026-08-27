@@ -370,6 +370,16 @@ test('native API exposes app catalogs and companion payloads without the legacy 
   const vaultFixture = path.join(storagePath, 'Vault', 'bootstrap-contract.md')
   mkdirSync(path.dirname(vaultFixture), { recursive: true })
   writeFileSync(vaultFixture, '# Bootstrap contract fixture\n')
+  const reservedVaultRoot = path.join(storagePath, 'Vault')
+  const legacyRoachClawTasksPath = path.join(storagePath, 'vault', 'roachclaw', 'tasks.json')
+  const legacyRoachClawTasks = JSON.stringify({ tasks: [{ id: 'legacy-task', title: 'Preserve legacy task', status: 'open' }] })
+  mkdirSync(path.join(reservedVaultRoot, 'RoachTail'), { recursive: true })
+  mkdirSync(path.join(reservedVaultRoot, 'RoachClaw', 'provider-secrets'), { recursive: true })
+  mkdirSync(path.dirname(legacyRoachClawTasksPath), { recursive: true })
+  writeFileSync(path.join(reservedVaultRoot, 'RoachTail', 'state.json'), '{"legacy":true}\n')
+  writeFileSync(path.join(reservedVaultRoot, 'RoachClaw', 'tasks.json'), '{"tasks":[]}\n')
+  writeFileSync(path.join(reservedVaultRoot, 'RoachClaw', 'provider-secrets', 'openai.key'), 'never-list-this\n')
+  writeFileSync(legacyRoachClawTasksPath, legacyRoachClawTasks)
   const processInfoPath = path.join(storagePath, 'logs', 'roachnet-runtime-processes.json')
   const env = {
     ...process.env,
@@ -475,6 +485,16 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(bootstrap.vault.vaultPath, path.join(storagePath, 'Vault'))
     assert.deepEqual(bootstrap.vault.knowledgeFiles, ['bootstrap-contract.md'])
     assert.equal(Array.isArray(bootstrap.vault.roachBrain), true)
+    const ragFiles = await requestJson(`http://127.0.0.1:${port}/api/rag/files`)
+    assert.deepEqual(ragFiles.files, ['bootstrap-contract.md'])
+    for (let index = 0; index < 100; index += 1) {
+      writeFileSync(path.join(reservedVaultRoot, 'RoachClaw', `internal-${index}.json`), '{}\n')
+    }
+    writeFileSync(path.join(reservedVaultRoot, 'user-note.md'), '# User-facing vault fixture\n')
+    const paginatedCompanionVault = await requestJson(`${processInfo.companionUrl}/api/companion/vault`, { token })
+    const paginatedRagFiles = await requestJson(`http://127.0.0.1:${port}/api/rag/files`)
+    assert.deepEqual(paginatedCompanionVault.knowledgeFiles, ['bootstrap-contract.md', 'user-note.md'])
+    assert.deepEqual(paginatedRagFiles.files, ['bootstrap-contract.md', 'user-note.md'])
     assert.equal(companionRuntime.systemInfo.hardwareProfile.recommendedRuntime, 'native_local')
     assert.equal(Array.isArray(companionRuntime.services), true)
     assert.equal(Array.isArray(companionRuntime.downloads), true)
@@ -614,7 +634,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(companionRuntime.roachClaw.operations.contextRail.status, 'empty')
     assert.equal(companionRuntime.roachClaw.operations.vaultNavigator.status, 'empty')
     assert.equal(companionRuntime.roachClaw.operations.agentMonitor.status, 'idle')
-    assert.equal(companionRuntime.roachClaw.operations.orchestrationDashboard.status, 'ready')
+    assert.equal(companionRuntime.roachClaw.operations.orchestrationDashboard.status, 'coordinating')
     assert.equal(companionRuntime.roachClaw.operations.workspaceBrowser.status, 'ready')
     assert.equal(companionRuntime.roachClaw.operations.userTime.status, 'system-default')
     assert.equal(companionRuntime.roachClaw.operations.cookbookServeLifecycle.status, 'idle')
@@ -742,11 +762,19 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     })
     assert.equal(contacts.contacts.length, 1)
     assert.equal(contacts.contacts[0].name, 'Roach Support')
+    const legacyTasks = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/tasks`)
+    assert.equal(legacyTasks.tasks.length, 1)
+    assert.equal(legacyTasks.tasks[0].id, 'legacy-task')
     const tasks = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/tasks`, {
       method: 'POST',
       body: { title: 'Finish native feature port', priority: 'high', dueAt: '2026-06-02' },
     })
+    assert.equal(tasks.tasks.length, 2)
     assert.equal(tasks.tasks[0].status, 'open')
+    assert.equal(readFileSync(legacyRoachClawTasksPath, 'utf8'), legacyRoachClawTasks)
+    const runtimeTasks = JSON.parse(readFileSync(path.join(runtimeStateRoot, 'roachclaw', 'tasks.json'), 'utf8'))
+    assert.equal(runtimeTasks.tasks.length, 2)
+    assert.equal(runtimeTasks.tasks.some((task) => task.id === 'legacy-task'), true)
     const calendar = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/calendar`, {
       method: 'POST',
       body: { title: 'Release review', startAt: '2026-06-02T13:00:00-04:00', location: 'RoachNet' },
@@ -836,7 +864,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     })
     assert.match(tokenResult.token, /^rn_/)
     assert.equal(JSON.stringify(tokenResult).includes('tokenHash'), false)
-    const tokenStore = JSON.parse(readFileSync(path.join(storagePath, 'vault', 'roachclaw', 'api-tokens.json'), 'utf8'))
+    const tokenStore = JSON.parse(readFileSync(path.join(runtimeStateRoot, 'roachclaw', 'api-tokens.json'), 'utf8'))
     assert.equal(tokenStore.tokens[0].tokenHash.length, 64)
     assert.equal(JSON.stringify(tokenStore).includes(tokenResult.token), false)
     const providerResult = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers`, {
@@ -849,7 +877,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(providerResult.provider.configuredVia, 'local-secret-file')
     assert.equal(JSON.stringify(providerResult).includes('sk-test-roachnet-local-provider-key'), false)
     assert.equal(JSON.stringify(providerResult).includes('keyHash'), false)
-    const providerStore = JSON.parse(readFileSync(path.join(storagePath, 'vault', 'roachclaw', 'cloud-provider-keys.json'), 'utf8'))
+    const providerStore = JSON.parse(readFileSync(path.join(runtimeStateRoot, 'roachclaw', 'cloud-provider-keys.json'), 'utf8'))
     assert.equal(providerStore.providers[0].keyHash.length, 64)
     assert.equal(JSON.stringify(providerStore).includes('sk-test-roachnet-local-provider-key'), false)
     const rejectedProviderResponse = await requestHttp(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers`, {
@@ -860,7 +888,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     })
     assert.equal(rejectedProviderResponse.ok, false)
     assert.equal(rejectedProviderResponse.status, 400)
-    const providerSecretPath = path.join(storagePath, 'vault', 'roachclaw', 'provider-secrets', 'openai.key')
+    const providerSecretPath = path.join(runtimeStateRoot, 'roachclaw', 'provider-secrets', 'openai.key')
     assert.equal(readFileSync(providerSecretPath, 'utf8'), 'sk-test-roachnet-local-provider-key')
     const aiProviders = await requestJson(`http://127.0.0.1:${port}/api/system/ai/providers`)
     assert.equal(aiProviders.cloudProviders.providers.some((provider) => provider.id === 'openai' && provider.configured), true)
@@ -886,7 +914,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(exportPayload.toolPolicy.mode, 'normal')
     const updatedOps = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/operations`)
     assert.equal(updatedOps.contacts.recordCount, 1)
-    assert.equal(updatedOps.notesTasks.count, 1)
+    assert.equal(updatedOps.notesTasks.count, 2)
     assert.equal(updatedOps.calendar.count, 1)
     assert.equal(updatedOps.reports.count, 1)
     assert.equal(updatedOps.memories.count, 1)
@@ -909,7 +937,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(updatedOps.vaultNavigator.count, 4)
     assert.equal(updatedOps.agentMonitor.active, 1)
     assert.equal(updatedOps.agentMonitor.summaryItems.includes('1 running'), true)
-    assert.equal(updatedOps.orchestrationDashboard.open, 4)
+    assert.equal(updatedOps.orchestrationDashboard.open, 5)
     assert.equal(updatedOps.orchestrationDashboard.priority, 'coordinate')
     assert.equal(updatedOps.mail.messages, 1)
     assert.equal(updatedOps.mail.drafts, 1)
@@ -955,6 +983,9 @@ test('native RoachTail control plane supports join-key pairing and peer tokens',
   const companionPort = await resolveAvailablePort()
   const companionToken = 'native-api-roachtail-primary-token'
   const processInfoPath = path.join(storagePath, 'logs', 'roachnet-runtime-processes.json')
+  const legacyRoachTailPath = path.join(storagePath, 'vault', 'roachtail', 'state.json')
+  mkdirSync(path.dirname(legacyRoachTailPath), { recursive: true })
+  writeFileSync(legacyRoachTailPath, JSON.stringify({ deviceName: 'Legacy RoachTail Device' }))
   const env = {
     ...process.env,
     ROACHNET_STORAGE_PATH: storagePath,
@@ -979,6 +1010,9 @@ test('native RoachTail control plane supports join-key pairing and peer tokens',
 
     const initial = await requestJson(`http://127.0.0.1:${port}/api/companion/roachtail`)
     assert.equal(initial.enabled, true)
+    assert.equal(initial.deviceName, 'Legacy RoachTail Device')
+    assert.equal(existsSync(path.join(runtimeStateRoot, 'roachtail', 'state.json')), true)
+    assert.equal(readFileSync(legacyRoachTailPath, 'utf8'), JSON.stringify({ deviceName: 'Legacy RoachTail Device' }))
     assert.equal(initial.controlPlane.provider, 'roachnet-native')
     assert.equal(initial.controlPlane.designReference, 'headscale')
     assert.equal(initial.preAuthKeys.length, 1)
@@ -1016,7 +1050,7 @@ test('native RoachTail control plane supports join-key pairing and peer tokens',
     assert.equal(refreshed.success, true)
     assert.notEqual(refreshed.state.joinCode, initial.joinCode)
 
-    const stateFile = JSON.parse(readFileSync(path.join(storagePath, 'vault', 'roachtail', 'state.json'), 'utf8'))
+    const stateFile = JSON.parse(readFileSync(path.join(runtimeStateRoot, 'roachtail', 'state.json'), 'utf8'))
     assert.equal(typeof stateFile.peers[0].tokenHash, 'string')
     assert.equal(stateFile.peers[0].tokenHash.length, 64)
   } finally {

@@ -2,7 +2,7 @@
 
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import {
@@ -25,7 +25,10 @@ const targetOrigin = resolveCompanionTargetOrigin(
 )
 const storagePath =
   process.env.ROACHNET_STORAGE_PATH?.trim() || process.env.ROACHNET_HOST_STORAGE_PATH?.trim() || ''
-const roachTailStatePath = storagePath ? path.join(storagePath, 'vault', 'roachtail', 'state.json') : ''
+const runtimeStateRoot =
+  process.env.ROACHNET_RUNTIME_STATE_ROOT?.trim() || (storagePath ? path.join(storagePath, '.runtime') : '')
+const roachTailStatePath = runtimeStateRoot ? path.join(runtimeStateRoot, 'roachtail', 'state.json') : ''
+const legacyRoachTailStatePath = storagePath ? path.join(storagePath, 'vault', 'roachtail', 'state.json') : ''
 const roachNetAliasHost = process.env.ROACHNET_LOCAL_HOSTNAME?.trim() || 'RoachNet'
 
 function positiveIntegerEnv(name, fallback) {
@@ -97,14 +100,23 @@ function hashToken(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
+async function readRoachTailStateFile() {
+  for (const target of [roachTailStatePath, legacyRoachTailStatePath]) {
+    if (!target) continue
+    try {
+      return JSON.parse(await readFile(target, 'utf8'))
+    } catch {}
+  }
+  return null
+}
+
 async function resolvePeerToken(tokenValue, { allowDisabled = false } = {}) {
   if (!roachTailStatePath || !tokenValue) {
     return null
   }
 
   try {
-    const raw = await readFile(roachTailStatePath, 'utf8')
-    const parsed = JSON.parse(raw)
+    const parsed = await readRoachTailStateFile()
     if ((!parsed?.enabled && !allowDisabled) || !Array.isArray(parsed.peers)) {
       return null
     }
@@ -189,8 +201,7 @@ async function recordPeerActivity(authContext, request) {
   }
 
   try {
-    const raw = await readFile(roachTailStatePath, 'utf8')
-    const parsed = JSON.parse(raw)
+    const parsed = await readRoachTailStateFile()
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.peers)) {
       return
     }
@@ -222,6 +233,7 @@ async function recordPeerActivity(authContext, request) {
       ),
     }
 
+    await mkdir(path.dirname(roachTailStatePath), { recursive: true })
     await writeFile(roachTailStatePath, JSON.stringify(nextState, null, 2), 'utf8')
   } catch {
     // Keep proxying even if peer activity could not be persisted.
