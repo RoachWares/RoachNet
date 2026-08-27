@@ -6,8 +6,8 @@ Release gate: RoachClaw cannot ship a public build that treats OpenClaw as the o
 
 - Project: https://github.com/NousResearch/hermes-agent
 - Docs: https://hermes-agent.nousresearch.com/docs/
-- Reviewed upstream release: `v2026.5.16`
-- Reviewed upstream HEAD: `dffb602f37b3c1b9c9fd7f0417aab3af56cffa38`
+- Reviewed upstream release: `v2026.8.27`
+- Reviewed upstream HEAD: `5fc308a70719a83cccdbba4c0e39c23f5a8239d5`
 
 Latest reviewed upstream delta: `fix(xai): drop stale X Premium+ hint from entitlement 403 surfacing (#27110)`. This reinforces a RoachClaw rule: provider-specific errors belong in explicit adapters, not scattered through the agent loop.
 

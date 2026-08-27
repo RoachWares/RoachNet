@@ -44,10 +44,10 @@
       "repository": "Nexus-Mods/Vortex",
       "source": "https://api.github.com/repos/Nexus-Mods/Vortex/releases/latest",
       "latestRelease": {
-        "tag": "v2.6.1",
-        "name": "2.6.1",
-        "publishedAt": "2026-08-26T15:03:03Z",
-        "observedHead": "371d99b6ac1dd0c188ff166cc4134eac2bb31f0f"
+        "tag": "v2.6.2",
+        "name": "2.6.2",
+        "publishedAt": "2026-08-27T13:47:23Z",
+        "observedHead": "ee673edc52260c94c2f95cfb19d709df31599d4f"
       }
     },
     "owncast": {
@@ -68,10 +68,10 @@
       "repository": "NousResearch/hermes-agent",
       "source": "https://api.github.com/repos/NousResearch/hermes-agent/releases/latest",
       "latestRelease": {
-        "tag": "v2026.8.19",
-        "name": "Hermes Agent v0.20.5 (v2026.8.19)",
-        "publishedAt": "2026-08-21T12:16:39Z",
-        "observedHead": "7a54ab22e648a0d2d7e740fad908dda93f025820"
+        "tag": "v2026.8.27",
+        "name": "Hermes Agent v0.20.6 (v2026.8.27)",
+        "publishedAt": "2026-08-27T12:06:53Z",
+        "observedHead": "cced6fa360a589ba50abfde687ef1bcba8ddaf2e"
       }
     },
     "chatterboxTurbo": {

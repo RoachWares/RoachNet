@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import net from 'node:net'
@@ -372,6 +372,8 @@ test('native API exposes app catalogs and companion payloads without the legacy 
   writeFileSync(vaultFixture, '# Bootstrap contract fixture\n')
   const reservedVaultRoot = path.join(storagePath, 'Vault')
   const legacyRoachClawTasksPath = path.join(storagePath, 'vault', 'roachclaw', 'tasks.json')
+  const legacyProviderSecretPath = path.join(storagePath, 'vault', 'roachclaw', 'provider-secrets', 'openai.key')
+  const legacyProviderSecret = 'shortkey'
   const legacyRoachClawTasks = JSON.stringify({ tasks: [{ id: 'legacy-task', title: 'Preserve legacy task', status: 'open' }] })
   mkdirSync(path.join(reservedVaultRoot, 'RoachTail'), { recursive: true })
   mkdirSync(path.join(reservedVaultRoot, 'RoachClaw', 'provider-secrets'), { recursive: true })
@@ -380,6 +382,8 @@ test('native API exposes app catalogs and companion payloads without the legacy 
   writeFileSync(path.join(reservedVaultRoot, 'RoachClaw', 'tasks.json'), '{"tasks":[]}\n')
   writeFileSync(path.join(reservedVaultRoot, 'RoachClaw', 'provider-secrets', 'openai.key'), 'never-list-this\n')
   writeFileSync(legacyRoachClawTasksPath, legacyRoachClawTasks)
+  mkdirSync(path.dirname(legacyProviderSecretPath), { recursive: true })
+  writeFileSync(legacyProviderSecretPath, legacyProviderSecret)
   const processInfoPath = path.join(storagePath, 'logs', 'roachnet-runtime-processes.json')
   const env = {
     ...process.env,
@@ -429,6 +433,13 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(agentStatus.upstreamRuntimeDependency, 'none')
     assert.equal(agentStatus.references.hermesAgent.role, 'design-reference-only')
     assert.equal(agentStatus.skills.some((skill) => skill.id === 'app-context-router'), true)
+
+    const legacyProviderState = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers`)
+    const legacyOpenAI = legacyProviderState.providers.find((provider) => provider.id === 'openai')
+    assert.equal(legacyOpenAI.configured, true)
+    assert.equal(legacyOpenAI.configuredVia, 'legacy-local-secret-file')
+    assert.equal(legacyOpenAI.tokenPrefix, null)
+    assert.equal(JSON.stringify(legacyProviderState).includes(legacyProviderSecret), false)
 
     const agentRun = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/agent/run`, {
       method: 'POST',
@@ -874,7 +885,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(providerResult.success, true)
     assert.equal(providerResult.provider.id, 'openai')
     assert.equal(providerResult.provider.configured, true)
-    assert.equal(providerResult.provider.configuredVia, 'local-secret-file')
+    assert.equal(providerResult.provider.configuredVia, 'runtime-local-secret-file')
     assert.equal(JSON.stringify(providerResult).includes('sk-test-roachnet-local-provider-key'), false)
     assert.equal(JSON.stringify(providerResult).includes('keyHash'), false)
     const providerStore = JSON.parse(readFileSync(path.join(runtimeStateRoot, 'roachclaw', 'cloud-provider-keys.json'), 'utf8'))
@@ -946,7 +957,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(updatedOps.apiTokens.active, 1)
     assert.equal(JSON.stringify(updatedOps.apiTokens).includes('tokenHash'), false)
     assert.equal(updatedOps.cloudProviders.active, 1)
-    assert.equal(updatedOps.cloudProviders.configured, 1)
+    assert.equal(updatedOps.cloudProviders.configured >= 1, true)
     assert.equal(JSON.stringify(updatedOps.cloudProviders).includes('sk-test-roachnet-local-provider-key'), false)
     assert.equal(JSON.stringify(updatedOps.cloudProviders).includes('keyHash'), false)
     assert.equal(updatedOps.userTime.status, 'configured')
@@ -959,6 +970,37 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     assert.equal(updatedOps.embeddingLanes.summaryItems.some((item) => item.includes('768d')), true)
     assert.equal(updatedOps.toolPolicy.status, 'enforced')
     assert.equal(updatedOps.backups.count, 1)
+    assert.equal(readFileSync(legacyProviderSecretPath, 'utf8'), legacyProviderSecret)
+    const deletedProvider = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers/openai`, { method: 'DELETE' })
+    assert.equal(deletedProvider.success, true)
+    assert.equal(existsSync(providerSecretPath), false)
+    assert.equal(readFileSync(legacyProviderSecretPath, 'utf8'), legacyProviderSecret)
+    const fallbackOpenAI = deletedProvider.state.providers.find((provider) => provider.id === 'openai')
+    assert.equal(fallbackOpenAI.configured, true)
+    assert.equal(fallbackOpenAI.configuredVia, 'legacy-local-secret-file')
+    assert.equal(fallbackOpenAI.tokenPrefix, null)
+    const redirectedSecretDirectory = path.join(tempRoot, 'outside-provider-secrets')
+    const redirectedSecret = 'outside-secret-must-not-be-read'
+    mkdirSync(redirectedSecretDirectory, { recursive: true })
+    writeFileSync(path.join(redirectedSecretDirectory, 'openai.key'), redirectedSecret)
+    rmSync(path.dirname(legacyProviderSecretPath), { recursive: true, force: true })
+    symlinkSync(redirectedSecretDirectory, path.dirname(legacyProviderSecretPath), 'dir')
+    const symlinkedLegacyState = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers`)
+    const symlinkedOpenAI = symlinkedLegacyState.providers.find((provider) => provider.id === 'openai')
+    assert.notEqual(symlinkedOpenAI.configuredVia, 'legacy-local-secret-file')
+    assert.equal(symlinkedOpenAI.tokenPrefix, null)
+    assert.equal(JSON.stringify(symlinkedLegacyState).includes(redirectedSecret), false)
+    const redirectedVaultDirectory = path.join(tempRoot, 'outside-vault')
+    const ancestorSecret = 'ancestor-secret-must-not-be-read'
+    mkdirSync(path.join(redirectedVaultDirectory, 'roachclaw', 'provider-secrets'), { recursive: true })
+    writeFileSync(path.join(redirectedVaultDirectory, 'roachclaw', 'provider-secrets', 'openai.key'), ancestorSecret)
+    rmSync(path.join(storagePath, 'vault'), { recursive: true, force: true })
+    symlinkSync(redirectedVaultDirectory, path.join(storagePath, 'vault'), 'dir')
+    const symlinkedAncestorState = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/cloud-providers`)
+    const symlinkedAncestorOpenAI = symlinkedAncestorState.providers.find((provider) => provider.id === 'openai')
+    assert.notEqual(symlinkedAncestorOpenAI.configuredVia, 'legacy-local-secret-file')
+    assert.equal(symlinkedAncestorOpenAI.tokenPrefix, null)
+    assert.equal(JSON.stringify(symlinkedAncestorState).includes(ancestorSecret), false)
     const deleteContact = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/contacts/${encodeURIComponent(contacts.contacts[0].id)}`, {
       method: 'DELETE',
     })

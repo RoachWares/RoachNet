@@ -45,8 +45,8 @@
     "hermesReference": {
       "role": "design-reference-only",
       "repository": "https://github.com/NousResearch/hermes-agent",
-      "latestRelease": "v2026.5.16",
-      "reviewedHead": "dffb602f37b3c1b9c9fd7f0417aab3af56cffa38",
+      "latestRelease": "v2026.8.27",
+      "reviewedHead": "5fc308a70719a83cccdbba4c0e39c23f5a8239d5",
       "docs": "https://hermes-agent.nousresearch.com/docs/"
     }
   }

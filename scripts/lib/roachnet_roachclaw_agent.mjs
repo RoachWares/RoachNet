@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 export const ROACHCLAW_NATIVE_AGENT_RUNTIME = 'roachclaw-native-agent'
-export const ROACHCLAW_AGENT_REVIEWED_HERMES_HEAD = 'dffb602f37b3c1b9c9fd7f0417aab3af56cffa38'
+export const ROACHCLAW_AGENT_REVIEWED_HERMES_HEAD = '5fc308a70719a83cccdbba4c0e39c23f5a8239d5'
 
 export const ROACHCLAW_AGENT_SKILLS = Object.freeze([
   {

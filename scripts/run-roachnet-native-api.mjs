@@ -3,7 +3,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
-import { chmodSync, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, closeSync, constants as fsConstants, createReadStream, createWriteStream, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, writeFileSync, rmSync, statSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import http from 'node:http'
 import { isIP } from 'node:net'
@@ -3092,6 +3092,73 @@ function roachClawCloudProviderSecretPath(providerId) {
   return roachClawVaultPath('provider-secrets', `${providerId}.key`)
 }
 
+function legacyRoachClawCloudProviderSecretPath(providerId) {
+  return legacyRoachClawVaultPath('provider-secrets', `${providerId}.key`)
+}
+
+function isRoachClawCloudProviderSecretDirectorySafe(secretDirectory, stateDirectory) {
+  const root = path.parse(stateDirectory).root
+  const ancestors = []
+  for (let current = stateDirectory; current !== root; current = path.dirname(current)) {
+    ancestors.push(current)
+  }
+  ancestors.push(root)
+  for (const candidate of ancestors) {
+    try {
+      if (lstatSync(candidate).isSymbolicLink()) return false
+    } catch {
+      return false
+    }
+  }
+  for (const candidate of [stateDirectory, secretDirectory]) {
+    try {
+      const stats = lstatSync(candidate)
+      if (!stats.isDirectory() || stats.isSymbolicLink()) return false
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
+function readRoachClawCloudProviderSecretFile(secretPath, source, stateDirectory) {
+  let descriptor
+  try {
+    if (!isRoachClawCloudProviderSecretDirectorySafe(path.dirname(secretPath), stateDirectory)) return null
+    const initial = lstatSync(secretPath)
+    if (!initial.isFile() || initial.isSymbolicLink() || initial.size < 1 || initial.size > 8_192) return null
+    descriptor = openSync(secretPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW)
+    const opened = fstatSync(descriptor)
+    if (!opened.isFile() || opened.size !== initial.size || opened.dev !== initial.dev || opened.ino !== initial.ino) return null
+    const buffer = Buffer.allocUnsafe(opened.size)
+    const bytesRead = readSync(descriptor, buffer, 0, buffer.length, 0)
+    const completed = fstatSync(descriptor)
+    if (bytesRead !== opened.size || completed.size !== opened.size || completed.dev !== opened.dev || completed.ino !== opened.ino) return null
+    if (!isRoachClawCloudProviderSecretDirectorySafe(path.dirname(secretPath), stateDirectory)) return null
+    const resolvedSecretPath = realpathSync(secretPath)
+    const current = statSync(resolvedSecretPath)
+    if (resolvedSecretPath !== secretPath || current.dev !== completed.dev || current.ino !== completed.ino) return null
+    const value = buffer.toString('utf8', 0, bytesRead).trim()
+    if (!value) return null
+    return { source, value }
+  } catch {
+    return null
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor)
+  }
+}
+
+function resolveRoachClawCloudProviderSecret(providerId) {
+  for (const [secretPath, source, stateDirectory] of [
+    [roachClawCloudProviderSecretPath(providerId), 'runtime-local-secret-file', roachClawStateRoot],
+    [legacyRoachClawCloudProviderSecretPath(providerId), 'legacy-local-secret-file', legacyRoachClawStateRoot],
+  ]) {
+    const secret = readRoachClawCloudProviderSecretFile(secretPath, source, stateDirectory)
+    if (secret) return secret
+  }
+  return null
+}
+
 function normalizePublicProviderBaseUrl(rawValue, fallback) {
   const value = compactString(rawValue || fallback, fallback, 240)
   let parsed
@@ -3135,7 +3202,7 @@ function roachClawCloudProviderEnvMetadata(definition, now) {
     name: definition.name,
     configured: true,
     configuredVia: 'environment',
-    tokenPrefix: rawKey.slice(0, 8),
+    tokenPrefix: null,
     baseUrl: definition.baseUrl,
     scopes: definition.scopes,
     isActive: true,
@@ -3162,7 +3229,16 @@ function roachClawPublicCloudProviderKeysState() {
   const providers = roachClawCloudProviderDefinitions().map((definition) => {
     const envProvider = roachClawCloudProviderEnvMetadata(definition, now)
     const stored = storedById.get(definition.id)
-    const configured = envProvider || stored
+    const secret = resolveRoachClawCloudProviderSecret(definition.id)
+    const configured = envProvider || (secret
+      ? {
+        ...stored,
+        configured: true,
+        configuredVia: secret.source,
+        tokenPrefix: null,
+        secretStorage: 'local-0600-file',
+      }
+      : null)
     return {
       id: definition.id,
       provider: definition.id,
@@ -3195,7 +3271,11 @@ function roachClawPublicCloudProviderKeysState() {
 function upsertRoachClawCloudProviderKey(body = {}) {
   const providerId = normalizeRoachClawCloudProviderId(body.provider || body.id)
   const definition = roachClawCloudProviderDefinitions().find((provider) => provider.id === providerId)
-  const rawKey = compactString(body.key || body.apiKey || body.token, '', 8192)
+  const suppliedKey = String(body.key || body.apiKey || body.token || '')
+  if (Buffer.byteLength(suppliedKey, 'utf8') > 8_192) {
+    throw new Error(`${definition.name} API key exceeds the 8192-byte limit`)
+  }
+  const rawKey = suppliedKey.trim()
   if (!rawKey) {
     throw new Error(`Missing ${definition.name} API key`)
   }
@@ -3211,7 +3291,7 @@ function upsertRoachClawCloudProviderKey(body = {}) {
     provider: providerId,
     name: definition.name,
     configuredVia: 'local-secret-file',
-    tokenPrefix: rawKey.slice(0, 8),
+    tokenPrefix: null,
     keyHash: createHash('sha256').update(rawKey).digest('hex'),
     baseUrl: normalizePublicProviderBaseUrl(body.baseUrl || definition.baseUrl, definition.baseUrl),
     scopes: compactStringList(body.scopes || definition.scopes, 12),
@@ -3258,7 +3338,7 @@ function createRoachClawApiToken(body = {}) {
     id: `token_${randomUUID().replaceAll('-', '').slice(0, 12)}`,
     name: compactString(body.name || 'RoachNet API token', 'RoachNet API token', 120),
     owner: compactString(body.owner || 'local-owner', 'local-owner', 120),
-    tokenPrefix: rawToken.slice(0, 8),
+    tokenPrefix: null,
     tokenHash: createHash('sha256').update(rawToken).digest('hex'),
     scopes: compactStringList(body.scopes || ['chat']),
     isActive: Boolean(body.isActive ?? true),

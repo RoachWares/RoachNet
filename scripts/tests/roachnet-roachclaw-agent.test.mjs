@@ -31,7 +31,7 @@ test('RoachClaw native agent profile owns the agent spine without Hermes or Open
     assert.equal(status.upstreamRuntimeDependency, 'none')
     assert.equal(status.references.hermesAgent.role, 'design-reference-only')
     assert.equal(status.references.hermesAgent.reviewedHead, ROACHCLAW_AGENT_REVIEWED_HERMES_HEAD)
-    assert.equal(ROACHCLAW_AGENT_REVIEWED_HERMES_HEAD, 'dffb602f37b3c1b9c9fd7f0417aab3af56cffa38')
+    assert.equal(ROACHCLAW_AGENT_REVIEWED_HERMES_HEAD, '5fc308a70719a83cccdbba4c0e39c23f5a8239d5')
     assert.equal(status.references.openClaw.role, 'migration-reference-only')
     assert.equal(status.ready, true)
     assert.equal(status.defaultModel, 'qwen2.5-coder:7b')
