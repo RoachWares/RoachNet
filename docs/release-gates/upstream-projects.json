@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-08-23",
+  "checkedAt": "2026-08-27",
   "policy": "Stable releases are blocking release gates. Moving default-branch heads are recorded for audit context but do not fail a public build unless the stable release changes.",
   "projects": {
     "esDe": {
@@ -44,10 +44,10 @@
       "repository": "Nexus-Mods/Vortex",
       "source": "https://api.github.com/repos/Nexus-Mods/Vortex/releases/latest",
       "latestRelease": {
-        "tag": "v2.6.0",
-        "name": "2.6.0",
-        "publishedAt": "2026-08-25T13:15:11Z",
-        "observedHead": "67878926683fc03c17d64341dec13bbeb0c0d060"
+        "tag": "v2.6.1",
+        "name": "2.6.1",
+        "publishedAt": "2026-08-26T15:03:03Z",
+        "observedHead": "371d99b6ac1dd0c188ff166cc4134eac2bb31f0f"
       }
     },
     "owncast": {

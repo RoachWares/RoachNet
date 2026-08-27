@@ -1,34 +1,34 @@
 {
-  "checkedAt": "2026-08-23",
+  "checkedAt": "2026-08-27",
   "node": {
     "channel": "26",
-    "bundledVersion": "v26.7.0",
-    "latestReviewedVersion": "v26.7.0",
-    "source": "https://nodejs.org/dist/v26.7.0/SHASUMS256.txt",
+    "bundledVersion": "v26.8.1",
+    "latestReviewedVersion": "v26.8.1",
+    "source": "https://nodejs.org/dist/v26.8.1/SHASUMS256.txt",
     "license": "MIT",
     "artifacts": {
       "darwinArm64": {
-        "filename": "node-v26.7.0-darwin-arm64.tar.gz",
-        "url": "https://nodejs.org/dist/v26.7.0/node-v26.7.0-darwin-arm64.tar.gz",
-        "sha256": "7ee659a7768e641bbfd5360940660b8e8fd0052f77488f365562bac522fc15d4"
+        "filename": "node-v26.8.1-darwin-arm64.tar.gz",
+        "url": "https://nodejs.org/dist/v26.8.1/node-v26.8.1-darwin-arm64.tar.gz",
+        "sha256": "6e577fd0d9db776db82306629e441a9dace416702622aebdd171c9dfaa41f4d2"
       },
       "darwinX64": {
-        "filename": "node-v26.7.0-darwin-x64.tar.gz",
-        "url": "https://nodejs.org/dist/v26.7.0/node-v26.7.0-darwin-x64.tar.gz",
-        "sha256": "f279d1ed28ce57f7788bf23435d2ad7fdd7438904ad5c4d8a1081a7cde3d4b96"
+        "filename": "node-v26.8.1-darwin-x64.tar.gz",
+        "url": "https://nodejs.org/dist/v26.8.1/node-v26.8.1-darwin-x64.tar.gz",
+        "sha256": "fe9c6dbf9c8e1b4443803d75e2a20366e420dae650c747dbb116b22975751baf"
       }
     }
   },
   "ollama": {
-    "bundledVersion": "0.32.15",
-    "latestReviewedVersion": "0.32.15",
-    "source": "https://github.com/ollama/ollama/releases/tag/v0.32.15",
+    "bundledVersion": "0.33.1",
+    "latestReviewedVersion": "0.33.1",
+    "source": "https://github.com/ollama/ollama/releases/tag/v0.33.1",
     "license": "MIT",
     "artifact": {
       "filename": "ollama-darwin.tgz",
-      "url": "https://github.com/ollama/ollama/releases/download/v0.32.15/ollama-darwin.tgz",
-      "bytes": 154052856,
-      "sha256": "9ab0ac4747946620a2464054f3c44a55aa146e9fccb5c366ee18e43fd1930b90"
+      "url": "https://github.com/ollama/ollama/releases/download/v0.33.1/ollama-darwin.tgz",
+      "bytes": 158569222,
+      "sha256": "6c4ff73ee47b1d8971cf80df3b7db4fc4284cfcdffdfe09c014e12cd72bacf83"
     }
   },
   "openclaw": {
