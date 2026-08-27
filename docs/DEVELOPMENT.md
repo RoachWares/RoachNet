@@ -196,7 +196,7 @@ On native Apple Silicon:
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-npm run native:dist
+ROACHNET_CANDIDATE_BUILD=1 npm run native:dist
 ```
 
 Primary output directory:
@@ -220,6 +220,14 @@ Useful controlled build flags:
 - `ROACHNET_CODESIGN_IDENTITY` — Developer ID identity when available.
 - `ROACHNET_NOTARY_PROFILE` and `ROACHNET_NOTARY_KEYCHAIN` — notarization
   configuration.
+
+`ROACHNET_CANDIDATE_BUILD=1` is the credential-independent Gate C build path:
+it requires the reviewed Node/Ollama runtime URLs and SHA-256 values in
+`docs/release-gates/runtime-freshness.json`, but uses only the existing ad-hoc
+local signing behavior and never produces notarization evidence. It is not a
+public-release switch. `ROACHNET_RELEASE_BUILD=1` remains the staging-only
+fail-closed mode and requires Developer ID signing, notarization, and DMG
+creation.
 
 Never put signing credentials, notary secrets, or keychain data in Git.
 

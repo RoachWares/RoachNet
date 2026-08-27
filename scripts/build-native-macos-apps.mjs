@@ -41,10 +41,22 @@ const runtimePins = JSON.parse(
 )
 const appVersion = packageManifest.version || '1.0.0'
 const appBuildNumber = String(packageManifest.buildNumber || '')
-const releaseBuild = process.env.ROACHNET_RELEASE_BUILD === '1'
+export function resolveBuildModes(environment = process.env) {
+  const releaseBuild = environment.ROACHNET_RELEASE_BUILD === '1'
+  // A public-release request always wins if both flags are set: it must never
+  // accidentally downgrade to the credential-independent candidate path.
+  const candidateBuild = !releaseBuild && environment.ROACHNET_CANDIDATE_BUILD === '1'
+  return {
+    releaseBuild,
+    candidateBuild,
+    pinnedRuntimeBuild: releaseBuild || candidateBuild,
+  }
+}
+
+const { releaseBuild, candidateBuild, pinnedRuntimeBuild } = resolveBuildModes()
 const bundledNodeVersion = runtimePins.node?.bundledVersion
 const bundledOpenClawPackage = process.env.ROACHNET_BUNDLED_OPENCLAW_PACKAGE?.trim() || 'openclaw@2026.5.18'
-const codesignIdentity = process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || ''
+const codesignIdentity = releaseBuild ? process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || '' : ''
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
 const notaryKeychain = process.env.ROACHNET_NOTARY_KEYCHAIN?.trim() || ''
 const skipDmg = process.env.ROACHNET_SKIP_DMG === '1'
@@ -274,7 +286,7 @@ async function downloadFile(url, destinationPath) {
 }
 
 async function getLatestOllamaRelease() {
-  if (releaseBuild) {
+  if (pinnedRuntimeBuild) {
     const artifact = runtimePins.ollama?.artifact
     return {
       version: runtimePins.ollama?.bundledVersion,
@@ -373,7 +385,7 @@ async function ensureBundledOllamaCache() {
     rmSync(extractedRoot, { recursive: true, force: true })
     mkdirSync(cacheRoot, { recursive: true })
     await downloadFile(release.url, archivePath)
-    if (releaseBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
+    if (pinnedRuntimeBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
     mkdirSync(extractedRoot, { recursive: true })
     await run('tar', ['-xzf', archivePath, '-C', extractedRoot], {
       stdio: 'pipe',
@@ -382,7 +394,7 @@ async function ensureBundledOllamaCache() {
     console.log(`Using cached bundled Ollama payload from ${extractedRoot}...`)
   }
 
-  if (releaseBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
+  if (pinnedRuntimeBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
 
   await pruneBundledToolCache(cacheRoot, new Set([release.assetName, sanitizeCacheKey(release.version)]))
   return extractedRoot
@@ -1628,6 +1640,10 @@ ${urlSchemes.map((scheme) => `        <string>${scheme}</string>`).join('\n')}
 }
 
 async function notarizeArtifact(artifactPath) {
+  if (candidateBuild) {
+    return
+  }
+
   if (!codesignIdentity || !notaryProfile) {
     if (releaseBuild) {
       throw new Error('Public release builds require Developer ID signing and a configured notary profile.')
@@ -1659,6 +1675,9 @@ async function notarizeArtifact(artifactPath) {
 async function main() {
   if (releaseBuild && (!codesignIdentity || !notaryProfile || skipDmg)) {
     throw new Error('Public release mode requires Developer ID signing, notarization, and DMG creation.')
+  }
+  if (candidateBuild) {
+    console.log('Building credential-independent candidate artifacts with checksum-pinned runtimes; this is not a notarized public release.')
   }
   assertAppleSiliconNativeBuildHost()
   mkdirSync(distPath, { recursive: true })
@@ -1755,7 +1774,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message)
-  process.exitCode = 1
-})
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error.message)
+    process.exitCode = 1
+  })
+}

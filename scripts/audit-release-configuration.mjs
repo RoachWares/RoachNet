@@ -216,6 +216,10 @@ export function auditReleaseConfiguration() {
   }
   requirePattern(failures, buildScript, /CFBundleVersion<\/key>\s*\n\s*<string>\$\{appBuildNumber\}<\/string>/, 'App/setup CFBundleVersion is not sourced from the intentional build number.')
   requirePattern(failures, buildScript, /ROACHNET_RELEASE_BUILD/, 'Native builder lacks fail-closed release mode.')
+  requirePattern(failures, buildScript, /ROACHNET_CANDIDATE_BUILD/, 'Native builder lacks an explicit credential-independent candidate build mode.')
+  requirePattern(failures, buildScript, /pinnedRuntimeBuild:\s*releaseBuild\s*\|\|\s*candidateBuild/, 'Candidate build mode is not bound to pinned runtime metadata.')
+  requirePattern(failures, buildScript, /if \(pinnedRuntimeBuild\)\s*\{[\s\S]*?runtimePins\.ollama/, 'Candidate build mode can resolve an unpinned Ollama release.')
+  requirePattern(failures, buildScript, /if \(pinnedRuntimeBuild\) await requireFileSha256\(archivePath, release\.sha256, `Ollama \$\{release\.version\}`\)/, 'Candidate build mode does not checksum-verify the reviewed Ollama archive.')
 
   for (const [label, value] of [
     ['Node arm64', runtimePins.node?.artifacts?.darwinArm64?.sha256],

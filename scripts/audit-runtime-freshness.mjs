@@ -99,8 +99,10 @@ function assertBuildScriptMatchesMetadata(metadata) {
   assert(
     source.includes('const bundledNodeVersion = runtimePins.node?.bundledVersion') &&
       source.includes('requireFileSha256') &&
-      source.includes('ROACHNET_RELEASE_BUILD'),
-    `Native builder does not source checksum-pinned runtime metadata in fail-closed release mode.`
+      source.includes('ROACHNET_RELEASE_BUILD') &&
+      source.includes('ROACHNET_CANDIDATE_BUILD') &&
+      source.includes('pinnedRuntimeBuild'),
+    `Native builder does not source checksum-pinned runtime metadata in both fail-closed release and credential-independent candidate modes.`
   )
   assert(
     /^[a-f0-9]{64}$/i.test(metadata.node.artifacts.darwinArm64.sha256) &&

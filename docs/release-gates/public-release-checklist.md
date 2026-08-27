@@ -242,10 +242,17 @@ npm ci
 node scripts/prepare-roachspeech-release-packs.mjs
 npm run native:build
 npm run native:test
-npm run native:dist
+ROACHNET_CANDIDATE_BUILD=1 npm run native:dist
 export ROACHNET_WHISPER_PARITY_AUDIO=/absolute/path/to/approved-local-fixture.wav
 npm run smoke:release-gates
 ```
+
+`ROACHNET_CANDIDATE_BUILD=1` is the credential-independent Gate C path. It
+uses the candidate's reviewed Node and Ollama URLs and SHA-256 pins, retains
+the Apple-Silicon host requirement, and may only ad-hoc sign locally. It does
+not submit, staple, or claim notarization/Gate D evidence. Public staging must
+continue to use `ROACHNET_RELEASE_BUILD=1`, which requires Developer ID,
+notarization, and DMG creation.
 
 Pass only if:
 

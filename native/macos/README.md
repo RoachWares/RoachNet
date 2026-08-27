@@ -20,8 +20,14 @@ env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build -
 Build native macOS app bundles:
 
 ```bash
-node scripts/build-native-macos-apps.mjs
+ROACHNET_CANDIDATE_BUILD=1 node scripts/build-native-macos-apps.mjs
 ```
+
+This is the credential-independent Gate C candidate path: it builds ad-hoc
+signed local artifacts with the exact reviewed Node/Ollama runtime URLs and
+SHA-256 pins. It does not notarize and is not public-release evidence. The
+protected release workflow alone uses `ROACHNET_RELEASE_BUILD=1`, which remains
+fail-closed on Developer ID, notarization, and DMG requirements.
 
 Bundle output:
 
