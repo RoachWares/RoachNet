@@ -233,13 +233,27 @@ Never put signing credentials, notary secrets, or keychain data in Git.
 
 ### Aggregate release gate
 
-After a native distribution build and with an approved local speech fixture:
+After a native distribution build and with an approved local speech fixture, a clean
+tracked iOS companion checkout, and its exact commit SHA:
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 export ROACHNET_WHISPER_PARITY_AUDIO=/absolute/path/to/local-whisper-fixture.wav
+export ROACHNET_IOS_REPO=/absolute/path/to/RoachNet-iOS
+export ROACHNET_IOS_EXPECTED_SHA=$(git -C "$ROACHNET_IOS_REPO" rev-parse HEAD)
 npm run smoke:release-gates
 ```
+
+`ROACHNET_IOS_REPO` defaults to the sibling `../RoachNet-iOS` checkout. In
+`ROACHNET_CANDIDATE_BUILD=1` or `ROACHNET_RELEASE_BUILD=1`, the companion smoke
+requires `ROACHNET_IOS_EXPECTED_SHA` to be the exact full 40-character SHA,
+requires the tracked `RoachNetCompanion.xcodeproj/project.pbxproj`, and rejects
+any dirty or mismatched companion checkout. A normal developer invocation without
+that variable remains a diagnostic and may skip an absent sibling checkout; it is
+not release evidence. The smoke never regenerates the Xcode project by default.
+For intentional project-file maintenance only, run it explicitly with
+`ROACHNET_REGENERATE_XCODEPROJ=1`; Ruby and the `xcodeproj` gem must already be
+installed—the smoke does not install tooling or mutate project files implicitly.
 
 The aggregate runs, in order:
 

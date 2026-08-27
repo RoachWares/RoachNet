@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import net from 'node:net'
@@ -66,6 +66,84 @@ const supportedInstallActions = new Set([
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message)
+  }
+}
+
+export function shouldRegenerateIOSProject(env = process.env) {
+  return env.ROACHNET_REGENERATE_XCODEPROJ === '1'
+}
+
+function isCandidateBoundIOSSmoke(env = process.env) {
+  return env.ROACHNET_CANDIDATE_BUILD === '1' || env.ROACHNET_RELEASE_BUILD === '1'
+}
+
+function readIOSGitOutput(iosRepoRoot, args, execFileSyncImpl) {
+  try {
+    return String(execFileSyncImpl('git', ['-C', iosRepoRoot, ...args], { encoding: 'utf8' })).trim()
+  } catch (error) {
+    const detail = error?.stderr ? String(error.stderr).trim() : error?.message || String(error)
+    throw new Error(`Unable to inspect iOS companion Git state: ${detail}`)
+  }
+}
+
+export function validateIOSCompanionCheckout({
+  iosRepoRoot,
+  projectPath = path.join(iosRepoRoot, 'RoachNetCompanion.xcodeproj'),
+  env = process.env,
+  existsSyncImpl = existsSync,
+  execFileSyncImpl = execFileSync,
+} = {}) {
+  const expectedSha = String(env.ROACHNET_IOS_EXPECTED_SHA || '').trim()
+  const candidateBound = isCandidateBoundIOSSmoke(env)
+
+  if (expectedSha && !/^[a-f0-9]{40}$/i.test(expectedSha)) {
+    throw new Error('ROACHNET_IOS_EXPECTED_SHA must be an exact full 40-character commit SHA.')
+  }
+  if (candidateBound && !expectedSha) {
+    throw new Error('Candidate/release iOS companion smoke requires ROACHNET_IOS_EXPECTED_SHA to bind evidence to an exact clean checkout.')
+  }
+  if (!existsSyncImpl(iosRepoRoot)) {
+    if (expectedSha || candidateBound) {
+      throw new Error(`Candidate-bound iOS companion checkout is missing: ${iosRepoRoot}`)
+    }
+    return null
+  }
+  if (!existsSyncImpl(projectPath)) {
+    throw new Error(`Missing tracked iOS project at ${projectPath}`)
+  }
+
+  const isGitRepository = readIOSGitOutput(iosRepoRoot, ['rev-parse', '--is-inside-work-tree'], execFileSyncImpl)
+  if (isGitRepository !== 'true') {
+    throw new Error(`iOS companion path is not a Git repository: ${iosRepoRoot}`)
+  }
+  readIOSGitOutput(
+    iosRepoRoot,
+    ['ls-files', '--error-unmatch', 'RoachNetCompanion.xcodeproj/project.pbxproj'],
+    execFileSyncImpl
+  )
+  const sha = readIOSGitOutput(iosRepoRoot, ['rev-parse', 'HEAD'], execFileSyncImpl)
+  const dirtyState = readIOSGitOutput(iosRepoRoot, ['status', '--porcelain', '--untracked-files=all'], execFileSyncImpl)
+
+  if (expectedSha && sha !== expectedSha) {
+    throw new Error(`iOS companion HEAD ${sha} does not match ROACHNET_IOS_EXPECTED_SHA ${expectedSha}.`)
+  }
+  if ((expectedSha || candidateBound) && dirtyState) {
+    throw new Error(`iOS companion checkout must be clean for candidate-bound validation:\n${dirtyState}`)
+  }
+
+  console.log(`Using iOS companion checkout ${sha}${expectedSha ? ' (expected SHA verified)' : ' (developer diagnostic mode)'}.`)
+  return { sha, candidateBound, expectedSha: expectedSha || null }
+}
+
+async function regenerateIOSProjectIfRequested({ iosRepoRoot, env = process.env, runCommandImpl = runSmokeCommand }) {
+  if (!shouldRegenerateIOSProject(env)) return
+
+  try {
+    await runCommandImpl('ruby', [path.join(iosRepoRoot, 'scripts', 'generate_xcodeproj.rb')], { cwd: iosRepoRoot })
+  } catch (error) {
+    throw new Error(
+      `iOS project regeneration is an explicit maintenance operation and requires Ruby with the xcodeproj gem available; no gems were installed automatically. ${error?.message || String(error)}`
+    )
   }
 }
 
@@ -374,19 +452,19 @@ async function waitForRuntimeEndpoints({
 }
 
 async function verifyIOSFixtures(fixturesDir) {
-  if (!existsSync(iosRepoRoot)) {
-    console.warn(`Skipping iOS compatibility smoke because ${iosRepoRoot} does not exist.`)
+  const projectPath = path.join(iosRepoRoot, 'RoachNetCompanion.xcodeproj')
+  const checkout = validateIOSCompanionCheckout({ iosRepoRoot, projectPath })
+  if (!checkout) {
+    console.warn(`Skipping developer iOS compatibility diagnostic because ${iosRepoRoot} does not exist.`)
     return
   }
 
-  const projectPath = path.join(iosRepoRoot, 'RoachNetCompanion.xcodeproj')
   const modelPath = path.join(iosRepoRoot, 'RoachNetCompanion', 'Core', 'CompanionModels.swift')
   const derivedDataPath = path.join(fixturesDir, 'DerivedData')
   const xcodeTmpPath = path.join(fixturesDir, 'tmp')
   const checkerPath = path.join(fixturesDir, 'companion-fixture-check')
   const checkerSourcePath = path.join(fixturesDir, 'companion-fixture-check.swift')
 
-  assert(existsSync(projectPath), `Missing iOS project at ${projectPath}`)
   assert(existsSync(modelPath), `Missing iOS companion model file at ${modelPath}`)
   mkdirSync(xcodeTmpPath, { recursive: true })
 
@@ -422,7 +500,8 @@ struct CompanionFixtureCheck {
 `.trimStart()
   )
 
-  await runSmokeCommand('ruby', [path.join(iosRepoRoot, 'scripts', 'generate_xcodeproj.rb')], { cwd: iosRepoRoot })
+  await regenerateIOSProjectIfRequested({ iosRepoRoot })
+  validateIOSCompanionCheckout({ iosRepoRoot, projectPath })
   await runSmokeCommand(
     'xcodebuild',
     [
@@ -561,6 +640,13 @@ function validateAppsCatalogContract() {
 }
 
 async function main() {
+  const projectPath = path.join(iosRepoRoot, 'RoachNetCompanion.xcodeproj')
+  const initialCheckout = validateIOSCompanionCheckout({ iosRepoRoot, projectPath })
+  if (!initialCheckout) {
+    console.warn(`Skipping developer iOS compatibility diagnostic because ${iosRepoRoot} does not exist.`)
+    return
+  }
+
   mkdirSync(smokeWorkRoot, { recursive: true })
   const tempRoot = await mkdtemp(path.join(smokeWorkRoot, 'roachnet-ios-companion-smoke-'))
   const homePath = path.join(tempRoot, 'home')
@@ -676,9 +762,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('RoachNet desktop/iOS companion compatibility smoke failed. Re-run with ROACHNET_SMOKE_KEEP_TEMP=1 for local diagnostic artifacts.')
-  const message = error?.message || String(error)
-  console.error(message.startsWith('Unable to start ') ? message : error?.stack || message)
-  process.exitCode = 1
-})
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    console.error('RoachNet desktop/iOS companion compatibility smoke failed. Re-run with ROACHNET_SMOKE_KEEP_TEMP=1 for local diagnostic artifacts.')
+    const message = error?.message || String(error)
+    console.error(message.startsWith('Unable to start ') ? message : error?.stack || message)
+    process.exitCode = 1
+  })
+}

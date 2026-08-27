@@ -243,8 +243,10 @@ node scripts/prepare-roachspeech-release-packs.mjs
 npm run native:build
 npm run native:test
 ROACHNET_CANDIDATE_BUILD=1 npm run native:dist
+export ROACHNET_IOS_REPO=/absolute/path/to/RoachNet-iOS
+export ROACHNET_IOS_EXPECTED_SHA=$(git -C "$ROACHNET_IOS_REPO" rev-parse HEAD)
 export ROACHNET_WHISPER_PARITY_AUDIO=/absolute/path/to/approved-local-fixture.wav
-npm run smoke:release-gates
+ROACHNET_CANDIDATE_BUILD=1 npm run smoke:release-gates
 ```
 
 `ROACHNET_CANDIDATE_BUILD=1` is the credential-independent Gate C path. It

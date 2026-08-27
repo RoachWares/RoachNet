@@ -32,6 +32,10 @@ on:
         required: false
         default: 'docs/releases/1.0.6.md'
         type: string
+      ios_companion_sha:
+        description: 'Full 40-character RoachNet-iOS commit SHA for companion Gate C validation (stage mode only)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -103,6 +107,7 @@ jobs:
       APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
       RELEASE_TAG: ${{ inputs.release_tag }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      ROACHNET_IOS_EXPECTED_SHA: ${{ inputs.ios_companion_sha }}
       RELEASE_NOTES_PATH: ${{ inputs.release_notes_path }}
       ROACHNET_RELEASE_APP_CLIENT_ID: ${{ vars.ROACHNET_RELEASE_APP_CLIENT_ID }}
       ROACHNET_RELEASE_BUILD: '1'
@@ -116,10 +121,11 @@ jobs:
             if [[ -n "$allowed_actor" && "$allowed_actor" == "$GITHUB_TRIGGERING_ACTOR" ]]; then authorized=true; fi
           done < <(printf '%s' "$DEPLOYMENT_AUTHORIZED_USERS" | tr ',[:space:]' '\n' | sed '/^$/d')
           [[ "$authorized" == true ]] || { echo 'Triggering actor is not an exact release allowlist member.' >&2; exit 1; }
-          for name in APPLE_DEVELOPER_ID_APP_CERT_BASE64 APPLE_DEVELOPER_ID_APP_CERT_PASSWORD APPLE_DEVELOPER_ID_APP_IDENTITY APPLE_NOTARY_APPLE_ID APPLE_NOTARY_APP_PASSWORD APPLE_NOTARY_TEAM_ID RELEASE_TAG CANDIDATE_SHA RELEASE_NOTES_PATH ROACHNET_RELEASE_APP_CLIENT_ID; do
+          for name in APPLE_DEVELOPER_ID_APP_CERT_BASE64 APPLE_DEVELOPER_ID_APP_CERT_PASSWORD APPLE_DEVELOPER_ID_APP_IDENTITY APPLE_NOTARY_APPLE_ID APPLE_NOTARY_APP_PASSWORD APPLE_NOTARY_TEAM_ID RELEASE_TAG CANDIDATE_SHA ROACHNET_IOS_EXPECTED_SHA RELEASE_NOTES_PATH ROACHNET_RELEASE_APP_CLIENT_ID; do
             [[ -n "${!name:-}" ]] || { echo "Missing required release prerequisite: $name" >&2; exit 1; }
           done
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'candidate_sha must be a full lowercase SHA.' >&2; exit 1; }
+          [[ "$ROACHNET_IOS_EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'ios_companion_sha must be a full lowercase SHA.' >&2; exit 1; }
           [[ "$GITHUB_SHA" == "$CANDIDATE_SHA" ]] || { echo 'Dispatch the workflow from the exact candidate SHA/tag.' >&2; exit 1; }
       - name: Prove staging environment has required reviewers
         env:
@@ -135,6 +141,14 @@ jobs:
         with:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout exact iOS companion
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: RoachWares/RoachNet-iOS
+          ref: ${{ inputs.ios_companion_sha }}
+          path: RoachNet-iOS
+          fetch-depth: 1
           persist-credentials: false
       - name: Setup Node 26
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -215,7 +229,7 @@ jobs:
             'https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.8.4/samples/jfk.wav' \
             --output "$RUNNER_TEMP/jfk.wav"
           printf '%s  %s\n' '59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e' "$RUNNER_TEMP/jfk.wav" | shasum -a 256 -c -
-          ROACHNET_WHISPER_PARITY_AUDIO="$RUNNER_TEMP/jfk.wav" npm run smoke:release-gates
+          ROACHNET_IOS_REPO="$GITHUB_WORKSPACE/RoachNet-iOS" ROACHNET_WHISPER_PARITY_AUDIO="$RUNNER_TEMP/jfk.wav" npm run smoke:release-gates
       - name: Verify Developer ID, hardened runtime, notarization, stapling, Gatekeeper, and checksum
         shell: bash
         run: |

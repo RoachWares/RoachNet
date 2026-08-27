@@ -4,6 +4,11 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import {
+  shouldRegenerateIOSProject,
+  validateIOSCompanionCheckout,
+} from '../smoke-test-ios-companion-compat.mjs'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -89,6 +94,75 @@ test('companion compatibility smoke prefers the dependency-free native API launc
   assert.match(source, /readRuntimeBaseUrl/)
   assert.doesNotMatch(source, /run-roachnet\.mjs/)
   assert.doesNotMatch(source, /path\.join\(logsRoot,\s*'admin\.log'\)/)
+})
+
+test('iOS companion smoke uses a tracked project by default and binds candidate validation to a clean exact SHA', () => {
+  const exactSha = 'a'.repeat(40)
+  const fakeGit = (_command, args) => {
+    if (args.at(-1) === '--is-inside-work-tree') return 'true\n'
+    if (args.includes('ls-files')) return 'RoachNetCompanion.xcodeproj/project.pbxproj\n'
+    if (args.at(-1) === 'HEAD') return `${exactSha}\n`
+    if (args.includes('status')) return ''
+    throw new Error(`Unexpected git invocation: ${args.join(' ')}`)
+  }
+
+  assert.equal(shouldRegenerateIOSProject({}), false)
+  assert.equal(shouldRegenerateIOSProject({ ROACHNET_REGENERATE_XCODEPROJ: '1' }), true)
+  const source = readRepoFile('scripts/smoke-test-ios-companion-compat.mjs')
+  assert.match(source, /async function regenerateIOSProjectIfRequested/)
+  assert.match(source, /if \(!shouldRegenerateIOSProject\(env\)\) return/)
+  assert.doesNotMatch(source, /await runSmokeCommand\('ruby', \[path\.join\(iosRepoRoot, 'scripts', 'generate_xcodeproj\.rb'\)/)
+  assert.equal(
+    validateIOSCompanionCheckout({
+      iosRepoRoot: '/fixture/RoachNet-iOS',
+      projectPath: '/fixture/RoachNet-iOS/RoachNetCompanion.xcodeproj',
+      env: { ROACHNET_CANDIDATE_BUILD: '1', ROACHNET_IOS_EXPECTED_SHA: exactSha },
+      existsSyncImpl: () => true,
+      execFileSyncImpl: fakeGit,
+    }).sha,
+    exactSha
+  )
+
+  assert.throws(
+    () => validateIOSCompanionCheckout({
+      iosRepoRoot: '/fixture/RoachNet-iOS',
+      projectPath: '/fixture/RoachNet-iOS/RoachNetCompanion.xcodeproj',
+      env: { ROACHNET_CANDIDATE_BUILD: '1' },
+      existsSyncImpl: () => true,
+      execFileSyncImpl: fakeGit,
+    }),
+    /ROACHNET_IOS_EXPECTED_SHA/
+  )
+  assert.throws(
+    () => validateIOSCompanionCheckout({
+      iosRepoRoot: '/fixture/RoachNet-iOS',
+      projectPath: '/fixture/RoachNet-iOS/RoachNetCompanion.xcodeproj',
+      env: { ROACHNET_IOS_EXPECTED_SHA: 'b'.repeat(40) },
+      existsSyncImpl: () => true,
+      execFileSyncImpl: fakeGit,
+    }),
+    /does not match/
+  )
+  assert.throws(
+    () => validateIOSCompanionCheckout({
+      iosRepoRoot: '/fixture/RoachNet-iOS',
+      projectPath: '/fixture/RoachNet-iOS/RoachNetCompanion.xcodeproj',
+      env: { ROACHNET_RELEASE_BUILD: '1', ROACHNET_IOS_EXPECTED_SHA: exactSha },
+      existsSyncImpl: (target) => !target.endsWith('RoachNetCompanion.xcodeproj'),
+      execFileSyncImpl: fakeGit,
+    }),
+    /tracked iOS project/
+  )
+  assert.throws(
+    () => validateIOSCompanionCheckout({
+      iosRepoRoot: '/fixture/RoachNet-iOS',
+      projectPath: '/fixture/RoachNet-iOS/RoachNetCompanion.xcodeproj',
+      env: { ROACHNET_RELEASE_BUILD: '1', ROACHNET_IOS_EXPECTED_SHA: exactSha },
+      existsSyncImpl: () => true,
+      execFileSyncImpl: (_command, args) => args.includes('status') ? ' M Core/CompanionModels.swift\n' : fakeGit(_command, args),
+    }),
+    /must be clean/
+  )
 })
 
 test('setup overwrite flow preserves storage before deleting the previous install backup', () => {
