@@ -19,6 +19,17 @@ const macOSDittoTest = process.platform === 'darwin'
   ? {}
   : { skip: 'Requires macOS ditto archive semantics.' }
 
+// The runtime contract is exercised against the native Swift runtime when
+// ROACHNET_NATIVE_API_BINARY points at a built `roachnet-runtime`, and against
+// the legacy Node launcher otherwise.
+const nativeApiBinary = process.env.ROACHNET_NATIVE_API_BINARY?.trim() || ''
+function nativeApiCommand(extraArgs = []) {
+  if (nativeApiBinary) {
+    return [nativeApiBinary, extraArgs]
+  }
+  return [process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs'), ...extraArgs]]
+}
+
 function readRepoFile(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8')
 }
@@ -109,7 +120,7 @@ async function runTool(command, args, options = {}) {
 
 async function stopNativeApi(child, env) {
   await new Promise((resolve) => {
-    const stop = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs'), '--stop'], {
+    const stop = spawn(...nativeApiCommand(['--stop']), {
       cwd: repoRoot,
       env,
       stdio: 'ignore',
@@ -399,7 +410,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1039,7 +1050,7 @@ test('native RoachTail control plane supports join-key pairing and peer tokens',
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1146,7 +1157,7 @@ test('companion App Store installs route descriptor downloads into the native ap
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1221,7 +1232,7 @@ test('native API cancels active download jobs and removes partial files', async 
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1278,7 +1289,7 @@ test('native API installs downloaded RoachSpeech packs into the active model she
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1355,7 +1366,7 @@ test('native API resolves Apps download descriptors before installing RoachSpeec
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1439,7 +1450,7 @@ test('native API reassembles chunked Apps descriptors before installing RoachSpe
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1490,7 +1501,7 @@ test('native API rejects oversized JSON bodies with a public 413 response', asyn
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1532,7 +1543,7 @@ test('native API removes partial update downloads after transfer failure', async
     HOST: '127.0.0.1',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1576,7 +1587,7 @@ test('native API refuses non-loopback bind hosts before listening', async () => 
     HOST: '192.0.2.10',
     PORT: String(port),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(...nativeApiCommand(), {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
