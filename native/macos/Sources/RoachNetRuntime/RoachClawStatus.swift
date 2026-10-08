@@ -149,16 +149,19 @@ extension NativeRuntime {
     func roachClawStatus() -> JSON {
         ensureOllama()
         let group = DispatchGroup()
-        var ollama: JSON = .null
-        var openclaw: JSON = .null
-        var models: [JSON] = []
+        let ollamaBox = LockedBox<JSON>(.null)
+        let openclawBox = LockedBox<JSON>(.null)
+        let modelsBox = LockedBox<[JSON]>([])
         group.enter()
-        DispatchQueue.global().async { ollama = self.providerStatus("ollama", self.config.ollamaBaseUrl); group.leave() }
+        DispatchQueue.global().async { ollamaBox.value = self.providerStatus("ollama", self.config.ollamaBaseUrl); group.leave() }
         group.enter()
-        DispatchQueue.global().async { openclaw = self.providerStatus("openclaw", self.config.openClawBaseUrl); group.leave() }
+        DispatchQueue.global().async { openclawBox.value = self.providerStatus("openclaw", self.config.openClawBaseUrl); group.leave() }
         group.enter()
-        DispatchQueue.global().async { models = self.installedModels(); group.leave() }
+        DispatchQueue.global().async { modelsBox.value = self.installedModels(); group.leave() }
         group.wait()
+        let ollama = ollamaBox.value
+        let openclaw = openclawBox.value
+        let models = modelsBox.value
 
         let modelNames = models.compactMap { $0["name"].stringValue }
         let workspacePath = config.env("OPENCLAW_WORKSPACE_PATH").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(storageRoot, "RoachClaw")

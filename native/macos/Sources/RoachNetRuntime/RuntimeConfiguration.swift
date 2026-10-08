@@ -160,6 +160,18 @@ public final class RuntimeConfiguration {
     }
 }
 
+/// Lock-protected value handed to a background callback; reads after a
+/// timeout never race the late writer.
+public final class LockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+    public init(_ value: Value) { storage = value }
+    public var value: Value {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); storage = newValue; lock.unlock() }
+    }
+}
+
 public enum RuntimeBuildInfo {
     /// The running helper's real path (symlinks resolved, PATH lookups handled).
     public static var executablePath: String {
@@ -187,7 +199,7 @@ public enum RuntimeLog {
             handle.write(Data(entry.utf8))
             try? handle.close()
         } else {
-            FileManager.default.createFile(atPath: config.logPath, contents: Data(entry.utf8))
+            _ = FileManager.default.createFile(atPath: config.logPath, contents: Data(entry.utf8))
         }
     }
 }
@@ -412,17 +424,17 @@ public enum Processes {
         }
         let finished = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in finished.signal() }
-        var outData = Data()
-        var errData = Data()
+        let outData = LockedBox(Data())
+        let errData = LockedBox(Data())
         let readers = DispatchGroup()
         readers.enter()
         DispatchQueue.global().async {
-            outData = stdout.fileHandleForReading.readDataToEndOfFile()
+            outData.value = stdout.fileHandleForReading.readDataToEndOfFile()
             readers.leave()
         }
         readers.enter()
         DispatchQueue.global().async {
-            errData = stderr.fileHandleForReading.readDataToEndOfFile()
+            errData.value = stderr.fileHandleForReading.readDataToEndOfFile()
             readers.leave()
         }
         if finished.wait(timeout: .now() + .milliseconds(timeoutMs)) == .timedOut {
@@ -432,8 +444,8 @@ public enum Processes {
         _ = readers.wait(timeout: .now() + .seconds(2))
         return Result(
             status: process.terminationStatus,
-            output: String(decoding: outData, as: UTF8.self),
-            errorOutput: String(decoding: errData, as: UTF8.self)
+            output: String(decoding: outData.value, as: UTF8.self),
+            errorOutput: String(decoding: errData.value, as: UTF8.self)
         )
     }
 

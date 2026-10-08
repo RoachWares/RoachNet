@@ -199,7 +199,7 @@ extension NativeRuntime {
         let deadline = Date().addingTimeInterval(Double(config.downloadTimeoutMs) / 1000)
         Files.remove(job.partialFilepath)
         withState { job.updatedAt = JS.isoNow() }
-        FileManager.default.createFile(atPath: job.partialFilepath, contents: nil)
+        _ = FileManager.default.createFile(atPath: job.partialFilepath, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: job.partialFilepath) else {
             throw RuntimeError("Download from \(job.url) failed: unable to open \(job.partialFilepath)")
         }

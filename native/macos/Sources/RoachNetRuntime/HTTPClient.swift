@@ -38,13 +38,9 @@ public enum HTTPClient {
         if let body { request.httpBody = body }
 
         let semaphore = DispatchSemaphore(value: 0)
-        var resultData: Data?
-        var resultResponse: URLResponse?
-        var resultError: Error?
+        let outcome = LockedBox<(data: Data?, response: URLResponse?, error: Error?)>((nil, nil, nil))
         let task = session.dataTask(with: request) { data, response, error in
-            resultData = data
-            resultResponse = response
-            resultError = error
+            outcome.value = (data, response, error)
             semaphore.signal()
         }
         task.resume()
@@ -53,6 +49,7 @@ public enum HTTPClient {
             task.cancel()
             throw RuntimeError("The operation was aborted due to timeout")
         }
+        let (resultData, resultResponse, resultError) = outcome.value
         if let resultError {
             if (resultError as NSError).code == NSURLErrorTimedOut {
                 throw RuntimeError("The operation was aborted due to timeout")
@@ -95,7 +92,9 @@ public enum HTTPClient {
 }
 
 /// Streams one HTTP response into a file handle with byte-ceiling checks.
-public final class StreamingDownload: NSObject, URLSessionDataDelegate {
+/// Mutable state is touched only from the session's serial delegate queue or
+/// under `lock`, so the unchecked Sendable conformance is sound.
+public final class StreamingDownload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     public struct Progress {
         public var expectedBytes: Int64?
         public var receivedBytes: Int64
@@ -212,18 +211,18 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate {
 public enum DNS {
     public static func resolves(_ host: String, timeoutMs: Int = 3_000) -> Bool {
         let semaphore = DispatchSemaphore(value: 0)
-        var ok = false
+        let ok = LockedBox(false)
         DispatchQueue.global().async {
             var hints = addrinfo()
             hints.ai_family = AF_UNSPEC
             var result: UnsafeMutablePointer<addrinfo>?
             let status = getaddrinfo(host, nil, &hints, &result)
-            if status == 0 { ok = true }
+            if status == 0 { ok.value = true }
             if let result { freeaddrinfo(result) }
             semaphore.signal()
         }
         if semaphore.wait(timeout: .now() + .milliseconds(timeoutMs)) == .timedOut { return false }
-        return ok
+        return ok.value
     }
 
     public static func addresses(_ host: String) -> [String]? {
