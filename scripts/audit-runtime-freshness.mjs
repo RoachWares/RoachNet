@@ -162,9 +162,45 @@ function assertRoachClawAgentRewriteMatchesMetadata(metadata) {
     assert(!existsSync(path.join(repoRoot, forbiddenPath)), `Hermes source must not be vendored into ${forbiddenPath}.`)
   }
 
+  if (agent.nativeRuntimeModule) {
+    const swiftAgentPath = path.join(repoRoot, agent.nativeRuntimeModule)
+    assert(existsSync(swiftAgentPath), `Missing native Swift RoachClaw agent at ${agent.nativeRuntimeModule}.`)
+    const swiftAgentSource = readFileSync(swiftAgentPath, 'utf8')
+    assert(
+      swiftAgentSource.includes(`reviewedHermesHead = "${agent.hermesReference.reviewedHead}"`),
+      `Native Swift RoachClaw agent reviewed Hermes HEAD does not match ${metadataPath}.`
+    )
+    assert(
+      /"upstreamRuntimeDependency": "none"/.test(swiftAgentSource) && swiftAgentSource.includes('4096'),
+      'Native Swift RoachClaw agent is missing dependency or budget guards.'
+    )
+    assert(
+      !/import\s+\w*[Hh]ermes|github\.com\/NousResearch\/hermes-agent/.test(swiftAgentSource),
+      'Native Swift RoachClaw agent must not import or fetch Hermes.'
+    )
+  }
+
   assert(
     source.includes('OpenClaw fallback') && source.includes('fresh install'),
     'RoachClaw native replacement work must remain additive until fresh-install and upgrade parity are proven.'
+  )
+}
+
+const nodeCompatBuild = process.env.ROACHNET_BUNDLE_NODE_COMPAT === '1'
+
+function assertNativeRuntimeMatchesMetadata(metadata) {
+  const runtime = metadata.nativeRuntime
+  assert(runtime?.mode === 'swift-native', 'Runtime metadata must declare nativeRuntime.mode swift-native.')
+  assert(runtime?.thirdPartyDependencies === 'none', 'Native runtime metadata must declare no third-party dependencies.')
+  assert(existsSync(path.join(repoRoot, runtime.sourceRoot)), `Missing native runtime sources at ${runtime.sourceRoot}.`)
+  assert(
+    metadata.node.mode === 'compat-only-not-bundled',
+    'Node must be recorded as compat-only-not-bundled now that the native Swift runtime ships.'
+  )
+  const buildSource = readFileSync(buildScriptPath, 'utf8')
+  assert(
+    buildSource.includes('copyNativeRuntimeHelper') && buildSource.includes('assertNoEmbeddedNode'),
+    'Native builder must package the Swift runtime helper and refuse embedded Node in default builds.'
   )
 }
 
@@ -218,7 +254,30 @@ function assertDistributionMatchesMetadata(metadata) {
     'node'
   )
 
-  if (existsSync(setupNode) || existsSync(appNode)) {
+  const distBundles = ['RoachNet Setup.app', 'RoachNet.app'].map((bundle) =>
+    path.join(repoRoot, 'native', 'macos', 'dist', bundle, 'Contents')
+  )
+  const distIsNative = distBundles.every((contents) =>
+    existsSync(path.join(contents, 'Helpers', metadata.nativeRuntime.executable))
+  )
+  const distExists = distBundles.some((contents) => existsSync(contents))
+
+  if (distExists && !distIsNative) {
+    // Pre-native-runtime artifacts left in the git-ignored dist folder. They are not
+    // what 1.0.6 ships; report them and skip the payload checks instead of executing
+    // a stale (and on non-macOS hosts, unrunnable) Node binary.
+    console.warn('notice: native/macos/dist predates the native Swift runtime; rebuild with npm run native:dist before the release gate.')
+    if (process.env.ROACHNET_REQUIRE_FRESH_DIST === '1') {
+      throw new Error('native/macos/dist is stale: bundles are missing Contents/Helpers/roachnet-runtime.')
+    }
+    return
+  }
+
+  if (!nodeCompatBuild) {
+    for (const nodePath of [setupNode, appNode]) {
+      assert(!existsSync(nodePath), `${displayPath(nodePath)} must not be present in a native-runtime build.`)
+    }
+  } else if (process.platform === 'darwin' && (existsSync(setupNode) || existsSync(appNode))) {
     for (const nodePath of [setupNode, appNode]) {
       assert(existsSync(nodePath), `Expected bundled Node runtime at ${nodePath}.`)
       assertBundledNodeBinaryVersion(nodePath, metadata.node.bundledVersion)
@@ -246,6 +305,7 @@ async function main() {
 
   assertBuildScriptMatchesMetadata(metadata)
   assertRoachClawAgentRewriteMatchesMetadata(metadata)
+  assertNativeRuntimeMatchesMetadata(metadata)
   assertDistributionMatchesMetadata(metadata)
 
   const [latestNode, latestOllama, latestOpenClaw] = await Promise.all([
@@ -258,23 +318,32 @@ async function main() {
   assert(latestOllama, 'Could not resolve latest Ollama release.')
   assert(latestOpenClaw, 'Could not resolve latest OpenClaw package release.')
 
-  assert(
-    stripVersionPrefix(metadata.node.bundledVersion) === stripVersionPrefix(latestNode),
-    `Bundled Node is stale: metadata has ${metadata.node.bundledVersion}, latest ${latestNode}.`
-  )
+  if (nodeCompatBuild) {
+    assert(
+      stripVersionPrefix(metadata.node.bundledVersion) === stripVersionPrefix(latestNode),
+      `Compat Node is stale: metadata has ${metadata.node.bundledVersion}, latest ${latestNode}.`
+    )
+  } else if (stripVersionPrefix(metadata.node.bundledVersion) !== stripVersionPrefix(latestNode)) {
+    console.warn(`notice: compat-only Node pin ${metadata.node.bundledVersion} trails ${latestNode}; not shipped in native builds.`)
+  }
   assert(
     stripVersionPrefix(metadata.ollama.bundledVersion) === stripVersionPrefix(latestOllama),
     `Bundled Ollama is stale: metadata has ${metadata.ollama.bundledVersion}, latest ${latestOllama}.`
   )
-  assert(
-    stripVersionPrefix(metadata.openclaw.reviewedVersion) === stripVersionPrefix(latestOpenClaw),
-    `OpenClaw metadata is stale: metadata has ${metadata.openclaw.reviewedVersion}, latest ${latestOpenClaw}.`
-  )
+  if (metadata.openclaw.mode !== 'deferred-not-bundled') {
+    assert(
+      stripVersionPrefix(metadata.openclaw.reviewedVersion) === stripVersionPrefix(latestOpenClaw),
+      `OpenClaw metadata is stale: metadata has ${metadata.openclaw.reviewedVersion}, latest ${latestOpenClaw}.`
+    )
+  } else if (stripVersionPrefix(metadata.openclaw.reviewedVersion) !== stripVersionPrefix(latestOpenClaw)) {
+    console.warn(`notice: deferred OpenClaw reference ${metadata.openclaw.reviewedVersion} trails ${latestOpenClaw}; not bundled.`)
+  }
 
   console.log(
     [
       `Runtime freshness audit passed.`,
-      `Node ${metadata.node.bundledVersion}.`,
+      `Native Swift runtime (${metadata.nativeRuntime.executable}).`,
+      nodeCompatBuild ? `Compat Node ${metadata.node.bundledVersion}.` : 'Node not bundled.',
       `Ollama ${metadata.ollama.bundledVersion}.`,
       `OpenClaw ${metadata.openclaw.reviewedVersion} (${metadata.openclaw.mode}).`,
       `RoachClaw native agent rewrite.`,

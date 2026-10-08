@@ -1,5 +1,12 @@
 {
-  "checkedAt": "2026-08-27",
+  "checkedAt": "2026-10-08",
+  "nativeRuntime": {
+    "mode": "swift-native",
+    "executable": "roachnet-runtime",
+    "sourceRoot": "native/macos/Sources/RoachNetRuntime",
+    "thirdPartyDependencies": "none",
+    "bundleLocation": "Contents/Helpers/roachnet-runtime"
+  },
   "node": {
     "channel": "26",
     "bundledVersion": "v26.8.1",
@@ -17,19 +24,22 @@
         "url": "https://nodejs.org/dist/v26.8.1/node-v26.8.1-darwin-x64.tar.gz",
         "sha256": "fe9c6dbf9c8e1b4443803d75e2a20366e420dae650c747dbb116b22975751baf"
       }
-    }
+    },
+    "mode": "compat-only-not-bundled",
+    "releasePolicy": "Public 1.0.6+ builds ship the native Swift runtime (roachnet-runtime) and no Node. The pin is used only when ROACHNET_BUNDLE_NODE_COMPAT=1 builds a legacy compatibility payload."
   },
   "ollama": {
-    "bundledVersion": "0.33.1",
-    "latestReviewedVersion": "0.33.1",
-    "source": "https://github.com/ollama/ollama/releases/tag/v0.33.1",
+    "bundledVersion": "0.40.1",
+    "latestReviewedVersion": "0.40.1",
+    "source": "https://github.com/ollama/ollama/releases/tag/v0.40.1",
     "license": "MIT",
     "artifact": {
       "filename": "ollama-darwin.tgz",
-      "url": "https://github.com/ollama/ollama/releases/download/v0.33.1/ollama-darwin.tgz",
-      "bytes": 158569222,
-      "sha256": "6c4ff73ee47b1d8971cf80df3b7db4fc4284cfcdffdfe09c014e12cd72bacf83"
-    }
+      "url": "https://github.com/ollama/ollama/releases/download/v0.40.1/ollama-darwin.tgz",
+      "bytes": 167470715,
+      "sha256": "66e1587711f3a06315b23782ba74897001da6c8b8edf6c0371f7533015a076dd"
+    },
+    "reviewNotes": "2026-10-08: SHA-256 matches the GitHub release digest; archive layout matches 0.33.1 (top-level ollama universal arm64/x86_64, versioned ggml/llama dylibs, mlx_metal_v3/v4). Published 2026-10-07; Mac Gate C must pull and chat with a model before tagging."
   },
   "openclaw": {
     "mode": "deferred-not-bundled",
@@ -48,6 +58,7 @@
       "latestRelease": "v2026.8.27",
       "reviewedHead": "5fc308a70719a83cccdbba4c0e39c23f5a8239d5",
       "docs": "https://hermes-agent.nousresearch.com/docs/"
-    }
+    },
+    "nativeRuntimeModule": "native/macos/Sources/RoachNetRuntime/RoachClawAgent.swift"
   }
 }
