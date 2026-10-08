@@ -21,6 +21,8 @@ public final class SetupEngine {
     static let installManifestName = "roachnet-install.json"
 
     let environment: [String: String]
+    /// Mirrors task log lines (used by the headless `--install` CLI).
+    public var onLog: ((String) -> Void)?
     let version: String
     private let lock = NSRecursiveLock()
     private var activeTask: JSON?
@@ -77,7 +79,7 @@ public final class SetupEngine {
             if normalized.hasSuffix(".app") { return Path.join(normalized, "Contents", "Resources", "InstallerAssets") }
         }
         // Helper binary at <Setup.app>/Contents/Helpers/roachnet-runtime
-        let executable = Path.resolve(CommandLine.arguments.first ?? "")
+        let executable = RuntimeBuildInfo.executablePath
         let contents = Path.dirname(Path.dirname(executable))
         let candidate = Path.join(contents, "Resources", "InstallerAssets")
         return Files.isDirectory(candidate) ? candidate : nil
@@ -179,7 +181,9 @@ public final class SetupEngine {
                 : JSON(Path.join(installPath, "storage"))
         )
         let present = installLooksPresent(installPath, appPath: appPath)
-        let installRoachClaw = persisted["installRoachClaw"].isUndefined ? true : persisted["installRoachClaw"].truthy
+        // The install request (Setup UI toggle or `--no-roachclaw`) wins over the saved choice.
+        let installRoachClaw = !overrides["installRoachClaw"].isUndefined ? overrides["installRoachClaw"].truthy
+            : persisted["installRoachClaw"].isUndefined ? true : persisted["installRoachClaw"].truthy
 
         func bool(_ key: String, _ fallback: Bool) -> JSON {
             if !overrides[key].isUndefined { return JSON(overrides[key].truthy) }
@@ -380,6 +384,7 @@ public final class SetupEngine {
             task["logs"] = .array(logs)
         }
         RuntimeLog.write("setup: \(redact(message))")
+        onLog?(line)
     }
 
     func setPhase(_ phase: String, _ progress: Int) {
@@ -414,6 +419,18 @@ public final class SetupEngine {
     }
 
     public func startInstall(_ payload: JSON) throws -> JSON {
+        try startInstall(payload, synchronous: false)
+    }
+
+    /// Headless install used by `roachnet-runtime --install` (Homebrew, scripted
+    /// and MDM installs). Runs the same staged workflow as the Setup app and
+    /// returns the finished task.
+    public func installSynchronously(_ payload: JSON) throws -> JSON {
+        _ = try startInstall(payload, synchronous: true)
+        return synchronized { lastCompletedTask ?? .null }
+    }
+
+    func startInstall(_ payload: JSON, synchronous: Bool) throws -> JSON {
         let config = defaultConfig(payload)
         if config["dryRun"].truthy {
             var preview = newTask()
@@ -439,7 +456,11 @@ public final class SetupEngine {
             autoLaunch: config["autoLaunch"].truthy,
             config: config
         )
-        DispatchQueue.global(qos: .userInitiated).async { self.runInstall(plan) }
+        if synchronous {
+            runInstall(plan)
+        } else {
+            DispatchQueue.global(qos: .userInitiated).async { self.runInstall(plan) }
+        }
         return ["ok": true]
     }
 
@@ -490,6 +511,9 @@ public final class SetupEngine {
             try finalizeInstallRoot(staging: staging, finalRoot: plan.installPath, storagePath: plan.storagePath)
             stagingRoot = nil
             try Files.mkdirp(plan.storagePath)
+
+            setPhase("Arming RoachTail local alias", 94)
+            try provisionLocalAlias()
 
             let finishedAt = JS.isoNow()
             var completedConfig = plan.config
@@ -556,6 +580,29 @@ public final class SetupEngine {
     }
 
     // MARK: Steps
+
+    /// Points the RoachTail hostname at loopback. Best effort unless
+    /// ROACHNET_REQUIRE_LOCAL_ALIAS=1; only the system hosts file may prompt.
+    func provisionLocalAlias() throws {
+        let explicitHostsFile = environment["ROACHNET_HOSTS_FILE"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard SetupPlatform.isMacOS || !explicitHostsFile.isEmpty else { return }
+        let hostsFile = explicitHostsFile.isEmpty ? "/etc/hosts" : explicitHostsFile
+        let hostname = RoachTailHostname.hostname(environment: environment)
+        log("Provisioning the RoachTail local alias \(hostname) via \(hostsFile)...")
+        do {
+            let outcome = try RoachTailHostname.provision(
+                hostname: hostname,
+                hostsFile: hostsFile,
+                allowPrivilegePrompt: hostsFile == "/etc/hosts"
+            )
+            log(outcome.changed
+                ? "RoachTail local alias \(hostname) now points at the contained desktop lane."
+                : "RoachTail local alias \(hostname) was already in place.")
+        } catch {
+            log("RoachTail local alias could not be provisioned automatically. \(error)")
+            if environment["ROACHNET_REQUIRE_LOCAL_ALIAS"] == "1" { throw error }
+        }
+    }
 
     func installContainedOllama(stagingRoot: String, existingRoot: String) throws {
         let vendorRoot = Path.join(stagingRoot, "runtime", "vendor", "ollama")
@@ -835,7 +882,8 @@ public final class SetupEngine {
     /// Starts the loopback setup service and writes the ready file the Setup
     /// app waits for.
     public func serve() throws -> LoopbackHTTPServer {
-        let server = LoopbackHTTPServer(host: "127.0.0.1", port: 0, maxBodyBytes: 1024 * 1024) { [self] request in
+        let requestedPort = UInt16(environment["ROACHNET_SETUP_PORT"]?.trimmingCharacters(in: .whitespaces) ?? "") ?? 0
+        let server = LoopbackHTTPServer(host: "127.0.0.1", port: requestedPort, maxBodyBytes: 1024 * 1024) { [self] request in
             handle(&request)
         }
         try server.start()

@@ -117,6 +117,8 @@ function requireNativeSwiftRuntime() {
     'native/macos/Sources/RoachNetRuntime/RuntimeServer.swift',
     'native/macos/Sources/RoachNetRuntime/Router.swift',
     'native/macos/Sources/RoachNetRuntime/SetupEngine.swift',
+    'native/macos/Sources/RoachNetRuntime/SetupPlatform.swift',
+    'native/macos/Sources/RoachNetRuntime/RoachTailHostname.swift',
     'native/macos/Sources/RoachNetRuntimeHost/main.swift',
   ]) {
     requireFile(relativePath, 'native Swift runtime')
@@ -143,6 +145,21 @@ function requireNativeSwiftRuntime() {
   const companionSource = readText('native/macos/Sources/RoachNetRuntime/RuntimeServer.swift')
   if (!/must bind only to a loopback address/.test(companionSource)) {
     failures.push('native companion bridge must bind only to loopback')
+  }
+  const hostSource = readText('native/macos/Sources/RoachNetRuntimeHost/main.swift')
+  for (const mode of ['--setup', '--install', '--provision-alias', '--stop', '--version']) {
+    if (!hostSource.includes(`"${mode}"`)) {
+      failures.push(`roachnet-runtime must support ${mode} so setup, Homebrew and scripted installs need no Node`)
+    }
+  }
+  const setupSource = readText('native/macos/Sources/RoachNetRuntime/SetupEngine.swift')
+  for (const [pattern, message] of [
+    [/hardwareIsAppleSilicon/, 'native setup must refuse non-Apple-Silicon hardware'],
+    [/smokeTestRuntime/, 'native setup must smoke-test the staged runtime before swapping it in'],
+    [/finalizeInstallRoot/, 'native setup must promote installs through the staged root swap'],
+    [/provisionLocalAlias/, 'native setup must provision the RoachTail local alias'],
+  ]) {
+    if (!pattern.test(setupSource)) failures.push(message)
   }
   const coreSource = readText('native/macos/Sources/RoachNetCore/ManagedAppRuntime.swift')
   if (!/nativeRuntimeBinary\(\)/.test(coreSource)) {

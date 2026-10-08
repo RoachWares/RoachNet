@@ -127,24 +127,55 @@ function getBundledSourceDirectoryPath(bundlePath) {
   return path.join(bundlePath, 'Contents', 'Resources', 'RoachNetSource')
 }
 
+function getNativeRuntimeHelperPath(bundlePath) {
+  return path.join(bundlePath, 'Contents', 'Helpers', 'roachnet-runtime')
+}
+
+function bundleUsesNativeRuntime(bundlePath) {
+  return existsSync(getNativeRuntimeHelperPath(bundlePath))
+}
+
+// Each runtime descriptor is { command, args, stopArgs, cwd, nodeBinary }. 1.0.6+
+// bundles run the native Swift helper; legacy compat bundles run the Node launchers.
 function getPackagedSetupRuntimePaths(bundlePath = setupBundlePath, bundledSourceRoot = null) {
+  if (bundleUsesNativeRuntime(bundlePath)) {
+    const helper = getNativeRuntimeHelperPath(bundlePath)
+    return { native: true, command: helper, args: ['--setup'], cwd: path.dirname(helper), nodeBinary: null }
+  }
   const sourceRoot =
     bundledSourceRoot || path.join(bundlePath, 'Contents', 'Resources', 'RoachNetSource')
-  return {
-    nodeBinary: path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node', 'bin', 'node'),
-    launcherPath: path.join(sourceRoot, 'scripts', 'run-roachnet-setup.mjs'),
-  }
+  const nodeBinary = path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node', 'bin', 'node')
+  const launcherPath = path.join(sourceRoot, 'scripts', 'run-roachnet-setup.mjs')
+  return { native: false, command: nodeBinary, args: [launcherPath], cwd: path.dirname(launcherPath), nodeBinary }
 }
 
 function getPackagedAppRuntimePaths(appBundlePath, installRoot = null) {
+  if (bundleUsesNativeRuntime(appBundlePath)) {
+    const helper = getNativeRuntimeHelperPath(appBundlePath)
+    return {
+      native: true,
+      command: helper,
+      args: [],
+      stopArgs: ['--stop'],
+      cwd: path.dirname(helper),
+      nodeBinary: null,
+      alias: { command: helper, args: ['--provision-alias'], cwd: path.dirname(helper) },
+    }
+  }
   const sourceRoot =
     installRoot || path.join(appBundlePath, 'Contents', 'Resources', 'RoachNetSource')
   const nativeLauncherPath = path.join(sourceRoot, 'scripts', 'run-roachnet-native-api.mjs')
-  assert(existsSync(nativeLauncherPath), `Missing dependency-free native API launcher at ${nativeLauncherPath}`)
+  assert(existsSync(nativeLauncherPath), `Missing native API launcher at ${nativeLauncherPath}`)
+  const nodeBinary = path.join(appBundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node', 'bin', 'node')
+  const aliasInstallerPath = path.join(sourceRoot, 'scripts', 'install-roachtail-hostname.mjs')
   return {
-    nodeBinary: path.join(appBundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node', 'bin', 'node'),
-    launcherPath: nativeLauncherPath,
-    aliasInstallerPath: path.join(sourceRoot, 'scripts', 'install-roachtail-hostname.mjs'),
+    native: false,
+    command: nodeBinary,
+    args: [nativeLauncherPath],
+    stopArgs: [nativeLauncherPath, '--stop'],
+    cwd: path.dirname(nativeLauncherPath),
+    nodeBinary,
+    alias: { command: nodeBinary, args: [aliasInstallerPath, '--apply'], cwd: path.dirname(aliasInstallerPath) },
   }
 }
 
@@ -172,8 +203,12 @@ function buildContainedRuntimeEnv({ homePath, installRoot, storagePath, config, 
     OPENCLAW_BASE_URL: 'http://127.0.0.1:13001',
     ROACHNET_RUNTIME_STATE_ROOT: path.join(storagePath, 'state', 'runtime-state'),
     ROACHNET_LOCAL_BIN_PATH: path.join(installRoot, 'bin'),
-    ROACHNET_NODE_BINARY: runtime.nodeBinary,
-    ROACHNET_NPM_BINARY: path.join(path.dirname(runtime.nodeBinary), 'npm'),
+    ...(runtime.nodeBinary
+      ? {
+          ROACHNET_NODE_BINARY: runtime.nodeBinary,
+          ROACHNET_NPM_BINARY: path.join(path.dirname(runtime.nodeBinary), 'npm'),
+        }
+      : { ROACHNET_RUNTIME_KIND: 'native' }),
     ROACHNET_INSTALL_PROFILE: installProfile,
     ROACHNET_BOOTSTRAP_PENDING: config.bootstrapPending ? '1' : '0',
     ROACHNET_CONTAINERLESS_MODE: containerlessMode,
@@ -642,6 +677,7 @@ async function runCommand(command, args, options = {}) {
 
 async function terminateLingeringSmokeProcesses() {
   const cleanupPatterns = [
+    '/native/macos/dist/.smoke-work/.*/Contents/Helpers/roachnet-runtime',
     '/native/macos/dist/.smoke-work/.*/run-roachnet-setup.mjs',
     '/native/macos/dist/.smoke-work/.*/run-roachnet-native-api.mjs',
     '/native/macos/dist/.smoke-work/.*/run-roachnet.mjs',
@@ -849,6 +885,15 @@ async function verifyBundleVersions() {
       version === packageVersion,
       `${label} bundle version mismatch. Expected ${packageVersion}, found ${version || 'missing'} at ${bundlePath}`
     )
+    if (bundleUsesNativeRuntime(bundlePath)) {
+      const helper = getNativeRuntimeHelperPath(bundlePath)
+      const result = await runCommand(helper, ['--version'], { env: process.env, timeoutMs: 10_000 })
+      const helperVersion = String(result?.stdout ?? '').trim()
+      assert(
+        helperVersion === packageVersion,
+        `${label} roachnet-runtime reports ${helperVersion || 'nothing'}, expected ${packageVersion}`
+      )
+    }
   }
 
   assert(
@@ -892,8 +937,8 @@ async function stopContainedRuntime({
   healthUrl,
 }) {
   try {
-    const stopProcess = spawnProcess(runtime.nodeBinary, [runtime.launcherPath, '--stop'], {
-      cwd: path.dirname(runtime.launcherPath),
+    const stopProcess = spawnProcess(runtime.command, runtime.stopArgs, {
+      cwd: runtime.cwd,
       env: buildContainedRuntimeEnv({
         homePath,
         installRoot,
@@ -913,6 +958,7 @@ async function stopContainedRuntime({
   }
 
   const cleanupPatterns = [
+    `${installRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*/Contents/Helpers/roachnet-runtime`,
     `${installRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*/run-roachnet-native-api\\.mjs`,
     `${installRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*/run-roachnet\\.mjs`,
     `${installRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*/roachnet-companion-server\\.mjs`,
@@ -970,19 +1016,25 @@ async function smokeSetupLane() {
     env: baseShellEnv(homePath),
     timeoutMs: 5_000,
   }).catch(() => {})
-  await runCommand('pkill', ['-f', 'run-roachnet-setup.mjs'], {
-    env: baseShellEnv(homePath),
-    timeoutMs: 5_000,
-  }).catch(() => {})
+  for (const pattern of ['run-roachnet-setup.mjs', 'Contents/Helpers/roachnet-runtime --setup']) {
+    await runCommand('pkill', ['-f', pattern], {
+      env: baseShellEnv(homePath),
+      timeoutMs: 5_000,
+    }).catch(() => {})
+  }
 
-  const extractedSetupSourceRoot = path.join(tempRoot, 'setup-source')
-  logStep('Materializing setup bundled source tree')
-  await materializeBundledSourceTree(setupBundlePath, extractedSetupSourceRoot)
+  let extractedSetupSourceRoot = null
+  if (!bundleUsesNativeRuntime(setupBundlePath)) {
+    extractedSetupSourceRoot = path.join(tempRoot, 'setup-source')
+    logStep('Materializing setup bundled source tree (legacy Node compat bundle)')
+    await materializeBundledSourceTree(setupBundlePath, extractedSetupSourceRoot)
+  }
 
-  const { nodeBinary, launcherPath } = getPackagedSetupRuntimePaths(setupBundlePath, extractedSetupSourceRoot)
+  const setupRuntime = getPackagedSetupRuntimePaths(setupBundlePath, extractedSetupSourceRoot)
+  logStep(`Setup backend: ${setupRuntime.native ? 'native roachnet-runtime --setup' : 'legacy Node launcher'}`)
 
-  const setupProcess = spawnProcess(nodeBinary, [launcherPath], {
-    cwd: path.dirname(launcherPath),
+  const setupProcess = spawnProcess(setupRuntime.command, setupRuntime.args, {
+    cwd: setupRuntime.cwd,
     env: {
       ...baseShellEnv(homePath),
       ROACHNET_SETUP_NO_BROWSER: '1',
@@ -1019,7 +1071,18 @@ async function smokeSetupLane() {
     const task = await waitForSetupTask(setupBaseUrl)
     assert(task.result?.appPath === installAppPath, 'Setup lane completed without the expected app target path.')
     assert(existsSync(installAppPath), `Setup lane did not install the native app at ${installAppPath}`)
-    assert(existsSync(path.join(installRoot, 'scripts', 'run-roachnet-native-api.mjs')), 'Setup lane did not promote the dependency-free native API runtime tree.')
+    if (setupRuntime.native) {
+      assert(
+        existsSync(getNativeRuntimeHelperPath(installAppPath)),
+        'Setup lane did not install the native roachnet-runtime helper inside RoachNet.app.'
+      )
+      assert(
+        !existsSync(path.join(installAppPath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node')),
+        'Setup lane installed an app that still embeds Node.'
+      )
+    } else {
+      assert(existsSync(path.join(installRoot, 'scripts', 'run-roachnet-native-api.mjs')), 'Setup lane did not promote the native API runtime tree.')
+    }
     assert(
       readFileSync(mockHostsPath, 'utf8').includes('127.0.0.1 RoachNet'),
       withTaskLogs(
@@ -1036,8 +1099,8 @@ async function smokeSetupLane() {
       URL: `http://127.0.0.1:${installedRuntimePort}`,
     }
     const runtimeStateRoot = path.join(storagePath, 'state', 'runtime-state')
-    const launcher = spawnProcess(installedRuntime.nodeBinary, [installedRuntime.launcherPath], {
-      cwd: path.dirname(installedRuntime.launcherPath),
+    const launcher = spawnProcess(installedRuntime.command, installedRuntime.args, {
+      cwd: installedRuntime.cwd,
       env: buildContainedRuntimeEnv({
         homePath,
         installRoot,
@@ -1072,8 +1135,8 @@ async function smokeSetupLane() {
       throw new Error([error.message, processLogs].filter(Boolean).join('\n\n'))
     } finally {
       try {
-        const stopProcess = spawnProcess(installedRuntime.nodeBinary, [installedRuntime.launcherPath, '--stop'], {
-          cwd: path.dirname(installedRuntime.launcherPath),
+        const stopProcess = spawnProcess(installedRuntime.command, installedRuntime.stopArgs, {
+          cwd: installedRuntime.cwd,
           env: buildContainedRuntimeEnv({
             homePath,
             installRoot,
@@ -1170,7 +1233,9 @@ async function smokeHomebrewLane() {
     force: true,
   })
   await normalizeMacBundle(appPath, homePath)
-  await materializeBundledSourceTree(appPath, installRoot)
+  if (!bundleUsesNativeRuntime(appPath)) {
+    await materializeBundledSourceTree(appPath, installRoot)
+  }
   logStep('Prepared contained Homebrew install tree')
 
   const config = {
@@ -1204,8 +1269,8 @@ async function smokeHomebrewLane() {
   writeFileSync(legacyConfigPath, JSON.stringify(config, null, 2) + '\n', 'utf8')
 
   const runtime = getPackagedAppRuntimePaths(appPath, installRoot)
-  const aliasInstaller = spawnProcess(runtime.nodeBinary, [runtime.aliasInstallerPath, '--apply'], {
-    cwd: path.dirname(runtime.aliasInstallerPath),
+  const aliasInstaller = spawnProcess(runtime.alias.command, runtime.alias.args, {
+    cwd: runtime.alias.cwd,
     env: {
       ...baseShellEnv(homePath),
       ROACHNET_HOSTS_FILE: mockHostsPath,
@@ -1232,8 +1297,8 @@ async function smokeHomebrewLane() {
   const healthUrl = new URL('/api/health', envValues.URL || 'http://127.0.0.1:8080').toString()
   const runtimeStateRoot = path.join(storagePath, 'state', 'runtime-state')
 
-  const launcher = spawnProcess(runtime.nodeBinary, [runtime.launcherPath], {
-    cwd: path.dirname(runtime.launcherPath),
+  const launcher = spawnProcess(runtime.command, runtime.args, {
+    cwd: runtime.cwd,
     env: buildContainedRuntimeEnv({
       homePath,
       installRoot,

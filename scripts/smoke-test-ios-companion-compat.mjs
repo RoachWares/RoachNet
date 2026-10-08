@@ -37,6 +37,7 @@ const packagedNpmBinaryPath = path.join(
   'bin',
   'npm'
 )
+const packagedRuntimeHelperPath = path.join(desktopAppBundlePath, 'Contents', 'Helpers', 'roachnet-runtime')
 const iosRepoRoot = process.env.ROACHNET_IOS_REPO
   ? path.resolve(process.env.ROACHNET_IOS_REPO)
   : path.resolve(repoRoot, '..', 'RoachNet-iOS')
@@ -338,6 +339,7 @@ async function fetchJson(url, token, options = {}) {
 
 function buildRuntimeEnv({ homePath, storagePath, runtimePort, companionPort, companionToken }) {
   const localBinRoot = path.join(homePath, 'RoachNet', 'bin')
+  const nativeRuntime = resolveRuntimeCommand().native
   const nodeBinary = existsSync(packagedNodeBinaryPath) ? packagedNodeBinaryPath : process.execPath
   const npmBinary = existsSync(packagedNpmBinaryPath) ? packagedNpmBinaryPath : 'npm'
 
@@ -358,8 +360,9 @@ function buildRuntimeEnv({ homePath, storagePath, runtimePort, companionPort, co
     OPENCLAW_BASE_URL: 'http://127.0.0.1:13001',
     ROACHNET_RUNTIME_STATE_ROOT: path.join(storagePath, 'state', 'runtime-state'),
     ROACHNET_LOCAL_BIN_PATH: localBinRoot,
-    ROACHNET_NODE_BINARY: nodeBinary,
-    ROACHNET_NPM_BINARY: npmBinary,
+    ...(nativeRuntime
+      ? { ROACHNET_RUNTIME_KIND: 'native' }
+      : { ROACHNET_NODE_BINARY: nodeBinary, ROACHNET_NPM_BINARY: npmBinary }),
     ROACHNET_NO_BROWSER: '1',
     ROACHNET_DISABLE_QUEUE: '1',
     ROACHNET_CONTAINERLESS_MODE: '1',
@@ -375,10 +378,22 @@ function buildRuntimeEnv({ homePath, storagePath, runtimePort, companionPort, co
   }
 }
 
-function resolveRuntimeLauncherPath() {
+// Prefer the native Swift runtime: an explicit build (ROACHNET_NATIVE_API_BINARY,
+// e.g. native/macos/.build/release/roachnet-runtime), then the packaged helper.
+// The Node launcher is only used for legacy compat checkouts.
+function resolveRuntimeCommand() {
+  const explicit = process.env.ROACHNET_NATIVE_API_BINARY?.trim()
+  if (explicit) {
+    assert(existsSync(explicit), `ROACHNET_NATIVE_API_BINARY does not exist: ${explicit}`)
+    return { native: true, command: explicit, args: [] }
+  }
+  if (existsSync(packagedRuntimeHelperPath)) {
+    return { native: true, command: packagedRuntimeHelperPath, args: [] }
+  }
   const nativeLauncherPath = path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')
-  assert(existsSync(nativeLauncherPath), 'Dependency-free native API launcher is missing.')
-  return nativeLauncherPath
+  assert(existsSync(nativeLauncherPath), 'No native runtime helper or compat launcher is available.')
+  const nodeBinary = existsSync(packagedNodeBinaryPath) ? packagedNodeBinaryPath : process.execPath
+  return { native: false, command: nodeBinary, args: [nativeLauncherPath] }
 }
 
 function writeFixture(directory, filename, payload) {
@@ -665,10 +680,10 @@ async function main() {
     companionPort,
     companionToken,
   })
-  const runtimeNodeBinary = runtimeEnv.ROACHNET_NODE_BINARY || process.execPath
-  const runtimeLauncherPath = resolveRuntimeLauncherPath()
+  const runtimeCommand = resolveRuntimeCommand()
+  console.log(`Runtime under test: ${runtimeCommand.native ? 'native roachnet-runtime' : 'legacy Node launcher'} (${runtimeCommand.command})`)
 
-  const runtimeHandle = spawnProcess(runtimeNodeBinary, [runtimeLauncherPath], {
+  const runtimeHandle = spawnProcess(runtimeCommand.command, runtimeCommand.args, {
     cwd: repoRoot,
     env: runtimeEnv,
   })
@@ -746,7 +761,7 @@ async function main() {
     throw error
   } finally {
     try {
-      await runSmokeCommand(runtimeNodeBinary, [runtimeLauncherPath, '--stop'], {
+      await runSmokeCommand(runtimeCommand.command, [...runtimeCommand.args, '--stop'], {
         cwd: repoRoot,
         env: runtimeEnv,
       })

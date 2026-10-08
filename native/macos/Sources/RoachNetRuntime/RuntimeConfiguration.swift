@@ -130,8 +130,11 @@ public final class RuntimeConfiguration {
         }
         // Executable lives at <repo>/native/macos/.build/... during development
         // and inside RoachNet.app when bundled; walk up looking for package.json.
-        var candidates: [String] = [FileManager.default.currentDirectoryPath]
-        let executable = Path.resolve(CommandLine.arguments.first ?? "")
+        let executable = RuntimeBuildInfo.executablePath
+        // Bundled layout: RoachNet.app/Contents/Helpers/roachnet-runtime with data in
+        // Contents/Resources/RoachNetRuntimeData, so the helper works with no env.
+        let bundledData = Path.join(Path.dirname(Path.dirname(executable)), "Resources", "RoachNetRuntimeData")
+        var candidates: [String] = [bundledData, FileManager.default.currentDirectoryPath]
         var cursor = Path.dirname(executable)
         for _ in 0..<8 {
             candidates.append(cursor)
@@ -158,6 +161,11 @@ public final class RuntimeConfiguration {
 }
 
 public enum RuntimeBuildInfo {
+    /// The running helper's real path (symlinks resolved, PATH lookups handled).
+    public static var executablePath: String {
+        let launchedAs = Bundle.main.executablePath ?? Path.resolve(CommandLine.arguments.first ?? "")
+        return Files.realpath(launchedAs) ?? launchedAs
+    }
     /// Fallback when neither package metadata nor an app bundle is present.
     public static let version = "1.0.6"
     public static let executableName = "roachnet-runtime"
