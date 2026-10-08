@@ -109,33 +109,41 @@ async function main() {
   assert(projects.length > 0, 'Upstream project metadata must include at least one project.')
 
   const branchMovements = []
+  const drifts = []
 
   for (const [projectId, project] of projects) {
-    const expected = project.latestRelease || {}
-    if (project.provider === 'huggingface') {
-      const latest = await fetchHuggingFaceModel(project)
-      const expected = project.latestModel || {}
-      for (const field of ['sha', 'lastModified', 'license']) {
-        assert(
-          expected[field] === latest[field],
-          `${projectId} upstream model drift: metadata ${field}=${expected[field] || 'missing'}, latest ${field}=${latest[field] || 'missing'}`
+    try {
+      const expected = project.latestRelease || {}
+      if (project.provider === 'huggingface') {
+        const latest = await fetchHuggingFaceModel(project)
+        const expected = project.latestModel || {}
+        for (const field of ['sha', 'lastModified', 'license']) {
+          assert(
+            expected[field] === latest[field],
+            `${projectId} upstream model drift: metadata ${field}=${expected[field] || 'missing'}, latest ${field}=${latest[field] || 'missing'}`
+          )
+        }
+        continue
+      }
+
+      const latest = project.provider === 'gitlab'
+        ? await fetchGitLabRelease(project)
+        : await fetchGitHubRelease(project)
+
+      compareRelease(projectId, expected, latest)
+
+      if (expected.observedHead && latest.observedHead && expected.observedHead !== latest.observedHead) {
+        branchMovements.push(
+          `${projectId} default branch moved since audit metadata: ${expected.observedHead.slice(0, 12)} -> ${latest.observedHead.slice(0, 12)}`
         )
       }
-      continue
-    }
-
-    const latest = project.provider === 'gitlab'
-      ? await fetchGitLabRelease(project)
-      : await fetchGitHubRelease(project)
-
-    compareRelease(projectId, expected, latest)
-
-    if (expected.observedHead && latest.observedHead && expected.observedHead !== latest.observedHead) {
-      branchMovements.push(
-        `${projectId} default branch moved since audit metadata: ${expected.observedHead.slice(0, 12)} -> ${latest.observedHead.slice(0, 12)}`
-      )
+    } catch (error) {
+      // Report every drifted reference in one run instead of stopping at the first.
+      drifts.push(error instanceof Error ? error.message : String(error))
     }
   }
+
+  assert(drifts.length === 0, drifts.join('\n'))
 
   if (branchMovements.length > 0 && process.env.ROACHNET_UPSTREAM_VERBOSE === '1') {
     for (const movement of branchMovements) {

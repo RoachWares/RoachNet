@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-08-27",
+  "checkedAt": "2026-10-08",
   "policy": "Stable releases are blocking release gates. Moving default-branch heads are recorded for audit context but do not fail a public build unless the stable release changes.",
   "projects": {
     "esDe": {
@@ -8,11 +8,12 @@
       "project": "es-de/emulationstation-de",
       "source": "https://gitlab.com/api/v4/projects/es-de%2Femulationstation-de/releases?per_page=1",
       "latestRelease": {
-        "tag": "v3.4.1",
-        "name": "Version 3.4.1 / 3.4.1-58",
-        "publishedAt": "2026-04-10T12:12:41.297Z",
-        "commit": "5db4e2a32bd5852cc7a3dbeb298d85de86a536d7"
-      }
+        "tag": "v3.5.0",
+        "name": "Version 3.5.0 / 3.5.0-65",
+        "publishedAt": "2026-09-30T09:21:15.488Z",
+        "commit": "50e4b600ae533d772bae3ff880d11a09b05dbe84"
+      },
+      "reviewNotes": "2026-10-08: 3.5.0 adds per-game launch-screen metadata, theme properties and new systems. RoachArcade's gamelist.xml importer ignores unknown elements, so imports are unaffected; ES-DE is a format reference, not bundled."
     },
     "ascendara": {
       "role": "RoachArcade game library/download-management reference",
