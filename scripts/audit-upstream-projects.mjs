@@ -102,6 +102,36 @@ export function compareRelease(projectId, expected, actual) {
   }
 }
 
+export function isDesignReference(project) {
+  return (project?.kind || 'design-reference') === 'design-reference'
+}
+
+// A design reference must never become a dependency: no package entry, no
+// vendored source tree, no Swift package.
+function assertReferencesAreNotVendored(projects) {
+  const packageJson = readJson(path.join(repoRoot, 'package.json'))
+  const declared = new Set(Object.keys({
+    ...(packageJson.dependencies || {}),
+    ...(packageJson.optionalDependencies || {}),
+  }).map((name) => name.toLowerCase()))
+  const swiftManifest = readFileSync(path.join(repoRoot, 'native', 'macos', 'Package.swift'), 'utf8')
+  for (const [projectId, project] of projects) {
+    if (!isDesignReference(project)) continue
+    const repoName = String(project.repository || project.project || projectId).split('/').pop().toLowerCase()
+    assert(!declared.has(repoName), `${projectId} is a design reference but package.json depends on ${repoName}.`)
+    assert(
+      !swiftManifest.toLowerCase().includes(`/${repoName}`),
+      `${projectId} is a design reference but native/macos/Package.swift references it.`
+    )
+    for (const root of ['vendor', 'third_party', 'external', path.join('native', 'macos', 'Vendor')]) {
+      assert(
+        !existsSync(path.join(repoRoot, root, repoName)),
+        `${projectId} is a design reference but its source is vendored at ${path.join(root, repoName)}.`
+      )
+    }
+  }
+}
+
 async function main() {
   assert(existsSync(metadataPath), `Missing upstream project metadata at ${metadataPath}.`)
   const metadata = readJson(metadataPath)
@@ -110,6 +140,9 @@ async function main() {
 
   const branchMovements = []
   const drifts = []
+  const referenceNotices = []
+
+  assertReferencesAreNotVendored(projects)
 
   for (const [projectId, project] of projects) {
     try {
@@ -138,11 +171,19 @@ async function main() {
         )
       }
     } catch (error) {
-      // Report every drifted reference in one run instead of stopping at the first.
-      drifts.push(error instanceof Error ? error.message : String(error))
+      const message = error instanceof Error ? error.message : String(error)
+      // Design references are studied, not shipped: drift is review context only.
+      if (isDesignReference(project)) {
+        referenceNotices.push(message)
+      } else {
+        drifts.push(message)
+      }
     }
   }
 
+  for (const notice of referenceNotices) {
+    console.log(`Design reference to review (non-blocking): ${notice}`)
+  }
   assert(drifts.length === 0, drifts.join('\n'))
 
   if (branchMovements.length > 0 && process.env.ROACHNET_UPSTREAM_VERBOSE === '1') {
@@ -154,7 +195,7 @@ async function main() {
   const branchContext = branchMovements.length > 0
     ? ` Default-branch movement observed for ${branchMovements.length} project${branchMovements.length === 1 ? '' : 's'}; stable release metadata is unchanged and remains the blocking gate.`
     : ''
-  console.log(`Upstream project audit passed for ${projects.length} stable release references.${branchContext}`)
+  console.log(`Upstream project audit passed for ${projects.length} references (${referenceNotices.length} design reference${referenceNotices.length === 1 ? '' : 's'} to review).${branchContext}`)
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {

@@ -1,6 +1,6 @@
 {
   "checkedAt": "2026-10-08",
-  "policy": "Stable releases are blocking release gates. Moving default-branch heads are recorded for audit context but do not fail a public build unless the stable release changes.",
+  "policy": "Every project listed here is a design reference: RoachNet studies its behavior and formats, and implements the ideas as native code in this repository. Design references are never bundled, linked, vendored, or downloaded at runtime; the audit fails if one appears as a package dependency or vendored source. Their release drift is reported as review context and never blocks a build. A project marked kind=bundled (shipped code, binaries, or model weights) keeps a blocking stable-release gate.",
   "projects": {
     "esDe": {
       "role": "RoachArcade ES-DE library import and emulator metadata reference",
@@ -13,7 +13,8 @@
         "publishedAt": "2026-09-30T09:21:15.488Z",
         "commit": "50e4b600ae533d772bae3ff880d11a09b05dbe84"
       },
-      "reviewNotes": "2026-10-08: 3.5.0 adds per-game launch-screen metadata, theme properties and new systems. RoachArcade's gamelist.xml importer ignores unknown elements, so imports are unaffected; ES-DE is a format reference, not bundled."
+      "reviewNotes": "2026-10-08: 3.5.0 adds per-game launch-screen metadata, theme properties and new systems. RoachArcade's gamelist.xml importer ignores unknown elements, so imports are unaffected; ES-DE is a format reference, not bundled.",
+      "kind": "design-reference"
     },
     "ascendara": {
       "role": "RoachArcade game library/download-management reference",
@@ -25,7 +26,8 @@
         "name": "Ascendara 10.7.3",
         "publishedAt": "2026-08-18T19:02:56Z",
         "observedHead": "0a426efb3a35545e777164b2d71728914b828528"
-      }
+      },
+      "kind": "design-reference"
     },
     "hydra": {
       "role": "RoachArcade launcher/library and achievements reference",
@@ -37,7 +39,8 @@
         "name": "v4.1.2",
         "publishedAt": "2026-08-21T21:30:47Z",
         "observedHead": "591969a8dcf807c8e948481b43f37d27d2e310fd"
-      }
+      },
+      "kind": "design-reference"
     },
     "vortex": {
       "role": "RoachArcade mod-management and collection-install reference",
@@ -49,7 +52,8 @@
         "name": "2.6.2",
         "publishedAt": "2026-08-27T13:47:23Z",
         "observedHead": "ee673edc52260c94c2f95cfb19d709df31599d4f"
-      }
+      },
+      "kind": "design-reference"
     },
     "owncast": {
       "role": "RoachNet live-stream origin/viewer reference",
@@ -61,7 +65,8 @@
         "name": "Owncast v0.2.5",
         "publishedAt": "2026-04-11T22:44:17Z",
         "observedHead": "b0de2e462058b34aa3fa2e68e1939ff416b69de5"
-      }
+      },
+      "kind": "design-reference"
     },
     "hermesAgent": {
       "role": "RoachClaw native-agent design reference only",
@@ -73,7 +78,8 @@
         "name": "Hermes Agent v0.20.6 (v2026.8.27)",
         "publishedAt": "2026-08-27T12:06:53Z",
         "observedHead": "cced6fa360a589ba50abfde687ef1bcba8ddaf2e"
-      }
+      },
+      "kind": "design-reference"
     },
     "chatterboxTurbo": {
       "role": "RoachVoice final TTS and voice-cloning model architecture reference only",
@@ -84,7 +90,8 @@
         "sha": "749d1c1a46eb10492095d68fbcf55691ccf137cd",
         "lastModified": "2025-12-15T15:56:20.000Z",
         "license": "mit"
-      }
+      },
+      "kind": "design-reference"
     },
     "chatterboxTurboONNX": {
       "role": "RoachVoice Chatterbox-Turbo conversion reference only; ONNX does not ship in RoachNet",
@@ -95,7 +102,8 @@
         "sha": "d21799bd0354adb85e348b8a0442a8405110a2cf",
         "lastModified": "2025-12-15T15:48:47.000Z",
         "license": "mit"
-      }
+      },
+      "kind": "design-reference"
     }
   }
 }

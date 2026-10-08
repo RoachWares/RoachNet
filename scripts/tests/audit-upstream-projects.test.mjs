@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { compareRelease } from '../audit-upstream-projects.mjs'
+import { compareRelease, isDesignReference } from '../audit-upstream-projects.mjs'
 
 test('upstream release audit ignores sub-second timestamp precision changes', () => {
   assert.doesNotThrow(() => compareRelease(
@@ -19,4 +19,10 @@ test('upstream release audit ignores sub-second timestamp precision changes', ()
       commit: '5db4e2a32bd5852cc7a3dbeb298d85de86a536d7',
     },
   ))
+})
+
+test('design references never block; bundled upstreams keep a blocking gate', () => {
+  assert.equal(isDesignReference({}), true)
+  assert.equal(isDesignReference({ kind: 'design-reference' }), true)
+  assert.equal(isDesignReference({ kind: 'bundled' }), false)
 })
