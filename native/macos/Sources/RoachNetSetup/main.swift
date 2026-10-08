@@ -697,16 +697,23 @@ final class SetupController: ObservableObject {
     private func terminateBackendProcess() {
         let childPid = process?.processIdentifier
 
+        // The native setup service finishes a running install before it exits on
+        // SIGTERM; force-killing it could interrupt the install-root swap.
+        let nativeInstallRunning = backendScriptURL == nil && setupState?.activeTask?.status == "running"
+
         if let process, process.isRunning {
             process.terminate()
-            let deadline = Date().addingTimeInterval(2.5)
 
-            while process.isRunning && Date() < deadline {
-                usleep(100_000)
-            }
+            if !nativeInstallRunning {
+                let deadline = Date().addingTimeInterval(2.5)
 
-            if process.isRunning {
-                kill(process.processIdentifier, SIGKILL)
+                while process.isRunning && Date() < deadline {
+                    usleep(100_000)
+                }
+
+                if process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
             }
         }
 
