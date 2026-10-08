@@ -64,7 +64,8 @@ jobs:
         run: |
           npm ci
           node scripts/prepare-roachspeech-release-packs.mjs
-          npm test
+          npm run runtime:build
+          ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/release/roachnet-runtime" npm test
           npm run convex:typecheck
           npm run audit:release
           npm run audit:upstreams
@@ -176,7 +177,8 @@ jobs:
           node scripts/prepare-roachspeech-release-packs.mjs
       - name: Run engineering and source-release gates
         run: |
-          npm test
+          npm run runtime:build
+          ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/release/roachnet-runtime" npm test
           npm run convex:typecheck
           npm run audit:release
           npm run audit:upstreams

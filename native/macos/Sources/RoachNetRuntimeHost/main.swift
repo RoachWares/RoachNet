@@ -99,16 +99,22 @@ if arguments.contains("--setup") {
     let engine = SetupEngine()
     do {
         let setupServer = try engine.serve()
+        // Exit with the Setup app (SIGTERM, or reparenting to launchd once it is
+        // gone), but never in the middle of an install: finish it first.
+        var exitRequested = false
+        func exitWhenIdle() {
+            exitRequested = true
+            if !engine.isInstalling { setupServer.stop(); exit(0) }
+        }
         signal(SIGTERM, SIG_IGN)
         let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-        termination.setEventHandler { setupServer.stop(); exit(0) }
+        termination.setEventHandler { exitWhenIdle() }
         termination.resume()
-        // Exit with the Setup app: an orphaned setup service is reparented to launchd.
         let parentWatch = DispatchSource.makeTimerSource(queue: .main)
         let parentAtStart = getppid()
-        parentWatch.schedule(deadline: .now() + 2, repeating: 2)
+        parentWatch.schedule(deadline: .now() + 1, repeating: 1)
         parentWatch.setEventHandler {
-            if parentAtStart != 1 && getppid() == 1 { setupServer.stop(); exit(0) }
+            if exitRequested || (parentAtStart != 1 && getppid() == 1) { exitWhenIdle() }
         }
         parentWatch.resume()
         withExtendedLifetime((setupServer, termination, parentWatch)) { dispatchMain() }

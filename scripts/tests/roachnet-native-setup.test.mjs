@@ -123,9 +123,16 @@ test('native setup installs, verifies, and upgrades RoachNet without Node', requ
     const userFile = path.join(installPath, 'storage', 'Vault', 'keep-me.md')
     mkdirSync(path.dirname(userFile), { recursive: true })
     writeFileSync(userFile, '# survives upgrades\n')
+    // Homebrew keeps RoachNet Setup inside the root; user files may sit there too.
+    const brewSetupMarker = path.join(installPath, 'setup', 'RoachNet Setup.app', 'Contents', 'Info.plist')
+    mkdirSync(path.dirname(brewSetupMarker), { recursive: true })
+    writeFileSync(brewSetupMarker, '<plist/>\n')
+    writeFileSync(path.join(installPath, 'notes.txt'), 'mine\n')
     const second = await runInstall(url, { installPath, autoLaunch: false, installRoachClaw: true })
     assert.equal(second.lastCompletedTask.status, 'completed', JSON.stringify(second.lastCompletedTask))
     assert.equal(readFileSync(userFile, 'utf8'), '# survives upgrades\n')
+    assert.equal(readFileSync(brewSetupMarker, 'utf8'), '<plist/>\n')
+    assert.equal(readFileSync(path.join(installPath, 'notes.txt'), 'utf8'), 'mine\n')
     // Re-running setup must not duplicate the alias block.
     assert.equal(readFileSync(env.ROACHNET_HOSTS_FILE, 'utf8').match(/RoachNet local alias >>>/g).length, 1)
     const siblings = spawnSync('ls', [home]).stdout.toString()
@@ -191,6 +198,40 @@ test('roachnet-runtime --install performs a headless install for Homebrew and sc
     assert.match(result.stdout, /RoachTail local alias could not be provisioned automatically/)
     const savedConfig = JSON.parse(readFileSync(path.join(home, 'installer.json'), 'utf8'))
     assert.equal(savedConfig.pendingRoachClawSetup, false)
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('native setup recovers from an install that was killed mid-upgrade', requiresNativeBinary, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-recover-'))
+  const home = path.join(tempRoot, 'home')
+  mkdirSync(home, { recursive: true })
+  const assets = buildFakeInstallerAssets(tempRoot)
+  const installPath = path.join(home, 'RoachNet')
+  // A previous run moved the root aside and died before the staged copy landed.
+  const backupRoot = path.join(home, 'RoachNet.backup-1700000000000')
+  mkdirSync(path.join(backupRoot, 'storage', 'Vault'), { recursive: true })
+  writeFileSync(path.join(backupRoot, 'storage', 'Vault', 'precious.md'), 'keep\n')
+  mkdirSync(path.join(home, 'RoachNet.staging-deadbeef', 'app'), { recursive: true })
+  try {
+    const result = spawnSync(nativeBinary, ['--install', '--install-path', installPath, '--no-roachclaw'], {
+      env: {
+        PATH: process.env.PATH,
+        HOME: home,
+        ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
+        ROACHNET_INSTALLER_CONFIG_PATH: path.join(home, 'installer.json'),
+        ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+        ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
+      },
+      encoding: 'utf8',
+      timeout: 90_000,
+    })
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+    assert.match(result.stdout, /Removed an unfinished staged install/)
+    assert.match(result.stdout, /Restored the previous install/)
+    assert.equal(readFileSync(path.join(installPath, 'storage', 'Vault', 'precious.md'), 'utf8'), 'keep\n')
+    assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /RoachNet\.(backup|staging)-/)
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }

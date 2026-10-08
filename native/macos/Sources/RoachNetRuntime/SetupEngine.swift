@@ -469,6 +469,7 @@ public final class SetupEngine {
         do {
             saveConfig(plan.config)
             try Files.mkdirp(Path.dirname(plan.installPath))
+            recoverInterruptedInstall(finalRoot: plan.installPath)
 
             setPhase("Inspecting system", 5)
             let checks = preflight(plan.config)
@@ -580,6 +581,37 @@ public final class SetupEngine {
     }
 
     // MARK: Steps
+
+    /// True while an install task is running; the host defers exit until it finishes
+    /// so quitting Setup can never interrupt the root swap.
+    public var isInstalling: Bool {
+        synchronized { activeTask?["status"].stringValue == "running" }
+    }
+
+    /// Cleans up after a run that was killed (power loss, force quit) before it
+    /// could tidy up: removes stale staging folders and, if the install root is
+    /// missing but a pre-swap backup exists, puts the backup back.
+    func recoverInterruptedInstall(finalRoot: String) {
+        let parent = Path.dirname(finalRoot)
+        let base = Path.basename(finalRoot)
+        let siblings = (try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? []
+        for name in siblings where name.hasPrefix("\(base).staging-") {
+            Files.remove(Path.join(parent, name))
+            log("Removed an unfinished staged install left by an earlier run.")
+        }
+        let backups = siblings.filter { $0.hasPrefix("\(base).backup-") }.sorted()
+        guard let newest = backups.last else { return }
+        if !Files.exists(finalRoot) {
+            do {
+                try SetupPlatform.moveItem(Path.join(parent, newest), finalRoot)
+                log("Restored the previous install that an interrupted upgrade had moved aside.")
+            } catch {
+                log("An earlier upgrade left a backup at \(newest) that could not be restored automatically: \(error)")
+            }
+        } else {
+            log("An earlier upgrade left \(backups.count == 1 ? "a backup" : "\(backups.count) backups") beside the install (\(newest)). It is kept in case it holds storage you need.")
+        }
+    }
 
     /// Points the RoachTail hostname at loopback. Best effort unless
     /// ROACHNET_REQUIRE_LOCAL_ALIAS=1; only the system hosts file may prompt.
@@ -800,10 +832,27 @@ public final class SetupEngine {
                         log("Could not move previous storage automatically: \(error)")
                     }
                 }
-                // Carry user-provisioned extras that live beside storage.
+            }
+            if let backup {
+                // Reuse the previous contained Ollama runner when this install did not stage one.
                 for extra in ["runtime/vendor/ollama"] where !Files.exists(Path.join(finalRoot, extra)) {
                     let previous = Path.join(backup, extra)
-                    if Files.exists(previous) { try? SetupPlatform.moveItem(previous, Path.join(finalRoot, extra)) }
+                    if Files.exists(previous) {
+                        try? Files.mkdirp(Path.dirname(Path.join(finalRoot, extra)))
+                        try? SetupPlatform.moveItem(previous, Path.join(finalRoot, extra))
+                    }
+                }
+                // Anything at the top of the old root that setup does not manage stays: the
+                // Homebrew-installed `setup/RoachNet Setup.app`, or files the user put there.
+                let managed: Set<String> = ["app", "bin", "runtime", SetupEngine.installManifestName, ".smoke-work"]
+                for name in (try? FileManager.default.contentsOfDirectory(atPath: backup)) ?? []
+                where !managed.contains(name) && !Files.exists(Path.join(finalRoot, name)) {
+                    do {
+                        try SetupPlatform.moveItem(Path.join(backup, name), Path.join(finalRoot, name))
+                    } catch {
+                        storageNeedsRecovery = true
+                        log("Could not carry \(name) into the new install: \(error)")
+                    }
                 }
             }
             if let backup {
