@@ -2392,9 +2392,10 @@ final class WorkspaceModel: ObservableObject {
     private var installLooksPrepared: Bool {
         let fileManager = FileManager.default
         let installURL = URL(fileURLWithPath: installPath)
+        let hasNativeInstall = fileManager.fileExists(atPath: installURL.appendingPathComponent("roachnet-install.json").path)
         let hasNativeLauncher = fileManager.fileExists(atPath: installURL.appendingPathComponent("scripts/run-roachnet-native-api.mjs").path)
         let hasLegacyLauncher = fileManager.fileExists(atPath: installURL.appendingPathComponent("scripts/run-roachnet.mjs").path)
-        return (hasNativeLauncher || hasLegacyLauncher)
+        return (hasNativeInstall || hasNativeLauncher || hasLegacyLauncher)
             && fileManager.fileExists(atPath: installedAppPath)
     }
     var chatModelOptions: [String] {

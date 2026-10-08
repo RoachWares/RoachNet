@@ -60,6 +60,10 @@ const codesignIdentity = releaseBuild ? process.env.ROACHNET_CODESIGN_IDENTITY?.
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
 const notaryKeychain = process.env.ROACHNET_NOTARY_KEYCHAIN?.trim() || ''
 const skipDmg = process.env.ROACHNET_SKIP_DMG === '1'
+// The app ships the native Swift runtime helper. The embedded Node runtime and
+// bundled source tree are opt-in compatibility payloads only.
+const bundleNodeCompat = process.env.ROACHNET_BUNDLE_NODE_COMPAT === '1'
+const nativeRuntimeExecutableName = 'roachnet-runtime'
 const requireAppleSiliconNativeBuild = process.env.ROACHNET_REQUIRE_APPLE_SILICON_NATIVE !== '0'
 const roachSpeechBundleProfile = (
   process.env.ROACHNET_ROACHSPEECH_BUNDLE_PROFILE?.trim() || 'baseline'
@@ -698,6 +702,30 @@ async function verifyEmbeddedNodeBundle(bundlePath, label) {
   }
 }
 
+async function verifyNativeRuntimeHelper(bundlePath, label) {
+  const helperPath = path.join(bundlePath, 'Contents', 'Helpers', nativeRuntimeExecutableName)
+  if (!existsSync(helperPath)) {
+    throw new Error(`${label} is missing the native runtime helper at ${helperPath}`)
+  }
+  await verifyAppleSiliconExecutable(helperPath, `${label} native runtime helper`)
+  const libraries = await inspectDynamicLibraries(helperPath)
+  const foreignLibraries = libraries.filter(
+    (libraryPath) => !libraryPath.startsWith('/usr/lib/') && !libraryPath.startsWith('/System/Library/')
+  )
+  if (foreignLibraries.length > 0) {
+    throw new Error(
+      `${label} native runtime helper links non-system libraries:\n${foreignLibraries.join('\n')}`
+    )
+  }
+}
+
+function assertNoEmbeddedNode(bundlePath, label) {
+  const nodeRoot = path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node')
+  if (existsSync(nodeRoot)) {
+    throw new Error(`${label} still carries an embedded Node runtime at ${nodeRoot}; set ROACHNET_BUNDLE_NODE_COMPAT=1 only for compatibility builds.`)
+  }
+}
+
 async function verifyBuiltArtifacts() {
   const desktopBundlePath = path.join(distPath, 'RoachNet.app')
   const setupBundlePath = path.join(distPath, 'RoachNet Setup.app')
@@ -712,21 +740,34 @@ async function verifyBuiltArtifacts() {
   await verifyBundleMetadata(desktopBundlePath, appVersion, 'RoachNet')
   await verifyBundleMetadata(setupBundlePath, appVersion, 'RoachNet Setup')
 
-  await verifyEmbeddedNodeBundle(desktopBundlePath, 'RoachNet')
-  await verifyEmbeddedNodeBundle(setupBundlePath, 'RoachNet Setup')
+  await verifyNativeRuntimeHelper(desktopBundlePath, 'RoachNet')
+  await verifyNativeRuntimeHelper(setupBundlePath, 'RoachNet Setup')
 
-  const desktopSourceArchivePath = path.join(desktopBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')
-  if (!existsSync(desktopSourceArchivePath)) {
-    throw new Error(`Missing bundled source archive for RoachNet at ${desktopSourceArchivePath}`)
+  const runtimeCatalogPath = path.join(desktopBundlePath, 'Contents', 'Resources', 'RoachNetRuntimeData', 'collections', 'maps.json')
+  if (!existsSync(runtimeCatalogPath)) {
+    throw new Error(`Missing native runtime catalog data at ${runtimeCatalogPath}`)
   }
-  await verifyBundledSourceArchive(desktopSourceArchivePath, 'RoachNet')
 
-  const setupSourceArchivePath = path.join(setupBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')
-  const setupSourceTreePath = path.join(setupBundlePath, 'Contents', 'Resources', 'RoachNetSource')
-  if (existsSync(setupSourceArchivePath)) {
-    await verifyBundledSourceArchive(setupSourceArchivePath, 'RoachNet Setup')
+  if (bundleNodeCompat) {
+    await verifyEmbeddedNodeBundle(desktopBundlePath, 'RoachNet')
+    await verifyEmbeddedNodeBundle(setupBundlePath, 'RoachNet Setup')
+
+    const desktopSourceArchivePath = path.join(desktopBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')
+    if (!existsSync(desktopSourceArchivePath)) {
+      throw new Error(`Missing bundled source archive for RoachNet at ${desktopSourceArchivePath}`)
+    }
+    await verifyBundledSourceArchive(desktopSourceArchivePath, 'RoachNet')
+
+    const setupSourceArchivePath = path.join(setupBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')
+    const setupSourceTreePath = path.join(setupBundlePath, 'Contents', 'Resources', 'RoachNetSource')
+    if (existsSync(setupSourceArchivePath)) {
+      await verifyBundledSourceArchive(setupSourceArchivePath, 'RoachNet Setup')
+    } else {
+      await verifyBundledSourceTree(setupSourceTreePath, 'RoachNet Setup')
+    }
   } else {
-    await verifyBundledSourceTree(setupSourceTreePath, 'RoachNet Setup')
+    assertNoEmbeddedNode(desktopBundlePath, 'RoachNet')
+    assertNoEmbeddedNode(setupBundlePath, 'RoachNet Setup')
   }
 
   if (!existsSync(installerAssetArchivePath)) {
@@ -905,7 +946,20 @@ async function collectCodeSignTargets(rootPath) {
   return targets.sort((left, right) => right.length - left.length)
 }
 
+async function signHelperExecutables(bundlePath) {
+  const helpersPath = path.join(bundlePath, 'Contents', 'Helpers')
+  if (!existsSync(helpersPath)) {
+    return
+  }
+  for (const entry of await readdir(helpersPath, { withFileTypes: true })) {
+    if (entry.isFile()) {
+      await signCodeObject(path.join(helpersPath, entry.name))
+    }
+  }
+}
+
 async function signAppBundle(bundlePath) {
+  await signHelperExecutables(bundlePath)
   const signTargetRoots = [
     path.join(bundlePath, 'Contents', 'MacOS'),
     path.join(bundlePath, 'Contents', 'Frameworks'),
@@ -1528,6 +1582,30 @@ async function createRoachSpeechPackArchives() {
   return archives
 }
 
+async function copyNativeRuntimeHelper(binPath, contentsPath) {
+  const sourcePath = path.join(binPath, nativeRuntimeExecutableName)
+  if (!existsSync(sourcePath)) {
+    throw new Error(`Missing native runtime helper at ${sourcePath}`)
+  }
+  const helpersPath = path.join(contentsPath, 'Helpers')
+  mkdirSync(helpersPath, { recursive: true })
+  const destinationPath = path.join(helpersPath, nativeRuntimeExecutableName)
+  await cp(sourcePath, destinationPath)
+  chmodSync(destinationPath, 0o755)
+}
+
+async function copyNativeRuntimeData(resourcesPath) {
+  const dataRoot = path.join(resourcesPath, 'RoachNetRuntimeData')
+  discardPath(dataRoot)
+  mkdirSync(dataRoot, { recursive: true })
+  await cp(path.join(repoRoot, 'collections'), path.join(dataRoot, 'collections'), { recursive: true })
+  writeFileSync(
+    path.join(dataRoot, 'package.json'),
+    `${JSON.stringify({ name: 'roachnet', version: appVersion, buildNumber: Number(appBuildNumber) }, null, 2)}\n`,
+    'utf8'
+  )
+}
+
 async function copySwiftPackageResources(executable, resourcesPath) {
   const executableDirectory = path.dirname(executable)
   const executableName = path.basename(executable)
@@ -1682,7 +1760,7 @@ async function main() {
   assertAppleSiliconNativeBuildHost()
   mkdirSync(distPath, { recursive: true })
   await ensureLaunchGuideVideo()
-  const bundledNodeRuntimePath = await ensureBundledNodeRuntime()
+  const bundledNodeRuntimePath = bundleNodeCompat ? await ensureBundledNodeRuntime() : null
   const binPath = await buildSwiftPackage()
   const iconPath = await buildIcns()
   const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
@@ -1693,23 +1771,28 @@ async function main() {
       executable: path.join(binPath, 'RoachNetApp'),
       identifier: 'com.roachwares.roachnet',
       urlSchemes: ['roachnet'],
-      prepareResources: async ({ resourcesPath }) => {
-        await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
+      prepareResources: async ({ contentsPath, resourcesPath }) => {
+        await copyNativeRuntimeHelper(binPath, contentsPath)
+        await copyNativeRuntimeData(resourcesPath)
         await copyBundledRoachSpeechRuntime(resourcesPath)
-        const bundledSourceArchivePath = path.join(resourcesPath, 'RoachNetSource.tar.gz')
-        await createBundledSourceArchive(bundledSourceArchivePath)
+        if (bundleNodeCompat) {
+          await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
+          const bundledSourceArchivePath = path.join(resourcesPath, 'RoachNetSource.tar.gz')
+          await createBundledSourceArchive(bundledSourceArchivePath)
+        }
       },
     },
     {
       name: 'RoachNet Setup',
       executable: path.join(binPath, 'RoachNetSetup'),
       identifier: 'com.roachwares.roachnet.setup',
-      prepareResources: async ({ resourcesPath }) => {
-        await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
-        const bundledSourceTreePath = path.join(resourcesPath, 'RoachNetSource')
+      prepareResources: async ({ contentsPath, resourcesPath }) => {
+        await copyNativeRuntimeHelper(binPath, contentsPath)
         const installerAssetsPath = path.join(resourcesPath, 'InstallerAssets')
-
-        await copyBundledSourceTree(bundledSourceTreePath, { includeRuntimeDependencies: false })
+        if (bundleNodeCompat) {
+          await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
+          await copyBundledSourceTree(path.join(resourcesPath, 'RoachNetSource'), { includeRuntimeDependencies: false })
+        }
         mkdirSync(installerAssetsPath, { recursive: true })
         writeFileSync(path.join(installerAssetsPath, 'setup-assets.marker'), '', 'utf8')
         await prepareInstallerContainedTooling(installerAssetsPath)
@@ -1724,6 +1807,7 @@ async function main() {
     },
   ]
 
+  await verifyAppleSiliconExecutable(path.join(binPath, nativeRuntimeExecutableName), 'roachnet-runtime')
   for (const app of apps) {
     if (!existsSync(app.executable)) {
       throw new Error(`Missing native executable at ${app.executable}`)

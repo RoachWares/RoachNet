@@ -527,6 +527,11 @@ final class SetupController: ObservableObject {
         let setupWorkspaceRoot = preferredSetupWorkspaceRoot()
         setenv("ROACHNET_SETUP_WORK_ROOT", setupWorkspaceRoot, 1)
 
+        if let nativeHelper = RoachNetRepositoryLocator.nativeRuntimeBinary() {
+            try await startNativeBackend(helperPath: nativeHelper, setupWorkspaceRoot: setupWorkspaceRoot)
+            return
+        }
+
         let bundledSourceDirectory = Bundle.main.resourceURL?
             .appendingPathComponent("RoachNetSource", isDirectory: true)
         if let bundledSourceDirectory,
@@ -618,6 +623,75 @@ final class SetupController: ObservableObject {
                     includePipeOutput: false
                 )
             ])
+    }
+
+    /// Boots the native setup service (`roachnet-runtime --setup`) shipped in
+    /// `Contents/Helpers`; no Node runtime is required.
+    private func startNativeBackend(helperPath: String, setupWorkspaceRoot: String) async throws {
+        statusLine = "Starting the local setup service."
+        backendScriptURL = nil
+
+        let readyFileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("roachnet-setup-\(UUID().uuidString).json")
+        self.readyFileURL = readyFileURL
+
+        let process = Process()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: helperPath)
+        process.arguments = ["--setup"]
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["ROACHNET_SETUP_READY_FILE"] = readyFileURL.path
+        environment["ROACHNET_SETUP_WORK_ROOT"] = setupWorkspaceRoot
+        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+            environment["ROACHNET_APP_VERSION"] = version
+        }
+        if let installerAssets = RoachNetRepositoryLocator.bundledInstallerAssetsDirectory() {
+            environment["ROACHNET_SETUP_APP_BUNDLE"] = installerAssets
+                .appendingPathComponent("setup-assets.marker")
+                .path
+        }
+        process.environment = environment
+
+        try process.run()
+        self.process = process
+        self.stdoutPipe = stdoutPipe
+        self.stderrPipe = stderrPipe
+        attachBackendOutputDrain(stdoutPipe, label: "setup")
+        attachBackendOutputDrain(stderrPipe, label: "setup")
+
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            if
+                let data = try? Data(contentsOf: readyFileURL),
+                let ready = try? JSONDecoder().decode(ReadyFile.self, from: data),
+                let url = URL(string: ready.url)
+            {
+                serverURL = url
+                return
+            }
+
+            if !process.isRunning {
+                throw NSError(domain: "RoachNetSetup", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: makeBackendBootFailureMessage(
+                        fallback: "The native setup service stopped before it was ready.",
+                        includePipeOutput: true
+                    )
+                ])
+            }
+
+            try await Task.sleep(for: .milliseconds(100))
+        }
+
+        throw NSError(domain: "RoachNetSetup", code: 3, userInfo: [
+            NSLocalizedDescriptionKey: makeBackendBootFailureMessage(
+                fallback: "The native setup service did not start in time.",
+                includePipeOutput: false
+            )
+        ])
     }
 
     private func terminateBackendProcess() {

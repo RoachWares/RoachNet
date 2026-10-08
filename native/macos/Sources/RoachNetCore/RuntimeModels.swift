@@ -284,6 +284,62 @@ public struct RoachNetSetupState: Decodable {
 }
 
 public enum RoachNetRepositoryLocator {
+    /// Name of the native runtime helper shipped in `Contents/Helpers`.
+    public static let nativeRuntimeExecutableName = "roachnet-runtime"
+
+    /// Locates the native Swift runtime helper. Releases ship it inside the
+    /// app bundle; development builds find it beside the app executable.
+    public static func nativeRuntimeBinary() -> String? {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["ROACHNET_FORCE_NODE_RUNTIME"] == "1" {
+            return nil
+        }
+
+        var candidates: [String] = []
+        if let override = environment["ROACHNET_RUNTIME_BINARY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
+            candidates.append(override)
+        }
+        candidates.append(
+            Bundle.main.bundleURL
+                .appendingPathComponent("Contents", isDirectory: true)
+                .appendingPathComponent("Helpers", isDirectory: true)
+                .appendingPathComponent(nativeRuntimeExecutableName)
+                .path
+        )
+        if let executableURL = Bundle.main.executableURL {
+            candidates.append(
+                executableURL
+                    .deletingLastPathComponent()
+                    .appendingPathComponent(nativeRuntimeExecutableName)
+                    .path
+            )
+        }
+
+        let fileManager = FileManager.default
+        return candidates.first { fileManager.isExecutableFile(atPath: $0) }
+    }
+
+    /// Read-only catalog data (collections manifests) used by the native runtime.
+    public static func nativeRuntimeDataRoot() -> URL? {
+        let fileManager = FileManager.default
+        func hasCatalogs(_ candidate: URL) -> Bool {
+            fileManager.fileExists(atPath: candidate.appendingPathComponent("collections/maps.json").path)
+        }
+
+        if let resourceURL = Bundle.main.resourceURL {
+            let bundled = resourceURL.appendingPathComponent("RoachNetRuntimeData", isDirectory: true)
+            if hasCatalogs(bundled) {
+                return bundled
+            }
+        }
+
+        if let repoRoot = repositoryRoot(), hasCatalogs(repoRoot) {
+            return repoRoot
+        }
+
+        return nil
+    }
+
     public static func embeddedNodeRoot() -> URL? {
         guard let resourceURL = Bundle.main.resourceURL else {
             return nil

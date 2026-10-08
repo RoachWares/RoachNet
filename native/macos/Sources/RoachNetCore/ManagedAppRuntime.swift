@@ -812,24 +812,9 @@ public actor ManagedAppRuntimeBridge {
             return cachedServerInfo
         }
 
-        let repoRoot = resolveRuntimeRoot(from: config)
-        let scriptURL = runtimeLauncherURL(in: repoRoot)
-
-        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-            throw NSError(domain: "RoachNetRuntime", code: 20, userInfo: [
-                NSLocalizedDescriptionKey: "Missing RoachNet launcher at \(scriptURL.path)."
-            ])
-        }
-
+        let launch = try resolveRuntimeLaunch(using: config)
         let infoURL = try containedServerInfoURL(using: config)
         serverInfoURL = infoURL
-
-        guard let node = RoachNetRepositoryLocator.preferredPortableNodeBinary() else {
-            throw NSError(domain: "RoachNetRuntime", code: 22, userInfo: [
-                NSLocalizedDescriptionKey:
-                    "RoachNet could not find a portable Node runtime for the contained launch lane."
-            ])
-        }
 
         let process = Process()
         let stdoutPipe = Pipe()
@@ -837,9 +822,9 @@ public actor ManagedAppRuntimeBridge {
         let stdoutBuffer = ProcessOutputBuffer()
         let stderrBuffer = ProcessOutputBuffer()
         let exitState = ProcessExitState()
-        process.currentDirectoryURL = repoRoot
-        process.executableURL = URL(fileURLWithPath: node)
-        process.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path] : [scriptURL.path]
+        process.currentDirectoryURL = launch.workingDirectory
+        process.executableURL = URL(fileURLWithPath: launch.executable)
+        process.arguments = launch.arguments
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
         stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
@@ -856,8 +841,8 @@ public actor ManagedAppRuntimeBridge {
 
         process.environment = runtimeLaunchEnvironment(
             using: config,
-            repoRoot: repoRoot,
-            nodeBinary: node,
+            repoRoot: launch.repoRoot,
+            nodeBinary: launch.nodeBinary,
             serverInfoURL: infoURL
         )
 
@@ -1444,24 +1429,20 @@ public actor ManagedAppRuntimeBridge {
     }
 
     public func stopRuntime(using config: RoachNetInstallerConfig) async {
-        let repoRoot = resolveRuntimeRoot(from: config)
-        let scriptURL = runtimeLauncherURL(in: repoRoot)
-
-        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+        guard let launch = try? resolveRuntimeLaunch(using: config, allowAnyNode: true) else {
             cachedServerInfo = nil
             process = nil
             return
         }
 
-        let node = RoachNetRepositoryLocator.preferredPortableNodeBinary() ?? RoachNetRepositoryLocator.preferredNodeBinary()
         let stopProcess = Process()
-        stopProcess.currentDirectoryURL = repoRoot
-        stopProcess.executableURL = URL(fileURLWithPath: node)
-        stopProcess.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path, "--stop"] : [scriptURL.path, "--stop"]
+        stopProcess.currentDirectoryURL = launch.workingDirectory
+        stopProcess.executableURL = URL(fileURLWithPath: launch.executable)
+        stopProcess.arguments = launch.arguments + ["--stop"]
         stopProcess.environment = runtimeLaunchEnvironment(
             using: config,
-            repoRoot: repoRoot,
-            nodeBinary: node
+            repoRoot: launch.repoRoot,
+            nodeBinary: launch.nodeBinary
         )
 
         do {
@@ -1483,7 +1464,7 @@ public actor ManagedAppRuntimeBridge {
     private func runtimeLaunchEnvironment(
         using config: RoachNetInstallerConfig,
         repoRoot: URL,
-        nodeBinary: String,
+        nodeBinary: String?,
         serverInfoURL: URL? = nil
     ) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
@@ -1498,16 +1479,26 @@ public actor ManagedAppRuntimeBridge {
         let normalizedOllamaModelsPath = RoachNetRepositoryLocator.defaultOllamaModelsPath(storagePath: normalizedStoragePath)
         let normalizedRuntimeStatePath = runtimeStateRoot(using: config)
         let normalizedContainerlessMode = config.useDockerContainerization ? "0" : "1"
-        let normalizedNodeBinDirectory = nodeBinary == "/usr/bin/env"
-            ? nil
-            : URL(fileURLWithPath: nodeBinary).deletingLastPathComponent().path
+        let normalizedNodeBinDirectory = nodeBinary.flatMap { binary in
+            binary == "/usr/bin/env" ? nil : URL(fileURLWithPath: binary).deletingLastPathComponent().path
+        }
 
         environment["ROACHNET_NO_BROWSER"] = "1"
         environment["ROACHNET_REPO_ROOT"] = repoRoot.path
         environment["ROACHNET_RUNTIME_STATE_ROOT"] = normalizedRuntimeStatePath
         environment["ROACHNET_LOCAL_BIN_PATH"] = normalizedLocalBinPath
-        environment["ROACHNET_NODE_BINARY"] = nodeBinary
-        environment["ROACHNET_REQUIRE_PORTABLE_NODE"] = "1"
+        if let nodeBinary {
+            environment["ROACHNET_NODE_BINARY"] = nodeBinary
+            environment["ROACHNET_REQUIRE_PORTABLE_NODE"] = "1"
+            environment["ROACHNET_RUNTIME_KIND"] = "node-compat"
+        } else {
+            environment.removeValue(forKey: "ROACHNET_NODE_BINARY")
+            environment.removeValue(forKey: "ROACHNET_REQUIRE_PORTABLE_NODE")
+            environment["ROACHNET_RUNTIME_KIND"] = "native"
+            if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                environment["ROACHNET_APP_VERSION"] = version
+            }
+        }
         environment["ROACHNET_INSTALL_PROFILE"] = config.installProfile
         environment["ROACHNET_BOOTSTRAP_PENDING"] = config.bootstrapPending ? "1" : "0"
         environment["ROACHNET_STORAGE_PATH"] = normalizedStoragePath
@@ -1688,6 +1679,56 @@ public actor ManagedAppRuntimeBridge {
 
         return RoachNetRepositoryLocator.repositoryRoot()
             ?? configuredRoot
+    }
+
+    struct RuntimeLaunch {
+        let executable: String
+        let arguments: [String]
+        let workingDirectory: URL
+        let repoRoot: URL
+        let nodeBinary: String?
+    }
+
+    /// Prefers the native Swift runtime helper; the Node launcher remains only
+    /// as a development/compatibility fallback.
+    func resolveRuntimeLaunch(using config: RoachNetInstallerConfig, allowAnyNode: Bool = false) throws -> RuntimeLaunch {
+        if let nativeBinary = RoachNetRepositoryLocator.nativeRuntimeBinary() {
+            let dataRoot = RoachNetRepositoryLocator.nativeRuntimeDataRoot() ?? resolveRuntimeRoot(from: config)
+            return RuntimeLaunch(
+                executable: nativeBinary,
+                arguments: [],
+                workingDirectory: dataRoot,
+                repoRoot: dataRoot,
+                nodeBinary: nil
+            )
+        }
+
+        let repoRoot = resolveRuntimeRoot(from: config)
+        let scriptURL = runtimeLauncherURL(in: repoRoot)
+        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+            throw NSError(domain: "RoachNetRuntime", code: 20, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "RoachNet could not find its native runtime helper. Reinstall RoachNet with RoachNet Setup to restore it."
+            ])
+        }
+
+        let resolvedNode = allowAnyNode
+            ? (RoachNetRepositoryLocator.preferredPortableNodeBinary() ?? RoachNetRepositoryLocator.preferredNodeBinary())
+            : RoachNetRepositoryLocator.preferredPortableNodeBinary()
+        guard let node = resolvedNode else {
+            throw NSError(domain: "RoachNetRuntime", code: 22, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "RoachNet could not find its native runtime helper or a compatible development runtime."
+            ])
+        }
+
+        return RuntimeLaunch(
+            executable: node,
+            arguments: node == "/usr/bin/env" ? ["node", scriptURL.path] : [scriptURL.path],
+            workingDirectory: repoRoot,
+            repoRoot: repoRoot,
+            nodeBinary: node
+        )
     }
 
     private func runtimeLauncherURL(in repoRoot: URL) -> URL {

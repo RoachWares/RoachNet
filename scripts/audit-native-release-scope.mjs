@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 
 const failures = []
+const staleNotices = []
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'))
@@ -106,6 +107,46 @@ function requireNativeApiLoopbackBind(source) {
   const bindsThroughHelper = /listenServer\(server,\s*listenPort,\s*listenHost\)/.test(source)
   if (!normalizesHost || !computesListenHost || (!bindsDirectly && !bindsThroughHelper)) {
     failures.push('native API script must normalize and bind its HTTP listener to loopback')
+  }
+}
+
+// The shipping runtime is the dependency-free Swift helper (roachnet-runtime).
+function requireNativeSwiftRuntime() {
+  const runtimeRoots = ['native/macos/Sources/RoachNetRuntime', 'native/macos/Sources/RoachNetRuntimeHost']
+  for (const relativePath of [
+    'native/macos/Sources/RoachNetRuntime/RuntimeServer.swift',
+    'native/macos/Sources/RoachNetRuntime/Router.swift',
+    'native/macos/Sources/RoachNetRuntime/SetupEngine.swift',
+    'native/macos/Sources/RoachNetRuntimeHost/main.swift',
+  ]) {
+    requireFile(relativePath, 'native Swift runtime')
+  }
+  const allowedModules = new Set(['Foundation', 'FoundationNetworking', 'Darwin', 'Glibc', 'CryptoKit', 'Dispatch', 'RoachNetRuntime'])
+  for (const root of runtimeRoots) {
+    for (const relativePath of listFiles(root, (candidate) => candidate.endsWith('.swift'))) {
+      const source = readText(relativePath)
+      for (const match of source.matchAll(/^\s*(?:@\w+\s+)*import\s+(?:struct\s+|class\s+|enum\s+|func\s+)?([A-Za-z_][A-Za-z0-9_]*)/gm)) {
+        if (!allowedModules.has(match[1])) {
+          failures.push(`${relativePath} imports ${match[1]}; the native runtime must stay on system frameworks only`)
+        }
+      }
+    }
+  }
+  const packageManifest = readText('native/macos/Package.swift')
+  if (/\.package\s*\(/.test(packageManifest)) {
+    failures.push('native/macos/Package.swift must not declare third-party package dependencies')
+  }
+  const serverSource = readText('native/macos/Sources/RoachNetRuntime/RuntimeServer.swift')
+  if (!/static func normalizeLoopbackHost/.test(serverSource) || !/only binds to loopback hosts/.test(serverSource)) {
+    failures.push('native Swift runtime must refuse non-loopback bind hosts')
+  }
+  const companionSource = readText('native/macos/Sources/RoachNetRuntime/RuntimeServer.swift')
+  if (!/must bind only to a loopback address/.test(companionSource)) {
+    failures.push('native companion bridge must bind only to loopback')
+  }
+  const coreSource = readText('native/macos/Sources/RoachNetCore/ManagedAppRuntime.swift')
+  if (!/nativeRuntimeBinary\(\)/.test(coreSource)) {
+    failures.push('ManagedAppRuntime must launch the native runtime helper before any compatibility launcher')
   }
 }
 
@@ -324,7 +365,31 @@ function requireCleanBundledSourceArchive(archivePath, label) {
   }
 }
 
+function requireNoEmbeddedNodeInBuiltApps() {
+  if (process.env.ROACHNET_BUNDLE_NODE_COMPAT === '1') return
+  const requireFreshDist = process.env.ROACHNET_REQUIRE_FRESH_DIST === '1'
+  for (const bundle of ['RoachNet.app', 'RoachNet Setup.app']) {
+    const contents = path.join(repoRoot, 'native', 'macos', 'dist', bundle, 'Contents')
+    if (!fs.existsSync(contents)) continue
+    const nodeRoot = path.join(contents, 'Resources', 'EmbeddedRuntime', 'node')
+    const nativeHelper = path.join(contents, 'Helpers', 'roachnet-runtime')
+    if (!fs.existsSync(nativeHelper)) {
+      // Bundle predates the native Swift runtime packaging lane. It is a stale local
+      // artifact (dist/ is git-ignored), not a source defect, unless this is the
+      // release gate that inspects freshly packaged output.
+      const message = `${bundle} in native/macos/dist predates the native runtime (no Contents/Helpers/roachnet-runtime); rebuild with npm run native:dist`
+      if (requireFreshDist) failures.push(message)
+      else staleNotices.push(message)
+      continue
+    }
+    if (fs.existsSync(nodeRoot)) {
+      failures.push(`${bundle} in native/macos/dist still embeds a Node runtime; rebuild without ROACHNET_BUNDLE_NODE_COMPAT`)
+    }
+  }
+}
+
 function requireCleanBuiltNativePayloadsIfPresent() {
+  requireNoEmbeddedNodeInBuiltApps()
   const distRoot = path.join(repoRoot, 'native', 'macos', 'dist')
   if (!fs.existsSync(distRoot)) {
     return
@@ -654,7 +719,13 @@ requireFile('scripts/build-native-macos-apps.mjs', 'native packaging script')
 
 const buildScript = fs.readFileSync(path.join(repoRoot, 'scripts', 'build-native-macos-apps.mjs'), 'utf8')
 for (const requiredToken of [
-  'copyBundledSourceTree(bundledSourceTreePath, { includeRuntimeDependencies: false })',
+  "copyBundledSourceTree(path.join(resourcesPath, 'RoachNetSource'), { includeRuntimeDependencies: false })",
+  'copyNativeRuntimeHelper(binPath, contentsPath)',
+  'copyNativeRuntimeData(resourcesPath)',
+  'verifyNativeRuntimeHelper(desktopBundlePath',
+  'verifyNativeRuntimeHelper(setupBundlePath',
+  'assertNoEmbeddedNode(desktopBundlePath',
+  "process.env.ROACHNET_BUNDLE_NODE_COMPAT === '1'",
   "'admin/'",
   'pruneNodeRuntimePayload',
   'openclaw-deferred.marker',
@@ -682,6 +753,8 @@ if (/bundled-admin-build-node-modules|ensureAdminBuildRuntimeDependencies|build-
   failures.push('native shipping lane still stages legacy admin WebUI runtime dependencies')
 }
 
+requireNativeSwiftRuntime()
+
 const nativeApiScript = readText('scripts/run-roachnet-native-api.mjs')
 requireNativeApiLoopbackBind(nativeApiScript)
 
@@ -706,6 +779,10 @@ requireWorkflowNodeVersions()
 requireNoMachineSpecificReleaseText()
 requireRoachSpeechNativeReleaseScope()
 requireCleanBuiltNativePayloadsIfPresent()
+
+for (const notice of staleNotices) {
+  console.warn(`notice: ${notice}`)
+}
 
 if (failures.length > 0) {
   console.error('Native release scope audit failed.')
