@@ -73,8 +73,10 @@ final class NativeModelStore {
     func list() -> [Entry] {
         var entries: [Entry] = []
         let fm = FileManager.default
-        guard let enumerator = fm.enumerator(atPath: root) else { return [] }
-        while let relative = enumerator.nextObject() as? String {
+        // On macOS the enumerator is nil until the native store folder exists;
+        // Ollama-folder models must still be listed in that case.
+        let enumerator = fm.enumerator(atPath: root)
+        while let relative = enumerator?.nextObject() as? String {
             guard relative.hasSuffix("manifest.json") else { continue }
             let directory = Path.dirname(Path.join(root, relative))
             if let manifest = JSON.read(contentsOf: Path.join(directory, "manifest.json")),
