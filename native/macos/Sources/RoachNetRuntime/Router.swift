@@ -203,6 +203,12 @@ extension NativeRuntime {
             return ok(try mutateRoachTailState(payload["action"], payload, headers: request.headers))
         case ("GET", "/api/companion/roachsync"): return ok(roachSyncState())
         case ("POST", "/api/companion/install"): return ok(try handleCompanionInstall(try body()))
+        case ("GET", "/api/companion/chat/sessions"): return ok(companionChatSessions())
+        case ("POST", "/api/companion/chat/sessions"): return ok(createCompanionChatSession(try body()), 201)
+        case ("POST", "/api/companion/chat/send"): return ok(try sendCompanionChatMessage(try body()))
+        case ("POST", "/api/companion/services/affect"): return ok(try affectCompanionService(try body()))
+        case ("POST", "/api/companion/account/affect"): return ok(try affectCompanionAccount(try body()))
+        case ("POST", "/api/companion/roachsync/affect"): return ok(try affectCompanionRoachSync(try body()))
         case ("GET", "/api/downloads/jobs"): return ok(.array(downloadJobsSnapshot()))
         case ("GET", "/api/benchmark/status"): return ok(withState { benchmarkStatus })
         case ("POST", "/api/benchmark/run"):
@@ -220,6 +226,10 @@ extension NativeRuntime {
             ], 201)
         default:
             break
+        }
+
+        if method == "GET" && pathname.hasPrefix("/api/companion/chat/sessions/") {
+            return ok(try companionChatSession(decodeURIComponent(lastSegment(pathname))))
         }
 
         if method == "GET" && pathname.hasPrefix("/api/roachclaw/operations") {
