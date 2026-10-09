@@ -83,6 +83,7 @@ test('native setup installs, verifies, and upgrades RoachNet without Node', requ
     ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
     ROACHNET_INSTALLER_CONFIG_PATH: path.join(home, 'installer.json'),
     ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+    ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
     ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
     ROACHNET_HOSTS_FILE: path.join(tempRoot, 'hosts'),
     ROACHNET_REQUIRE_LOCAL_ALIAS: '1',
@@ -153,6 +154,7 @@ test('native setup refuses an install with no app payload and leaves no staging 
     ROACHNET_SETUP_APP_BUNDLE: path.join(tempRoot, 'missing', 'InstallerAssets'),
     ROACHNET_INSTALLER_CONFIG_PATH: path.join(home, 'installer.json'),
     ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+    ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
     ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
   }
   const { child, url } = await startSetup(env)
@@ -183,6 +185,7 @@ test('roachnet-runtime --install performs a headless install for Homebrew and sc
         ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
         ROACHNET_INSTALLER_CONFIG_PATH: path.join(home, 'installer.json'),
         ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+        ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
         ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
         ROACHNET_HOSTS_FILE: path.join(tempRoot, 'hosts'),
       },
@@ -222,6 +225,7 @@ test('native setup recovers from an install that was killed mid-upgrade', requir
         ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
         ROACHNET_INSTALLER_CONFIG_PATH: path.join(home, 'installer.json'),
         ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+        ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
         ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
       },
       encoding: 'utf8',

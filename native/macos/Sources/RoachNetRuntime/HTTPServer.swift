@@ -42,15 +42,38 @@ public struct HTTPRequest {
     }
 }
 
+/// Writes a streamed response body; `write` returns false once the client is gone.
+public final class HTTPStreamWriter {
+    fileprivate let sink: (Data) -> Bool
+    public private(set) var isClosed = false
+    fileprivate init(sink: @escaping (Data) -> Bool) { self.sink = sink }
+    @discardableResult
+    public func write(_ data: Data) -> Bool {
+        if isClosed { return false }
+        if !sink(data) { isClosed = true }
+        return !isClosed
+    }
+}
+
 public struct HTTPResponse {
     public var status: Int
     public var headers: [(String, String)]
     public var body: Data
+    /// When set, the body is produced incrementally (no content-length; the
+    /// connection closes when the closure returns).
+    public var stream: ((HTTPStreamWriter) -> Void)?
 
     public init(status: Int, headers: [(String, String)] = [], body: Data = Data()) {
         self.status = status
         self.headers = headers
         self.body = body
+        self.stream = nil
+    }
+
+    public static func ndjsonStream(_ produce: @escaping (HTTPStreamWriter) -> Void) -> HTTPResponse {
+        var response = HTTPResponse(status: 200, headers: [("content-type", "application/x-ndjson"), ("cache-control", "no-store")])
+        response.stream = produce
+        return response
     }
 
     public static func json(_ status: Int, _ value: JSON, extraHeaders: [(String, String)] = []) -> HTTPResponse {
@@ -279,13 +302,17 @@ public final class LoopbackHTTPServer {
             if name.lowercased() == "connection" { continue }
             head += "\(name): \(value)\r\n"
         }
-        if !hasLength { head += "content-length: \(response.body.count)\r\n" }
+        if !hasLength && response.stream == nil { head += "content-length: \(response.body.count)\r\n" }
         head += "connection: close\r\n\r\n"
-        writeAll(fd, Array(head.utf8))
+        guard writeAll(fd, Array(head.utf8)) else { return }
         if !response.body.isEmpty { writeAll(fd, Array(response.body)) }
+        if let stream = response.stream {
+            stream(HTTPStreamWriter { [self] data in self.writeAll(fd, Array(data)) })
+        }
     }
 
-    private func writeAll(_ fd: Int32, _ bytes: [UInt8]) {
+    @discardableResult
+    private func writeAll(_ fd: Int32, _ bytes: [UInt8]) -> Bool {
         var offset = 0
         while offset < bytes.count {
             let written = bytes[offset...].withUnsafeBytes { buffer -> Int in
@@ -297,10 +324,11 @@ public final class LoopbackHTTPServer {
             }
             if written <= 0 {
                 if errno == EINTR { continue }
-                return
+                return false
             }
             offset += written
         }
+        return true
     }
 
     static func reason(_ status: Int) -> String {

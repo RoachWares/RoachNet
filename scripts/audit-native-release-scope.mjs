@@ -112,7 +112,7 @@ function requireNativeApiLoopbackBind(source) {
 
 // The shipping runtime is the dependency-free Swift helper (roachnet-runtime).
 function requireNativeSwiftRuntime() {
-  const runtimeRoots = ['native/macos/Sources/RoachNetRuntime', 'native/macos/Sources/RoachNetRuntimeHost']
+  const runtimeRoots = ['native/macos/Sources/RoachNetRuntime', 'native/macos/Sources/RoachNetRuntimeHost', 'native/macos/Sources/RoachInference', 'native/macos/Sources/RoachInferenceTool']
   for (const relativePath of [
     'native/macos/Sources/RoachNetRuntime/RuntimeServer.swift',
     'native/macos/Sources/RoachNetRuntime/Router.swift',
@@ -120,10 +120,15 @@ function requireNativeSwiftRuntime() {
     'native/macos/Sources/RoachNetRuntime/SetupPlatform.swift',
     'native/macos/Sources/RoachNetRuntime/RoachTailHostname.swift',
     'native/macos/Sources/RoachNetRuntimeHost/main.swift',
+    'native/macos/Sources/RoachInference/GGUF.swift',
+    'native/macos/Sources/RoachInference/InferenceEngine.swift',
+    'native/macos/Sources/RoachNetRuntime/NativeModelServer.swift',
   ]) {
     requireFile(relativePath, 'native Swift runtime')
   }
-  const allowedModules = new Set(['Foundation', 'FoundationNetworking', 'Darwin', 'Glibc', 'CryptoKit', 'Dispatch', 'RoachNetRuntime'])
+  // Metal is allowed only for RoachInference's hand-written kernels; no ML frameworks
+  // (Accelerate, Metal Performance Shaders, Core ML, MLX) and no third-party code.
+  const allowedModules = new Set(['Foundation', 'FoundationNetworking', 'Darwin', 'Glibc', 'CryptoKit', 'Dispatch', 'Metal', 'RoachNetRuntime', 'RoachInference'])
   for (const root of runtimeRoots) {
     for (const relativePath of listFiles(root, (candidate) => candidate.endsWith('.swift'))) {
       const source = readText(relativePath)

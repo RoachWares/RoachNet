@@ -16,6 +16,22 @@ public final class NativeRuntime {
     var companionLocalURL: String?
     var listenPort: UInt16 = 0
     var companionBoundPort: UInt16 = 0
+    /// RoachNet's own inference engine behind an Ollama-compatible API. Default
+    /// engine; set ROACHNET_INFERENCE_ENGINE=ollama to use an external runner.
+    var nativeModelServer: NativeModelServer?
+
+    var usesNativeEngine: Bool {
+        (config.env("ROACHNET_INFERENCE_ENGINE") ?? "native").lowercased() != "ollama"
+    }
+
+    lazy var nativeModelStore: NativeModelStore = {
+        let store = NativeModelStore(
+            root: Path.join(config.storageRoot, "models", "native"),
+            catalogPath: Path.join(config.repoRoot, "collections", "native-models.json")
+        )
+        store.ollamaRoot = config.env("OLLAMA_MODELS").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(config.storageRoot, "models", "ollama")
+        return store
+    }()
 
     lazy var runtimeReachabilityCache = TTLCache<Bool>(ttlMs: config.runtimeProbeCacheMs) { [unowned self] url in
         do {

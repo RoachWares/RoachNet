@@ -19,6 +19,7 @@ extension NativeRuntime {
     func ensureOllama() -> Bool {
         let versionURL = urlJoin("/api/version", config.ollamaBaseUrl)
         if isReachable(versionURL) { return true }
+        if usesNativeEngine { return startNativeModelServer() }
         let localBin = config.env("ROACHNET_LOCAL_BIN_PATH").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(config.repoRoot, "bin")
         let candidates = [Path.join(localBin, "ollama"), "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
         guard let ollama = candidates.first(where: { Files.exists($0) }) else { return false }
@@ -35,6 +36,31 @@ extension NativeRuntime {
             runtimeReachabilityCache.invalidate(versionURL)
             installedModelsCache.invalidate(config.ollamaBaseUrl)
             return false
+        }
+    }
+
+    /// Serves the native engine on the configured local-model address (loopback only).
+    @discardableResult
+    func startNativeModelServer() -> Bool {
+        withState {
+            if nativeModelServer?.server != nil { return true }
+            guard let parsed = WebURL(config.ollamaBaseUrl),
+                  let host = try? RuntimeServer.normalizeLoopbackHost(parsed.hostname),
+                  let port = UInt16(parsed.port.isEmpty ? "11434" : parsed.port) else {
+                log("native model server not started: OLLAMA_BASE_URL must be a loopback address")
+                return false
+            }
+            let server = nativeModelServer ?? NativeModelServer(store: nativeModelStore)
+            do {
+                try server.start(host: host == "localhost" ? "127.0.0.1" : host, port: port)
+                nativeModelServer = server
+                runtimeReachabilityCache.invalidate(urlJoin("/api/version", config.ollamaBaseUrl))
+                installedModelsCache.invalidate(config.ollamaBaseUrl)
+                return true
+            } catch {
+                log("native model server could not bind \(config.ollamaBaseUrl): \(error)")
+                return false
+            }
         }
     }
 

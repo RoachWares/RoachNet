@@ -32,6 +32,7 @@ var targets: [Target] = [
     ),
     .target(
         name: "RoachNetRuntime",
+        dependencies: ["RoachInference"],
         path: "Sources/RoachNetRuntime",
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),

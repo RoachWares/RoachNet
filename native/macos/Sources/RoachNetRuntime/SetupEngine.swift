@@ -253,7 +253,7 @@ public final class SetupEngine {
         let appleSilicon = SetupPlatform.hardwareIsAppleSilicon || hostOverride
         let os = SetupPlatform.osVersion
         let osOK = hostOverride || !SetupPlatform.isMacOS || os.majorVersion >= SetupEngine.minimumMacOSMajor
-        let required = config["installRoachClaw"].truthy ? SetupEngine.minimumFreeWithRoachClaw : SetupEngine.minimumFreeBase
+        let required = requiredFreeBytes(installRoachClaw: config["installRoachClaw"].truthy)
         let free = SetupPlatform.availableBytes(at: installPath)
         let writable = SetupPlatform.isWritableDirectoryTarget(installPath) && !SetupPlatform.isLikelyInstallerMedia(installPath)
         let recommendation = SetupPlatform.recommendedModel()
@@ -570,7 +570,7 @@ public final class SetupEngine {
     func sanitizeError(_ error: Error, _ plan: InstallPlan) -> String {
         let raw = "\(error)"
         if JS.matches("ENOSPC|no space left on device", raw, caseInsensitive: true) {
-            let required = plan.installRoachClaw ? SetupEngine.minimumFreeWithRoachClaw : SetupEngine.minimumFreeBase
+            let required = requiredFreeBytes(installRoachClaw: plan.installRoachClaw)
             return "RoachNet ran out of disk space while staging the install. Free up space or choose another folder; this install expects about \(SetupPlatform.formatBytes(required)) free."
         }
         var message = raw
@@ -581,6 +581,15 @@ public final class SetupEngine {
     }
 
     // MARK: Steps
+
+    /// Free-space floor. Test hosts (unsupported-host mode only) may lower it.
+    func requiredFreeBytes(installRoachClaw: Bool) -> Int64 {
+        if environment["ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST"] == "1",
+           let override = environment["ROACHNET_SETUP_TEST_MIN_FREE_BYTES"].flatMap(Int64.init) {
+            return override
+        }
+        return installRoachClaw ? SetupEngine.minimumFreeWithRoachClaw : SetupEngine.minimumFreeBase
+    }
 
     /// True while an install task is running; the host defers exit until it finishes
     /// so quitting Setup can never interrupt the root swap.
