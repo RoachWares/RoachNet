@@ -2064,6 +2064,36 @@ public actor ManagedAppRuntimeBridge {
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
+    /// Raw JSON access to RoachClaw Org (`/api/org/...`) on the local runtime. The app is a
+    /// loopback caller, so the runtime treats it as the owner. Errors carry the runtime's
+    /// own message.
+    public func orgRequest(
+        using config: RoachNetInstallerConfig,
+        path: String,
+        method: String = "GET",
+        jsonBody: Data? = nil
+    ) async throws -> Data {
+        let serverInfo = try await ensureRunning(using: config)
+        let baseURL = try runtimeBaseURL(from: serverInfo)
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = method
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let jsonBody {
+            request.httpBody = jsonBody
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+        guard (200..<300).contains(status) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw NSError(domain: "RoachNetOrg", code: status, userInfo: [
+                NSLocalizedDescriptionKey: message ?? "\(method) \(path) failed with status \(status).",
+            ])
+        }
+        return data
+    }
+
     private func delete<Response: Decodable>(_ path: String, baseURL: URL) async throws -> Response {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "DELETE"

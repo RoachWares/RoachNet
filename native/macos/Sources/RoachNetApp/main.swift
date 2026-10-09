@@ -14,6 +14,7 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
     case home = "Home"
     case dev = "Dev"
     case roachClaw = "RoachClaw"
+    case org = "Org"
     case arcade = "RoachArcade"
     case maps = "Maps"
     case education = "Education"
@@ -28,6 +29,7 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .dev: return "terminal.fill"
         case .roachClaw: return "sparkles"
+        case .org: return "person.3.sequence.fill"
         case .arcade: return "gamecontroller.fill"
         case .maps: return "map.fill"
         case .education: return "graduationcap.fill"
@@ -51,6 +53,7 @@ enum WorkspacePane: String, CaseIterable, Identifiable {
         case .home: return "Command deck"
         case .dev: return "IDE workspace"
         case .roachClaw: return "AI workbench"
+        case .org: return "Agent company"
         case .arcade: return "Game library"
         case .maps: return "Native atlas"
         case .education: return "Course packs"
@@ -6656,6 +6659,8 @@ private struct RootWorkspaceView: View {
             return "Editor, terminal, local AI."
         case .roachClaw:
             return "Chat, voice, context. No rented brain."
+        case .org:
+            return "Agents, approvals, budgets. You're the board."
         case .arcade:
             return "ROMs, Mac games, mods, cheats."
         case .maps:
@@ -6675,7 +6680,7 @@ private struct RootWorkspaceView: View {
             return RoachPalette.green
         case .dev:
             return RoachPalette.cyan
-        case .roachClaw:
+        case .roachClaw, .org:
             return RoachPalette.magenta
         case .arcade:
             return RoachPalette.magenta
@@ -6707,6 +6712,8 @@ private struct RootWorkspaceView: View {
             return "Editor · Terminal · Local AI"
         case .roachClaw:
             return "Thread · Context · No landlord"
+        case .org:
+            return "Approvals · Agents · Invites"
         case .arcade:
             return "Library · Player · Mods"
         case .maps:
@@ -7491,6 +7498,8 @@ private struct RootWorkspaceView: View {
                     home
                 case .dev:
                     DevWorkspaceView(model: model)
+                case .org:
+                    OrgWorkspaceView(model: model)
                 case .roachClaw:
                     roachClaw
                 case .arcade:
