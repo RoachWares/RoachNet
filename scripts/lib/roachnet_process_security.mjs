@@ -44,13 +44,16 @@ export function redactSensitiveLogLine(value, env = process.env) {
     .replace(/\t/g, '\\t')
 }
 
-export function redactSensitiveObject(value, env = process.env, seen = new WeakSet()) {
+export function redactSensitiveObject(value, env = process.env, seen = new WeakSet(), insideSensitive = false) {
   if (value === null || value === undefined) {
     return value
   }
 
   if (typeof value === 'string') {
-    return redactSensitiveText(value, env)
+    // Every string under a sensitive key is replaced, but containers keep
+    // their shape so typed decoders (such as the iOS companion fixtures)
+    // still see an object where they expect one.
+    return insideSensitive ? '[redacted]' : redactSensitiveText(value, env)
   }
 
   if (typeof value !== 'object') {
@@ -63,14 +66,17 @@ export function redactSensitiveObject(value, env = process.env, seen = new WeakS
   seen.add(value)
 
   if (Array.isArray(value)) {
-    return value.map((item) => redactSensitiveObject(item, env, seen))
+    return value.map((item) => redactSensitiveObject(item, env, seen, insideSensitive))
   }
 
   return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [
-      key,
-      SENSITIVE_KEY_PATTERN.test(key) ? '[redacted]' : redactSensitiveObject(entry, env, seen),
-    ])
+    Object.entries(value).map(([key, entry]) => {
+      const keySensitive = SENSITIVE_KEY_PATTERN.test(key)
+      if (keySensitive && (entry === null || typeof entry !== 'object')) {
+        return [key, entry === null || entry === undefined ? entry : '[redacted]']
+      }
+      return [key, redactSensitiveObject(entry, env, seen, insideSensitive || keySensitive)]
+    })
   )
 }
 

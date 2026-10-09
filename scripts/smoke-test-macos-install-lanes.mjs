@@ -434,6 +434,9 @@ function roachWindowMatches(window, labels) {
       normalizedWindowOwnerToken === labels.processToken
     ) &&
     (
+      // Without Screen Recording permission macOS hides window titles, so an
+      // on-screen, normal-layer window owned by the app counts on its own.
+      normalizedWindowName === '' ||
       normalizedWindowName === labels.normalizedTitle ||
       normalizedWindowName === labels.normalizedOwner ||
       normalizedWindowName === labels.normalizedProcess ||
