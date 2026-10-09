@@ -29,17 +29,17 @@
     "releasePolicy": "Public 1.0.6+ builds ship the native Swift runtime (roachnet-runtime) and no Node. The pin is used only when ROACHNET_BUNDLE_NODE_COMPAT=1 builds a legacy compatibility payload."
   },
   "ollama": {
-    "bundledVersion": "0.40.1",
-    "latestReviewedVersion": "0.40.1",
-    "source": "https://github.com/ollama/ollama/releases/tag/v0.40.1",
+    "bundledVersion": "0.40.2",
+    "latestReviewedVersion": "0.40.2",
+    "source": "https://github.com/ollama/ollama/releases/tag/v0.40.2",
     "license": "MIT",
     "artifact": {
       "filename": "ollama-darwin.tgz",
-      "url": "https://github.com/ollama/ollama/releases/download/v0.40.1/ollama-darwin.tgz",
-      "bytes": 167470715,
-      "sha256": "66e1587711f3a06315b23782ba74897001da6c8b8edf6c0371f7533015a076dd"
+      "url": "https://github.com/ollama/ollama/releases/download/v0.40.2/ollama-darwin.tgz",
+      "bytes": 167473220,
+      "sha256": "e888b7637291ceb80b622c00ea067f62c86d9c50d419b3eb903032e4f1f8a4f6"
     },
-    "reviewNotes": "2026-10-08: SHA-256 matches the GitHub release digest; archive layout matches 0.33.1 (top-level ollama universal arm64/x86_64, versioned ggml/llama dylibs, mlx_metal_v3/v4). Published 2026-10-07; Mac Gate C must pull and chat with a model before tagging."
+    "reviewNotes": "2026-10-09: 0.40.2 (published 2026-10-08) SHA-256 and size match the GitHub release digest; archive file list is identical to 0.40.1 (which matched 0.33.1). Patch release: model-upgrade backups, ollama list de-duplication, launch context length. Mac Gate C must pull and chat with a model before tagging."
   },
   "openclaw": {
     "mode": "deferred-not-bundled",

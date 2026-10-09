@@ -6,7 +6,7 @@
 - Rebuilt RoachNet Setup on the native helper. Installs check the hardware and OS first, stage beside the target, smoke-test the staged runtime before swapping it in, preserve storage across upgrades, and roll back cleanly on failure.
 - Added `roachnet-runtime --install` for headless and Homebrew installs, plus `--provision-alias` for the RoachTail hostname.
 - Fixed the install toggle for RoachClaw. The no-RoachClaw lane now skips the contained Ollama runner instead of installing it anyway.
-- Bumped the reviewed bundled Ollama pin to 0.40.1.
+- Bumped the reviewed bundled Ollama pin to 0.40.2.
 - Expanded the native RoachClaw surface with local playbooks, service health, jobs, reports, memory, backups, scoped tools, provider routes, and agent-run summaries.
 - Added a native RoachTail control-plane state with expiring join codes, peer-scoped tokens, approved routes, relay metadata, and stored token hashes instead of reusable plaintext peer tokens.
 - Coalesced duplicate Ollama reachability and model-list probes during concurrent status refreshes and invalidated stale model state after failed or ambiguous pulls.
