@@ -29,17 +29,14 @@
     "releasePolicy": "Public 1.0.6+ builds ship the native Swift runtime (roachnet-runtime) and no Node. The pin is used only when ROACHNET_BUNDLE_NODE_COMPAT=1 builds a legacy compatibility payload."
   },
   "ollama": {
-    "bundledVersion": "0.40.1",
-    "latestReviewedVersion": "0.40.1",
-    "source": "https://github.com/ollama/ollama/releases/tag/v0.40.1",
+    "mode": "retired-not-bundled",
+    "retiredIn": "1.1.0",
+    "lastBundledVersion": "0.40.1",
     "license": "MIT",
-    "artifact": {
-      "filename": "ollama-darwin.tgz",
-      "url": "https://github.com/ollama/ollama/releases/download/v0.40.1/ollama-darwin.tgz",
-      "bytes": 167470715,
-      "sha256": "66e1587711f3a06315b23782ba74897001da6c8b8edf6c0371f7533015a076dd"
-    },
-    "reviewNotes": "2026-10-08: SHA-256 matches the GitHub release digest; archive layout matches 0.33.1 (top-level ollama universal arm64/x86_64, versioned ggml/llama dylibs, mlx_metal_v3/v4). Published 2026-10-07; Mac Gate C must pull and chat with a model before tagging."
+    "source": "https://github.com/ollama/ollama",
+    "replacement": "RoachInference (native/macos/Sources/RoachInference), served by roachnet-runtime's Ollama-compatible model server",
+    "releasePolicy": "RoachNet 1.1+ bundles no Ollama runner. Models already in an Ollama models folder are read in place, and a user-installed Ollama stays an optional engine (ROACHNET_INFERENCE_ENGINE=ollama).",
+    "reviewNotes": "2026-10-09: retired after the M2 Pro Mac gate. Native Metal decode is within ~10% of Ollama 0.40.1 on 1.5B-3B models and faster on 0.5B; CPU and Metal produce identical tokens on six reference models (ROA-30, ROA-33)."
   },
   "openclaw": {
     "mode": "deferred-not-bundled",

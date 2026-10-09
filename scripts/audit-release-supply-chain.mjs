@@ -61,7 +61,7 @@ async function main() {
     if (!component.source || component.source === 'NOASSERTION') {
       failures.push(`Component ${component.name} lacks a pinned source.`)
     }
-    if (['Node.js', 'Ollama'].includes(component.name) && !/^[a-f0-9]{64}$/i.test(component.sourceSha256 || '')) {
+    if (['Node.js', 'Ollama'].includes(component.name) && component.version !== 'not-bundled' && !/^[a-f0-9]{64}$/i.test(component.sourceSha256 || '')) {
       failures.push(`Component ${component.name} lacks a source artifact checksum.`)
     }
   }
@@ -87,9 +87,10 @@ async function main() {
   }
   const vulnerabilityPath = path.join(path.dirname(args.inventory), 'vulnerability-scan.json')
   if (args.online === 'true') {
+    const ollamaVersion = inventory.components.find((entry) => entry.name === 'Ollama')?.version
     const purls = [
       `pkg:github/nodejs/node@v${String(inventory.components.find((entry) => entry.name === 'Node.js')?.version || '').replace(/^v/, '')}`,
-      `pkg:github/ollama/ollama@v${String(inventory.components.find((entry) => entry.name === 'Ollama')?.version || '').replace(/^v/, '')}`,
+      ...(ollamaVersion && ollamaVersion !== 'not-bundled' ? [`pkg:github/ollama/ollama@v${String(ollamaVersion).replace(/^v/, '')}`] : []),
     ]
     for (const purl of purls) {
       const vulnerabilities = await queryOsv(purl)
@@ -110,8 +111,9 @@ async function main() {
           failures.push(`${result.purl || 'Unknown component'} has staged vulnerability findings.`)
         }
       }
-      if (!Array.isArray(stagedScan.results) || stagedScan.results.length < 2) {
-        failures.push('Candidate-bound vulnerability scan does not cover Node and Ollama.')
+      const expectedScans = inventory.components?.find((entry) => entry.name === 'Ollama')?.version === 'not-bundled' ? 1 : 2
+      if (!Array.isArray(stagedScan.results) || stagedScan.results.length < expectedScans) {
+        failures.push('Candidate-bound vulnerability scan does not cover every bundled runtime.')
       }
     }
   } else {

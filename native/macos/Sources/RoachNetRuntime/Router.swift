@@ -123,7 +123,7 @@ extension NativeRuntime {
             let payload = try body()
             if payload["service_name"].stringValue == "roachnet_ollama" {
                 ensureOllama()
-                return ok(["success": true, "ok": true, "message": "Ollama start requested."])
+                return ok(["success": true, "ok": true, "message": "Local model lane start requested."])
             }
             return ok(["success": true, "ok": true, "message": "Native service registered. Container install is not required for this lane."])
         case ("POST", "/api/system/services/affect"):

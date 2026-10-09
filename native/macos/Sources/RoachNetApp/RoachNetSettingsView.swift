@@ -400,7 +400,7 @@ struct RoachNetSettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             RoachInsetPanel {
                 LazyVGrid(columns: settingsColumns, alignment: .leading, spacing: 12) {
-                    RoachMetricCard(label: "Runner", value: "Ollama", detail: "Bundled local lane")
+                    RoachMetricCard(label: "Runner", value: "RoachInference", detail: "Native Metal engine")
                     RoachMetricCard(label: "Default", value: model.displayedRoachClawDefaultModel, detail: "Chat and assist")
                     RoachMetricCard(label: "Fallback", value: model.hasCloudChatFallback ? "Available" : "Off", detail: "Opt-in route")
                 }
@@ -773,7 +773,7 @@ struct RoachNetSettingsView: View {
                     RoachMetricCard(label: "Installed", value: "\(installedModels.count)", detail: "Local brains")
                     RoachMetricCard(label: "Active", value: model.displayedRoachClawDefaultModel, detail: "Default route")
                     RoachMetricCard(label: "Queue", value: "\(activeModelDownloads.count)", detail: "Pulls")
-                    RoachMetricCard(label: "Runner", value: roachClaw?.ollama.available == true ? "Live" : "Offline", detail: "Ollama lane")
+                    RoachMetricCard(label: "Runner", value: roachClaw?.ollama.available == true ? "Live" : "Offline", detail: "Native model lane")
                 }
             }
 

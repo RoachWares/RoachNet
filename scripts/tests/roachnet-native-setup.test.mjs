@@ -25,6 +25,7 @@ function buildFakeInstallerAssets(root) {
   cpSync(path.join(repoRoot, 'collections'), path.join(dataRoot, 'collections'), { recursive: true })
   writeFileSync(path.join(app, 'Contents', 'MacOS', 'RoachNetApp'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
   writeFileSync(path.join(assets, 'setup-assets.marker'), '')
+  // A stale runner payload from an older Setup build: 1.1 setup must ignore it.
   const ollamaPayload = path.join(root, 'ollama-payload')
   mkdirSync(ollamaPayload, { recursive: true })
   writeFileSync(path.join(ollamaPayload, 'ollama'), '#!/bin/sh\necho "ollama version 0.0.0-test"\n', { mode: 0o755 })
@@ -108,9 +109,10 @@ test('native setup installs, verifies, and upgrades RoachNet without Node', requ
     assert.equal(first.nativeApp.installed, true)
     assert.equal(existsSync(path.join(installPath, 'app', 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')), true)
     assert.equal(existsSync(path.join(installPath, 'roachnet-install.json')), true)
-    assert.equal(lstatSync(path.join(installPath, 'bin', 'ollama')).isSymbolicLink(), true)
-    assert.equal(readlinkSync(path.join(installPath, 'bin', 'ollama')), '../runtime/vendor/ollama/ollama')
-    assert.equal(existsSync(path.join(installPath, 'runtime', 'vendor', 'ollama', 'ollama')), true)
+    // No model runner is installed: RoachClaw uses the native RoachInference engine.
+    assert.equal(existsSync(path.join(installPath, 'bin', 'ollama')), false)
+    assert.equal(existsSync(path.join(installPath, 'runtime', 'vendor', 'ollama')), false)
+    assert.equal(first.lastCompletedTask.logs.some((line) => /native RoachInference engine/.test(line)), true)
     assert.equal(first.lastCompletedTask.logs.some((line) => /health check/.test(line)), true)
     assert.equal(
       readFileSync(env.ROACHNET_HOSTS_FILE, 'utf8'),

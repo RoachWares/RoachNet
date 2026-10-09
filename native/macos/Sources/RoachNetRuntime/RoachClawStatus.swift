@@ -14,7 +14,10 @@ extension NativeRuntime {
 
     func isReachable(_ url: String) -> Bool { (try? runtimeReachabilityCache.get(url)) ?? false }
 
-    /// Starts the bundled/system Ollama runner when it is not already reachable.
+    /// Makes the local model lane reachable. The native RoachInference server is the
+    /// default; an external Ollama runner is only used when explicitly opted into with
+    /// ROACHNET_INFERENCE_ENGINE=ollama and one is already installed on the system.
+    /// RoachNet 1.1 no longer bundles a runner, so a missing one falls back to native.
     @discardableResult
     func ensureOllama() -> Bool {
         let versionURL = urlJoin("/api/version", config.ollamaBaseUrl)
@@ -22,7 +25,10 @@ extension NativeRuntime {
         if usesNativeEngine { return startNativeModelServer() }
         let localBin = config.env("ROACHNET_LOCAL_BIN_PATH").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(config.repoRoot, "bin")
         let candidates = [Path.join(localBin, "ollama"), "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
-        guard let ollama = candidates.first(where: { Files.exists($0) }) else { return false }
+        guard let ollama = candidates.first(where: { Files.exists($0) }) else {
+            log("external Ollama runner requested but none is installed; using native RoachInference")
+            return startNativeModelServer()
+        }
         return withState {
             if ollamaProcessPID != nil { return false }
             guard let parsed = WebURL(config.ollamaBaseUrl) else { return false }
@@ -360,7 +366,7 @@ extension NativeRuntime {
         let report: [JSON] = [
             [
                 "name": "ollama",
-                "label": "Ollama local model runner",
+                "label": "RoachInference local model runner",
                 "status": JSON(serviceHealthStatusValue(ollama["available"].truthy, true)),
                 "detail": JSON(ollama["available"].truthy
                     ? "Local model runner is reachable."

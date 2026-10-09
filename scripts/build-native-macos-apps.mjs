@@ -74,11 +74,6 @@ const baselineRoachSpeechPackIDs = new Set([
   'roachvoice-kokoro-82m-int8-coreml',
 ])
 const notarizationSubmissions = []
-const OLLAMA_RELEASE_API_URL = 'https://api.github.com/repos/ollama/ollama/releases/latest'
-const OLLAMA_DIRECT_DOWNLOAD_URL =
-  process.env.ROACHNET_BUNDLED_OLLAMA_URL?.trim() || 'https://ollama.com/download/ollama-darwin.tgz'
-const OLLAMA_FALLBACK_VERSION =
-  process.env.ROACHNET_BUNDLED_OLLAMA_VERSION?.trim() || 'contained'
 
 if (!/^\d+$/.test(appBuildNumber)) {
   throw new Error('package.json buildNumber must be a positive integer for native packaging.')
@@ -289,42 +284,6 @@ async function downloadFile(url, destinationPath) {
   })
 }
 
-async function getLatestOllamaRelease() {
-  if (pinnedRuntimeBuild) {
-    const artifact = runtimePins.ollama?.artifact
-    return {
-      version: runtimePins.ollama?.bundledVersion,
-      assetName: artifact?.filename,
-      url: artifact?.url,
-      sha256: artifact?.sha256,
-    }
-  }
-
-  try {
-    const release = await fetchJson(OLLAMA_RELEASE_API_URL)
-    const asset = Array.isArray(release.assets)
-      ? release.assets.find((entry) => entry?.name === 'ollama-darwin.tgz')
-      : null
-
-    return {
-      version: release.tag_name?.replace(/^v/i, '') || OLLAMA_FALLBACK_VERSION,
-      assetName: asset?.name || path.basename(new URL(OLLAMA_DIRECT_DOWNLOAD_URL).pathname) || 'ollama-darwin.tgz',
-      url: asset?.browser_download_url || OLLAMA_DIRECT_DOWNLOAD_URL,
-      sha256: String(asset?.digest || '').replace(/^sha256:/, '') || null,
-    }
-  } catch (error) {
-    console.warn(
-      `Falling back to the direct Ollama bundle because the release lookup failed: ${error instanceof Error ? error.message : String(error)}`
-    )
-
-    return {
-      version: OLLAMA_FALLBACK_VERSION,
-      assetName: path.basename(new URL(OLLAMA_DIRECT_DOWNLOAD_URL).pathname) || 'ollama-darwin.tgz',
-      url: OLLAMA_DIRECT_DOWNLOAD_URL,
-    }
-  }
-}
-
 async function ensureBundledOpenClawCache() {
   if (releaseBuild) {
     throw new Error('Public release builds cannot bundle OpenClaw from an unlocked npm install.')
@@ -371,37 +330,6 @@ async function ensureBundledOpenClawCache() {
   }
 
   return packageRoot
-}
-
-async function ensureBundledOllamaCache() {
-  if (!(process.platform === 'darwin' && process.arch === 'arm64')) {
-    return null
-  }
-
-  const release = await getLatestOllamaRelease()
-  const cacheRoot = path.join(repoRoot, 'native', 'macos', '.cache', 'bundled-ollama')
-  const archivePath = path.join(cacheRoot, release.assetName)
-  const extractedRoot = path.join(cacheRoot, sanitizeCacheKey(release.version))
-  const extractedBinaryPath = path.join(extractedRoot, 'ollama')
-
-  if (!existsSync(extractedBinaryPath)) {
-    console.log(`Preparing bundled Ollama payload ${release.version}...`)
-    rmSync(extractedRoot, { recursive: true, force: true })
-    mkdirSync(cacheRoot, { recursive: true })
-    await downloadFile(release.url, archivePath)
-    if (pinnedRuntimeBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
-    mkdirSync(extractedRoot, { recursive: true })
-    await run('tar', ['-xzf', archivePath, '-C', extractedRoot], {
-      stdio: 'pipe',
-    })
-  } else {
-    console.log(`Using cached bundled Ollama payload from ${extractedRoot}...`)
-  }
-
-  if (pinnedRuntimeBuild) await requireFileSha256(archivePath, release.sha256, `Ollama ${release.version}`)
-
-  await pruneBundledToolCache(cacheRoot, new Set([release.assetName, sanitizeCacheKey(release.version)]))
-  return extractedRoot
 }
 
 async function createDirectoryPayloadArchive(sourcePath, destinationArchivePath) {
@@ -502,7 +430,10 @@ async function createPrunedNodePayloadArchive(sourcePath, destinationArchivePath
 }
 
 async function prepareInstallerContainedTooling(installerAssetsPath) {
-  const ollamaDestination = path.join(installerAssetsPath, 'bundled-ollama.tar.gz')
+  // RoachNet 1.1+ runs local models on its own engine (RoachInference); no
+  // Ollama runner is fetched or bundled. Clear payloads left by older builds.
+  for (const stale of ['bundled-ollama.tar.gz', 'bundled-ollama']) discardPath(path.join(installerAssetsPath, stale))
+  discardPath(path.join(repoRoot, 'native', 'macos', '.cache', 'bundled-ollama'))
 
   if (process.env.ROACHNET_BUNDLE_OPENCLAW === '1') {
     const openClawDestination = path.join(installerAssetsPath, 'bundled-openclaw.tar.gz')
@@ -511,15 +442,11 @@ async function prepareInstallerContainedTooling(installerAssetsPath) {
   } else {
     writeFileSync(
       path.join(installerAssetsPath, 'openclaw-deferred.marker'),
-      'OpenClaw hydration is deferred; RoachClaw runs through the native Ollama lane by default.\n',
+      'OpenClaw hydration is deferred; RoachClaw runs on the native RoachInference engine by default.\n',
       'utf8'
     )
   }
 
-  const extractedRoot = await ensureBundledOllamaCache()
-  if (extractedRoot) {
-    await createDirectoryPayloadArchive(extractedRoot, ollamaDestination)
-  }
 }
 
 function getBundledNodePlatformTag() {

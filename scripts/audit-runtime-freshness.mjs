@@ -94,6 +94,10 @@ async function fetchLatestNpmPackage(packageName) {
   return payload?.version || null
 }
 
+function ollamaRetired(metadata) {
+  return metadata.ollama?.mode === 'retired-not-bundled'
+}
+
 function assertBuildScriptMatchesMetadata(metadata) {
   const source = readFileSync(buildScriptPath, 'utf8')
   assert(
@@ -106,10 +110,17 @@ function assertBuildScriptMatchesMetadata(metadata) {
   )
   assert(
     /^[a-f0-9]{64}$/i.test(metadata.node.artifacts.darwinArm64.sha256) &&
-      /^[a-f0-9]{64}$/i.test(metadata.node.artifacts.darwinX64.sha256) &&
-      /^[a-f0-9]{64}$/i.test(metadata.ollama.artifact.sha256),
-    'Node and Ollama release artifacts must have reviewed SHA-256 pins.'
+      /^[a-f0-9]{64}$/i.test(metadata.node.artifacts.darwinX64.sha256),
+    'Node release artifacts must have reviewed SHA-256 pins.'
   )
+  if (ollamaRetired(metadata)) {
+    assert(
+      !source.includes('ensureBundledOllamaCache') && source.includes("'bundled-ollama.tar.gz'"),
+      'Native builder must not fetch Ollama and must clear stale bundled-ollama payloads once Ollama is retired.'
+    )
+  } else {
+    assert(/^[a-f0-9]{64}$/i.test(metadata.ollama.artifact?.sha256 || ''), 'Ollama release artifact must have a reviewed SHA-256 pin.')
+  }
   assert(
     metadata.openclaw.mode === 'deferred-not-bundled' && metadata.openclaw.bundledPackage === null,
     'OpenClaw must remain explicitly absent from the public candidate artifact.'
@@ -288,7 +299,11 @@ function assertDistributionMatchesMetadata(metadata) {
     const ollamaArchive = path.join(setupBundleAssetsPath, 'bundled-ollama.tar.gz')
     const openclawArchive = path.join(setupBundleAssetsPath, 'bundled-openclaw.tar.gz')
     const openclawDeferred = path.join(setupBundleAssetsPath, 'openclaw-deferred.marker')
-    assert(existsSync(ollamaArchive), 'Setup bundle is missing bundled-ollama.tar.gz.')
+    if (ollamaRetired(metadata)) {
+      assert(!existsSync(ollamaArchive), 'Setup bundle still carries bundled-ollama.tar.gz although Ollama is retired.')
+    } else {
+      assert(existsSync(ollamaArchive), 'Setup bundle is missing bundled-ollama.tar.gz.')
+    }
 
     if (metadata.openclaw.mode === 'deferred-not-bundled') {
       assert(existsSync(openclawDeferred), 'Setup bundle must include openclaw-deferred.marker when OpenClaw is deferred.')
@@ -308,14 +323,15 @@ async function main() {
   assertNativeRuntimeMatchesMetadata(metadata)
   assertDistributionMatchesMetadata(metadata)
 
+  const retired = ollamaRetired(metadata)
   const [latestNode, latestOllama, latestOpenClaw] = await Promise.all([
     fetchLatestNodeForChannel(metadata.node.channel),
-    fetchLatestOllama(),
+    retired ? Promise.resolve(null) : fetchLatestOllama(),
     fetchLatestNpmPackage('openclaw'),
   ])
 
   assert(latestNode, 'Could not resolve latest Node release.')
-  assert(latestOllama, 'Could not resolve latest Ollama release.')
+  assert(retired || latestOllama, 'Could not resolve latest Ollama release.')
   assert(latestOpenClaw, 'Could not resolve latest OpenClaw package release.')
 
   if (nodeCompatBuild) {
@@ -326,10 +342,12 @@ async function main() {
   } else if (stripVersionPrefix(metadata.node.bundledVersion) !== stripVersionPrefix(latestNode)) {
     console.warn(`notice: compat-only Node pin ${metadata.node.bundledVersion} trails ${latestNode}; not shipped in native builds.`)
   }
-  assert(
-    stripVersionPrefix(metadata.ollama.bundledVersion) === stripVersionPrefix(latestOllama),
-    `Bundled Ollama is stale: metadata has ${metadata.ollama.bundledVersion}, latest ${latestOllama}.`
-  )
+  if (!retired) {
+    assert(
+      stripVersionPrefix(metadata.ollama.bundledVersion) === stripVersionPrefix(latestOllama),
+      `Bundled Ollama is stale: metadata has ${metadata.ollama.bundledVersion}, latest ${latestOllama}.`
+    )
+  }
   if (metadata.openclaw.mode !== 'deferred-not-bundled') {
     assert(
       stripVersionPrefix(metadata.openclaw.reviewedVersion) === stripVersionPrefix(latestOpenClaw),
@@ -344,7 +362,7 @@ async function main() {
       `Runtime freshness audit passed.`,
       `Native Swift runtime (${metadata.nativeRuntime.executable}).`,
       nodeCompatBuild ? `Compat Node ${metadata.node.bundledVersion}.` : 'Node not bundled.',
-      `Ollama ${metadata.ollama.bundledVersion}.`,
+      retired ? `Ollama retired in ${metadata.ollama.retiredIn} (native RoachInference engine).` : `Ollama ${metadata.ollama.bundledVersion}.`,
       `OpenClaw ${metadata.openclaw.reviewedVersion} (${metadata.openclaw.mode}).`,
       `RoachClaw native agent rewrite.`,
       `Hermes reference ${metadata.roachClawAgent.hermesReference.reviewedHead.slice(0, 12)}.`,

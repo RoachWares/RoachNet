@@ -27,7 +27,7 @@ The current upstream project version is `0.14.0`. Its core Python dependency set
 
 ## Native Rewrite Assessment
 
-Hermes Agent is no longer a candidate runtime dependency. RoachClaw should replace OpenClaw with a RoachNet-owned native agent spine. OpenClaw remains deferred and optional while RoachClaw defaults to the contained Ollama lane and the first-party `roachclaw-native-agent` packet builder.
+Hermes Agent is no longer a candidate runtime dependency. RoachClaw should replace OpenClaw with a RoachNet-owned native agent spine. OpenClaw remains deferred and optional while RoachClaw defaults to the native RoachInference model lane and the first-party `roachclaw-native-agent` packet builder.
 
 The safe path:
 

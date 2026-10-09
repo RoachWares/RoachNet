@@ -51,7 +51,7 @@ The Setup app, `roachnet-runtime --install` and the Homebrew cask all run the sa
 | 5 | Inspecting system | Checks for Apple Silicon hardware (Rosetta-translated launches are detected), macOS 14 or later, free space (2 GiB, or 5 GiB with RoachClaw), a writable location that isn't installer media, and memory. Picks a RAM-aware RoachClaw starter model. |
 | 12 | Validating | Stops if any required preflight check failed. |
 | 24 | Staging | Creates `<root>.staging-<hex>` on the same volume as the target. |
-| 38 | AI tooling | Installs the contained Ollama runner into `runtime/vendor/ollama`, linked from `bin/ollama`. It reuses an existing runner on upgrade. Skipped with `--no-roachclaw`. |
+| 38 | AI tooling | RoachClaw runs on the native RoachInference engine inside `roachnet-runtime`, so no separate model runner is installed (1.1). Upgrades drop a carried-forward `runtime/vendor/ollama`. Existing Ollama model folders are still imported in place. |
 | 52 | Preparing | Writes `roachnet-install.json`. |
 | 64 | Installing app | Copies `RoachNet.app` (from the folder or the `.zip` in InstallerAssets), clears quarantine, and ad-hoc signs it only if `codesign --verify` fails. |
 | 76 | Verifying | Boots the staged app's helper against scratch storage and requires `/api/health` to answer. |

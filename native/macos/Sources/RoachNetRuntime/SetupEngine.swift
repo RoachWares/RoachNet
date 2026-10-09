@@ -490,11 +490,11 @@ public final class SetupEngine {
             for directory in ["app", "bin", "runtime"] { try Files.mkdirp(Path.join(staging, directory)) }
             log("Staging the install beside the target folder on the same volume.")
 
-            setPhase("Installing contained AI tooling", 38)
+            setPhase("Preparing RoachClaw", 38)
             if plan.installRoachClaw {
-                try installContainedOllama(stagingRoot: staging, existingRoot: plan.installPath)
+                log("RoachClaw runs on the native RoachInference engine inside roachnet-runtime; no separate model runner is installed.")
             } else {
-                log("Skipping contained RoachClaw tooling because RoachClaw is disabled for this install.")
+                log("Skipping RoachClaw setup because RoachClaw is disabled for this install.")
             }
 
             setPhase("Preparing contained runtime", 52)
@@ -643,37 +643,6 @@ public final class SetupEngine {
             log("RoachTail local alias could not be provisioned automatically. \(error)")
             if environment["ROACHNET_REQUIRE_LOCAL_ALIAS"] == "1" { throw error }
         }
-    }
-
-    func installContainedOllama(stagingRoot: String, existingRoot: String) throws {
-        let vendorRoot = Path.join(stagingRoot, "runtime", "vendor", "ollama")
-        if let assets = installerAssetsPath {
-            let directory = Path.join(assets, "bundled-ollama")
-            let archive = Path.join(assets, "bundled-ollama.tar.gz")
-            if Files.exists(Path.join(directory, "ollama")) {
-                try SetupPlatform.copyDirectory(directory, to: vendorRoot)
-                log("Contained Ollama copied from installer assets.")
-            } else if Files.exists(archive) {
-                try SetupPlatform.extractTarGz(archive, to: vendorRoot)
-                log("Contained Ollama unpacked from installer assets.")
-            }
-        }
-        if !Files.exists(Path.join(vendorRoot, "ollama")) {
-            let existing = Path.join(existingRoot, "runtime", "vendor", "ollama")
-            if Files.exists(Path.join(existing, "ollama")) {
-                try SetupPlatform.copyDirectory(existing, to: vendorRoot)
-                log("Reused the contained Ollama from the existing install.")
-            }
-        }
-        guard Files.exists(Path.join(vendorRoot, "ollama")) else {
-            log("No contained Ollama payload is bundled; RoachClaw will use a system runner if one is installed.")
-            return
-        }
-        SetupPlatform.prepareForLaunch(vendorRoot, log: log)
-        let link = Path.join(stagingRoot, "bin", "ollama")
-        Files.remove(link)
-        // Relative link so the install root can move as a unit.
-        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: "../runtime/vendor/ollama/ollama")
     }
 
     func writeInstallManifest(stagingRoot: String, plan: InstallPlan) throws {
@@ -843,14 +812,8 @@ public final class SetupEngine {
                 }
             }
             if let backup {
-                // Reuse the previous contained Ollama runner when this install did not stage one.
-                for extra in ["runtime/vendor/ollama"] where !Files.exists(Path.join(finalRoot, extra)) {
-                    let previous = Path.join(backup, extra)
-                    if Files.exists(previous) {
-                        try? Files.mkdirp(Path.dirname(Path.join(finalRoot, extra)))
-                        try? SetupPlatform.moveItem(previous, Path.join(finalRoot, extra))
-                    }
-                }
+                // Runners bundled by older releases (runtime/vendor/ollama) are not carried
+                // forward: 1.1+ serves models natively. Models stay in storage/models.
                 // Anything at the top of the old root that setup does not manage stays: the
                 // Homebrew-installed `setup/RoachNet Setup.app`, or files the user put there.
                 let managed: Set<String> = ["app", "bin", "runtime", SetupEngine.installManifestName, ".smoke-work"]

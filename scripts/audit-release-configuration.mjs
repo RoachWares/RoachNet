@@ -218,13 +218,20 @@ export function auditReleaseConfiguration() {
   requirePattern(failures, buildScript, /ROACHNET_RELEASE_BUILD/, 'Native builder lacks fail-closed release mode.')
   requirePattern(failures, buildScript, /ROACHNET_CANDIDATE_BUILD/, 'Native builder lacks an explicit credential-independent candidate build mode.')
   requirePattern(failures, buildScript, /pinnedRuntimeBuild:\s*releaseBuild\s*\|\|\s*candidateBuild/, 'Candidate build mode is not bound to pinned runtime metadata.')
-  requirePattern(failures, buildScript, /if \(pinnedRuntimeBuild\)\s*\{[\s\S]*?runtimePins\.ollama/, 'Candidate build mode can resolve an unpinned Ollama release.')
-  requirePattern(failures, buildScript, /if \(pinnedRuntimeBuild\) await requireFileSha256\(archivePath, release\.sha256, `Ollama \$\{release\.version\}`\)/, 'Candidate build mode does not checksum-verify the reviewed Ollama archive.')
+  const ollamaRetired = runtimePins.ollama?.mode === 'retired-not-bundled'
+  if (ollamaRetired) {
+    if (/ensureBundledOllamaCache|ollama-darwin\.tgz/.test(buildScript)) {
+      failures.push('Native builder still downloads or bundles Ollama although it is retired.')
+    }
+  } else {
+    requirePattern(failures, buildScript, /if \(pinnedRuntimeBuild\)\s*\{[\s\S]*?runtimePins\.ollama/, 'Candidate build mode can resolve an unpinned Ollama release.')
+    requirePattern(failures, buildScript, /if \(pinnedRuntimeBuild\) await requireFileSha256\(archivePath, release\.sha256, `Ollama \$\{release\.version\}`\)/, 'Candidate build mode does not checksum-verify the reviewed Ollama archive.')
+  }
 
   for (const [label, value] of [
     ['Node arm64', runtimePins.node?.artifacts?.darwinArm64?.sha256],
     ['Node x64', runtimePins.node?.artifacts?.darwinX64?.sha256],
-    ['Ollama macOS', runtimePins.ollama?.artifact?.sha256],
+    ...(ollamaRetired ? [] : [['Ollama macOS', runtimePins.ollama?.artifact?.sha256]]),
   ]) {
     if (!/^[a-f0-9]{64}$/i.test(String(value || ''))) failures.push(`${label} runtime artifact is not checksum-pinned.`)
   }

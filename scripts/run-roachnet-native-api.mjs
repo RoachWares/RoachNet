@@ -711,7 +711,7 @@ function roachClawServiceHealthState({
   const servicesReport = [
     {
       name: 'ollama',
-      label: 'Ollama local model runner',
+      label: 'RoachInference local model runner',
       status: serviceHealthStatusValue(Boolean(ollama?.available), true),
       detail: ollama?.available
         ? 'Local model runner is reachable.'
@@ -6032,7 +6032,7 @@ async function route(request, response) {
     const body = await readRequestJson(request)
     if (body.service_name === 'roachnet_ollama') {
       await ensureOllama()
-      return sendJson(response, 200, { success: true, ok: true, message: 'Ollama start requested.' })
+      return sendJson(response, 200, { success: true, ok: true, message: 'Local model lane start requested.' })
     }
     return sendJson(response, 200, { success: true, ok: true, message: 'Native service registered. Container install is not required for this lane.' })
   }

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — v1.1 (feature/1.1-native-ai)
+
+- RoachNet no longer bundles or installs Ollama. RoachClaw runs on the native RoachInference engine (hand-written Metal kernels) served from `roachnet-runtime` on the same Ollama-compatible local API. Existing Ollama model folders are still imported in place, and `ROACHNET_INFERENCE_ENGINE=ollama` keeps using a runner you installed yourself.
+- Metal decode is now about 91% of Ollama's speed on 1.5B and 3B models and faster on 0.5B (M2 Pro).
+
 ## Unreleased — v1.0.6 release candidate
 
 - Replaced the bundled Node runtime with `roachnet-runtime`, a native Swift helper built only on Apple system frameworks. It serves the same loopback API and environment contract, runs the iOS companion bridge in-process, and the default packaging lane now refuses to embed Node.

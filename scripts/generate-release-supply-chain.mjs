@@ -105,14 +105,22 @@ async function main() {
       source: runtimePins.node.artifacts.darwinArm64.url,
       sourceSha256: runtimePins.node.artifacts.darwinArm64.sha256,
     },
-    {
-      name: 'Ollama',
-      version: runtimePins.ollama.bundledVersion,
-      kind: 'runtime',
-      license: runtimePins.ollama.license,
-      source: runtimePins.ollama.artifact.url,
-      sourceSha256: runtimePins.ollama.artifact.sha256,
-    },
+    runtimePins.ollama.mode === 'retired-not-bundled'
+      ? {
+          name: 'Ollama',
+          version: 'not-bundled',
+          kind: 'retired-runtime',
+          license: 'N/A',
+          source: runtimePins.ollama.source,
+        }
+      : {
+          name: 'Ollama',
+          version: runtimePins.ollama.bundledVersion,
+          kind: 'runtime',
+          license: runtimePins.ollama.license,
+          source: runtimePins.ollama.artifact.url,
+          sourceSha256: runtimePins.ollama.artifact.sha256,
+        },
     {
       name: 'OpenClaw',
       version: 'not-bundled',

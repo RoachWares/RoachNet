@@ -4120,7 +4120,7 @@ final class WorkspaceModel: ObservableObject {
             synchronizeSelectedChatModel()
             statusLine = "RoachClaw lane queued."
         } catch {
-            errorLine = "RoachClaw couldn’t install its contained Ollama lane: \(error.localizedDescription)"
+            errorLine = "RoachClaw couldn’t start its native model lane: \(error.localizedDescription)"
             statusLine = "RoachClaw still needs attention."
         }
     }
@@ -8882,9 +8882,9 @@ private struct RootWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     RoachDigestRow(
-                        "Ollama",
+                        "RoachInference",
                         value: providerValue(providers["ollama"]),
-                        detail: "Contained model lane inside this RoachNet install.",
+                        detail: "Native Metal model lane inside this RoachNet install.",
                         systemName: "sparkles",
                         accent: RoachPalette.green
                     )
@@ -11975,7 +11975,7 @@ private struct RootWorkspaceView: View {
                 RoachMetricCard(
                     label: "Providers",
                     value: providerSummary,
-                    detail: "Ollama / OpenClaw"
+                    detail: "RoachInference / OpenClaw"
                 )
             }
         }
@@ -12938,7 +12938,7 @@ private struct RootWorkspaceView: View {
             ReadinessStep(
                 id: "providers",
                 title: "AI providers",
-                detail: "Link Ollama and OpenClaw so RoachClaw has a live lane instead of a placeholder.",
+                detail: "Start the native RoachInference lane (and OpenClaw, if you use it) so RoachClaw has a live lane instead of a placeholder.",
                 status: providerReady ? "Ready" : "Link AI",
                 systemImage: "cpu.fill",
                 accent: providerReady ? RoachPalette.green : RoachPalette.warning,
@@ -13042,7 +13042,7 @@ private struct RootWorkspaceView: View {
         }
 
         if roachClaw.openclaw.available {
-            return "OpenClaw is reachable while the local Ollama lane catches up."
+            return "OpenClaw is reachable while the local RoachInference lane catches up."
         }
 
         return "Use AI Control or Easy Setup to connect a runtime."
