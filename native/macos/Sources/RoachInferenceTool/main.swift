@@ -82,6 +82,29 @@ do {
         print("ids: \(result.tokens.map(String.init).joined(separator: " "))")
         print(String(format: "prompt %d tok in %.2fs, generated %d tok at %.1f tok/s (%@)",
                      result.promptTokenCount, result.promptDuration, result.tokens.count, result.tokensPerSecond, result.stopReason.rawValue))
+    case "bench":
+        // roachnet-infer bench <model.gguf> [--tokens N]: Metal per-token wall/GPU time and per-matrix bandwidth.
+        #if canImport(Metal)
+        let model = try TransformerModel(path: path)
+        let positions = Int(option("--tokens") ?? "64") ?? 64
+        let backend = try MetalBackend(model: model, contextLength: positions + 1)
+        var wall = 0.0, gpu = 0.0
+        for position in 0..<positions {
+            let start = Date()
+            backend.forward(token: Int(model.tokenizer.bos ?? 1), position: position)
+            if position >= 4 { wall += Date().timeIntervalSince(start); gpu += backend.lastGPUSeconds }
+        }
+        let measured = Double(max(1, positions - 4))
+        print(String(format: "forward: wall %.2f ms/token (%.1f tok/s), gpu %.2f ms/token", wall / measured * 1000, measured / wall, gpu / measured * 1000))
+        var matvecTotal = 0.0, byteTotal = 0
+        for row in backend.profileMatvecs() {
+            matvecTotal += row.seconds; byteTotal += row.bytes
+            print(String(format: "  %-9@ %-5@ %7.3f ms  %6.1f GB/s", row.label as NSString, row.type as NSString, row.seconds * 1000, Double(row.bytes) / row.seconds / 1e9))
+        }
+        print(String(format: "  matvec total %.2f ms for %.0f MB (%.1f GB/s); other kernels ~%.2f ms", matvecTotal * 1000, Double(byteTotal) / 1e6, Double(byteTotal) / matvecTotal / 1e9, (gpu / measured - matvecTotal) * 1000))
+        #else
+        fail("Metal is not available on this platform.")
+        #endif
     case "dot-vectors":
         // Format per record: u32 type, u32 cols, u32 rowBytes, f32 expected, row bytes, cols × f32 x.
         guard args.count >= 3 else { fail("missing output path") }

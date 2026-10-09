@@ -24,9 +24,37 @@ No Ollama, llama.cpp, MLX, Core ML, Metal Performance Shaders, Accelerate or thi
 | Chat templates detected from GGUF: ChatML, Llama 3, Mistral, Gemma, Phi-3 | Done |
 | KV-cache prefix reuse, stop sequences, streamed UTF-8 output | Done |
 | CPU backend: Swift SIMD, multithreaded | Done |
-| Metal backend: hand-written MSL, weights read in place from the mapped file | Kernel math verified on host; GPU run needs the Mac gate |
+| Metal backend: hand-written MSL, weights read in place from the mapped file | Done; verified on Apple Silicon (M2 Pro) |
 | Ollama-compatible API in `roachnet-runtime` | Done; see `NativeModelServer.swift` |
 | Embeddings, batched prefill, more architectures (gemma, phi3, MoE), Jinja templates | Planned |
+
+## Metal performance
+
+Measured on an Apple M2 Pro (16 GB) running macOS 26.6. The figures are greedy decode of 128 tokens, warm, with the model on the internal SSD. Ollama is the 0.40.1 build that 1.0.6 bundles, running the same model through its own registry.
+
+| Model | RoachInference (Metal) | Ollama 0.40.1 |
+| --- | --- | --- |
+| qwen2.5 0.5B Q4_K_M | 185 tok/s | ~140 tok/s |
+| qwen3 0.6B Q8_0 | 136 tok/s | – |
+| qwen2.5-coder 1.5B Q4_K_M | 93 tok/s | 102 tok/s |
+| llama3.2 3B Q4_K_M | 51 tok/s | 56 tok/s |
+
+For every model above, the Metal backend produces the same tokens as the CPU backend.
+
+The decode path works like this:
+
+- **Matrix-vector products.** Each simdgroup computes 4 rows. A lane holds its 32 input values in registers and reuses them across those rows.
+  - Q4_0, Q8_0, Q4_K and Q6_K use vectorized 16-bit and 128-bit loads with `float4` dot products.
+  - K-quant superblocks are split into 32-value chunks, so a row's few superblocks still spread across all lanes.
+  - Rows shorter than 2,048 columns use half-simdgroups.
+- **Fewer, overlapping dispatches.** Each token is one command buffer on a concurrent encoder, with barriers only between dependent steps. Bias adds and residual adds are folded into the matrix-vector kernels. Attention (scores, softmax and values) is one kernel per head.
+- **Model loading.** Loading a model calls `madvise(WILLNEED)`, so a model on an external drive pages in ahead of use.
+
+`roachnet-infer bench <model.gguf>` prints the per-token wall and GPU time and the bandwidth of each matrix kind. These environment variables are for A/B checks:
+
+- `ROACHNET_METAL_ROWS=1|2|4` sets the rows per simdgroup.
+- `ROACHNET_METAL_FULL_ROWS=1` turns off half-simdgroups.
+- `ROACHNET_METAL_SERIAL=1` turns off concurrent dispatch.
 
 On a Metal device the session uses the GPU backend. Before using it, the session checks one forward pass against the CPU reference and falls back to the CPU if the results differ. Use `ROACHNET_INFERENCE_BACKEND=cpu|metal` to choose a backend, and `ROACHNET_METAL_VERIFY=0` to skip the startup check.
 
@@ -68,4 +96,5 @@ roachnet-infer info <model.gguf>
 roachnet-infer tokenize <model.gguf> "text"
 roachnet-infer logits <model.gguf> "prompt"
 roachnet-infer generate <model.gguf> "prompt" [--chat] [--tokens N] [--temp T] [--seed S] [--ctx N]
+roachnet-infer bench <model.gguf> [--tokens N]          (Metal: per-token time and per-matrix bandwidth)
 ```

@@ -53,11 +53,12 @@ public struct Sampler {
             for i in 1..<logits.count where logits[i] > logits[best] { best = i }
             return Int32(best)
         }
-        var candidates = logits.indices.map { (id: Int32($0), logit: logits[$0]) }
-        if options.topK > 0, options.topK < candidates.count {
-            candidates = Array(candidates.partialSorted(by: { $0.logit > $1.logit }, limit: options.topK))
+        var candidates: [(id: Int32, logit: Float)]
+        if options.topK > 0, options.topK < logits.count {
+            candidates = Sampler.topK(logits, options.topK)
         } else {
-            candidates.sort { $0.logit > $1.logit }
+            candidates = logits.indices.map { (id: Int32($0), logit: logits[$0]) }
+            candidates.sort { $0.logit > $1.logit || ($0.logit == $1.logit && $0.id < $1.id) }
         }
         // Probabilities at temperature 1 for the nucleus/min-p filters.
         func softmax(_ items: [(id: Int32, logit: Float)], temperature: Float) -> [Float] {
@@ -90,6 +91,36 @@ public struct Sampler {
             if draw <= 0 { return candidates[index].id }
         }
         return candidates.last?.id ?? 0
+    }
+
+    /// The k largest logits, best first (ties: lower id first). One pass over
+    /// the vocabulary with a k-slot buffer; after warm-up almost every logit is
+    /// rejected by a single comparison, so no per-token array of tuples is built.
+    static func topK(_ logits: [Float], _ k: Int) -> [(id: Int32, logit: Float)] {
+        var ids = [Int32](repeating: 0, count: k)
+        var values = [Float](repeating: -.infinity, count: k)
+        var filled = 0, minIndex = 0
+        var minValue = -Float.infinity
+        func refreshMinimum() {
+            minIndex = 0
+            for slot in 1..<k where values[slot] < values[minIndex] || (values[slot] == values[minIndex] && ids[slot] > ids[minIndex]) { minIndex = slot }
+            minValue = values[minIndex]
+        }
+        logits.withUnsafeBufferPointer { buffer in
+            for index in 0..<buffer.count {
+                let value = buffer[index]
+                if filled < k {
+                    ids[filled] = Int32(index); values[filled] = value; filled += 1
+                    if filled == k { refreshMinimum() }
+                } else if value > minValue {
+                    ids[minIndex] = Int32(index); values[minIndex] = value
+                    refreshMinimum()
+                }
+            }
+        }
+        var result = (0..<filled).map { (id: ids[$0], logit: values[$0]) }
+        result.sort { $0.logit > $1.logit || ($0.logit == $1.logit && $0.id < $1.id) }
+        return result
     }
 
     func applyPenalties(_ logits: inout [Float], history: [Int32]) {

@@ -109,6 +109,13 @@ public final class GGUFFile {
     let base: UnsafeRawPointer
     let dataOffset: Int
 
+    /// Asks the kernel to start reading the whole file in the background.
+    /// Called when a model is loaded for inference (not for metadata reads),
+    /// so a cold model on a slow or external drive pages in ahead of use.
+    public func adviseWillNeed() {
+        _ = madvise(UnsafeMutableRawPointer(mutating: base), fileSize, MADV_WILLNEED)
+    }
+
     public init(path: String) throws {
         self.path = path
         let fd = open(path, O_RDONLY)

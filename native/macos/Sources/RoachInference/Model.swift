@@ -172,6 +172,7 @@ public final class TransformerModel {
 
     public init(file: GGUFFile) throws {
         self.file = file
+        file.adviseWillNeed()
         let tokenizer = try Tokenizer(gguf: file)
         self.tokenizer = tokenizer
         let hp = try ModelHyperparameters(gguf: file, vocabularySize: tokenizer.vocabularySize)
