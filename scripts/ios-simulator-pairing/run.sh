@@ -25,6 +25,8 @@ RPID=""; SIM=""
 cleanup() {
   [ -n "$SIM" ] && { xcrun simctl shutdown $SIM >/dev/null 2>&1; xcrun simctl delete $SIM >/dev/null 2>&1; }
   [ -n "$RPID" ] && { kill $RPID 2>/dev/null; sleep 1; kill -9 $RPID 2>/dev/null; }
+  # Keep logs and screenshots; drop the ~500 MB of build output unless asked to keep it.
+  [ "${ROACHNET_SIM_KEEP_BUILD:-0}" = "1" ] || rm -rf $W/dd-app $W/dd-test
 }
 trap cleanup EXIT INT TERM
 
