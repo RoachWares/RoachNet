@@ -442,7 +442,8 @@ extension NativeRuntime {
                 next["relayHost"] = JSON(relay)
                 next["notes"] = [JSON(relay.map { "RoachTail will advertise the relay host \($0)." } ?? "RoachTail relay host was cleared and the bridge will use the local advertised URL.")]
             case "register-peer":
-                let peerToken = generateRoachTailSecret("rtpeer")
+                // `rtp_` matches v1.0.5 and the iOS companion, which uses the prefix to recognise peer tokens.
+                let peerToken = generateRoachTailSecret("rtp")
                 let peer = roachTailPeerFromPayload(payload, tokenHash: roachTailHash(JSON(peerToken)))
                 next["enabled"] = true
                 next["peers"] = .array(next["peers"].array.filter { $0["id"] != peer["id"] } + [peer])
@@ -455,6 +456,8 @@ extension NativeRuntime {
                     "success": true,
                     "ok": true,
                     "message": JSON("\(peer["name"].jsString) registered with RoachTail."),
+                    "token": JSON(peerToken),
+                    "peerId": peer["id"],
                     "peerToken": JSON(peerToken),
                     "state": sanitizeRoachTailState(written),
                 ]
@@ -496,7 +499,8 @@ extension NativeRuntime {
             if joinCode.isEmpty || roachTailHash(JSON(joinCode)) != current["joinCodeHash"].jsString {
                 throw requestError("That RoachTail join code does not match this desktop.", 401)
             }
-            let peerToken = generateRoachTailSecret("rtpeer")
+            // `rtp_` matches v1.0.5 and the iOS companion, which uses the prefix to recognise peer tokens.
+            let peerToken = generateRoachTailSecret("rtp")
             let activeKey = current["preAuthKeys"].array.first { $0["keyHash"] == current["joinCodeHash"] }
             var peerPayload = payload
             peerPayload["preAuthKeyId"] = (activeKey ?? .undefined)["id"] || nil
@@ -522,6 +526,10 @@ extension NativeRuntime {
                 "success": true,
                 "ok": true,
                 "message": JSON("\(peer["name"].jsString) paired with RoachTail."),
+                // `token` and `peerId` are the v1.0.5 contract that shipped iOS companions decode
+                // (both required). `peerToken` is kept for newer clients.
+                "token": JSON(peerToken),
+                "peerId": peer["id"],
                 "peerToken": JSON(peerToken),
                 "bridgeUrl": written["advertisedUrl"],
                 "runtimeTunnelUrl": written["runtimeTunnelUrl"],
