@@ -1084,7 +1084,11 @@ test('native RoachTail control plane supports join-key pairing and peer tokens',
       },
     })
     assert.equal(paired.success, true)
-    assert.match(paired.peerToken, /^rtpeer_/)
+    assert.match(paired.peerToken, /^rtp_/)
+    // Shipped iOS companions (0.1.5) decode `token` and `peerId` as required fields.
+    assert.equal(paired.token, paired.peerToken)
+    assert.equal(typeof paired.peerId, 'string')
+    assert.equal(paired.peerId, paired.state.peers[0].id)
     assert.equal(paired.state.peers.length, 1)
     assert.equal(paired.state.peers[0].name, 'RoachPhone')
     assert.equal(JSON.stringify(paired).includes('tokenHash'), false)

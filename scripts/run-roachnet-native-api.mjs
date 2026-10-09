@@ -4794,7 +4794,7 @@ function mutateRoachTailState(action, payload = {}, request = null) {
       ]
       break
     case 'register-peer': {
-      const peerToken = generateRoachTailSecret('rtpeer')
+      const peerToken = generateRoachTailSecret('rtp')
       const peer = roachTailPeerFromPayload(payload, roachTailHash(peerToken))
       next.enabled = true
       next.peers = [...next.peers.filter((item) => item.id !== peer.id), peer]
@@ -4807,6 +4807,8 @@ function mutateRoachTailState(action, payload = {}, request = null) {
         success: true,
         ok: true,
         message: `${peer.name} registered with RoachTail.`,
+        token: peerToken,
+        peerId: peer.id,
         peerToken,
         state: sanitizeRoachTailState(next),
       }
@@ -4880,7 +4882,7 @@ function pairRoachTailPeer(payload = {}) {
     throw new NativeApiRequestError('That RoachTail join code does not match this desktop.', 401)
   }
 
-  const peerToken = generateRoachTailSecret('rtpeer')
+  const peerToken = generateRoachTailSecret('rtp')
   const activeKey = current.preAuthKeys.find((key) => key.keyHash === current.joinCodeHash)
   const peer = roachTailPeerFromPayload(
     {
@@ -4907,6 +4909,9 @@ function pairRoachTailPeer(payload = {}) {
     success: true,
     ok: true,
     message: `${peer.name} paired with RoachTail.`,
+    // `token` and `peerId` are the v1.0.5 contract that shipped iOS companions decode.
+    token: peerToken,
+    peerId: peer.id,
     peerToken,
     bridgeUrl: next.advertisedUrl,
     runtimeTunnelUrl: next.runtimeTunnelUrl,
