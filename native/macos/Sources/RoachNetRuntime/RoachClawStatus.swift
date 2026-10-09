@@ -889,7 +889,7 @@ extension NativeRuntime {
     // MARK: Account, sync, services
 
     func accountState() -> JSON {
-        [
+        let base: JSON = [
             "linked": false,
             "provider": "local",
             "portalUrl": "https://roachnet.org/",
@@ -908,10 +908,11 @@ extension NativeRuntime {
             "lastUpdatedAt": nil,
             "notes": ["Native runtime is local-only unless the user arms online account metadata."],
         ]
+        return base.merging(storedCompanionAccount())
     }
 
     func roachSyncState() -> JSON {
-        [
+        let base: JSON = [
             "enabled": false,
             "provider": "local",
             "networkName": "RoachSync",
@@ -928,6 +929,7 @@ extension NativeRuntime {
             "peers": [],
             "lastUpdatedAt": nil,
         ]
+        return base.merging(storedCompanionRoachSync())
     }
 
     var serviceCatalog: [JSON] {
