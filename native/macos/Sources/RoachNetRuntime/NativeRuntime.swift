@@ -24,6 +24,13 @@ public final class NativeRuntime {
         (config.env("ROACHNET_INFERENCE_ENGINE") ?? "native").lowercased() != "ollama"
     }
 
+    /// RoachClaw Org (native multi-agent company runtime). Created on first use.
+    lazy var orgService: OrgService = {
+        let service = OrgService(runtime: self)
+        service.engine.start()
+        return service
+    }()
+
     lazy var nativeModelStore: NativeModelStore = {
         let store = NativeModelStore(
             root: Path.join(config.storageRoot, "models", "native"),
@@ -85,3 +92,11 @@ func safeIntegerOr(_ value: JSON, min minimum: Double = 0, _ fallback: JSON) -> 
 
 func jsonStrings(_ values: [String]) -> JSON { .array(values.map { .string($0) }) }
 
+
+extension NativeRuntime {
+    /// True when no Org company has been created yet, so startup can skip loading the engine.
+    var orgStoreIsEmpty: Bool {
+        let companies = Path.join(storageRoot, "RoachClaw", "org", "companies")
+        return ((try? FileManager.default.contentsOfDirectory(atPath: companies)) ?? []).isEmpty
+    }
+}

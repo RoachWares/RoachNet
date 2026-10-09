@@ -91,6 +91,7 @@ public final class RuntimeServer {
             RuntimeLog.write("companion start failed: \(error)")
         }
         runtime.companionLocalURL = companionLocal
+        if !runtime.orgStoreIsEmpty { _ = runtime.orgService }
         try writeRuntimeInfo(baseUrl: baseUrl, port: server.port, companionUrl: companionLocal, companionAdvertisedUrl: companionAdvertised)
         RuntimeLog.write("native api listening on \(baseUrl)")
         DispatchQueue.global(qos: .utility).async { runtime.ensureOllama() }
@@ -238,7 +239,7 @@ final class CompanionProxy {
     }
 
     static func isProxyPath(_ pathname: String) -> Bool {
-        pathname == "/api/companion" || pathname.hasPrefix("/api/companion/")
+        pathname == "/api/companion" || pathname.hasPrefix("/api/companion/") || pathname == "/api/org" || pathname.hasPrefix("/api/org/")
     }
 
     func sanitizeUserFacingHost(_ raw: String) -> String {
@@ -371,6 +372,9 @@ final class CompanionProxy {
             "content-type": request.header("content-type") ?? "application/json",
             "x-roachtail-auth-kind": authKind,
         ]
+        if pathname.hasPrefix("/api/org"), let orgKey = request.header("x-roachnet-org-key") {
+            headers["x-roachnet-org-key"] = orgKey
+        }
         if let peerId {
             headers["x-roachtail-peer-id"] = peerId
             headers["x-roachtail-peer-name"] = peerName ?? "Linked device"

@@ -65,6 +65,8 @@ extension NativeRuntime {
             ("signatures", "signatures.json", "signatures", roachClawSignaturesState, upsertRoachClawSignature),
         ]
 
+        if pathname == "/api/org" || pathname.hasPrefix("/api/org/") { return try routeOrg(&request, url: url) }
+
         switch (method, pathname) {
         case ("GET", "/api/health"): return ok(["status": "ok"])
         case ("GET", "/api/system/internet-status"): return ok(JSON(DNS.resolves("github.com")))
