@@ -1,61 +1,20 @@
 import Foundation
 
-/// One decoding context: a KV cache plus scratch buffers for a model.
-/// Not thread-safe; use one session per concurrent conversation.
+/// One decoding context: a backend (CPU or Metal) with its KV cache, plus
+/// prefix reuse. Not thread-safe; use one session per concurrent conversation.
 public final class InferenceSession {
     public let model: TransformerModel
     public let contextLength: Int
+    public let backend: TransformerBackend
     /// Tokens whose keys and values are in the cache, in order.
     public private(set) var cachedTokens: [Int32] = []
 
-    private let keyCache: UnsafeMutablePointer<Float>
-    private let valueCache: UnsafeMutablePointer<Float>
-    private let x: UnsafeMutablePointer<Float>
-    private let normed: UnsafeMutablePointer<Float>
-    private let projected: UnsafeMutablePointer<Float>
-    private let query: UnsafeMutablePointer<Float>
-    private let attention: UnsafeMutablePointer<Float>
-    private let hidden: UnsafeMutablePointer<Float>
-    private let hiddenUp: UnsafeMutablePointer<Float>
-    private let scores: UnsafeMutablePointer<Float>
-    private let logitsBuffer: UnsafeMutablePointer<Float>
-    private let kvKeyWidth: Int
-    private let kvValueWidth: Int
-    private let layerKeyStride: Int
-    private let layerValueStride: Int
-
-    public init(model: TransformerModel, contextLength: Int? = nil) {
+    public init(model: TransformerModel, contextLength: Int? = nil, backend preferred: BackendPreference = .automatic) {
         self.model = model
         let hp = model.hyperparameters
         let context = max(16, min(contextLength ?? min(hp.contextLength, 4096), hp.contextLength))
         self.contextLength = context
-        kvKeyWidth = hp.headCountKV * hp.headDimension
-        kvValueWidth = hp.headCountKV * hp.valueDimension
-        layerKeyStride = context * kvKeyWidth
-        layerValueStride = context * kvValueWidth
-        func buffer(_ count: Int) -> UnsafeMutablePointer<Float> {
-            let pointer = UnsafeMutablePointer<Float>.allocate(capacity: max(count, 1))
-            pointer.initialize(repeating: 0, count: max(count, 1))
-            return pointer
-        }
-        keyCache = buffer(hp.blockCount * layerKeyStride)
-        valueCache = buffer(hp.blockCount * layerValueStride)
-        let width = max(hp.embeddingLength, hp.headCount * hp.valueDimension)
-        x = buffer(hp.embeddingLength)
-        normed = buffer(width)
-        projected = buffer(width)
-        query = buffer(hp.headCount * hp.headDimension)
-        attention = buffer(hp.headCount * hp.valueDimension)
-        hidden = buffer(hp.feedForwardLength)
-        hiddenUp = buffer(hp.feedForwardLength)
-        scores = buffer(hp.headCount * context)
-        logitsBuffer = buffer(model.outputProjection.rows)
-    }
-
-    deinit {
-        for pointer in [keyCache, valueCache, x, normed, projected, query, attention, hidden, hiddenUp, scores, logitsBuffer] {
-            pointer.deallocate()
-        }
+        self.backend = BackendSelector.make(model: model, contextLength: context, preference: preferred)
     }
 
     public var vocabularySize: Int { model.outputProjection.rows }
@@ -89,17 +48,102 @@ public final class InferenceSession {
     public func step(_ token: Int32) throws {
         guard cachedTokens.count < contextLength else { throw InferenceError.invalid("The context window is full.") }
         guard token >= 0, Int(token) < model.tokenEmbedding.rows else { throw InferenceError.invalid("Token \(token) is out of range.") }
-        forward(token: Int(token), position: cachedTokens.count)
+        backend.forward(token: Int(token), position: cachedTokens.count)
         cachedTokens.append(token)
     }
 
-    public func logits() -> [Float] {
-        Array(UnsafeBufferPointer(start: logitsBuffer, count: vocabularySize))
+    public func logits() -> [Float] { Array(backend.logits) }
+}
+
+public enum BackendPreference: String {
+    case automatic, cpu, metal
+}
+
+enum BackendSelector {
+    static func make(model: TransformerModel, contextLength: Int, preference: BackendPreference) -> TransformerBackend {
+        let forced = ProcessInfo.processInfo.environment["ROACHNET_INFERENCE_BACKEND"].flatMap(BackendPreference.init(rawValue:))
+        let choice = forced ?? preference
+        #if canImport(Metal)
+        if choice != .cpu, let metal = MetalBackend.makeVerified(model: model, contextLength: contextLength) {
+            return metal
+        }
+        #endif
+        return CPUBackend(model: model, contextLength: contextLength)
+    }
+}
+
+/// A device that runs the transformer forward pass and owns its KV cache.
+public protocol TransformerBackend: AnyObject {
+    var name: String { get }
+    var contextLength: Int { get }
+    /// Runs one token at `position`, writing its keys/values into the cache.
+    func forward(token: Int, position: Int)
+    /// Logits produced by the most recent `forward`.
+    var logits: UnsafeBufferPointer<Float> { get }
+}
+
+/// CPU reference backend: plain Swift with SIMD and multithreaded matvecs.
+public final class CPUBackend: TransformerBackend {
+    public let model: TransformerModel
+    public let contextLength: Int
+    public var name: String { "cpu" }
+
+    private let keyCache: UnsafeMutablePointer<Float>
+    private let valueCache: UnsafeMutablePointer<Float>
+    private let x: UnsafeMutablePointer<Float>
+    private let normed: UnsafeMutablePointer<Float>
+    private let projected: UnsafeMutablePointer<Float>
+    private let query: UnsafeMutablePointer<Float>
+    private let attention: UnsafeMutablePointer<Float>
+    private let hidden: UnsafeMutablePointer<Float>
+    private let hiddenUp: UnsafeMutablePointer<Float>
+    private let scores: UnsafeMutablePointer<Float>
+    private let logitsBuffer: UnsafeMutablePointer<Float>
+    private let kvKeyWidth: Int
+    private let kvValueWidth: Int
+    private let layerKeyStride: Int
+    private let layerValueStride: Int
+
+    public init(model: TransformerModel, contextLength context: Int) {
+        self.model = model
+        let hp = model.hyperparameters
+        self.contextLength = context
+        kvKeyWidth = hp.headCountKV * hp.headDimension
+        kvValueWidth = hp.headCountKV * hp.valueDimension
+        layerKeyStride = context * kvKeyWidth
+        layerValueStride = context * kvValueWidth
+        func buffer(_ count: Int) -> UnsafeMutablePointer<Float> {
+            let pointer = UnsafeMutablePointer<Float>.allocate(capacity: max(count, 1))
+            pointer.initialize(repeating: 0, count: max(count, 1))
+            return pointer
+        }
+        keyCache = buffer(hp.blockCount * layerKeyStride)
+        valueCache = buffer(hp.blockCount * layerValueStride)
+        let width = max(hp.embeddingLength, hp.headCount * hp.valueDimension)
+        x = buffer(hp.embeddingLength)
+        normed = buffer(width)
+        projected = buffer(width)
+        query = buffer(hp.headCount * hp.headDimension)
+        attention = buffer(hp.headCount * hp.valueDimension)
+        hidden = buffer(hp.feedForwardLength)
+        hiddenUp = buffer(hp.feedForwardLength)
+        scores = buffer(hp.headCount * context)
+        logitsBuffer = buffer(model.outputProjection.rows)
+    }
+
+    deinit {
+        for pointer in [keyCache, valueCache, x, normed, projected, query, attention, hidden, hiddenUp, scores, logitsBuffer] {
+            pointer.deallocate()
+        }
+    }
+
+    public var logits: UnsafeBufferPointer<Float> {
+        UnsafeBufferPointer(start: logitsBuffer, count: model.outputProjection.rows)
     }
 
     // MARK: Forward pass
 
-    private func forward(token: Int, position: Int) {
+    public func forward(token: Int, position: Int) {
         let hp = model.hyperparameters
         let dim = hp.embeddingLength
         let headDim = hp.headDimension

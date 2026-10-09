@@ -6,8 +6,20 @@ import RoachInference
 //   roachnet-infer tokenize <model.gguf> <text> [--no-special]
 //   roachnet-infer logits <model.gguf> <text> [--top N]      (prompt logits of the last token)
 //   roachnet-infer generate <model.gguf> <prompt> [--tokens N] [--temp T] [--seed S] [--chat]
+//   roachnet-infer dot-vectors <model.gguf> <out.bin>   (kernel test vectors: one row per tensor type)
 
 let args = Array(CommandLine.arguments.dropFirst())
+func floatToHalfBits(_ value: Float) -> UInt16 {
+    #if arch(arm64)
+    return Float16(value).bitPattern
+    #else
+    let bits = value.bitPattern
+    let sign = UInt16((bits >> 16) & 0x8000)
+    let exponent = Int((bits >> 23) & 0xFF) - 112
+    if exponent <= 0 { return sign }
+    return sign | UInt16(exponent << 10) | UInt16((bits >> 13) & 0x3FF)
+    #endif
+}
 func option(_ name: String) -> String? {
     guard let index = args.firstIndex(of: name), index + 1 < args.count else { return nil }
     return args[index + 1]
@@ -70,6 +82,61 @@ do {
         print("ids: \(result.tokens.map(String.init).joined(separator: " "))")
         print(String(format: "prompt %d tok in %.2fs, generated %d tok at %.1f tok/s (%@)",
                      result.promptTokenCount, result.promptDuration, result.tokens.count, result.tokensPerSecond, result.stopReason.rawValue))
+    case "dot-vectors":
+        // Format per record: u32 type, u32 cols, u32 rowBytes, f32 expected, row bytes, cols × f32 x.
+        guard args.count >= 3 else { fail("missing output path") }
+        let file = try GGUFFile(path: path)
+        var seen = Set<UInt32>()
+        var out = Data()
+        func append<T>(_ value: T) { withUnsafeBytes(of: value) { out.append(contentsOf: $0) } }
+        for name in file.tensorNames {
+            let info = try file.tensor(name)
+            guard info.shape.count == 2, !seen.contains(info.type.rawValue), info.rowLength % 32 == 0 else { continue }
+            seen.insert(info.type.rawValue)
+            let row = file.pointer(to: info) + info.rowBytes * (info.rowCount / 2)
+            let x = (0..<info.rowLength).map { Float(sin(Double($0) * 0.37)) }
+            let expected = x.withUnsafeBufferPointer { Quantization.dot(info.type, row, $0.baseAddress!, count: info.rowLength) }
+            append(info.type.rawValue); append(UInt32(info.rowLength)); append(UInt32(info.rowBytes)); append(expected)
+            out.append(Data(bytes: row, count: info.rowBytes))
+            for value in x { append(value) }
+            print("\(info.type.name) \(name) cols=\(info.rowLength) expected=\(expected)")
+        }
+        if args.contains("--synthetic") {
+            // Every type, from seeded random blocks with sane scale fields.
+            var rng = SeededGenerator(seed: 1234)
+            let scaleOffsets: [GGMLType: [Int]] = [.q4_0: [0], .q4_1: [0, 2], .q5_0: [0], .q5_1: [0, 2], .q8_0: [0],
+                                                   .q2_K: [80, 82], .q3_K: [108], .q4_K: [0, 2], .q5_K: [0, 2], .q6_K: [208]]
+            for type in GGMLType.allCases {
+                let cols = 512
+                let rowBytes = type.rowBytes(cols)
+                var bytes = (0..<rowBytes).map { _ in UInt8.random(in: 0...255, using: &rng) }
+                switch type {
+                case .f32:
+                    for i in 0..<cols { withUnsafeBytes(of: Float.random(in: -1...1, using: &rng)) { for (k, b) in $0.enumerated() { bytes[i * 4 + k] = b } } }
+                case .f16:
+                    for i in 0..<cols { let h = floatToHalfBits(Float.random(in: -1...1, using: &rng)); bytes[i * 2] = UInt8(h & 0xFF); bytes[i * 2 + 1] = UInt8(h >> 8) }
+                case .bf16:
+                    for i in 0..<cols { let b = UInt16(Float.random(in: -1...1, using: &rng).bitPattern >> 16); bytes[i * 2] = UInt8(b & 0xFF); bytes[i * 2 + 1] = UInt8(b >> 8) }
+                case .q8_K:
+                    for blk in 0..<(cols / 256) { withUnsafeBytes(of: Float(0.01)) { for (k, b) in $0.enumerated() { bytes[blk * type.blockBytes + k] = b } } }
+                default:
+                    for blk in 0..<(cols / type.blockSize) {
+                        for offset in scaleOffsets[type] ?? [] {
+                            let h = floatToHalfBits(Float.random(in: 0.001...0.05, using: &rng))
+                            bytes[blk * type.blockBytes + offset] = UInt8(h & 0xFF)
+                            bytes[blk * type.blockBytes + offset + 1] = UInt8(h >> 8)
+                        }
+                    }
+                }
+                let x = (0..<cols).map { Float(cos(Double($0) * 0.21)) }
+                let expected = bytes.withUnsafeBytes { raw in x.withUnsafeBufferPointer { Quantization.dot(type, raw.baseAddress!, $0.baseAddress!, count: cols) } }
+                append(type.rawValue); append(UInt32(cols)); append(UInt32(rowBytes)); append(expected)
+                out.append(contentsOf: bytes)
+                for value in x { append(value) }
+                print("\(type.name) synthetic expected=\(expected)")
+            }
+        }
+        try out.write(to: URL(fileURLWithPath: args[2]))
     default:
         fail("unknown command \(command)")
     }
