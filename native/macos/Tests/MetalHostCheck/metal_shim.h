@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <algorithm>
 #define kernel extern "C"
 #define device
 #define constant const

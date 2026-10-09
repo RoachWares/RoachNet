@@ -227,6 +227,59 @@ inline float dot_q8_K(device const uchar* b, device const float* x) {
     return d * acc;
 }
 
+// K-quant partial dots over one 32-element chunk j (0..7) of a 256-element
+// superblock, so a simdgroup can spread a short row's few superblocks over
+// all 32 lanes instead of leaving most of them idle.
+inline float pdot_q4_K(device const uchar* b, device const float* xb, uint j) {
+    float d = f16_at(b), dmin = f16_at(b + 2);
+    float sc, mn;
+    scale_min_k4(int(j), b + 4, sc, mn);
+    device const uchar* q = b + 16 + (j >> 1) * 32;
+    device const float* xs = xb + j * 32;
+    float a = 0, s = 0;
+    if (j & 1) { for (int l = 0; l < 32; ++l) { a += float(q[l] >> 4) * xs[l]; s += xs[l]; } }
+    else       { for (int l = 0; l < 32; ++l) { a += float(q[l] & 0x0F) * xs[l]; s += xs[l]; } }
+    return d * sc * a - dmin * mn * s;
+}
+inline float pdot_q5_K(device const uchar* b, device const float* xb, uint j) {
+    float d = f16_at(b), dmin = f16_at(b + 2);
+    float sc, mn;
+    scale_min_k4(int(j), b + 4, sc, mn);
+    device const uchar* qh = b + 16;
+    device const uchar* ql = b + 48 + (j >> 1) * 32;
+    device const float* xs = xb + j * 32;
+    uint shift = (j & 1) ? 4 : 0;
+    float a = 0, s = 0;
+    for (int l = 0; l < 32; ++l) {
+        a += float(int((ql[l] >> shift) & 0x0F) + (((qh[l] >> j) & 1) ? 16 : 0)) * xs[l];
+        s += xs[l];
+    }
+    return d * sc * a - dmin * mn * s;
+}
+inline float pdot_q6_K(device const uchar* b, device const float* xb, uint j) {
+    uint n = j >> 2, k = j & 3;
+    device const uchar* ql = b + n * 64 + ((k & 1) ? 32 : 0);
+    device const uchar* qh = b + 128 + n * 32;
+    device const char* sc = (device const char*)(b + 192 + n * 8);
+    float d = f16_at(b + 208);
+    device const float* xs = xb + n * 128 + k * 32;
+    uint lowShift = (k & 2) ? 4 : 0, highShift = 2 * k;
+    float a0 = 0, a1 = 0;
+    for (int l = 0; l < 16; ++l) {
+        a0 += float(int(((ql[l] >> lowShift) & 0x0F) | (((qh[l] >> highShift) & 3) << 4)) - 32) * xs[l];
+        a1 += float(int(((ql[l + 16] >> lowShift) & 0x0F) | (((qh[l + 16] >> highShift) & 3) << 4)) - 32) * xs[l + 16];
+    }
+    return d * (float(sc[2 * k]) * a0 + float(sc[2 * k + 1]) * a1);
+}
+inline float pdot_q8_K(device const uchar* b, device const float* xb, uint j) {
+    float d = *(device const float*)b;
+    device const char* q = (device const char*)(b + 4) + j * 32;
+    device const float* xs = xb + j * 32;
+    float a = 0;
+    for (int l = 0; l < 32; ++l) a += float(q[l]) * xs[l];
+    return d * a;
+}
+
 struct MatvecArgs { uint cols; uint rowBytes; uint rows; };
 
 // y[row] = W[row] · x. Four rows per threadgroup, one simdgroup (32 lanes)
@@ -245,6 +298,24 @@ kernel void NAME(device const uchar* W [[buffer(0)]], device const float* x [[bu
     acc = simd_sum(acc); \
     if (lane == 0) y[row] = acc; \
 }
+// K-quant variant: lanes stride over (superblock, 32-element chunk) pairs.
+#define MATVEC_K(NAME, BYTES, PDOT) \
+kernel void NAME(device const uchar* W [[buffer(0)]], device const float* x [[buffer(1)]], \
+                 device float* y [[buffer(2)]], constant MatvecArgs& a [[buffer(3)]], \
+                 uint tg [[threadgroup_position_in_grid]], uint sg [[simdgroup_index_in_threadgroup]], \
+                 uint lane [[thread_index_in_simdgroup]]) { \
+    uint row = tg * 4 + sg; \
+    if (row >= a.rows) return; \
+    device const uchar* r = W + ulong(row) * a.rowBytes; \
+    uint items = (a.cols / 256) * 8; \
+    float acc = 0; \
+    for (uint i = lane; i < items; i += 32) { \
+        uint blk = i >> 3; \
+        acc += PDOT(r + ulong(blk) * BYTES, x + blk * 256, i & 7); \
+    } \
+    acc = simd_sum(acc); \
+    if (lane == 0) y[row] = acc; \
+}
 MATVEC(matvec_f32, 32, 128, dot_f32_32)
 MATVEC(matvec_f16, 32, 64, dot_f16_32)
 MATVEC(matvec_bf16, 32, 64, dot_bf16_32)
@@ -255,10 +326,10 @@ MATVEC(matvec_q5_1, 32, 24, dot_q5_1)
 MATVEC(matvec_q8_0, 32, 34, dot_q8_0)
 MATVEC(matvec_q2_K, 256, 84, dot_q2_K)
 MATVEC(matvec_q3_K, 256, 110, dot_q3_K)
-MATVEC(matvec_q4_K, 256, 144, dot_q4_K)
-MATVEC(matvec_q5_K, 256, 176, dot_q5_K)
-MATVEC(matvec_q6_K, 256, 210, dot_q6_K)
-MATVEC(matvec_q8_K, 256, 292, dot_q8_K)
+MATVEC_K(matvec_q4_K, 144, pdot_q4_K)
+MATVEC_K(matvec_q5_K, 176, pdot_q5_K)
+MATVEC_K(matvec_q6_K, 210, pdot_q6_K)
+MATVEC_K(matvec_q8_K, 292, pdot_q8_K)
 
 // ---- elementwise and reductions ----
 
