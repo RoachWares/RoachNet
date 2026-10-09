@@ -586,15 +586,25 @@ extension NativeRuntime {
     func roachClawCloudProviderSecretPath(_ providerId: String) -> String { roachClawVaultPath("provider-secrets", "\(providerId).key") }
     func legacyRoachClawCloudProviderSecretPath(_ providerId: String) -> String { legacyRoachClawVaultPath("provider-secrets", "\(providerId).key") }
 
-    /// Rejects symlinked ancestors or non-directory secret folders.
+    /// The storage or runtime-state root that contains `stateDirectory`.
+    func secretTrustRoot(for stateDirectory: String) -> String? {
+        [config.storageRoot, config.runtimeStateRoot]
+            .filter { stateDirectory.hasPrefix($0 + "/") }
+            .max { $0.count < $1.count }
+    }
+
+    /// Rejects symlinked folders between the storage (or runtime-state) root
+    /// and the secret, or non-directory secret folders. Symlinks at or above that root
+    /// (macOS `/var` -> `/private/var`, a storage folder moved to another
+    /// volume) are the user's own layout and are allowed.
     func isCloudProviderSecretDirectorySafe(_ secretDirectory: String, _ stateDirectory: String) -> Bool {
+        guard let storageRoot = secretTrustRoot(for: stateDirectory) else { return false }
         var current = stateDirectory
         var ancestors: [String] = []
-        while current != "/" {
+        while current != storageRoot && current.count > storageRoot.count {
             ancestors.append(current)
             current = Path.dirname(current)
         }
-        ancestors.append("/")
         for candidate in ancestors {
             guard let info = Files.lstatInfo(candidate) else { return false }
             if (info.st_mode & S_IFMT) == S_IFLNK { return false }
@@ -627,7 +637,7 @@ extension NativeRuntime {
         guard bytesRead == Int(opened.st_size), fstat(descriptor, &completed) == 0,
               completed.st_size == opened.st_size, completed.st_dev == opened.st_dev, completed.st_ino == opened.st_ino,
               isCloudProviderSecretDirectorySafe(Path.dirname(secretPath), stateDirectory),
-              let resolved = Files.realpath(secretPath), resolved == secretPath,
+              let resolved = Files.realpath(secretPath), SecretPathCheck.matches(resolved, secretTrustRoot(for: stateDirectory).flatMap { SecretPathCheck.expectedRealpath(secretPath, under: $0) }),
               let current = Files.statInfo(resolved), current.st_dev == completed.st_dev, current.st_ino == completed.st_ino
         else { return nil }
         let value = String(decoding: buffer, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1649,5 +1659,26 @@ extension NativeRuntime {
                 "updatedAt": item["updatedAt"],
             ]
         }
+    }
+}
+
+/// The real path a secret must resolve to: the storage root may sit behind a
+/// symlink, but nothing below it may.
+enum SecretPathCheck {
+    static func expectedRealpath(_ path: String, under root: String) -> String? {
+        guard path.hasPrefix(root), let resolvedRoot = Files.realpath(root) else { return nil }
+        return resolvedRoot + path.dropFirst(root.count)
+    }
+
+    /// macOS volumes are usually case-insensitive, so `vault/roachclaw` and
+    /// `Vault/RoachClaw` can be the same folder and realpath reports the
+    /// on-disk case. File identity is checked separately (device + inode).
+    static func matches(_ resolved: String, _ expected: String?) -> Bool {
+        guard let expected else { return false }
+        #if canImport(Darwin)
+        return resolved.compare(expected, options: [.caseInsensitive]) == .orderedSame
+        #else
+        return resolved == expected
+        #endif
     }
 }
