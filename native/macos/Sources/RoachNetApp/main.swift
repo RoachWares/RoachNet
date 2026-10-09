@@ -6352,6 +6352,9 @@ private struct LaunchGuideSheet: View {
     }
 }
 
+// SwiftPM compiles this target with -parse-as-library, so the entry point
+// is declared with @main rather than a top-level call.
+@main
 struct RoachNetMacApp: App {
     @NSApplicationDelegateAdaptor(RoachNetMacAppDelegate.self) private var appDelegate
     @StateObject private var model: WorkspaceModel
@@ -14018,5 +14021,3 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 }
-
-RoachNetMacApp.main()
