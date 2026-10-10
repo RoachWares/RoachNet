@@ -182,7 +182,7 @@ jobs:
             --dmg-sha256 "$EXPECTED_DMG_SHA256" \
             --online verify
       - name: Upload immutable read-only verification packet
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: roachnet-promotion-verification-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/verification-packet
@@ -335,7 +335,7 @@ jobs:
           ATTESTATION_ID="$ATTESTATION_ID" ATTESTATION_URL="$ATTESTATION_URL" BUNDLE_SHA256="$BUNDLE_SHA256" node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1],JSON.stringify({schema:"org.roachnet.go-live-attestation-record.v1",attestationId:process.env.ATTESTATION_ID,attestationUrl:process.env.ATTESTATION_URL,bundleSha256:process.env.BUNDLE_SHA256},null,2)+"\n")' "$RUNNER_TEMP/go-live-attestation-record.json"
           cp "$ATTESTATION_BUNDLE" "$RUNNER_TEMP/go-live-attestation-bundle.json"
       - name: Upload portable GO-LIVE predicate, checksums, and Sigstore bundle
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: roachnet-go-live-attestation-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
           path: |
@@ -404,7 +404,7 @@ jobs:
           ATTESTATION_ID="$ATTESTATION_ID" ATTESTATION_URL="$ATTESTATION_URL" RELEASE_ID="$RELEASE_ID" CANDIDATE_SHA="$CANDIDATE_SHA" DMG_SHA256="$EXPECTED_DMG_SHA256" node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1],JSON.stringify({schema:"org.roachnet.promotion-result.v1",decision:"GO",releaseId:Number(process.env.RELEASE_ID),candidateSha:process.env.CANDIDATE_SHA,dmgSha256:process.env.DMG_SHA256,attestationId:process.env.ATTESTATION_ID,attestationUrl:process.env.ATTESTATION_URL},null,2)+"\n")' "$RESULT"
       - name: Upload final GO or NO-GO promotion result
         if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: roachnet-promotion-result-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-result.json
