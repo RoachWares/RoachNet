@@ -11,6 +11,12 @@ extension NativeRuntime {
         }
         let raw = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.isEmpty { return .object(JSONObject()) }
+        // A browser can post `text/plain` or form bodies to loopback without a
+        // preflight; a JSON content type cannot be sent cross-origin without
+        // one, and this API answers no preflight. Requiring it closes CSRF.
+        guard Self.declaresJSONBody(request) else {
+            throw requestError("Request body must be sent as application/json.", 415)
+        }
         do {
             return try JSON.parse(raw)
         } catch {
@@ -18,9 +24,34 @@ extension NativeRuntime {
         }
     }
 
+    static func declaresJSONBody(_ request: HTTPRequest) -> Bool {
+        let type = (request.header("content-type") ?? "").split(separator: ";").first?
+            .trimmingCharacters(in: .whitespaces).lowercased() ?? ""
+        return type == "application/json" || type.hasSuffix("+json")
+    }
+
+    /// Only hostnames a browser could reach by rebinding its own DNS name are
+    /// rejected: loopback literals and the names the companion proxy maps to it.
+    static func isTrustedLoopbackHost(_ raw: String?) -> Bool {
+        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return true }
+        var host = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        if host.hasPrefix("[") {
+            host = String(host.drop(while: { $0 == "[" }).prefix { $0 != "]" })
+        } else if let colon = host.lastIndex(of: ":"), host.filter({ $0 == ":" }).count == 1 {
+            host = String(host[..<colon])
+        }
+        return host == "127.0.0.1" || host == "localhost" || host == "::1" || host.hasPrefix("127.")
+    }
+
     /// Entry point for the loopback API (and the in-process companion proxy).
     public func handle(_ request: inout HTTPRequest) -> HTTPResponse {
         do {
+            // The companion proxy rewrites requests in-process with no Host
+            // header; direct loopback clients must present a loopback Host so
+            // a DNS-rebound page cannot read responses from this port.
+            guard Self.isTrustedLoopbackHost(request.header("host")) else {
+                return .json(403, ["error": "Loopback API requests must use a loopback Host."])
+            }
             return try route(&request)
         } catch let error as RuntimeError {
             if error.statusCode >= 500 { log("request failed: \(error.message)") }
@@ -202,7 +233,19 @@ extension NativeRuntime {
             let payload = try body()
             return ok(try mutateRoachTailState(payload["action"], payload, headers: request.headers))
         case ("GET", "/api/companion/roachsync"): return ok(roachSyncState())
-        case ("POST", "/api/companion/install"): return ok(try handleCompanionInstall(try body()))
+        case ("POST", "/api/companion/install"):
+            let payload = try body()
+            // A paired phone may queue catalog installs, but it must not turn the
+            // Mac into a fetcher for private-network or self-chosen hosts.
+            if request.header("x-roachtail-auth-kind")?.trimmingCharacters(in: .whitespaces).lowercased() == "peer" {
+                for key in ["url", "mirrorUrl", "sourceUrl"] where payload[key].truthy {
+                    let verdict = checkRoachClawOutboundUrl(payload[key], blockPrivate: true)
+                    if !verdict["ok"].truthy {
+                        throw requestError("Paired devices can only queue downloads from public hosts (\(verdict["reason"].jsString)).", 403)
+                    }
+                }
+            }
+            return ok(try handleCompanionInstall(payload))
         case ("GET", "/api/companion/chat/sessions"): return ok(companionChatSessions())
         case ("POST", "/api/companion/chat/sessions"): return ok(createCompanionChatSession(try body()), 201)
         case ("POST", "/api/companion/chat/send"): return ok(try sendCompanionChatMessage(try body()))

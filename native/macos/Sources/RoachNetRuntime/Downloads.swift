@@ -124,7 +124,7 @@ extension NativeRuntime {
         let response = try HTTPClient.request(descriptorUrl, headers: [
             "accept": "application/json",
             "user-agent": "RoachNet/\(version) descriptor-resolver",
-        ], timeoutMs: 30_000)
+        ], timeoutMs: 30_000, maxResponseBytes: 2 * 1024 * 1024)
         if !response.ok { throw RuntimeError("HTTP \(response.status) while resolving \(descriptorUrl)") }
         let descriptor = try JSON.parse(response.body)
         let resolved = pickDescriptorSource(descriptor)
@@ -227,7 +227,10 @@ extension NativeRuntime {
             try Files.rename(job.partialFilepath, job.filepath)
             if let expected = job.expectedSha256 {
                 let actual = try SHA256Digest.hexOfFile(atPath: job.filepath)
-                if actual != expected { throw RuntimeError("Checksum mismatch for \(job.url). Expected \(expected), found \(actual).") }
+                if actual != expected {
+                    Files.remove(job.filepath)
+                    throw RuntimeError("Checksum mismatch for \(job.url). Expected \(expected), found \(actual).")
+                }
                 withState { job.sha256 = actual }
             }
             if let afterDownload = job.afterDownload {
@@ -346,11 +349,22 @@ extension NativeRuntime {
             return ["success": true, "message": "RoachNet is current.", "note": release["pageUrl"]]
         }
         let assetUrl = release["assetUrl"].jsString
-        guard release["assetUrl"].truthy, JS.matches("^https?://", assetUrl, caseInsensitive: true) else {
+        guard release["assetUrl"].truthy, Self.isTrustedReleaseUrl(assetUrl) else {
             withState { systemUpdateStatus = NativeRuntime.updateStatus("error", 0, "No downloadable installer asset was found.") }
             return ["success": false, "error": "No downloadable installer asset was found.", "note": release["pageUrl"]]
         }
-        guard let job = queueDownload(assetUrl, Path.join(storageRoot, "updates"), "dmg") else {
+        // Never queue an installer the runtime cannot verify. The release's
+        // `.sha256` sidecar is fetched first and the download job refuses to
+        // finish (and nothing is opened) unless the bytes match it.
+        let expectedSha256: String
+        do {
+            expectedSha256 = try fetchReleaseChecksum(release)
+        } catch {
+            let message = "RoachNet \(release["latestVersion"].jsString) has no verifiable checksum; download it from the release page instead. (\(error))"
+            withState { systemUpdateStatus = NativeRuntime.updateStatus("error", 0, message) }
+            return ["success": false, "error": JSON(message), "note": release["pageUrl"]]
+        }
+        guard let job = queueDownload(assetUrl, Path.join(storageRoot, "updates"), "dmg", expectedSha256: expectedSha256) else {
             withState { systemUpdateStatus = NativeRuntime.updateStatus("error", 0, "Update download could not be queued.") }
             return ["success": false, "error": "Update download could not be queued."]
         }
@@ -358,6 +372,33 @@ extension NativeRuntime {
         withState { systemUpdateStatus = NativeRuntime.updateStatus("downloading", 1, "Downloading \(label).") }
         mirrorDownloadJobToUpdateStatus(job, label: label)
         return ["success": true, "message": JSON("RoachNet \(release["latestVersion"].jsString) installer download queued."), "note": JSON(job.filepath)]
+    }
+
+    /// Release assets travel over TLS; plain HTTP is accepted only from the
+    /// loopback stand-in the contract tests point `ROACHNET_GITHUB_RELEASES_API_URL` at.
+    static func isTrustedReleaseUrl(_ raw: String) -> Bool {
+        guard let parsed = WebURL(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        if parsed.scheme == "https" { return true }
+        return parsed.scheme == "http" && CompanionProxy.isLoopback(parsed.bareHostname)
+    }
+
+    /// Reads the `<asset>.sha256` sidecar attached to a GitHub release and
+    /// returns the 64-hex digest it names for the installer.
+    func fetchReleaseChecksum(_ release: JSON) throws -> String {
+        let checksumUrl = release["checksumUrl"].jsString
+        guard release["checksumUrl"].truthy, Self.isTrustedReleaseUrl(checksumUrl) else {
+            throw RuntimeError("The release has no checksum sidecar.")
+        }
+        let response = try HTTPClient.request(checksumUrl, headers: ["accept": "text/plain"], timeoutMs: 12_000, maxResponseBytes: 4096)
+        guard response.ok else { throw RuntimeError("Checksum sidecar returned HTTP \(response.status).") }
+        let assetName = release["assetName"].jsString.lowercased()
+        for line in response.text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
+            let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).map { String($0) }
+            guard let digest = fields.first?.lowercased(), JS.matches("^[0-9a-f]{64}$", digest) else { continue }
+            let named = fields.dropFirst().first?.trimmingCharacters(in: CharacterSet(charactersIn: "*")).lowercased()
+            if named == nil || named == assetName || named?.hasSuffix("/" + assetName) == true { return digest }
+        }
+        throw RuntimeError("Checksum sidecar does not name \(release["assetName"].jsString).")
     }
 
     func mirrorDownloadJobToUpdateStatus(_ job: DownloadJob, label: String) {

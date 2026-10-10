@@ -28,8 +28,18 @@ jobs:
       - name: check-auth
         id: check-auth
         env:
-          IS_AUTHORIZED: ${{ contains(secrets.DEPLOYMENT_AUTHORIZED_USERS, github.triggering_actor) }}
-        run: echo "is_authorized=${IS_AUTHORIZED}" >> "$GITHUB_OUTPUT"
+          AUTHORIZED_USERS: ${{ secrets.DEPLOYMENT_AUTHORIZED_USERS }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        # Exact-match the comma-separated allowlist; a substring test would let
+        # "bob" publish whenever "bobby" is listed.
+        run: |
+          set -euo pipefail
+          is_authorized=false
+          IFS=',' read -r -a allowed <<<"${AUTHORIZED_USERS}"
+          for user in "${allowed[@]}"; do
+            if [[ "$(printf '%s' "$user" | tr -d '[:space:]')" == "${TRIGGERING_ACTOR}" ]]; then is_authorized=true; fi
+          done
+          echo "is_authorized=${is_authorized}" >> "$GITHUB_OUTPUT"
   build:
     name: Build Docker image
     needs: check_authorization
@@ -40,17 +50,17 @@ jobs:
       packages: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # v2.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Blacksmith Docker builder
-        uses: useblacksmith/setup-docker-builder@v1
+        uses: useblacksmith/setup-docker-builder@e4c1c000c95f9cc255f72940e9c56bcbd1239436 # v1
       - name: Build and push
-        uses: useblacksmith/build-push-action@v2
+        uses: useblacksmith/build-push-action@9b0579bbec7a6cad2f171596c57e7ac1e7658850 # v2.3.0
         with:
           push: true
           tags: |

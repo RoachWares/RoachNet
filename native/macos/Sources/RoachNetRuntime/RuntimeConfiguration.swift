@@ -233,9 +233,12 @@ public enum Files {
     }
 
     /// `writeFileSync(path, JSON.stringify(value, null, 2))`
-    public static func writePrettyJSON(_ value: JSON, to path: String) throws {
-        try write(value.prettySerialized(), to: path)
+    public static func writePrettyJSON(_ value: JSON, to path: String, mode: Int? = nil) throws {
+        try write(value.prettySerialized(), to: path, mode: mode)
     }
+
+    /// Owner-only mode for files that hold tokens, hashes or join codes.
+    public static let privateFileMode = 0o600
 
     /// `rmSync(path, { force: true, recursive })`
     public static func remove(_ path: String) {

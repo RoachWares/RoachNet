@@ -39,7 +39,72 @@
       "bytes": 167473220,
       "sha256": "e888b7637291ceb80b622c00ea067f62c86d9c50d419b3eb903032e4f1f8a4f6"
     },
-    "reviewNotes": "2026-10-09: 0.40.2 (published 2026-10-08) SHA-256 and size match the GitHub release digest; archive file list is identical to 0.40.1 (which matched 0.33.1). Patch release: model-upgrade backups, ollama list de-duplication, launch context length. Mac Gate C must pull and chat with a model before tagging."
+    "reviewNotes": "2026-10-09: 0.40.2 (published 2026-10-08) SHA-256 and size match the GitHub release digest; archive file list is identical to 0.40.1 (which matched 0.33.1). Patch release: model-upgrade backups, ollama list de-duplication, launch context length. Mac Gate C must pull and chat with a model before tagging. 2026-10-10: OSV (pkg:golang/github.com/ollama/ollama@v0.40.2) lists nine open Go advisories with no fixed version; each is accepted below with its loopback-only reasoning for 1.0.6.",
+    "acceptedAdvisories": [
+      {
+        "id": "GO-2025-3557",
+        "aliases": [
+          "CVE-2025-0315"
+        ],
+        "reason": "Resource exhaustion by a crafted GGUF import; Ollama is loopback-only in RoachNet and only loads models the local user chose. No upstream fix version is published."
+      },
+      {
+        "id": "GO-2025-3558",
+        "aliases": [
+          "CVE-2024-12055"
+        ],
+        "reason": "Out-of-bounds read via a crafted model file; same loopback-only, user-chosen-model exposure."
+      },
+      {
+        "id": "GO-2025-3559",
+        "aliases": [
+          "CVE-2025-0317"
+        ],
+        "reason": "Divide-by-zero on a crafted model; local denial of service only."
+      },
+      {
+        "id": "GO-2025-3582",
+        "aliases": [
+          "CVE-2025-0312"
+        ],
+        "reason": "Null dereference on a crafted request; local denial of service only."
+      },
+      {
+        "id": "GO-2025-3689",
+        "aliases": [
+          "CVE-2024-8063"
+        ],
+        "reason": "Divide-by-zero on a crafted GGUF; local denial of service only."
+      },
+      {
+        "id": "GO-2025-3695",
+        "aliases": [
+          "CVE-2025-1975"
+        ],
+        "reason": "Server denial of service via crafted requests; reachable only from the same Mac."
+      },
+      {
+        "id": "GO-2025-3824",
+        "aliases": [
+          "CVE-2025-51471"
+        ],
+        "reason": "Cross-domain token exposure applies to registry pulls with user-configured hosts; RoachNet pulls only from the default registry."
+      },
+      {
+        "id": "GO-2025-4251",
+        "aliases": [
+          "CVE-2025-63389"
+        ],
+        "reason": "Missing authentication on model management is Ollama's documented local trust model; the server is bound to 127.0.0.1 and reachable only by local processes, like every other local port."
+      },
+      {
+        "id": "GO-2026-5750",
+        "aliases": [
+          "CVE-2026-7020"
+        ],
+        "reason": "Path traversal through crafted model manifests; mitigated by loopback-only exposure and user-chosen models. Revisit if Ollama publishes a fixed module version; 1.1 retires the bundled Ollama (ROA-30)."
+      }
+    ]
   },
   "openclaw": {
     "mode": "deferred-not-bundled",

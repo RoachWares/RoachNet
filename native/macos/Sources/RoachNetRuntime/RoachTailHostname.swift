@@ -15,7 +15,16 @@ public enum RoachTailHostname {
 
     public static func hostname(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
         let explicit = environment["ROACHNET_LOCAL_HOSTNAME"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return explicit.isEmpty ? defaultHostname : explicit
+        // Only a plain hostname may reach the privileged hosts-file rewrite;
+        // anything else (spaces, newlines, comments) falls back to the default.
+        return isValidHostname(explicit) ? explicit : defaultHostname
+    }
+
+    public static func isValidHostname(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 253, !value.hasPrefix("-"), !value.hasPrefix(".") else { return false }
+        return value.unicodeScalars.allSatisfy { scalar in
+            scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || scalar == "-" || scalar == ".")
+        }
     }
 
     static func normalize(_ host: String) -> String {

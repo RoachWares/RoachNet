@@ -214,7 +214,7 @@ extension NativeRuntime {
         next["transportMode"] = JSON(roachTailTransportModeFor(state))
         next["status"] = JSON(roachTailStatusFor(state))
         next["lastUpdatedAt"] = JSON(roachTailNow())
-        try? Files.writePrettyJSON(next, to: config.roachTailStatePath)
+        try? Files.writePrettyJSON(next, to: config.roachTailStatePath, mode: Files.privateFileMode)
         return next
     }
 
@@ -496,17 +496,42 @@ extension NativeRuntime {
                 throw requestError("That RoachTail join code expired. Refresh the code on the desktop and try again.", 401)
             }
             let joinCode = (payload["joinCode"] || "").jsString.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-            if joinCode.isEmpty || roachTailHash(JSON(joinCode)) != current["joinCodeHash"].jsString {
+            if joinCode.isEmpty || !CompanionProxy.tokensMatch(roachTailHash(JSON(joinCode)), current["joinCodeHash"].jsString) {
+                // Five wrong guesses retire the code; the desktop mints a fresh
+                // one on its next read, so the window cannot be brute-forced.
+                var next = current
+                let failures = Int(next["joinCodeFailedAttempts"].jsString) ?? 0
+                next["joinCodeFailedAttempts"] = JSON(failures + 1)
+                if failures + 1 >= 5 {
+                    next["joinCode"] = nil
+                    next["joinCodeHash"] = nil
+                    next["joinCodeExpiresAt"] = nil
+                    next["joinCodeFailedAttempts"] = nil
+                }
+                writeRoachTailStateRaw(next)
                 throw requestError("That RoachTail join code does not match this desktop.", 401)
+            }
+            let activeKey = current["preAuthKeys"].array.first { $0["keyHash"] == current["joinCodeHash"] }
+            if let activeKey, activeKey["used"].truthy {
+                throw requestError("That RoachTail join code was already used. Refresh the code on the desktop and try again.", 401)
             }
             // `rtp_` matches v1.0.5 and the iOS companion, which uses the prefix to recognise peer tokens.
             let peerToken = generateRoachTailSecret("rtp")
-            let activeKey = current["preAuthKeys"].array.first { $0["keyHash"] == current["joinCodeHash"] }
             var peerPayload = payload
             peerPayload["preAuthKeyId"] = (activeKey ?? .undefined)["id"] || nil
+            // A pairing device never chooses its own peer id; a reused id would
+            // silently replace another peer's token hash.
+            peerPayload["peerId"] = nil
+            peerPayload["id"] = nil
             let peer = roachTailPeerFromPayload(peerPayload, tokenHash: roachTailHash(JSON(peerToken)))
             var next = current
             next["enabled"] = true
+            next["joinCodeFailedAttempts"] = nil
+            // One pairing per code: retire it now so a second device needs the
+            // fresh code the desktop shows next.
+            next["joinCode"] = nil
+            next["joinCodeHash"] = nil
+            next["joinCodeExpiresAt"] = nil
             next["peers"] = .array(current["peers"].array.filter { $0["id"] != peer["id"] } + [peer])
             next["preAuthKeys"] = .array(current["preAuthKeys"].array.map { key in
                 guard key["keyHash"] == current["joinCodeHash"] else { return key }

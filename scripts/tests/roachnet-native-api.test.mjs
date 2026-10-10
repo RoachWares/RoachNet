@@ -260,6 +260,10 @@ function startReleaseServer(port) {
               name: 'RoachNet-Setup-macOS.dmg',
               browser_download_url: `http://127.0.0.1:${port}/RoachNet-Setup-macOS.dmg`,
             },
+            {
+              name: 'RoachNet-Setup-macOS.dmg.sha256',
+              browser_download_url: `http://127.0.0.1:${port}/RoachNet-Setup-macOS.dmg.sha256`,
+            },
           ],
         },
       ])
@@ -267,6 +271,16 @@ function startReleaseServer(port) {
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(body),
       })
+      response.end(body)
+      return
+    }
+
+    // Real releases publish the installer with its checksum sidecar; the
+    // update lane refuses installers it cannot verify.
+    if (request.url === '/RoachNet-Setup-macOS.dmg.sha256') {
+      const digest = createHash('sha256').update(Buffer.from('roachnet test installer payload')).digest('hex')
+      const body = `${digest}  RoachNet-Setup-macOS.dmg\n`
+      response.writeHead(200, { 'content-type': 'text/plain', 'content-length': Buffer.byteLength(body) })
       response.end(body)
       return
     }
@@ -291,9 +305,28 @@ function startReleaseServer(port) {
   })
 }
 
-function startBrokenReleaseServer(port) {
+// A stand-in for the GitHub Releases API. `mode` picks the installer body:
+// 'broken' aborts mid-transfer, 'tampered' serves bytes that do not match the
+// published sidecar, 'good' serves matching bytes. `sidecar: false` publishes
+// the installer without its `.sha256` asset.
+const fakeInstallerBytes = Buffer.from('roachnet installer payload for the update lane test')
+const fakeInstallerSha256 = createHash('sha256').update(fakeInstallerBytes).digest('hex')
+
+function startBrokenReleaseServer(port, { mode = 'broken', sidecar = true } = {}) {
   const server = createServer((request, response) => {
     if (request.url === '/releases') {
+      const assets = [
+        {
+          name: 'RoachNet-Setup-macOS.dmg',
+          browser_download_url: `http://127.0.0.1:${port}/broken.dmg`,
+        },
+      ]
+      if (sidecar) {
+        assets.push({
+          name: 'RoachNet-Setup-macOS.dmg.sha256',
+          browser_download_url: `http://127.0.0.1:${port}/broken.dmg.sha256`,
+        })
+      }
       const body = JSON.stringify([
         {
           draft: false,
@@ -301,12 +334,7 @@ function startBrokenReleaseServer(port) {
           tag_name: 'v9.9.9',
           name: 'RoachNet 9.9.9',
           html_url: `http://127.0.0.1:${port}/release`,
-          assets: [
-            {
-              name: 'RoachNet-Setup-macOS.dmg',
-              browser_download_url: `http://127.0.0.1:${port}/broken.dmg`,
-            },
-          ],
+          assets,
         },
       ])
       response.writeHead(200, {
@@ -317,13 +345,26 @@ function startBrokenReleaseServer(port) {
       return
     }
 
+    if (request.url === '/broken.dmg.sha256') {
+      const body = `${fakeInstallerSha256}  RoachNet-Setup-macOS.dmg\n`
+      response.writeHead(200, { 'content-type': 'text/plain', 'content-length': Buffer.byteLength(body) })
+      response.end(body)
+      return
+    }
+
     if (request.url === '/broken.dmg') {
-      response.writeHead(200, {
-        'content-type': 'application/octet-stream',
-        'content-length': '4096',
-      })
-      response.write(Buffer.from('partial roachnet installer payload'))
-      response.destroy()
+      if (mode === 'broken') {
+        response.writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'content-length': '4096',
+        })
+        response.write(Buffer.from('partial roachnet installer payload'))
+        response.destroy()
+        return
+      }
+      const payload = mode === 'tampered' ? Buffer.from('a different installer than the sidecar names') : fakeInstallerBytes
+      response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': payload.length })
+      response.end(payload)
       return
     }
 
@@ -1576,6 +1617,201 @@ test('native API removes partial update downloads after transfer failure', async
     await rm(tempRoot, { recursive: true, force: true })
     await new Promise((resolve) => releaseServer.close(resolve))
   }
+})
+
+async function runUpdateLane(releaseOptions, assertion) {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-update-verify-test-'))
+  const storagePath = path.join(tempRoot, 'storage')
+  const runtimeStateRoot = path.join(tempRoot, 'state')
+  const port = await resolveAvailablePort()
+  const releasesPort = await resolveAvailablePort()
+  const releaseServer = await startBrokenReleaseServer(releasesPort, releaseOptions)
+  const env = {
+    ...process.env,
+    ROACHNET_STORAGE_PATH: storagePath,
+    ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
+    ROACHNET_GITHUB_RELEASES_API_URL: `http://127.0.0.1:${releasesPort}/releases`,
+    ROACHNET_RELEASES_URL: `http://127.0.0.1:${releasesPort}/release`,
+    ROACHNET_OPEN_UPDATES: '0',
+    HOST: '127.0.0.1',
+    PORT: String(port),
+  }
+  const child = spawn(...nativeApiCommand(), { cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/health`, child)
+    const update = await requestHttp(`http://127.0.0.1:${port}/api/system/update`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: '{}',
+      timeoutMs: 10_000,
+    })
+    const updatePayload = JSON.parse(await response_text(update))
+    let updateStatus = null
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      updateStatus = await requestJson(`http://127.0.0.1:${port}/api/system/update/status`)
+      if (['error', 'ready', 'idle'].includes(updateStatus.stage)) break
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    await assertion({ updatePayload, updateStatus, storagePath })
+  } finally {
+    await stopNativeApi(child, env)
+    await rm(tempRoot, { recursive: true, force: true })
+    await new Promise((resolve) => releaseServer.close(resolve))
+  }
+}
+
+async function response_text(response) {
+  return await response.text()
+}
+
+test('native API refuses to queue an installer whose release has no checksum sidecar', async () => {
+  await runUpdateLane({ mode: 'good', sidecar: false }, async ({ updatePayload, updateStatus, storagePath }) => {
+    assert.equal(updatePayload.success, false)
+    assert.match(updatePayload.error, /no verifiable checksum/)
+    assert.equal(updateStatus.stage, 'error')
+    assert.equal(existsSync(path.join(storagePath, 'updates', 'broken.dmg')), false)
+  })
+})
+
+test('native API discards an installer whose bytes do not match the published checksum', async () => {
+  await runUpdateLane({ mode: 'tampered' }, async ({ updatePayload, updateStatus, storagePath }) => {
+    assert.equal(updatePayload.success, true)
+    assert.equal(updateStatus.stage, 'error')
+    assert.match(updateStatus.message, /Checksum mismatch/)
+    assert.equal(existsSync(path.join(storagePath, 'updates', 'broken.dmg')), false)
+  })
+})
+
+test('native API keeps an installer whose bytes match the published checksum', async () => {
+  await runUpdateLane({ mode: 'good' }, async ({ updatePayload, updateStatus, storagePath }) => {
+    assert.equal(updatePayload.success, true)
+    assert.equal(updateStatus.stage, 'ready')
+    const installer = path.join(storagePath, 'updates', 'broken.dmg')
+    assert.equal(existsSync(installer), true)
+    assert.equal(createHash('sha256').update(readFileSync(installer)).digest('hex'), fakeInstallerSha256)
+  })
+})
+
+async function withNativeApi(extraEnv, body) {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-hardening-test-'))
+  const storagePath = path.join(tempRoot, 'storage')
+  const runtimeStateRoot = path.join(tempRoot, 'state')
+  const port = await resolveAvailablePort()
+  const env = {
+    ...process.env,
+    ROACHNET_STORAGE_PATH: storagePath,
+    ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
+    HOST: '127.0.0.1',
+    PORT: String(port),
+    ...extraEnv,
+  }
+  const child = spawn(...nativeApiCommand(), { cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/health`, child)
+    await body({ port, storagePath, child })
+  } finally {
+    await stopNativeApi(child, env)
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+}
+
+// Sends raw bytes to the listener and returns the status line, so malformed
+// framing can be exercised without a client library repairing it first.
+function rawRequest(port, text) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1')
+    let received = ''
+    socket.setTimeout(5_000, () => { socket.destroy(); reject(new Error('raw request timed out')) })
+    socket.on('connect', () => socket.write(text))
+    socket.on('data', (chunk) => { received += chunk.toString('utf8') })
+    socket.on('error', reject)
+    socket.on('close', () => resolve(received))
+  })
+}
+
+test('native API survives malformed body framing and stays up', async () => {
+  await withNativeApi({}, async ({ port }) => {
+    const negative = await rawRequest(port, 'POST /api/benchmark/run HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: -1\r\n\r\n')
+    assert.match(negative, /^HTTP\/1\.1 400/)
+    const overflow = await rawRequest(
+      port,
+      'POST /api/benchmark/run HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n7fffffffffffffff\r\n'
+    )
+    assert.match(overflow, /^HTTP\/1\.1 413/)
+    const health = await requestJson(`http://127.0.0.1:${port}/api/health`)
+    assert.equal(health.status, 'ok')
+  })
+})
+
+test('native API rejects non-loopback Host headers and non-JSON bodies', async () => {
+  await withNativeApi({}, async ({ port }) => {
+    const rebound = await requestHttp(`http://127.0.0.1:${port}/api/health`, {
+      headers: { Host: 'attacker.example', Accept: 'application/json' },
+      timeoutMs: 5_000,
+    })
+    assert.equal(rebound.status, 403)
+    const bracketed = await requestHttp(`http://127.0.0.1:${port}/api/health`, {
+      headers: { Host: `[::1]:${port}`, Accept: 'application/json' },
+      timeoutMs: 5_000,
+    })
+    assert.equal(bracketed.status, 200)
+    const formPost = await requestHttp(`http://127.0.0.1:${port}/api/companion/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain', Accept: 'application/json' },
+      body: '{"action":"base-map-assets"}',
+      timeoutMs: 5_000,
+    })
+    assert.equal(formPost.status, 415)
+    const jsonPost = await requestHttp(`http://127.0.0.1:${port}/api/companion/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json' },
+      body: '{"action":"base-map-assets"}',
+      timeoutMs: 5_000,
+    })
+    assert.equal(jsonPost.status, 200)
+  })
+})
+
+test('native RoachTail join codes pair exactly once and retire after repeated wrong guesses', async () => {
+  const companionPort = await resolveAvailablePort()
+  await withNativeApi(
+    {
+      ROACHNET_COMPANION_ENABLED: '1',
+      ROACHNET_COMPANION_HOST: '127.0.0.1',
+      ROACHNET_COMPANION_PORT: String(companionPort),
+      ROACHNET_COMPANION_TOKEN: 'native-api-join-once-token',
+    },
+    async ({ port, storagePath, child }) => {
+      await waitForPath(path.join(storagePath, 'logs', 'roachnet-runtime-processes.json'), child)
+      const initial = await requestJson(`http://127.0.0.1:${port}/api/companion/roachtail`)
+      const pairUrl = `http://127.0.0.1:${companionPort}/api/companion/roachtail/pair`
+      const first = await requestJson(pairUrl, { method: 'POST', body: { joinCode: initial.joinCode, peerName: 'Phone A', peerId: 'rtpeer_chosen_by_client' } })
+      assert.equal(first.success, true)
+      assert.notEqual(first.peerId, 'rtpeer_chosen_by_client')
+      const second = await requestHttp(pairUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ joinCode: initial.joinCode, peerName: 'Phone B' }),
+        timeoutMs: 5_000,
+      })
+      assert.equal(second.status, 401)
+      const refreshed = await requestJson(`http://127.0.0.1:${port}/api/companion/roachtail`)
+      assert.notEqual(refreshed.joinCode, initial.joinCode)
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const wrong = await requestHttp(pairUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ joinCode: 'WRONG-GUESS', peerName: 'Phone C' }),
+          timeoutMs: 5_000,
+        })
+        assert.equal(wrong.status, 401)
+      }
+      const retired = await requestJson(`http://127.0.0.1:${port}/api/companion/roachtail`)
+      assert.notEqual(retired.joinCode, refreshed.joinCode)
+      const peers = await requestJson(`http://127.0.0.1:${port}/api/companion/roachtail`)
+      assert.equal(peers.peers.length, 1)
+    }
+  )
 })
 
 test('native API refuses non-loopback bind hosts before listening', async () => {

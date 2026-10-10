@@ -18,6 +18,13 @@ final class PairingUITests: XCTestCase {
         sleep(2)
         attach("launched")
         open(pairURL)
+        // 0.2.0+: a link that points the phone at a new Mac asks before it is applied.
+        let confirm = app.buttons["deeplink.confirm"].firstMatch
+        if confirm.waitForExistence(timeout: 4) {
+            attach("pair-link-confirmation")
+            confirm.tap()
+            sleep(1)
+        }
 
         let pair = app.buttons["Pair with RoachTail"].firstMatch
         if !pair.waitForExistence(timeout: 8) {
