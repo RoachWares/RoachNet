@@ -153,7 +153,7 @@ public final class SetupEngine {
             for (key, value) in object where value.isUndefined { object.remove(key) }
             merged = .object(object)
             persistedConfigCache = merged
-            try? Files.write(merged.prettySerialized() + "\n", to: configPath)
+            try? Files.write(merged.prettySerialized() + "\n", to: configPath, mode: Files.privateFileMode)
         }
     }
 
@@ -872,9 +872,17 @@ public final class SetupEngine {
             do { data = try request.body() } catch { throw requestError("Request body is too large.", 413) }
             let raw = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             if raw.isEmpty { return .object(JSONObject()) }
+            guard NativeRuntime.declaresJSONBody(request) else {
+                throw requestError("Request body must be sent as application/json.", 415)
+            }
             do { return try JSON.parse(raw) } catch { throw requestError("Request body must be valid JSON.", 400) }
         }
         do {
+            // Same CSRF / DNS-rebinding stance as the runtime API: the setup
+            // service can rewrite the install root and companion token.
+            guard NativeRuntime.isTrustedLoopbackHost(request.header("host")) else {
+                return .json(403, ["error": "Setup requests must use a loopback Host."])
+            }
             switch (request.method, url.pathname) {
             case ("GET", "/api/state"):
                 return .json(200, state(url))

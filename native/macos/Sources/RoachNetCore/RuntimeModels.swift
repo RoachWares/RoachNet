@@ -908,6 +908,8 @@ public enum RoachNetRepositoryLocator {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = try JSONEncoder.pretty.encode(config)
         try data.write(to: url, options: .atomic)
+        // The file carries the companion token; keep it owner-only.
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     private static func ascendForRepoRoot(from start: URL) -> URL? {

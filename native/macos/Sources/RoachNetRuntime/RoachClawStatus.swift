@@ -33,6 +33,8 @@ extension NativeRuntime {
             if ollamaProcessPID != nil { return false }
             guard let parsed = WebURL(config.ollamaBaseUrl) else { return false }
             var environment = config.environment
+            // The model server needs none of RoachNet's own credentials.
+            for secret in ["ROACHNET_COMPANION_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"] { environment.removeValue(forKey: secret) }
             environment["OLLAMA_HOST"] = "\(parsed.hostname):\(parsed.port.isEmpty ? "11434" : parsed.port)"
             environment["OLLAMA_MODELS"] = config.env("OLLAMA_MODELS").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(storageRoot, "models", "ollama")
             if let pid = Processes.spawnDetached(ollama, ["serve"], environment: environment) {
@@ -1230,6 +1232,10 @@ extension NativeRuntime {
         let assets = release["assets"].array
         let asset = assets.first { JS.matches("RoachNet-Setup-macOS\\.dmg$", ($0["name"] || "").jsString, caseInsensitive: true) }
             ?? assets.first { JS.matches("RoachNet.*mac.*\\.(dmg|zip)$", ($0["name"] || "").jsString, caseInsensitive: true) }
+        // The checksum sidecar published next to the installer is what the
+        // update lane verifies the downloaded bytes against.
+        let assetName = (asset ?? .undefined)["name"].stringValue ?? ""
+        let sidecar = assets.first { ($0["name"] || "").jsString == assetName + ".sha256" }
         let resolved: JSON = [
             "currentVersion": JSON(version),
             "latestVersion": JSON(normalizeVersion(release["tag_name"] || release["name"] || JSON(version))),
@@ -1237,6 +1243,7 @@ extension NativeRuntime {
             "pageUrl": release["html_url"] || JSON(config.githubReleasesUrl),
             "assetName": (asset ?? .undefined)["name"] || nil,
             "assetUrl": (asset ?? .undefined)["browser_download_url"] || release["html_url"] || JSON(config.githubReleasesUrl),
+            "checksumUrl": (sidecar ?? .undefined)["browser_download_url"] || nil,
         ]
         latestReleaseCache = (JS.nowMs(), resolved)
         return resolved

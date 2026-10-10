@@ -19,14 +19,17 @@ function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'))
 }
 
-async function queryOsv(purl) {
+async function queryOsv(target) {
+  const query = typeof target === 'string'
+    ? { package: { purl: target } }
+    : { package: { name: target.name, ecosystem: target.ecosystem }, version: target.version }
   const response = await fetch('https://api.osv.dev/v1/query', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'user-agent': 'RoachNet-Release-Audit/1.0' },
-    body: JSON.stringify({ package: { purl } }),
+    body: JSON.stringify(query),
     signal: AbortSignal.timeout(30_000),
   })
-  if (!response.ok) throw new Error(`OSV query failed for ${purl}: ${response.status}`)
+  if (!response.ok) throw new Error(`OSV query failed for ${JSON.stringify(query.package)}: ${response.status}`)
   const result = await response.json()
   return Array.isArray(result.vulns) ? result.vulns : []
 }
@@ -87,15 +90,30 @@ async function main() {
   }
   const vulnerabilityPath = path.join(path.dirname(args.inventory), 'vulnerability-scan.json')
   if (args.online === 'true') {
+    // OSV has no `github` purl ecosystem (a `pkg:github/...` query is empty for
+    // every version, which made this gate vacuous before 1.0.6). Ollama is a Go
+    // module; Node core is queried by name when it is actually bundled.
     const ollamaVersion = inventory.components.find((entry) => entry.name === 'Ollama')?.version
+    const nodeComponent = inventory.components.find((entry) => entry.name === 'Node.js')
     const purls = [
-      `pkg:github/nodejs/node@v${String(inventory.components.find((entry) => entry.name === 'Node.js')?.version || '').replace(/^v/, '')}`,
-      ...(ollamaVersion && ollamaVersion !== 'not-bundled' ? [`pkg:github/ollama/ollama@v${String(ollamaVersion).replace(/^v/, '')}`] : []),
+      ...(ollamaVersion && ollamaVersion !== 'not-bundled' ? [`pkg:golang/github.com/ollama/ollama@v${String(ollamaVersion).replace(/^v/, '')}`] : []),
+      ...(nodeComponent && nodeComponent.version !== 'not-bundled' ? [{ name: 'Node', ecosystem: 'npm', version: String(nodeComponent.version).replace(/^v/, '') }] : []),
     ]
+    const freshnessPath = args.freshness || path.join(process.cwd(), 'docs', 'release-gates', 'runtime-freshness.json')
+    const freshness = existsSync(freshnessPath) ? readJson(freshnessPath) : {}
+    const accepted = new Map()
+    for (const component of Object.values(freshness)) {
+      for (const entry of component?.acceptedAdvisories || []) if (entry?.id && entry?.reason) accepted.set(entry.id, entry.reason)
+    }
     for (const purl of purls) {
+      const label = typeof purl === 'string' ? purl : `${purl.ecosystem}:${purl.name}@${purl.version}`
       const vulnerabilities = await queryOsv(purl)
-      vulnerabilityRecord.results.push({ purl, vulnerabilities: vulnerabilities.map((entry) => entry.id) })
-      if (vulnerabilities.length > 0) failures.push(`${purl} has known OSV records: ${vulnerabilities.map((entry) => entry.id).join(', ')}`)
+      const unaccepted = vulnerabilities.filter((entry) => ![entry.id, ...(entry.aliases || [])].some((id) => accepted.has(id)))
+      vulnerabilityRecord.results.push({
+        purl: label,
+        vulnerabilities: vulnerabilities.map((entry) => ({ id: entry.id, aliases: entry.aliases || [], accepted: [entry.id, ...(entry.aliases || [])].map((id) => accepted.get(id)).find(Boolean) || null })),
+      })
+      if (unaccepted.length > 0) failures.push(`${label} has unreviewed OSV records: ${unaccepted.map((entry) => entry.id).join(', ')}`)
     }
     writeFileSync(vulnerabilityPath, `${JSON.stringify(vulnerabilityRecord, null, 2)}\n`)
   } else if (args.online === 'verify') {

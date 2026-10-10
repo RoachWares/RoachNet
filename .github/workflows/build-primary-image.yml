@@ -28,8 +28,18 @@ jobs:
       - name: check-auth
         id: check-auth
         env:
-          IS_AUTHORIZED: ${{ contains(secrets.DEPLOYMENT_AUTHORIZED_USERS, github.triggering_actor) }}
-        run: echo "is_authorized=${IS_AUTHORIZED}" >> "$GITHUB_OUTPUT"
+          AUTHORIZED_USERS: ${{ secrets.DEPLOYMENT_AUTHORIZED_USERS }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        # Exact-match the comma-separated allowlist; a substring test would let
+        # "bob" publish whenever "bobby" is listed.
+        run: |
+          set -euo pipefail
+          is_authorized=false
+          IFS=',' read -r -a allowed <<<"${AUTHORIZED_USERS}"
+          for user in "${allowed[@]}"; do
+            if [[ "$(printf '%s' "$user" | tr -d '[:space:]')" == "${TRIGGERING_ACTOR}" ]]; then is_authorized=true; fi
+          done
+          echo "is_authorized=${is_authorized}" >> "$GITHUB_OUTPUT"
   build:
     name: Build Docker image
     needs: check_authorization

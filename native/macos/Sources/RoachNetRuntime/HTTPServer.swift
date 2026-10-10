@@ -273,7 +273,19 @@ public final class LoopbackHTTPServer {
 
         let maxBody = maxBodyBytes
         let chunked = headers["transfer-encoding"]?.lowercased().contains("chunked") == true
-        let contentLength = Int(headers["content-length"] ?? "") ?? 0
+        // A malformed or negative Content-Length is a protocol error, not a
+        // zero-length body: `-1` would otherwise reach the reader as a range
+        // bound and trap the process before any authentication runs.
+        let contentLength: Int
+        if let rawLength = headers["content-length"] {
+            guard let parsed = Int(rawLength.trimmingCharacters(in: .whitespaces)), parsed >= 0 else {
+                send(fd, HTTPResponse.json(400, ["error": "Invalid Content-Length"]))
+                return
+            }
+            contentLength = parsed
+        } else {
+            contentLength = 0
+        }
         var request = HTTPRequest(
             method: String(requestLine[0]).uppercased(),
             target: String(requestLine[1]),
@@ -394,6 +406,7 @@ final class SocketReader {
 
     func readBody(length: Int, limit: Int) throws -> Data {
         if length > limit { throw BodyTooLarge(limit: limit) }
+        if length <= 0 { return Data() }
         while buffer.count < length {
             if !fill() { break }
         }
@@ -420,12 +433,14 @@ final class SocketReader {
         while true {
             guard let sizeLine = readLine() else { break }
             let sizeText = sizeLine.split(separator: ";").first.map(String.init) ?? "0"
-            guard let size = Int(sizeText.trimmingCharacters(in: .whitespaces), radix: 16) else { break }
+            guard let size = Int(sizeText.trimmingCharacters(in: .whitespaces), radix: 16), size >= 0 else { break }
             if size == 0 {
                 _ = readLine()
                 break
             }
-            if data.count + size > limit { throw BodyTooLarge(limit: limit) }
+            // Compare against the limit before any addition so an oversized
+            // chunk header cannot overflow `data.count + size`.
+            if size > limit || data.count > limit - size { throw BodyTooLarge(limit: limit) }
             while buffer.count < size + 2 {
                 if !fill() { break }
             }

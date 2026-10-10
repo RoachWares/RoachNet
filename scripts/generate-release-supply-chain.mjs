@@ -97,14 +97,16 @@ async function main() {
       license: packageManifest.license,
       source: `git+https://github.com/RoachWares/RoachNet.git#${args['candidate-sha']}`,
     },
-    {
-      name: 'Node.js',
-      version: runtimePins.node.bundledVersion,
-      kind: 'runtime',
-      license: runtimePins.node.license,
-      source: runtimePins.node.artifacts.darwinArm64.url,
-      sourceSha256: runtimePins.node.artifacts.darwinArm64.sha256,
-    },
+    runtimePins.node.mode === 'compat-only-not-bundled'
+      ? { name: 'Node.js', version: 'not-bundled', kind: 'deferred-compat-runtime', license: runtimePins.node.license, source: runtimePins.node.artifacts.darwinArm64.url }
+      : {
+          name: 'Node.js',
+          version: runtimePins.node.bundledVersion,
+          kind: 'runtime',
+          license: runtimePins.node.license,
+          source: runtimePins.node.artifacts.darwinArm64.url,
+          sourceSha256: runtimePins.node.artifacts.darwinArm64.sha256,
+        },
     runtimePins.ollama.mode === 'retired-not-bundled'
       ? {
           name: 'Ollama',
