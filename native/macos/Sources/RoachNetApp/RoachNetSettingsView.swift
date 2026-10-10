@@ -7,6 +7,7 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
     static let requestedPaneUserDefaultsKey = "roachnet.settings.requested-pane"
 
     case general
+    case packs
     case roachClaw
     case vault
     case arcade
@@ -25,6 +26,8 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "General"
+        case .packs:
+            return "Packs"
         case .roachClaw:
             return "RoachClaw"
         case .vault:
@@ -54,6 +57,8 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "Paths, startup, exits"
+        case .packs:
+            return "Install only what you need"
         case .roachClaw:
             return "Models on your metal"
         case .vault:
@@ -83,6 +88,8 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "slider.horizontal.3"
+        case .packs:
+            return "puzzlepiece.extension.fill"
         case .roachClaw:
             return "sparkles"
         case .vault:
@@ -110,7 +117,7 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
 
     var accent: Color {
         switch self {
-        case .general:
+        case .general, .packs:
             return RoachPalette.green
         case .roachClaw:
             return RoachPalette.magenta
@@ -247,6 +254,8 @@ struct RoachNetSettingsView: View {
                 switch selectedPane {
                 case .general:
                     general
+                case .packs:
+                    FeaturePacksSettingsView(model: model, store: model.featurePacks)
                 case .roachClaw:
                     ai
                 case .vault:

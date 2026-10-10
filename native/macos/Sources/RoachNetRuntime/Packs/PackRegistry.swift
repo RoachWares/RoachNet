@@ -288,7 +288,9 @@ public final class PackRegistry {
 
     // MARK: JSON views
 
-    public func catalogJSON() -> JSON {
+    /// `includeSizes` walks every data root and install folder; the Pack Manager
+    /// asks for it, the sidebar (which only needs `enabled`) does not.
+    public func catalogJSON(includeSizes: Bool = false) -> JSON {
         try? ensureDefaults()
         let installer = PackInstaller(registry: self)
         return [
@@ -297,12 +299,13 @@ public final class PackRegistry {
             "appVersion": JSON(appVersion),
             "platform": JSON(platform),
             "packsRoot": JSON(packsRoot),
-            "packs": .array(records().map(recordJSON)),
+            "sizesIncluded": JSON(includeSizes),
+            "packs": .array(records().map { recordJSON($0, includeSizes: includeSizes) }),
             "jobs": .array(installer.jobsJSON()),
         ]
     }
 
-    public func recordJSON(_ record: PackRecord) -> JSON {
+    public func recordJSON(_ record: PackRecord, includeSizes: Bool = true) -> JSON {
         let manifest = record.manifest
         var compatibility: JSON = ["ok": true]
         do { try checkCompatibility(manifest) } catch { compatibility = ["ok": false, "reason": JSON("\(error)")] }
@@ -310,7 +313,7 @@ public final class PackRegistry {
         do { _ = try resolveDependencies(of: manifest.id) } catch { missing = ["\(error)"] }
         let dataRoots = manifest.dataRoots.map { root -> JSON in
             let path = Path.join(storageRoot, root.path)
-            return ["path": JSON(root.path), "description": JSON(root.description), "exists": JSON(Files.exists(path)), "bytes": JSON(Files.directorySize(path))]
+            return ["path": JSON(root.path), "description": JSON(root.description), "exists": JSON(Files.exists(path)), "bytes": includeSizes ? JSON(Files.directorySize(path)) : .null]
         }
         return [
             "id": JSON(manifest.id),
@@ -327,7 +330,7 @@ public final class PackRegistry {
             "source": JSON(record.state?.source),
             "installRoot": JSON(record.installRoot),
             "downloadBytes": JSON(manifest.downloadBytes),
-            "installedBytes": JSON(record.installRoot.map(Files.directorySize) ?? 0),
+            "installedBytes": includeSizes ? JSON(record.installRoot.map(Files.directorySize) ?? 0) : .null,
             "requires": ["roachnet": JSON(manifest.requires.roachnet), "platforms": jsonStrings(manifest.requires.platforms)],
             "dependencies": .array(manifest.dependencies.map { ["id": JSON($0.id), "minimumVersion": JSON($0.minimumVersion)] }),
             "dependents": jsonStrings(records().filter { $0.manifest.dependencies.contains { $0.id == manifest.id } }.map(\.manifest.id)),

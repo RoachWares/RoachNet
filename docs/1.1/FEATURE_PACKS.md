@@ -136,30 +136,54 @@ macOS-built `roachnet-runtime`; the same on Linux (Swift 6.1). The contract
 test skips on the dependency-free Node reference lane (`npm test`) with the
 repo's `needsBinary` convention — packs exist only in the Swift runtime.
 
-## 5. Designed, not yet built
+## 5. App side — implemented (Mac)
 
-- **App mounting.** `WorkspaceModel` reads `/api/packs` once at start and on
-  change; `visiblePanes` becomes "enabled capability packs that have a pane";
-  pane stores (`RoachArcadeLibraryStore`, `RoachArchiveStore`, speech
-  controller, maps, dev) are created lazily on first mount instead of in
-  `WorkspaceModel.init`; runtime lanes (Org engine, companion bridge, speech
-  model loading) start only when their pack is enabled. This is the
-  launch-time and idle-memory work; it is measured against the baselines.
-- **Feature Pack Manager** (Settings › Packs, and onboarding): list by kind
-  with name, summary, size on disk, download size, capabilities, dependencies
-  and dependents, data roots and their current size; install / update /
-  enable / disable / remove with the data-retention choice spelled out
-  ("Keep my recordings (12 MB)" / "Move them to Retired"); progress from the
-  install jobs; an "Open package…" button for offline `.roachpack` folders.
+`native/macos/Sources/RoachNetApp/FeaturePacks.swift`:
+
+- `FeaturePackStore` reads `/api/packs` with every runtime refresh (the cheap
+  form; `?sizes=1` only when the Pack Manager is open, because sizing walks
+  every data root). `WorkspacePane.packID` maps panes to capability packs
+  (Dev → `dev`, RoachClaw → `roachclaw`, Org → `org`, RoachArcade → `arcade`,
+  Maps → `maps`, Vault → `vault`); Home and Runtime are core and always mount.
+- The sidebar's `visiblePanes` is now "panes whose pack is on". Until the first
+  read completes the store uses the set it remembered from the last launch
+  (`roachnet.packs.disabled` in UserDefaults), so a switched-off pack never
+  flashes into the sidebar at launch. A pane whose pack the runtime does not
+  list is never hidden; a runtime without the registry (404) mounts everything.
+- **Settings › Packs** (`FeaturePacksSettingsView`): counts and sizes, install
+  jobs with progress, Features with toggles (disabled while an enabled pack
+  depends on them, with the blocker named), capability tags in plain words
+  ("Internet", "Runs programs", "Microphone"…), data roots with sizes, Resource
+  packs with Remove → a confirmation that spells out the choice: keep the data
+  (with its size) or move it to Retired; "Open Package…" installs a local pack
+  folder offline through `/api/packs/install`.
+- Tests: `FeaturePackTests` (5) cover mount-before-load, remembered disabled
+  set across launches, unknown-pack safety, dependents blocking disable, size
+  retention across cheap refreshes, schema rejection, capability labels.
+
+Not yet done on the app side: runtime lanes (Org engine, companion bridge,
+speech model loading) still start regardless of the pack state; pane stores
+are still created in `WorkspaceModel.init`. Both wait for the launch/idle
+baselines so the change can be measured rather than assumed.
+
+## 6. Designed, not yet built
+
+- **Lazy lanes and stores.** Runtime lanes start only when their pack is
+  enabled; `RoachArcadeLibraryStore`, `RoachArchiveStore`, the speech
+  controller, maps and dev stores are created on first mount instead of in
+  `WorkspaceModel.init`. Measured against `BASELINES.md`.
 - **Minimal core packaging.** `ROACHNET_ROACHSPEECH_BUNDLE_PROFILE=none` plus
   catalog manifests for the two speech packs on `apps.roachnet.org` so the
   speech pack installs on first use through the Pack Manager; the launch guide
   video stays (0.5 MB). Target: app archive ≈ 27 MB, DMG ≈ 35 MB, measured.
 - **Catalog.** `collections/packs.json` lists the optional packs RoachWares
   publishes with their manifest URLs; the Pack Manager merges it with the
-  bundled capability packs and installed resource packs.
+  bundled capability packs and installed resource packs, and shows download
+  sizes before anything is fetched.
 - **Signatures and trusted sources.** Trusted public keys ship in the app;
   catalog manifests must verify; local packages prompt.
+- **Onboarding.** First run offers the pack list with sizes instead of
+  installing everything.
 - **iOS.** The companion reads the Mac's `/api/packs` to show what the Mac
   has; the phone itself installs only resource/config packs (themes, voice
   packs) under the same manifest rules — never code.

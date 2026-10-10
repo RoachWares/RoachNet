@@ -144,7 +144,7 @@ final class PackTests: XCTestCase {
         let receipt = try JSON.parse(try String(contentsOfFile: Path.join(installed, "receipt.json"), encoding: .utf8))
         XCTAssertEqual(receipt["files"].array.first?["sha256"].stringValue, SHA256Digest.hex(payload))
         XCTAssertEqual(Files.entries(registry.stagingRoot).count, 0, "staging is empty after a commit")
-        let listed = registry.catalogJSON()["packs"].array.first { $0["id"].stringValue == "voice-test" }
+        let listed = registry.catalogJSON(includeSizes: true)["packs"].array.first { $0["id"].stringValue == "voice-test" }
         XCTAssertEqual(listed?["installed"].truthy, true)
         XCTAssertEqual(listed?["installedBytes"].jsString, String(Files.directorySize(installed)))
     }

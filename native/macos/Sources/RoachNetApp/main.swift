@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AVKit
+import Combine
 import Carbon
 import CoreImage
 import CoreImage.CIFilterBuiltins
@@ -2367,6 +2368,9 @@ final class WorkspaceModel: ObservableObject {
     @Published var selectedImportedVaultID: String?
     @Published var roachArcadeStore = RoachArcadeLibraryStore()
     @Published var roachArchiveStore = RoachArchiveStore()
+    /// Which feature packs are switched on; the sidebar mounts panes from it.
+    let featurePacks = FeaturePackStore()
+    private var featurePackChanges: AnyCancellable?
     @Published var latestVersionInfo: RoachNetLatestVersionResponse?
     @Published var systemUpdateStatus: RoachNetSystemUpdateStatusResponse?
     @Published var benchmarkStatus: RoachNetBenchmarkStatusResponse?
@@ -2383,6 +2387,12 @@ final class WorkspaceModel: ObservableObject {
     private var lastHandledIncomingURL: (value: String, date: Date)?
     private let speechController = RoachSpeechController()
     private var dictationSeedDraft = ""
+
+    init() {
+        // Pack toggles change which panes exist. Views observe the model, so
+        // the store's changes are forwarded through it.
+        featurePackChanges = featurePacks.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+    }
 
     var setupCompleted: Bool { config.setupCompletedAt != nil || installLooksPrepared }
     var installPath: String { config.installPath.isEmpty ? RoachNetRepositoryLocator.defaultInstallPath() : config.installPath }
@@ -2716,6 +2726,7 @@ final class WorkspaceModel: ObservableObject {
         do {
             snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: currentConfig)
             errorLine = nil
+            await featurePacks.refresh(using: currentConfig)
             persistRoachClawSetupCompletionIfNeeded()
             synchronizeWikipediaSelection()
             synchronizeSelectedChatModel()
@@ -7116,6 +7127,8 @@ private struct RootWorkspaceView: View {
             return .runtime
         case "/settings/ai":
             return .roachClaw
+        case "/settings/packs":
+            return .packs
         case "/settings/apps":
             return .apps
         case "/settings/maps":
@@ -12942,7 +12955,7 @@ private struct RootWorkspaceView: View {
     }
 
     private var visiblePanes: [WorkspacePane] {
-        WorkspacePane.allCases.filter { $0 != .suite && $0 != .education }
+        WorkspacePane.allCases.filter { $0 != .suite && $0 != .education && model.featurePacks.isMounted($0) }
     }
 
     private var readinessSteps: [ReadinessStep] {

@@ -100,7 +100,7 @@ extension NativeRuntime {
 
         switch (method, pathname) {
         case ("GET", "/api/health"): return ok(["status": "ok"])
-        case ("GET", "/api/packs"): return ok(packRegistry.catalogJSON())
+        case ("GET", "/api/packs"): return ok(packRegistry.catalogJSON(includeSizes: url.queryParameter("sizes") == "1"))
         case ("POST", "/api/packs/install"): return ok(try installPack(try body()), 202)
         case ("GET", _) where pathname.hasPrefix("/api/packs/"):
             let id = lastSegment(pathname)
