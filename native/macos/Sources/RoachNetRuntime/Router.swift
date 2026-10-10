@@ -100,6 +100,14 @@ extension NativeRuntime {
 
         switch (method, pathname) {
         case ("GET", "/api/health"): return ok(["status": "ok"])
+        case ("GET", "/api/packs"): return ok(packRegistry.catalogJSON())
+        case ("POST", "/api/packs/install"): return ok(try installPack(try body()), 202)
+        case ("GET", _) where pathname.hasPrefix("/api/packs/"):
+            let id = lastSegment(pathname)
+            guard let record = packRegistry.record(id) else { throw requestError("No pack named \(id).", 404) }
+            return ok(packRegistry.recordJSON(record))
+        case ("POST", _) where pathname.hasPrefix("/api/packs/") && ["enable", "disable", "uninstall"].contains(lastSegment(pathname)):
+            return ok(try affectPack(pathname, try body()))
         case ("GET", "/api/system/internet-status"): return ok(JSON(DNS.resolves("github.com")))
         case ("GET", "/api/system/info"): return ok(systemInfo())
         case ("GET", "/api/system/services"): return ok(.array(systemServices()))

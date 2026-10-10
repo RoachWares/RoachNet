@@ -31,6 +31,15 @@ public final class NativeRuntime {
         return service
     }()
 
+    /// Feature packs: what is installed and switched on. Created on first use;
+    /// a stale staging folder from an interrupted install is swept then.
+    lazy var packRegistry: PackRegistry = {
+        let registry = PackRegistry(storageRoot: config.storageRoot, appVersion: config.version)
+        registry.onChange = { [weak self] id, event in self?.log("pack \(id) \(event)") }
+        _ = PackInstaller(registry: registry).sweepStaleStaging()
+        return registry
+    }()
+
     lazy var nativeModelStore: NativeModelStore = {
         let store = NativeModelStore(
             root: Path.join(config.storageRoot, "models", "native"),

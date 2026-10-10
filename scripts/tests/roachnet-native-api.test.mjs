@@ -1814,6 +1814,61 @@ test('native RoachTail join codes pair exactly once and retire after repeated wr
   )
 })
 
+// Feature packs live in the Swift runtime only; the dependency-free Node reference API does not implement them.
+const packsNeedBinary = nativeApiBinary ? {} : { skip: 'Set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }
+
+test('native API manages feature packs: catalog, offline install, toggles and data-preserving uninstall', packsNeedBinary, async () => {
+  await withNativeApi({}, async ({ port, storagePath }) => {
+    const catalog = await requestJson(`http://127.0.0.1:${port}/api/packs`)
+    assert.equal(catalog.schema, 'org.roachnet.packs.v1')
+    const org = catalog.packs.find((pack) => pack.id === 'org')
+    assert.equal(org.bundled, true)
+    assert.equal(org.enabled, true)
+    assert.deepEqual(org.dependencies.map((dependency) => dependency.id), ['roachclaw'])
+
+    // A capability pack with enabled dependents cannot be switched off first.
+    const refused = await requestHttp(`http://127.0.0.1:${port}/api/packs/roachclaw/disable`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}', timeoutMs: 5_000,
+    })
+    assert.equal(refused.status, 409)
+
+    // Offline install from a local package with a verified digest.
+    const payload = Buffer.from('a tiny voice model')
+    const packageRoot = path.join(storagePath, '..', 'voice-pack')
+    mkdirSync(path.join(packageRoot, 'model'), { recursive: true })
+    writeFileSync(path.join(packageRoot, 'model', 'weights.bin'), payload)
+    writeFileSync(path.join(packageRoot, 'manifest.json'), JSON.stringify({
+      schema: 'org.roachnet.pack.v1', id: 'voice-contract-test', version: '1.0.0', kind: 'resource', name: 'Contract voice',
+      requires: { roachnet: '1.0.0' },
+      resources: [{ path: 'model/weights.bin', sha256: createHash('sha256').update(payload).digest('hex'), bytes: payload.length }],
+      dataRoots: [{ path: 'RoachSpeech/voices/contract', description: 'Recordings' }],
+    }))
+    const installed = await requestJson(`http://127.0.0.1:${port}/api/packs/install`, { method: 'POST', body: { packagePath: packageRoot } })
+    assert.equal(installed.status, 'installed')
+    assert.equal(installed.pack.enabled, true)
+    assert.equal(existsSync(path.join(storagePath, 'packs', 'installed', 'voice-contract-test', '1.0.0', 'model', 'weights.bin')), true)
+    assert.equal(existsSync(path.join(storagePath, 'packs', 'installed', 'voice-contract-test', '1.0.0', 'receipt.json')), true)
+
+    // Tampered package is refused and leaves nothing behind.
+    writeFileSync(path.join(packageRoot, 'model', 'weights.bin'), Buffer.from('tampered bytes here'))
+    const tampered = await requestHttp(`http://127.0.0.1:${port}/api/packs/install`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ packagePath: packageRoot }), timeoutMs: 5_000,
+    })
+    assert.equal(tampered.status, 422)
+    assert.equal(readFileSync(path.join(storagePath, 'packs', 'installed', 'voice-contract-test', '1.0.0', 'model', 'weights.bin')).equals(payload), true)
+
+    const dataRoot = path.join(storagePath, 'RoachSpeech', 'voices', 'contract')
+    mkdirSync(dataRoot, { recursive: true })
+    writeFileSync(path.join(dataRoot, 'take-1.wav'), 'recording')
+    const removed = await requestJson(`http://127.0.0.1:${port}/api/packs/voice-contract-test/uninstall`, { method: 'POST', body: {} })
+    assert.deepEqual(removed.retainedDataRoots, [dataRoot])
+    assert.equal(existsSync(path.join(dataRoot, 'take-1.wav')), true, 'uninstall keeps user data by default')
+    assert.equal(existsSync(path.join(storagePath, 'packs', 'installed', 'voice-contract-test')), false)
+    const after = await requestJson(`http://127.0.0.1:${port}/api/packs`)
+    assert.equal(after.packs.some((pack) => pack.id === 'voice-contract-test'), false)
+  })
+})
+
 test('native API refuses non-loopback bind hosts before listening', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-host-test-'))
   const storagePath = path.join(tempRoot, 'storage')
