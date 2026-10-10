@@ -80,4 +80,28 @@ final class FeaturePackTests: XCTestCase {
         XCTAssertEqual(FeaturePacksSettingsView.capabilityLabel("process.spawn"), "Runs programs")
         XCTAssertEqual(FeaturePacksSettingsView.capabilityLabel("something.new"), "something.new")
     }
+
+    func testAvailableCatalogPacksAreListedSeparatelyUntilInstalled() throws {
+        let store = FeaturePackStore(defaults: freshDefaults())
+        func catalog(installed: Bool) -> Data {
+            Data("""
+            {"success":true,"schema":"org.roachnet.packs.v1","packs":[
+              {"id":"speech","version":"1.1.0","kind":"capability","name":"RoachSpeech","bundled":true,"installed":true,"enabled":true,
+               "dependencies":[],"dependents":[],"capabilities":[],"dataRoots":[]},
+              {"id":"roachvoice-kokoro-82m-int8-coreml","version":"1.0.0","kind":"resource","name":"RoachVoice Small Narrator",
+               "bundled":false,"installed":\(installed),"available":\(!installed),"handler":"roachspeech-pack","enabled":\(installed),
+               "downloadBytes":80330676,"dependencies":[{"id":"speech","minimumVersion":"1.1.0"}],"dependents":[],"capabilities":["speaker"],"dataRoots":[]}
+            ],"jobs":[]}
+            """.utf8)
+        }
+        try store.load(catalogJSON: catalog(installed: false))
+        XCTAssertEqual(store.availablePacks.map(\.id), ["roachvoice-kokoro-82m-int8-coreml"])
+        XCTAssertTrue(store.resourcePacks.isEmpty)
+        XCTAssertEqual(store.capabilityPacks.map(\.id), ["speech"])
+        XCTAssertTrue(store.isMounted(.roachClaw), "resource packs never gate a pane")
+
+        try store.load(catalogJSON: catalog(installed: true))
+        XCTAssertTrue(store.availablePacks.isEmpty)
+        XCTAssertEqual(store.resourcePacks.map(\.id), ["roachvoice-kokoro-82m-int8-coreml"])
+    }
 }

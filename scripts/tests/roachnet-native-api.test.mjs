@@ -1826,6 +1826,29 @@ test('native API manages feature packs: catalog, offline install, toggles and da
     assert.equal(org.enabled, true)
     assert.deepEqual(org.dependencies.map((dependency) => dependency.id), ['roachclaw'])
 
+    // The published catalog (collections/packs.json) is listed as available: the
+    // speech packs are not installed on a fresh storage root and are never
+    // enabled on their own.
+    const narrator = catalog.packs.find((pack) => pack.id === 'roachvoice-kokoro-82m-int8-coreml')
+    assert.equal(narrator.kind, 'resource')
+    assert.equal(narrator.installed, false)
+    assert.equal(narrator.available, true)
+    assert.equal(narrator.enabled, false)
+    assert.equal(narrator.handler, 'roachspeech-pack')
+    assert.equal(narrator.downloadBytes, 80330676)
+    assert.equal(narrator.installedBytes, null, 'sizes are not walked unless asked')
+    const sized = await requestJson(`http://127.0.0.1:${port}/api/packs?sizes=1`)
+    assert.equal(sized.sizesIncluded, true)
+    assert.equal(typeof sized.packs.find((pack) => pack.id === 'org').installedBytes, 'number')
+    const unknown = await requestHttp(`http://127.0.0.1:${port}/api/packs/install`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ id: 'no-such-pack' }), timeoutMs: 5_000,
+    })
+    assert.equal(unknown.status, 404)
+    const notInstalled = await requestHttp(`http://127.0.0.1:${port}/api/packs/roachvoice-kokoro-82m-int8-coreml/enable`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}', timeoutMs: 5_000,
+    })
+    assert.equal(notInstalled.status, 404, 'an available pack cannot be enabled before it is installed')
+
     // A capability pack with enabled dependents cannot be switched off first.
     const refused = await requestHttp(`http://127.0.0.1:${port}/api/packs/roachclaw/disable`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}', timeoutMs: 5_000,

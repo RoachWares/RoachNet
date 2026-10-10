@@ -13886,10 +13886,30 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         // An optional `pane.txt` beside the snapshots names the pane to show
         // first (its sidebar title, e.g. "Org"), so a gate script can walk
         // every pane without driving the UI through accessibility.
+        // `settings:<pane>` (e.g. "settings:packs") opens the Settings window on
+        // that pane and captures it instead.
         let paneFile = directory.appendingPathComponent("pane.txt")
-        if let requested = try? String(contentsOf: paneFile, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           let pane = WorkspacePane(rawValue: requested),
+        let requested = (try? String(contentsOf: paneFile, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if requested.hasPrefix("settings:"),
+           let pane = RoachNetSettingsPane(rawValue: String(requested.dropFirst("settings:".count))),
+           let model = model ?? Self.bootstrapModel
+        {
+            model.requestSettingsPane(pane)
+            NSApp.activate(ignoringOtherApps: true)
+            // The Settings scene owns its own menu item; firing that item is the
+            // one route that works on every macOS the app supports.
+            if let item = Self.menuItem(titledLike: "Settings", in: NSApp.mainMenu), let action = item.action {
+                NSApp.sendAction(action, to: item.target, from: item)
+            } else {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                self?.captureWindowSnapshot(into: directory)
+            }
+            return
+        }
+        if let pane = WorkspacePane(rawValue: requested),
            let model = model ?? Self.bootstrapModel,
            model.selectedPane != pane
         {
@@ -13900,6 +13920,15 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         captureWindowSnapshot(into: directory)
+    }
+
+    private static func menuItem(titledLike prefix: String, in menu: NSMenu?) -> NSMenuItem? {
+        guard let menu else { return nil }
+        for item in menu.items {
+            if item.title.hasPrefix(prefix), item.action != nil { return item }
+            if let found = menuItem(titledLike: prefix, in: item.submenu) { return found }
+        }
+        return nil
     }
 
     private func captureWindowSnapshot(into directory: URL) {

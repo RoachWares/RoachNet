@@ -56,7 +56,8 @@ public final class PackInstaller {
     /// Installs a pack whose manifest names download URLs. Runs on a
     /// background queue; progress is visible through `jobsJSON()`.
     @discardableResult
-    public func installFromManifest(_ manifest: PackManifest, source: String, fetch: @escaping (String, String, Int) throws -> Void = PackInstaller.defaultFetch) throws -> PackInstallJob {
+    /// `fetch(url, target, bytes, sha256)` writes one resource to `target`.
+    public func installFromManifest(_ manifest: PackManifest, source: String, fetch: @escaping (String, String, Int, String) throws -> Void = PackInstaller.defaultFetch) throws -> PackInstallJob {
         try manifest.validate()
         guard manifest.kind != .capability else { throw PackError.installFailed("\(manifest.name) ships with RoachNet.") }
         try registry.checkCompatibility(manifest)
@@ -76,7 +77,7 @@ public final class PackInstaller {
                 for resource in manifest.resources {
                     let target = Path.join(staging, resource.path)
                     try Files.mkdirp(Path.dirname(target))
-                    try fetch(resource.url!, target, resource.bytes)
+                    try fetch(resource.url!, target, resource.bytes, resource.sha256)
                     job.add(bytes: resource.bytes)
                 }
                 job.update(status: "verifying")
@@ -91,7 +92,7 @@ public final class PackInstaller {
         return job
     }
 
-    public static func defaultFetch(_ url: String, _ target: String, _ expectedBytes: Int) throws {
+    public static func defaultFetch(_ url: String, _ target: String, _ expectedBytes: Int, _ sha256: String) throws {
         let response = try HTTPClient.request(url, headers: ["user-agent": "RoachNet/\(RuntimeConfiguration.shared.version) pack-installer"], timeoutMs: 600_000, maxResponseBytes: max(expectedBytes * 2, 64 * 1024 * 1024))
         guard response.ok else { throw PackError.installFailed("HTTP \(response.status) from \(url).") }
         try response.body.write(to: URL(fileURLWithPath: target), options: .atomic)

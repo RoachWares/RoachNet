@@ -37,6 +37,8 @@ struct FeaturePack: Decodable, Identifiable, Equatable {
     let publisher: String?
     let bundled: Bool
     let installed: Bool
+    let available: Bool?
+    let handler: String?
     let enabled: Bool
     let installedVersion: String?
     let downloadBytes: Int?
@@ -49,6 +51,7 @@ struct FeaturePack: Decodable, Identifiable, Equatable {
     let unresolvedDependencies: [String]?
 
     var isCapability: Bool { kind == "capability" }
+    var isAvailable: Bool { !installed && (available ?? true) }
     var dataBytes: Int { dataRoots.reduce(0) { $0 + ($1.bytes ?? 0) } }
     var hasSizes: Bool { dataRoots.contains { $0.bytes != nil } || installedBytes != nil }
 }
@@ -110,6 +113,8 @@ final class FeaturePackStore: ObservableObject {
     @Published var isBusy = false
     @Published var message: String?
     @Published var errorMessage: String?
+    /// Catalog packs whose download has been queued and not yet landed.
+    @Published private(set) var pendingInstalls: Set<String> = []
 
     private var rememberedDisabled: Set<String>
     private let defaults: UserDefaults
@@ -136,7 +141,8 @@ final class FeaturePackStore: ObservableObject {
 
     var enabledCount: Int { packs.filter(\.enabled).count }
     var capabilityPacks: [FeaturePack] { packs.filter(\.isCapability) }
-    var resourcePacks: [FeaturePack] { packs.filter { !$0.isCapability } }
+    var resourcePacks: [FeaturePack] { packs.filter { !$0.isCapability && !$0.isAvailable } }
+    var availablePacks: [FeaturePack] { packs.filter { !$0.isCapability && $0.isAvailable } }
     var activeJobs: [FeaturePackJob] { jobs.filter(\.isActive) }
 
     func dependentsBlockingDisable(of pack: FeaturePack) -> [String] {
@@ -151,7 +157,9 @@ final class FeaturePackStore: ObservableObject {
             let data = try await ManagedAppRuntimeBridge.shared.orgRequest(using: config, path: path)
             try load(catalogJSON: data, includedSizes: includeSizes)
         } catch {
-            if (error as NSError).code == 404 {
+            // Only a runtime that never answered is treated as pre-pack; a later
+            // 404 is an error, not a downgrade.
+            if (error as NSError).code == 404, !loaded {
                 unsupported = true
                 loaded = true
                 return
@@ -178,7 +186,7 @@ final class FeaturePackStore: ObservableObject {
                 guard let known = pack(fresh.id), known.version == fresh.version, fresh.hasSizes == false else { return fresh }
                 return FeaturePack(
                     id: fresh.id, version: fresh.version, kind: fresh.kind, name: fresh.name, summary: fresh.summary,
-                    publisher: fresh.publisher, bundled: fresh.bundled, installed: fresh.installed, enabled: fresh.enabled,
+                    publisher: fresh.publisher, bundled: fresh.bundled, installed: fresh.installed, available: fresh.available, handler: fresh.handler, enabled: fresh.enabled,
                     installedVersion: fresh.installedVersion, downloadBytes: fresh.downloadBytes, installedBytes: known.installedBytes,
                     dependencies: fresh.dependencies, dependents: fresh.dependents, capabilities: fresh.capabilities,
                     dataRoots: zip(fresh.dataRoots, known.dataRoots).map { fresh, known in
@@ -190,6 +198,7 @@ final class FeaturePackStore: ObservableObject {
         }
         if includedSizes { sizesLoaded = true }
         jobs = catalog.jobs
+        pendingInstalls = pendingInstalls.filter { id in pack(id)?.installed == false }
         unsupported = false
         loaded = true
         errorMessage = nil
@@ -217,6 +226,18 @@ final class FeaturePackStore: ObservableObject {
             let body = try JSONSerialization.data(withJSONObject: ["retainData": retainData])
             _ = try await ManagedAppRuntimeBridge.shared.orgRequest(using: config, path: "/api/packs/\(id)/uninstall", method: "POST", jsonBody: body)
         }
+    }
+
+    /// Queues a catalog pack. The runtime downloads through its verified lane
+    /// (descriptor, mirrors, checksum); the row shows "Downloading" until the
+    /// pack is on its shelf.
+    func install(_ id: String, using config: RoachNetInstallerConfig) async {
+        pendingInstalls.insert(id)
+        await perform(using: config, success: "\(pack(id)?.name ?? id) is downloading. It appears under Resource packs when it lands.") {
+            let body = try JSONSerialization.data(withJSONObject: ["id": id])
+            _ = try await ManagedAppRuntimeBridge.shared.orgRequest(using: config, path: "/api/packs/install", method: "POST", jsonBody: body)
+        }
+        if errorMessage != nil { pendingInstalls.remove(id) }
     }
 
     func installLocalPackage(at folder: URL, using config: RoachNetInstallerConfig) async {
@@ -301,6 +322,14 @@ struct FeaturePacksSettingsView: View {
                 }
             }
 
+            if !store.availablePacks.isEmpty {
+                section("Available", detail: "Published by RoachWares. Nothing is fetched until you ask; every download is checked against its published checksum before it is unpacked.") {
+                    ForEach(store.availablePacks) { pack in
+                        packRow(pack)
+                    }
+                }
+            }
+
             section("Resource packs", detail: "Models, voices, maps and knowledge bundles. Verified by checksum before anything moves; removal keeps your data unless you say otherwise.") {
                 if store.resourcePacks.isEmpty {
                     Text("Nothing installed yet. Voice packs, map collections and knowledge bundles will appear here.")
@@ -324,6 +353,14 @@ struct FeaturePacksSettingsView: View {
         }
         .task {
             await store.refresh(using: model.config, includeSizes: true)
+        }
+        .task(id: store.pendingInstalls.isEmpty) {
+            // While a download is in flight, re-read the shelf every few seconds.
+            guard !store.pendingInstalls.isEmpty else { return }
+            while !Task.isCancelled && !store.pendingInstalls.isEmpty {
+                try? await Task.sleep(for: .seconds(4))
+                await store.refresh(using: model.config, includeSizes: store.sizesLoaded)
+            }
         }
         .confirmationDialog(
             "Remove \(pendingRemoval?.name ?? "pack")?",
@@ -385,7 +422,23 @@ struct FeaturePacksSettingsView: View {
 
                 Spacer(minLength: 0)
 
-                if pack.isCapability {
+                if pack.isAvailable {
+                    if store.pendingInstalls.contains(pack.id) {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Downloading")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(RoachPalette.muted)
+                        }
+                    } else {
+                        Button("Install\(pack.downloadBytes.map { " (\(Self.bytes($0)))" } ?? "")") {
+                            Task { await store.install(pack.id, using: model.config) }
+                        }
+                        .buttonStyle(RoachUtilityButtonStyle())
+                        .disabled(store.isBusy || store.unsupported || !compatible)
+                        .accessibilityIdentifier("packs.install.\(pack.id)")
+                    }
+                } else if pack.isCapability {
                     Toggle("", isOn: Binding(
                         get: { pack.enabled },
                         set: { on in Task { await store.setEnabled(pack.id, on, using: model.config) } }

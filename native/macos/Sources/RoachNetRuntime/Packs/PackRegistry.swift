@@ -38,6 +38,14 @@ public struct PackRecord: Equatable {
     public var isEnabled: Bool { isInstalled && (state?.enabled ?? false) }
 }
 
+/// A pack whose files live on a shelf the registry does not own (today: the
+/// RoachSpeech model-pack shelf). The shelf says whether the pack is there and
+/// removes it; the registry keeps the enabled flag and the catalog entry.
+public protocol PackExternalShelf: AnyObject {
+    func installedRoot(forPack id: String, handler: PackInstallHandler) -> String?
+    func removePack(id: String, handler: PackInstallHandler) throws
+}
+
 /// Owns the pack catalog and lifecycle. Every mutation goes through the
 /// runtime's state lock so concurrent API calls serialize.
 public final class PackRegistry {
@@ -49,6 +57,10 @@ public final class PackRegistry {
     /// Capability packs the app ships. The default enablement is what a fresh
     /// install gets; upgraders keep everything on so no feature disappears.
     public let bundledPacks: [PackManifest]
+    /// Optional packs RoachWares publishes (`collections/packs.json`). Listed
+    /// as available until installed; never enabled on their own.
+    public var catalogPacks: [PackManifest] = []
+    public weak var externalShelf: PackExternalShelf?
     public var onChange: ((String, String) -> Void)?
 
     public init(storageRoot: String, appVersion: String, platform: String = PackRegistry.currentPlatform, bundledPacks: [PackManifest] = PackCatalog.bundledCapabilityPacks) {
@@ -136,7 +148,25 @@ public final class PackRegistry {
         let installed = installedResourcePacks().map {
             PackRecord(manifest: $0, state: state.packs[$0.id], bundled: false, installRoot: installRoot(for: $0.id, version: $0.version))
         }
-        return bundled + installed
+        var seen = Set((bundled + installed).map(\.manifest.id))
+        var catalog: [PackRecord] = []
+        for manifest in catalogPacks where !seen.contains(manifest.id) {
+            seen.insert(manifest.id)
+            catalog.append(externalRecord(manifest, state: state.packs[manifest.id]))
+        }
+        return bundled + installed + catalog
+    }
+
+    /// A catalog pack is installed when its shelf has it. A pack that arrived
+    /// through an older route (the website's install links) is recognised too.
+    private func externalRecord(_ manifest: PackManifest, state: PackState?) -> PackRecord {
+        guard let install = manifest.install, let shelf = externalShelf else {
+            return PackRecord(manifest: manifest, state: nil, bundled: false, installRoot: nil)
+        }
+        let root = shelf.installedRoot(forPack: manifest.id, handler: install)
+        guard let root else { return PackRecord(manifest: manifest, state: nil, bundled: false, installRoot: nil) }
+        let known = state ?? PackState(enabled: true, installedVersion: manifest.version, installedAt: nil, source: "shelf", updatedAt: JS.isoNow())
+        return PackRecord(manifest: manifest, state: known, bundled: false, installRoot: root)
     }
 
     public func record(_ id: String) -> PackRecord? { records().first { $0.manifest.id == id } }
@@ -261,6 +291,12 @@ public final class PackRegistry {
             throw PackError.dependentsEnabled("Turn off \(dependents.map(\.name).joined(separator: ", ")) first; they depend on \(record.manifest.name).")
         }
         var report = PackUninstallReport(id: id, removedPaths: [], retainedDataRoots: [], retiredDataRoots: [])
+        if let install = record.manifest.install, let shelf = externalShelf {
+            if let root = shelf.installedRoot(forPack: id, handler: install) {
+                try shelf.removePack(id: id, handler: install)
+                report.removedPaths.append(root)
+            }
+        }
         let packRoot = Path.join(installedRoot, id)
         if Files.exists(packRoot) {
             Files.remove(packRoot)
@@ -324,6 +360,8 @@ public final class PackRegistry {
             "publisher": JSON(manifest.publisher),
             "bundled": JSON(record.bundled),
             "installed": JSON(record.isInstalled),
+            "available": JSON(!record.isInstalled),
+            "handler": JSON(manifest.install?.handler),
             "enabled": JSON(record.isEnabled),
             "installedVersion": JSON(record.state?.installedVersion),
             "installedAt": JSON(record.state?.installedAt),

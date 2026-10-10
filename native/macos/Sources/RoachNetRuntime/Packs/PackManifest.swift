@@ -21,12 +21,17 @@ public struct PackManifest: Codable, Equatable {
     public var capabilities: [PackCapability]
     public var resources: [PackResource]
     public var dataRoots: [PackDataRoot]
+    /// How the pack lands once downloaded. Absent means the generic installer
+    /// (verify, extract into `packs/installed/<id>/<version>`). `roachspeech-pack`
+    /// hands the archive to the RoachSpeech shelf installer, which already
+    /// validates `RoachSpeechPack.json` and swaps the pack in atomically.
+    public var install: PackInstallHandler?
     public var signature: PackSignature?
 
     public init(
         id: String, version: String, kind: PackKind, name: String, summary: String = "", publisher: String = "RoachWares LLC",
         requires: PackRequirements = PackRequirements(), dependencies: [PackDependency] = [], capabilities: [PackCapability] = [],
-        resources: [PackResource] = [], dataRoots: [PackDataRoot] = [], signature: PackSignature? = nil
+        resources: [PackResource] = [], dataRoots: [PackDataRoot] = [], install: PackInstallHandler? = nil, signature: PackSignature? = nil
     ) {
         self.schema = Self.schema
         self.id = id
@@ -40,6 +45,7 @@ public struct PackManifest: Codable, Equatable {
         self.capabilities = capabilities
         self.resources = resources
         self.dataRoots = dataRoots
+        self.install = install
         self.signature = signature
     }
 
@@ -57,6 +63,7 @@ public struct PackManifest: Codable, Equatable {
         capabilities = try c.decodeIfPresent([PackCapability].self, forKey: .capabilities) ?? []
         resources = try c.decodeIfPresent([PackResource].self, forKey: .resources) ?? []
         dataRoots = try c.decodeIfPresent([PackDataRoot].self, forKey: .dataRoots) ?? []
+        install = try c.decodeIfPresent(PackInstallHandler.self, forKey: .install)
         signature = try c.decodeIfPresent(PackSignature.self, forKey: .signature)
     }
 
@@ -117,6 +124,19 @@ public struct PackManifest: Codable, Equatable {
         }
         if kind == .capability, !resources.isEmpty {
             throw PackError.invalidManifest("Capability pack \(id) cannot carry downloadable resources; code ships with the app.")
+        }
+        if let install {
+            guard PackInstallHandler.knownHandlers.contains(install.handler) else {
+                throw PackError.invalidManifest("Pack \(id) names an unknown install handler \"\(install.handler)\".")
+            }
+            if install.handler == PackInstallHandler.roachSpeechPack {
+                guard resources.count == 1, resources[0].archive == "zip" else {
+                    throw PackError.invalidManifest("Pack \(id) uses the RoachSpeech installer, which takes exactly one zip resource.")
+                }
+                guard let kind = install.kind, ["roachVoice", "roachWhisper"].contains(kind) else {
+                    throw PackError.invalidManifest("Pack \(id) must say whether it is a roachVoice or roachWhisper pack.")
+                }
+            }
         }
     }
 
@@ -210,6 +230,20 @@ public struct PackResource: Codable, Equatable {
 
 /// User-owned data a pack reads or writes, relative to the storage root. It is
 /// never deleted by an uninstall unless the person asks for it explicitly.
+public struct PackInstallHandler: Codable, Equatable {
+    public static let roachSpeechPack = "roachspeech-pack"
+    public static let knownHandlers: Set<String> = [roachSpeechPack]
+
+    public var handler: String
+    /// For `roachspeech-pack`: `roachVoice` or `roachWhisper`.
+    public var kind: String?
+
+    public init(handler: String, kind: String? = nil) {
+        self.handler = handler
+        self.kind = kind
+    }
+}
+
 public struct PackDataRoot: Codable, Equatable {
     public var path: String
     public var description: String

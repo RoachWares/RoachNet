@@ -36,6 +36,8 @@ public final class NativeRuntime {
     lazy var packRegistry: PackRegistry = {
         let registry = PackRegistry(storageRoot: config.storageRoot, appVersion: config.version)
         registry.onChange = { [weak self] id, event in self?.log("pack \(id) \(event)") }
+        registry.catalogPacks = loadPackCatalog()
+        registry.externalShelf = self
         _ = PackInstaller(registry: registry).sweepStaleStaging()
         return registry
     }()

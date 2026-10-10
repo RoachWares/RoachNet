@@ -174,6 +174,23 @@ extension NativeRuntime {
         }
     }
 
+    /// Downloads one file to an exact path on the calling thread, through the
+    /// same descriptor/chunk/checksum machinery as queued downloads, and lists
+    /// the job so the app's Downloads view shows its progress. The generic pack
+    /// installer uses this from its own background queue.
+    func downloadNow(_ rawUrl: JSON, to filepath: String, filetype: String, expectedSha256: String?) throws {
+        let resolved = try resolveDownloadDescriptor(rawUrl)
+        guard let url = resolved.url else { throw RuntimeError("No usable download URL in \(rawUrl.jsString).") }
+        if let expectedSha256, let descriptorSha = resolved.sha256, expectedSha256.lowercased() != descriptorSha {
+            throw RuntimeError("The download descriptor's checksum does not match the pack manifest.")
+        }
+        try Files.mkdirp(Path.dirname(filepath))
+        let job = DownloadJob(url: url, filepath: filepath, filetype: filetype, descriptorUrl: resolved.descriptorUrl,
+                              expectedSha256: expectedSha256?.lowercased() ?? resolved.sha256, parts: resolved.parts)
+        withState { downloadJobs = Array(([job] + downloadJobs).prefix(200)) }
+        try downloadFile(job)
+    }
+
     func queueResolvedDownload(_ rawUrl: JSON, _ destinationDirectory: String, _ filetype: String,
                                afterDownload: ((DownloadJob) throws -> Void)? = nil) throws -> DownloadJob? {
         let resolved = try resolveDownloadDescriptor(rawUrl)

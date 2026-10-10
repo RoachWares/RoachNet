@@ -68,6 +68,11 @@ const requireAppleSiliconNativeBuild = process.env.ROACHNET_REQUIRE_APPLE_SILICO
 const roachSpeechBundleProfile = (
   process.env.ROACHNET_ROACHSPEECH_BUNDLE_PROFILE?.trim() || 'baseline'
 ).toLowerCase()
+// `core` ships the app without any speech model pack: RoachSpeech stays
+// compiled in and the packs install on first use through Settings › Packs.
+// Resource pack archives are still produced so the catalog can point at them.
+const coreRoachSpeechBundleProfiles = new Set(['core', 'none', 'minimal'])
+const isCoreRoachSpeechBundleProfile = coreRoachSpeechBundleProfiles.has(roachSpeechBundleProfile)
 const skipRoachSpeechPackArchives = process.env.ROACHNET_SKIP_ROACHSPEECH_PACK_ARCHIVES === '1'
 const baselineRoachSpeechPackIDs = new Set([
   'roachwhisper-openai-whisper-base-en-coreml',
@@ -1285,6 +1290,9 @@ async function copyBundledNodeRuntime(sourcePath, resourcesPath) {
 }
 
 function roachSpeechPackIsBundled(packID) {
+  if (isCoreRoachSpeechBundleProfile) {
+    return false
+  }
   if (['full', 'complete', 'all'].includes(roachSpeechBundleProfile)) {
     return true
   }
@@ -1344,7 +1352,7 @@ async function copyBundledRoachSpeechRuntime(resourcesPath) {
   const bundledPackIDs = allPackIDs.filter(roachSpeechPackIsBundled)
   const optionalPackIDs = allPackIDs.filter((packID) => !bundledPackIDs.includes(packID))
 
-  if (allPackIDs.length > 0 && bundledPackIDs.length === 0) {
+  if (allPackIDs.length > 0 && bundledPackIDs.length === 0 && !isCoreRoachSpeechBundleProfile) {
     throw new Error(
       `RoachSpeech bundle profile "${roachSpeechBundleProfile}" did not select any model packs.`
     )

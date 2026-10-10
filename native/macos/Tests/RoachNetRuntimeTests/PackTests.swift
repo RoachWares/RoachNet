@@ -235,4 +235,99 @@ final class PackTests: XCTestCase {
         XCTAssertThrowsError(try PackInstaller(registry: registry).installLocalPackage(at: Path.join(root, "cap")))
         XCTAssertThrowsError(try registry.uninstall(manifest.id)) { XCTAssertTrue("\($0)".contains("turn it off")) }
     }
+
+    // MARK: Catalog and external shelves
+
+    /// Stands in for the RoachSpeech model-pack shelf.
+    private final class FakeShelf: PackExternalShelf {
+        var roots: [String: String] = [:]
+        var removed: [String] = []
+        func installedRoot(forPack id: String, handler: PackInstallHandler) -> String? { roots[id] }
+        func removePack(id: String, handler: PackInstallHandler) throws { roots.removeValue(forKey: id); removed.append(id) }
+    }
+
+    private func speechCatalogPack(id: String = "roachvoice-test-coreml") -> PackManifest {
+        PackManifest(
+            id: id, version: "1.0.0", kind: .resource, name: "Test narrator",
+            requires: PackRequirements(roachnet: "1.1.0", platforms: ["macos"]),
+            dependencies: [PackDependency(id: "speech", minimumVersion: "1.1.0")],
+            capabilities: [.speaker],
+            resources: [PackResource(path: "\(id).zip", url: "https://apps.roachnet.org/downloads/model-packs/\(id).json", sha256: String(repeating: "ab", count: 32), bytes: 1234, archive: "zip")],
+            install: PackInstallHandler(handler: PackInstallHandler.roachSpeechPack, kind: "roachVoice")
+        )
+    }
+
+    func testCatalogPacksAreListedAsAvailableUntilTheShelfHasThem() throws {
+        let registry = registry()
+        let shelf = FakeShelf()
+        registry.externalShelf = shelf
+        registry.catalogPacks = [speechCatalogPack()]
+
+        let listed = try XCTUnwrap(registry.record("roachvoice-test-coreml"))
+        XCTAssertFalse(listed.isInstalled)
+        XCTAssertFalse(listed.isEnabled)
+        XCTAssertNil(listed.installRoot)
+        let json = registry.recordJSON(listed, includeSizes: false)
+        XCTAssertEqual(json["available"].truthy, true)
+        XCTAssertEqual(json["handler"].jsString, "roachspeech-pack")
+        XCTAssertEqual(json["downloadBytes"].jsNumber, 1234)
+        XCTAssertThrowsError(try registry.enable("roachvoice-test-coreml"), "nothing to enable before it is installed")
+
+        // The shelf gets the pack (through the speech installer or an older website link).
+        shelf.roots["roachvoice-test-coreml"] = Path.join(root, "RoachSpeech/ModelPacks/roachvoice-test-coreml")
+        let installed = try XCTUnwrap(registry.record("roachvoice-test-coreml"))
+        XCTAssertTrue(installed.isInstalled)
+        XCTAssertTrue(installed.isEnabled, "a pack on the shelf is in use")
+        XCTAssertEqual(installed.installRoot, shelf.roots["roachvoice-test-coreml"])
+
+        let report = try registry.uninstall("roachvoice-test-coreml")
+        XCTAssertEqual(shelf.removed, ["roachvoice-test-coreml"])
+        XCTAssertEqual(report.removedPaths, [Path.join(root, "RoachSpeech/ModelPacks/roachvoice-test-coreml")])
+        XCTAssertFalse(try XCTUnwrap(registry.record("roachvoice-test-coreml")).isInstalled, "back to available after removal")
+    }
+
+    func testInstalledPacksShadowCatalogEntriesAndCatalogNeverHidesBundledPacks() throws {
+        let registry = registry()
+        registry.catalogPacks = [speechCatalogPack(), PackManifest(id: "roachclaw", version: "9.9.9", kind: .capability, name: "Impostor")]
+        let claw = try XCTUnwrap(registry.record("roachclaw"))
+        XCTAssertTrue(claw.bundled)
+        XCTAssertEqual(claw.manifest.name, "RoachClaw", "the bundled pack wins over a catalog entry with the same id")
+        XCTAssertEqual(registry.records().filter { $0.manifest.id == "roachclaw" }.count, 1)
+    }
+
+    func testManifestInstallHandlerIsValidated() throws {
+        var manifest = speechCatalogPack()
+        XCTAssertNoThrow(try manifest.validate())
+        let roundTrip = try PackManifest.decode(try manifest.encoded())
+        XCTAssertEqual(roundTrip.install?.handler, "roachspeech-pack")
+        XCTAssertEqual(roundTrip.install?.kind, "roachVoice")
+
+        manifest.install = PackInstallHandler(handler: "mystery")
+        XCTAssertThrowsError(try manifest.validate())
+        manifest.install = PackInstallHandler(handler: PackInstallHandler.roachSpeechPack, kind: "roachVoice")
+        manifest.resources[0].archive = "tar.gz"
+        XCTAssertThrowsError(try manifest.validate(), "the speech installer takes one zip")
+        manifest.resources[0].archive = "zip"
+        manifest.install = PackInstallHandler(handler: PackInstallHandler.roachSpeechPack, kind: nil)
+        XCTAssertThrowsError(try manifest.validate(), "voice or whisper must be named")
+    }
+
+    func testPublishedCatalogFileValidates() throws {
+        let path = Path.join(Path.dirname(Path.dirname(Path.dirname(Path.dirname(Path.dirname(#filePath))))), "collections", "packs.json")
+        guard let data = FileManager.default.contents(atPath: path) else { throw XCTSkip("collections/packs.json not beside the package") }
+        let file = try JSON.parse(data)
+        XCTAssertEqual(file["schema"].jsString, "org.roachnet.packs-catalog.v1")
+        let manifests = try file["packs"].array.map { try PackManifest.decode($0.serializedData()) }
+        XCTAssertEqual(manifests.count, 3)
+        XCTAssertEqual(Set(manifests.map(\.id)).count, manifests.count, "ids are unique")
+        for manifest in manifests {
+            XCTAssertEqual(manifest.kind, .resource)
+            XCTAssertEqual(manifest.install?.handler, "roachspeech-pack")
+            XCTAssertTrue(manifest.dependencies.contains { $0.id == "speech" })
+            XCTAssertTrue(manifest.resources[0].url?.hasPrefix("https://apps.roachnet.org/downloads/model-packs/") == true)
+        }
+        let registry = registry()
+        registry.catalogPacks = manifests
+        XCTAssertEqual(registry.records().filter { !$0.isInstalled }.count, 3, "all three are available on a fresh install")
+    }
 }

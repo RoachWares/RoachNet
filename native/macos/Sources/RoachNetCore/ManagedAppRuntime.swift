@@ -2075,7 +2075,14 @@ public actor ManagedAppRuntimeBridge {
     ) async throws -> Data {
         let serverInfo = try await ensureRunning(using: config)
         let baseURL = try runtimeBaseURL(from: serverInfo)
-        var request = URLRequest(url: baseURL.appending(path: path))
+        // `appending(path:)` would percent-encode a query string, so split it off.
+        let pieces = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        var url = baseURL.appending(path: String(pieces[0]))
+        if pieces.count == 2, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            components.percentEncodedQuery = String(pieces[1])
+            url = components.url ?? url
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Accept")
