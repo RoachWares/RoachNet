@@ -4032,6 +4032,29 @@ final class WorkspaceModel: ObservableObject {
             let kind = queryValue("kind", in: components) ?? "roachVoice"
             selectedPane = .roachClaw
             await downloadRoachSpeechPack(url: remoteURL, packID: packID, kind: kind)
+        case "pack":
+            // A pack from the published catalog, by id. The runtime verifies the
+            // catalog entry and downloads through its checked lane; the Pack
+            // Manager shows progress. Nothing in the link is trusted beyond the id.
+            guard let packID = queryValue("pack", in: components) ?? queryValue("id", in: components) ?? queryValue("packID", in: components) else {
+                errorLine = "RoachNet couldn't tell which pack to install."
+                statusLine = "Install link incomplete."
+                return
+            }
+            await featurePacks.refresh(using: config)
+            guard let pack = featurePacks.pack(packID) else {
+                errorLine = "The pack catalog has no pack named \(packID). Check Settings › Packs after the catalog refreshes."
+                statusLine = "Unknown pack."
+                RoachSettingsWindow.open(.packs)
+                return
+            }
+            if pack.installed {
+                statusLine = "\(pack.name) is already installed."
+            } else {
+                await featurePacks.install(packID, using: config)
+                statusLine = featurePacks.errorMessage ?? "\(pack.name) is downloading."
+            }
+            RoachSettingsWindow.open(.packs)
         default:
             errorLine = "RoachNet didn't recognize that App Store install action."
             statusLine = "Unknown install action."
@@ -13892,18 +13915,9 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         let requested = (try? String(contentsOf: paneFile, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if requested.hasPrefix("settings:"),
-           let pane = RoachNetSettingsPane(rawValue: String(requested.dropFirst("settings:".count))),
-           let model = model ?? Self.bootstrapModel
+           let pane = RoachNetSettingsPane(rawValue: String(requested.dropFirst("settings:".count)))
         {
-            model.requestSettingsPane(pane)
-            NSApp.activate(ignoringOtherApps: true)
-            // The Settings scene owns its own menu item; firing that item is the
-            // one route that works on every macOS the app supports.
-            if let item = Self.menuItem(titledLike: "Settings", in: NSApp.mainMenu), let action = item.action {
-                NSApp.sendAction(action, to: item.target, from: item)
-            } else {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            }
+            RoachSettingsWindow.open(pane)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                 self?.captureWindowSnapshot(into: directory)
             }
@@ -13920,15 +13934,6 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         captureWindowSnapshot(into: directory)
-    }
-
-    private static func menuItem(titledLike prefix: String, in menu: NSMenu?) -> NSMenuItem? {
-        guard let menu else { return nil }
-        for item in menu.items {
-            if item.title.hasPrefix(prefix), item.action != nil { return item }
-            if let found = menuItem(titledLike: prefix, in: item.submenu) { return found }
-        }
-        return nil
     }
 
     private func captureWindowSnapshot(into directory: URL) {

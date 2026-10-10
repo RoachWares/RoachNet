@@ -261,6 +261,33 @@ final class FeaturePackStore: ObservableObject {
     }
 }
 
+// MARK: - Opening Settings from outside a view
+
+enum RoachSettingsWindow {
+    /// Opens the Settings window on `pane` from code that has no SwiftUI
+    /// environment (deep links, gate hooks): the Settings scene owns a
+    /// "Settings…" menu item, and firing it works on every supported macOS.
+    @MainActor
+    static func open(_ pane: RoachNetSettingsPane) {
+        UserDefaults.standard.set(pane.rawValue, forKey: RoachNetSettingsPane.requestedPaneUserDefaultsKey)
+        NSApp.activate(ignoringOtherApps: true)
+        if let item = menuItem(titledLike: "Settings", in: NSApp.mainMenu), let action = item.action {
+            NSApp.sendAction(action, to: item.target, from: item)
+        } else {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+    }
+
+    private static func menuItem(titledLike prefix: String, in menu: NSMenu?) -> NSMenuItem? {
+        guard let menu else { return nil }
+        for item in menu.items {
+            if item.title.hasPrefix(prefix), item.action != nil { return item }
+            if let found = menuItem(titledLike: prefix, in: item.submenu) { return found }
+        }
+        return nil
+    }
+}
+
 // MARK: - Settings › Packs
 
 struct FeaturePacksSettingsView: View {

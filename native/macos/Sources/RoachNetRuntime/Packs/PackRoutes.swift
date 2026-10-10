@@ -61,20 +61,60 @@ extension NativeRuntime {
         try downloadNow(JSON(url), to: target, filetype: "roachpack", expectedSha256: sha256)
     }
 
-    /// The published optional packs (`collections/packs.json`). Entries that
-    /// fail validation are skipped and logged rather than taking the list down.
+    /// The published optional packs. The copy bundled with the app
+    /// (`collections/packs.json`) is the floor; the live catalog at
+    /// `ROACHNET_PACK_CATALOG_URL` (default: apps.roachnet.org) adds packs
+    /// published after this build. The live copy is fetched in the background,
+    /// cached on disk, and never blocks a request. Offline keeps the cache.
     func loadPackCatalog() -> [PackManifest] {
-        let file = readJSONFile(["collections/packs.json", "website-apps-dist/collections/packs.json"], .null)
-        guard file["schema"].jsString == "org.roachnet.packs-catalog.v1" else { return [] }
-        var manifests: [PackManifest] = []
-        for entry in file["packs"].array {
+        let bundled = parsePackCatalog(readJSONFile(["collections/packs.json", "website-apps-dist/collections/packs.json"], .null), source: "bundled")
+        let cached = parsePackCatalog(readJSONFile([packCatalogCachePath], .null), source: "cached")
+        return mergePackCatalogs(bundled: bundled, live: cached)
+    }
+
+    var packCatalogCachePath: String { Path.join(config.storageRoot, "packs", "catalog-cache.json") }
+
+    /// Where the live catalog lives; empty disables remote catalogs entirely.
+    var packCatalogURL: String? {
+        let raw = (config.environment["ROACHNET_PACK_CATALOG_URL"] ?? "https://apps.roachnet.org/collections/packs.json").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, let parsed = WebURL(raw), parsed.scheme == "https" || (parsed.scheme == "http" && CompanionProxy.isLoopback(parsed.bareHostname)) else { return nil }
+        return raw
+    }
+
+    func parsePackCatalog(_ file: JSON, source: String) -> [PackManifest] {
+        let parsed = PackCatalogFile.parse(file)
+        for reason in parsed.skipped { log("pack catalog (\(source)) entry skipped: \(reason)") }
+        return parsed.manifests
+    }
+
+    func mergePackCatalogs(bundled: [PackManifest], live: [PackManifest]) -> [PackManifest] {
+        PackCatalogFile.merge(bundled: bundled, live: live)
+    }
+
+    /// Fetches the live catalog once per hour (or on demand), validates it,
+    /// caches it owner-only and swaps it into the registry.
+    func refreshPackCatalog(force: Bool = false) {
+        guard let url = packCatalogURL else { return }
+        if !force, let attributes = try? FileManager.default.attributesOfItem(atPath: packCatalogCachePath),
+           let modified = attributes[.modificationDate] as? Date, Date().timeIntervalSince(modified) < 3600 {
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [self] in
             do {
-                manifests.append(try PackManifest.decode(entry.serializedData()))
+                let response = try HTTPClient.request(url, headers: ["accept": "application/json", "user-agent": "RoachNet/\(config.version) pack-catalog"], timeoutMs: 15_000, maxResponseBytes: 2 * 1024 * 1024)
+                guard response.ok else { throw RuntimeError("HTTP \(response.status) from \(url)") }
+                let file = try JSON.parse(response.body)
+                let live = parsePackCatalog(file, source: "live")
+                guard file["schema"].jsString == "org.roachnet.packs-catalog.v1" else { throw RuntimeError("not a pack catalog") }
+                try Files.mkdirp(Path.dirname(packCatalogCachePath))
+                try Files.writePrettyJSON(file, to: packCatalogCachePath, mode: Files.privateFileMode)
+                let bundled = parsePackCatalog(readJSONFile(["collections/packs.json", "website-apps-dist/collections/packs.json"], .null), source: "bundled")
+                packRegistry.catalogPacks = mergePackCatalogs(bundled: bundled, live: live)
+                log("pack catalog refreshed from \(url): \(live.count) live pack(s)")
             } catch {
-                log("pack catalog entry skipped: \(error)")
+                log("pack catalog refresh skipped: \(error)")
             }
         }
-        return manifests
     }
 
     func affectPack(_ pathname: String, _ body: JSON) throws -> JSON {

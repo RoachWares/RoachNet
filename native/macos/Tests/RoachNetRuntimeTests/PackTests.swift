@@ -330,4 +330,22 @@ final class PackTests: XCTestCase {
         registry.catalogPacks = manifests
         XCTAssertEqual(registry.records().filter { !$0.isInstalled }.count, 3, "all three are available on a fresh install")
     }
+
+    func testLiveCatalogOnlyAddsResourcePacksAndNeverOverridesBundledEntries() throws {
+        let bundledEntry = speechCatalogPack(id: "roachvoice-bundled")
+        let impostor = try JSON.parse(try PackManifest(id: "roachvoice-bundled", version: "9.0.0", kind: .resource, name: "Impostor", resources: bundledEntry.resources, install: bundledEntry.install).encoded())
+        let code = try JSON.parse(try PackManifest(id: "sneaky-code", version: "1.0.0", kind: .capability, name: "Sneaky").encoded())
+        let fresh = try JSON.parse(try speechCatalogPack(id: "roachvoice-new").encoded())
+        let live: JSON = ["schema": JSON(PackCatalogFile.schema), "packs": .array([impostor, code, fresh, fresh])]
+
+        let parsed = PackCatalogFile.parse(live)
+        XCTAssertEqual(parsed.manifests.map(\.id), ["roachvoice-bundled", "roachvoice-new"])
+        XCTAssertEqual(parsed.skipped.count, 2, "the capability pack and the duplicate are refused: \(parsed.skipped)")
+
+        let merged = PackCatalogFile.merge(bundled: [bundledEntry], live: parsed.manifests)
+        XCTAssertEqual(merged.map(\.id), ["roachvoice-bundled", "roachvoice-new"])
+        XCTAssertEqual(merged[0].version, "1.0.0", "the bundled entry wins over the live impostor")
+
+        XCTAssertTrue(PackCatalogFile.parse(["schema": "org.roachnet.packs-catalog.v2", "packs": .array([fresh])]).manifests.isEmpty, "unknown schema yields nothing")
+    }
 }

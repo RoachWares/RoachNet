@@ -59,7 +59,11 @@ public final class PackRegistry {
     public let bundledPacks: [PackManifest]
     /// Optional packs RoachWares publishes (`collections/packs.json`). Listed
     /// as available until installed; never enabled on their own.
-    public var catalogPacks: [PackManifest] = []
+    public var catalogPacks: [PackManifest] {
+        get { lock.lock(); defer { lock.unlock() }; return storedCatalogPacks }
+        set { lock.lock(); storedCatalogPacks = newValue; lock.unlock() }
+    }
+    private var storedCatalogPacks: [PackManifest] = []
     public weak var externalShelf: PackExternalShelf?
     public var onChange: ((String, String) -> Void)?
 
