@@ -35,7 +35,7 @@ Start with `RoachNet Setup`.
 
 The setup app checks the machine, stages the contained runtime, gives Docker as an explicit opt-in, and hands off into the native shell.
 
-The packaged setup lane now ships its own portable embedded Node runtime, so Apple Silicon installs do not assume Homebrew or host-level dylib dependencies just to boot the installer.
+The packaged setup lane runs on `roachnet-runtime`, a native Swift helper, so Apple Silicon installs need no Node, Homebrew or host-level dylib dependencies to boot the installer.
 
 There is also a direct Homebrew lane for Apple Silicon Macs:
 
@@ -64,7 +64,7 @@ GitHub does not host the support widgets used on the public site, so the repo ke
 ## Platform Status
 
 - `macOS Apple Silicon`
-  v1.0.5 remains the current stable release. The [v1.0.6 candidate notes](./docs/releases/1.0.6.md) and [publication matrix](./docs/releases/1.0.6-publication-matrix.md) are draft-only until Developer ID, notarization, install, accessibility, performance, and exact-public-byte gates pass.
+  v1.0.6 is the current release ([notes](./docs/releases/1.0.6.md), [security review](./docs/release-gates/1.0.6-security-review.md), [Mac gate results](./docs/release-gates/1.0.6-mac-gate-results.md)). It is ad-hoc signed and not Apple-notarized; the first launch of RoachNet Setup needs **Open Anyway** in Privacy & Security.
 - `Windows 11 x64`
   No public installer lane in this candidate. RoachArcade keeps Windows-game runner planning inside the macOS app instead of shipping another half-built desktop target.
 - `Linux`

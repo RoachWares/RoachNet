@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased — v1.0.6 release candidate
+## v1.0.6 - 2026-10-10
+
+Published from the hand-gated Apple Silicon candidate (see `docs/release-gates/1.0.6-mac-gate-results.md`). Ad-hoc signed, not Apple-notarized.
+
+### Security (pre-publication review, `docs/release-gates/1.0.6-security-review.md`)
+
+- The update lane requires the release's `.sha256` sidecar, verifies the downloaded installer and discards a mismatch; assets must be https.
+- Malformed HTTP body framing can no longer crash the runtime before authentication.
+- The loopback API and setup service reject non-loopback `Host` headers and non-JSON bodies.
+- RoachTail join codes pair once and retire after five wrong guesses; peer ids are server-generated; token compare is constant-time.
+- Paired phones can only queue downloads from public hosts; download descriptors are capped.
+- Installer config, RoachTail state and provider keys are written owner-only; the companion token stays out of the Ollama child environment; the privileged hosts-file alias validates the hostname.
+- Release evidence queries OSV with a working purl, records reviewed Ollama advisories, and no longer lists a Node runtime that is not shipped. Every workflow action is SHA-pinned and docker publishing exact-matches the authorized actor.
+
+### Changes since v1.0.5
 
 - Replaced the bundled Node runtime with `roachnet-runtime`, a native Swift helper built only on Apple system frameworks. It serves the same loopback API and environment contract, runs the iOS companion bridge in-process, and the default packaging lane now refuses to embed Node.
 - Rebuilt RoachNet Setup on the native helper. Installs check the hardware and OS first, stage beside the target, smoke-test the staged runtime before swapping it in, preserve storage across upgrades, and roll back cleanly on failure.
