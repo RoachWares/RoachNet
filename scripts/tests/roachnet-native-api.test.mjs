@@ -1667,7 +1667,14 @@ async function response_text(response) {
   return await response.text()
 }
 
-test('native API refuses to queue an installer whose release has no checksum sidecar', async () => {
+// The 1.0.6 hardening (checksum sidecars, strict framing, single-use join
+// codes) lives in the Swift runtime; the loopback Host/Origin/JSON guard is in
+// both (scripts/lib/roachnet_loopback_guard.mjs). The dependency-free Node
+// reference API is a compatibility lane and does not implement it, so these
+// run only against a built roachnet-runtime.
+const swiftOnly = nativeApiBinary ? {} : { skip: 'Swift runtime behaviour; set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }
+
+test('native API refuses to queue an installer whose release has no checksum sidecar', swiftOnly, async () => {
   await runUpdateLane({ mode: 'good', sidecar: false }, async ({ updatePayload, updateStatus, storagePath }) => {
     assert.equal(updatePayload.success, false)
     assert.match(updatePayload.error, /no verifiable checksum/)
@@ -1676,7 +1683,7 @@ test('native API refuses to queue an installer whose release has no checksum sid
   })
 })
 
-test('native API discards an installer whose bytes do not match the published checksum', async () => {
+test('native API discards an installer whose bytes do not match the published checksum', swiftOnly, async () => {
   await runUpdateLane({ mode: 'tampered' }, async ({ updatePayload, updateStatus, storagePath }) => {
     assert.equal(updatePayload.success, true)
     assert.equal(updateStatus.stage, 'error')
@@ -1732,7 +1739,7 @@ function rawRequest(port, text) {
   })
 }
 
-test('native API survives malformed body framing and stays up', async () => {
+test('native API survives malformed body framing and stays up', swiftOnly, async () => {
   await withNativeApi({}, async ({ port }) => {
     const negative = await rawRequest(port, 'POST /api/benchmark/run HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: -1\r\n\r\n')
     assert.match(negative, /^HTTP\/1\.1 400/)
@@ -1775,7 +1782,7 @@ test('native API rejects non-loopback Host headers and non-JSON bodies', async (
   })
 })
 
-test('native RoachTail join codes pair exactly once and retire after repeated wrong guesses', async () => {
+test('native RoachTail join codes pair exactly once and retire after repeated wrong guesses', swiftOnly, async () => {
   const companionPort = await resolveAvailablePort()
   await withNativeApi(
     {

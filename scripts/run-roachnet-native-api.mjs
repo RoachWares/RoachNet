@@ -5193,7 +5193,7 @@ function educationCategories() {
       slug: tier.slug,
       description: tier.description ?? null,
       recommended: Boolean(tier.recommended),
-      resources: (tier.resources || []).map((resource) => ({
+      resources: (tier.resources || []).filter((resource) => !resource.unavailable).map((resource) => ({
         id: resource.id,
         title: resource.title,
         size_mb: resource.size_mb ?? null,
@@ -5220,7 +5220,7 @@ function wikipediaOptions() {
   return readJsonFile([
     'collections/wikipedia.json',
     'website-apps-dist/collections/wikipedia.json',
-  ], { options: [] }).options || []
+  ], { options: [] }).options?.filter((option) => !option.unavailable) || []
 }
 
 function wikipediaSelectionPath() {

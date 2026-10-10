@@ -1095,7 +1095,8 @@ extension NativeRuntime {
                         "slug": tier["slug"],
                         "description": tier["description"] ?? nil,
                         "recommended": JSON(tier["recommended"].truthy),
-                        "resources": .array(tier["resources"].array.map { resource in
+                        // A resource the publisher withdrew (`unavailable`) is not offered.
+                        "resources": .array(tier["resources"].array.filter { !$0["unavailable"].truthy }.map { resource in
                             [
                                 "id": resource["id"],
                                 "title": resource["title"],
@@ -1124,6 +1125,7 @@ extension NativeRuntime {
 
     func wikipediaOptions() -> [JSON] {
         readJSONFile(["collections/wikipedia.json", "website-apps-dist/collections/wikipedia.json"], ["options": []])["options"].array
+            .filter { !$0["unavailable"].truthy }
     }
 
     func wikipediaSelectionPath() -> String { Path.join(storageRoot, "zim", "wikipedia-selection.json") }
