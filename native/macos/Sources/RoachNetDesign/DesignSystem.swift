@@ -860,6 +860,7 @@ private struct RoachPrimaryButtonBody: View {
             }
             .animation(.spring(response: 0.30, dampingFraction: 0.82), value: configuration.isPressed)
             .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hovered)
+            .roachDisabledAppearance()
     }
 }
 
@@ -912,6 +913,7 @@ private struct RoachSecondaryButtonBody: View {
             }
             .animation(.spring(response: 0.30, dampingFraction: 0.82), value: configuration.isPressed)
             .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hovered)
+            .roachDisabledAppearance()
     }
 }
 
@@ -967,6 +969,26 @@ private struct RoachUtilityButtonBody: View {
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.82), value: configuration.isPressed)
             .animation(.spring(response: 0.28, dampingFraction: 0.82), value: hovered)
+            .roachDisabledAppearance()
+    }
+}
+
+/// Buttons styled with the Roach button styles fade and desaturate when
+/// SwiftUI disables them, so a greyed "Create" reads as "not yet".
+private struct RoachDisabledAppearance: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isEnabled ? 1 : 0.42)
+            .saturation(isEnabled ? 1 : 0.35)
+            .animation(.easeOut(duration: 0.18), value: isEnabled)
+    }
+}
+
+private extension View {
+    func roachDisabledAppearance() -> some View {
+        modifier(RoachDisabledAppearance())
     }
 }
 
@@ -2089,6 +2111,8 @@ public struct RoachMetricCard: View {
                     .padding(.leading, 12)
                     .padding(.top, 10)
             }
+            // Keep the glow inside the card; unclipped it bleeds over whatever sits above the row.
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)

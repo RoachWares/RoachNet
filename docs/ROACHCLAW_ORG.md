@@ -52,8 +52,17 @@ All files are written atomically with owner-only permissions. Runs that were in 
 - `ROACHNET_ORG_SCHEDULER=0` turns off the timer. Tests call `POST /api/org/engine/tick` instead.
 - `ROACHNET_ORG_TICK_MS` sets the scheduler interval. The default is 30 s.
 
+## Surfaces
+
+- Mac: the **Org** pane (`OrgWorkspaceView`) is the owner's desk. It lists open approvals with the payload, takes a note, and approves / sends back / rejects; shows agents with pause and resume; creates one-use invites; and lets people in or turns them away. It re-reads the runtime every 20 s while open, so decisions made from a phone appear without pressing Refresh. `roachnet://open-pane?pane=org` lands on it.
+- iOS: the companion's Org tab shows the same approvals and joins for admins (RoachNet-iOS 0.2.0).
+
+## Gate helpers
+
+- `ROACHNET_UI_SNAPSHOT_DIR=<dir>`: when set at launch, `SIGUSR1` makes the Mac app write a PNG of its main window into `<dir>`. A `pane.txt` in that directory naming a sidebar title (`Org`, `Home`, …) selects that pane first. The app draws its own window, so no Screen Recording permission is involved; the hook is inert unless the variable is set.
+
 ## Not done yet
 
-- Native SwiftUI surfaces and iOS approvals (ROA-31).
+- Budgets and goals are only editable over the API; the Mac desk shows this month's spend against the company budget but does not change it.
 - Webhook triggers can only be reached through loopback or the RoachTail companion. There is no public ingress.
 - A `process` agent is trusted host code. Like any local process, it can reach the loopback API.

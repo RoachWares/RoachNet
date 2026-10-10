@@ -3294,6 +3294,11 @@ final class WorkspaceModel: ObservableObject {
             await handleInstallContentURL(components)
         case "open-pane":
             handleOpenPaneURL(components)
+        case "org-invite":
+            // Invites are accepted from a paired phone; on the Mac just land on the desk.
+            selectedPane = .org
+            errorLine = nil
+            statusLine = "Org invites are accepted on a paired phone. Send the link there."
         default:
             errorLine = "RoachNet didn't recognize that install link."
             statusLine = "Unknown App Store link."
@@ -4032,6 +4037,10 @@ final class WorkspaceModel: ObservableObject {
             selectedPane = .dev
         case "roachclaw":
             selectedPane = .roachClaw
+        case "org":
+            selectedPane = .org
+        case "arcade":
+            selectedPane = .arcade
         case "maps":
             selectedPane = .knowledge
         case "education":
@@ -6381,7 +6390,11 @@ struct RoachNetMacApp: App {
                 .onOpenURL { url in
                     Task { await model.handleIncomingURL(url) }
                 }
+                // Route every roachnet:// link into the window that is already
+                // open instead of spawning a second main window.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
+        .handlesExternalEvents(matching: ["*"])
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .commands {
@@ -7155,6 +7168,9 @@ private struct RootWorkspaceView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .help("\(pane.rawValue): \(pane.subtitle)")
+                                .accessibilityLabel("\(pane.rawValue), \(pane.subtitle)")
+                                .accessibilityIdentifier("sidebar.\(pane.rawValue.lowercased())")
+                                .accessibilityAddTraits(activePane == pane ? .isSelected : [])
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -7213,6 +7229,9 @@ private struct RootWorkspaceView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("\(pane.rawValue), \(pane.subtitle)")
+                                .accessibilityIdentifier("sidebar.\(pane.rawValue.lowercased())")
+                                .accessibilityAddTraits(activePane == pane ? .isSelected : [])
                             }
                         }
 
@@ -13824,6 +13843,85 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         registerCommandPaletteHotKey()
         bringPrimaryWindowForward()
         scheduleFallbackWindowIfNeeded()
+        installWindowSnapshotHookIfRequested()
+    }
+
+    // MARK: Developer window snapshots
+
+    /// Release-gate helper: when `ROACHNET_UI_SNAPSHOT_DIR` is set, SIGUSR1
+    /// writes a PNG of the main window into that directory. The app draws its
+    /// own window, so this needs no Screen Recording permission. Inert unless
+    /// the launching user sets the variable.
+    private var windowSnapshotSignalSource: DispatchSourceSignal?
+
+    private func installWindowSnapshotHookIfRequested() {
+        guard let directory = ProcessInfo.processInfo.environment["ROACHNET_UI_SNAPSHOT_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !directory.isEmpty
+        else { return }
+
+        signal(SIGUSR1, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+        source.setEventHandler { [weak self] in
+            self?.writeWindowSnapshot(into: URL(fileURLWithPath: directory, isDirectory: true))
+        }
+        source.resume()
+        windowSnapshotSignalSource = source
+        roachWindowDebug("Window snapshot hook armed for \(directory).")
+    }
+
+    private func writeWindowSnapshot(into directory: URL) {
+        // An optional `pane.txt` beside the snapshots names the pane to show
+        // first (its sidebar title, e.g. "Org"), so a gate script can walk
+        // every pane without driving the UI through accessibility.
+        let paneFile = directory.appendingPathComponent("pane.txt")
+        if let requested = try? String(contentsOf: paneFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           let pane = WorkspacePane(rawValue: requested),
+           let model = model ?? Self.bootstrapModel,
+           model.selectedPane != pane
+        {
+            model.selectedPane = pane
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.captureWindowSnapshot(into: directory)
+            }
+            return
+        }
+        captureWindowSnapshot(into: directory)
+    }
+
+    private func captureWindowSnapshot(into directory: URL) {
+        guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }),
+              let contentView = window.contentView
+        else {
+            NSLog("[RoachNet snapshot] No visible window to capture.")
+            return
+        }
+
+        // Prefer the composited pixels (blurs and shadows included); the window
+        // belongs to this process, so no capture permission is involved. Fall
+        // back to drawing the view hierarchy if the system declines.
+        let data: Data?
+        if let composited = CGWindowListCreateImage(
+            .null, .optionIncludingWindow, CGWindowID(window.windowNumber), [.boundsIgnoreFraming, .bestResolution]
+        ), composited.width > 1 {
+            data = NSBitmapImageRep(cgImage: composited).representation(using: .png, properties: [:])
+        } else {
+            let bounds = contentView.bounds
+            guard let representation = contentView.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+            contentView.cacheDisplay(in: bounds, to: representation)
+            data = representation.representation(using: .png, properties: [:])
+        }
+        guard let data else { return }
+
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let target = directory.appendingPathComponent("roachnet-\(stamp).png")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: target, options: .atomic)
+            NSLog("[RoachNet snapshot] Wrote %@", target.path)
+        } catch {
+            NSLog("[RoachNet snapshot] Failed: %@", error.localizedDescription)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

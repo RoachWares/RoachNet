@@ -38,11 +38,59 @@ struct OrgDeskApproval: Decodable, Identifiable, Hashable {
         }
     }
 
+    /// Payload fields worth showing under the headline, with readable labels
+    /// ("monthlyBudgetCents" → "Monthly budget" / "$40.00").
     var details: [(String, String)] {
         (payload ?? [:]).keys.sorted().compactMap { key in
-            guard !["title", "summary"].contains(key), let text = payload?[key]?.text else { return nil }
-            return (key.replacingOccurrences(of: "_", with: " ").capitalized, text)
+            guard !["title", "summary", "agentId"].contains(key), let value = payload?[key] else { return nil }
+            if key.hasSuffix("Cents"), let cents = value.cents {
+                return (OrgDeskFormat.label(String(key.dropLast(5))), OrgDeskFormat.dollars(cents))
+            }
+            guard let text = value.text else { return nil }
+            // Roles and statuses come through as identifiers ("writer"); show them as words.
+            let shown = ["role", "status", "strategy"].contains(key) && !text.contains(" ") ? text.capitalized : text
+            return (OrgDeskFormat.label(key), shown)
         }
+    }
+}
+
+enum OrgDeskFormat {
+    /// "monthlyBudget" / "monthly_budget" → "Monthly budget".
+    static func label(_ key: String) -> String {
+        var words: [String] = []
+        var current = ""
+        for character in key.replacingOccurrences(of: "_", with: " ") {
+            if character.isUppercase, !current.isEmpty {
+                words.append(current)
+                current = String(character).lowercased()
+            } else if character == " " {
+                if !current.isEmpty { words.append(current) }
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        if !current.isEmpty { words.append(current) }
+        guard let first = words.first else { return key }
+        return ([first.capitalized] + words.dropFirst()).joined(separator: " ")
+    }
+
+    static func dollars(_ cents: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = cents % 100 == 0 ? 0 : 2
+        return formatter.string(from: NSNumber(value: Double(cents) / 100)) ?? "$\(cents / 100)"
+    }
+
+    static func relative(_ iso: String?) -> String? {
+        guard let iso else { return nil }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
@@ -63,6 +111,15 @@ enum OrgDeskValue: Decodable, Hashable {
         case .number(let v): return v.rounded() == v ? String(Int(v)) : String(v)
         case .flag(let v): return v ? "Yes" : "No"
         case .other: return nil
+        }
+    }
+
+    /// Money fields arrive as numbers or numeric strings depending on who filed the approval.
+    var cents: Int? {
+        switch self {
+        case .number(let v): return Int(v)
+        case .text(let v): return Int(v.trimmingCharacters(in: .whitespaces))
+        default: return nil
         }
     }
 }
@@ -225,21 +282,27 @@ struct OrgWorkspaceView: View {
     @State private var inviteRole = "operator"
     @State private var notes: [String: String] = [:]
 
+    /// Agents file approvals and phones answer them while this pane sits open,
+    /// so it re-reads the desk on a slow cadence instead of waiting for Refresh.
+    private let refreshCadence: Duration = .seconds(20)
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                RoachSectionHeader(
-                    "RoachClaw Org",
-                    title: store.dashboard?.company.name ?? "Your agent company.",
-                    detail: "Hire agents, set budgets and approve their work. It all runs on this Mac; paired phones can approve too."
-                )
+                header
                 banners
                 if store.unsupported {
-                    RoachNotice(title: "Org isn't running", detail: "This runtime has no RoachClaw Org. Update roachnet-runtime to 1.1 or later.", accent: RoachPalette.bronze)
+                    RoachNotice(
+                        title: "Org isn't running",
+                        detail: "This runtime has no RoachClaw Org. Update roachnet-runtime to 1.1 or later.",
+                        accent: RoachPalette.bronze
+                    )
                 } else if store.companies.isEmpty && !store.isLoading {
-                    createCompany
+                    emptyDesk
+                } else if store.companies.isEmpty {
+                    loadingDesk
                 } else {
-                    companyPicker
+                    companyCard
                     metrics
                     HStack(alignment: .top, spacing: 18) {
                         VStack(alignment: .leading, spacing: 18) {
@@ -257,8 +320,47 @@ struct OrgWorkspaceView: View {
             }
             .padding(24)
         }
-        .task { await store.refresh(using: model.config) }
+        .task {
+            await store.refresh(using: model.config)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: refreshCadence)
+                guard !Task.isCancelled, !store.isLoading else { continue }
+                await store.refresh(using: model.config)
+            }
+        }
         .accessibilityIdentifier("pane.org")
+    }
+
+    // MARK: Header and banners
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 16) {
+            RoachSectionHeader(
+                "RoachClaw Org",
+                title: store.dashboard?.company.name ?? "Your agent company.",
+                detail: "Hire agents, set budgets and approve their work. It all runs on this Mac; paired phones can approve too."
+            )
+            Spacer(minLength: 12)
+            if !store.companies.isEmpty {
+                HStack(spacing: 10) {
+                    if store.companies.count > 1 {
+                        Picker("Company", selection: Binding(
+                            get: { store.selectedCompanyID ?? "" },
+                            set: { id in store.selectedCompanyID = id; Task { await store.refresh(using: model.config) } }
+                        )) {
+                            ForEach(store.companies) { Text($0.name).tag($0.id) }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 220)
+                        .accessibilityLabel("Company")
+                    }
+                    if store.isLoading { ProgressView().controlSize(.small) }
+                    Button("Refresh") { Task { await store.refresh(using: model.config) } }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+                        .accessibilityIdentifier("org.refresh")
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -266,90 +368,236 @@ struct OrgWorkspaceView: View {
         if let error = store.errorMessage {
             RoachNotice(title: "That didn't go through", detail: error, accent: RoachPalette.magenta)
         } else if let message = store.message {
-            RoachNotice(title: message, detail: "Phones paired over RoachTail see this too.", accent: RoachPalette.green, systemName: "checkmark.circle.fill")
+            RoachNotice(
+                title: message,
+                detail: "Phones paired over RoachTail see this too.",
+                accent: RoachPalette.green,
+                systemName: "checkmark.circle.fill"
+            )
         }
     }
 
-    private var createCompany: some View {
+    // MARK: Empty and loading desks
+
+    private var loadingDesk: some View {
         RoachPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                RoachKicker("Start one")
-                Text("No company yet. Name it and RoachClaw sets up the org chart, issues and budgets.")
-                    .foregroundStyle(RoachPalette.muted)
-                HStack {
-                    TextField("Company name", text: $newCompanyName)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 320)
-                    Button("Create company") { Task { await store.createCompany(name: newCompanyName, using: model.config) } }
-                        .buttonStyle(RoachPrimaryButtonStyle())
-                        .disabled(newCompanyName.trimmingCharacters(in: .whitespaces).isEmpty)
+            HStack(spacing: 12) {
+                ProgressView().controlSize(.small)
+                Text("Opening the desk…").foregroundStyle(RoachPalette.muted)
+            }
+        }
+    }
+
+    /// First run: say what the Org does, then take a name. Fills the pane
+    /// instead of leaving a lone field at the top of an empty canvas.
+    private var emptyDesk: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            RoachSpotlightPanel(accent: RoachPalette.magenta) {
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        RoachKicker("Start one")
+                        Text("A company of agents. You hold the pen.")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundStyle(RoachPalette.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Name it and RoachClaw sets up the org chart, issues and budgets. Agents propose hires and spend; nothing happens until you say so, here or on a paired phone.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(RoachPalette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(alignment: .bottom, spacing: 12) {
+                            RoachInlineField(title: "Company name", value: $newCompanyName, placeholder: "RoachWares Studio")
+                                .frame(maxWidth: 360)
+                                .onSubmit { createCompany() }
+                                .accessibilityIdentifier("org.companyName")
+                            Button("Create company") { createCompany() }
+                                .buttonStyle(RoachPrimaryButtonStyle())
+                                .disabled(newCompanyName.trimmingCharacters(in: .whitespaces).isEmpty)
+                                .padding(.bottom, 6)
+                                .accessibilityIdentifier("org.createCompany")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "person.3.sequence.fill")
+                        .font(.system(size: 64, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(colors: [RoachPalette.magenta, RoachPalette.green], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .shadow(color: RoachPalette.magenta.opacity(0.35), radius: 24, y: 8)
+                        .padding(.top, 8)
+                        .padding(.trailing, 12)
+                        .accessibilityHidden(true)
+                }
+                .padding(14)
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                RoachFeatureTile(
+                    "Approvals",
+                    title: "Hires, budgets, strategy",
+                    detail: "Agents ask; you approve, send back or reject with a note they can read.",
+                    systemName: "checkmark.seal.fill",
+                    accent: RoachPalette.magenta
+                )
+                RoachFeatureTile(
+                    "Agents",
+                    title: "Local models on the books",
+                    detail: "Every agent runs on this Mac's RoachInference lane. Pause one and it stops mid-heartbeat.",
+                    systemName: "cpu.fill",
+                    accent: RoachPalette.green
+                )
+                RoachFeatureTile(
+                    "Phones",
+                    title: "Approve from your pocket",
+                    detail: "Invite people over RoachTail. Admins can decide approvals from the iOS companion.",
+                    systemName: "iphone.gen3",
+                    accent: RoachPalette.cyan
+                )
+            }
+        }
+    }
+
+    private func createCompany() {
+        let name = newCompanyName
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        Task {
+            await store.createCompany(name: name, using: model.config)
+            if store.errorMessage == nil { newCompanyName = "" }
+        }
+    }
+
+    // MARK: Company and metrics
+
+    private var companyCard: some View {
+        RoachInsetPanel {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: "building.2.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(RoachPalette.magenta)
+                    .frame(width: 40, height: 40)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(RoachPalette.magenta.opacity(0.14)))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(store.dashboard?.company.name ?? store.companies.first(where: { $0.id == store.selectedCompanyID })?.name ?? "Company")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundStyle(RoachPalette.text)
+                        let status = store.dashboard?.company.status ?? "active"
+                        RoachTag(status.capitalized, accent: status == "active" ? RoachPalette.green : RoachPalette.bronze)
+                    }
+                    Text(companySubtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(RoachPalette.muted)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 12)
+                if let budget = store.dashboard?.companyBudgetCents, budget > 0 {
+                    let spend = store.dashboard?.monthSpendCents ?? 0
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("\(OrgDeskFormat.dollars(spend)) of \(OrgDeskFormat.dollars(budget))")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(spend > budget ? RoachPalette.warning : RoachPalette.text)
+                        Text("This month's budget")
+                            .font(.system(size: 11))
+                            .foregroundStyle(RoachPalette.muted)
+                    }
+                    .accessibilityElement(children: .combine)
                 }
             }
         }
     }
 
-    private var companyPicker: some View {
-        HStack(spacing: 10) {
-            if store.companies.count > 1 {
-                Picker("Company", selection: Binding(
-                    get: { store.selectedCompanyID ?? "" },
-                    set: { id in store.selectedCompanyID = id; Task { await store.refresh(using: model.config) } }
-                )) {
-                    ForEach(store.companies) { Text($0.name).tag($0.id) }
-                }
-                .frame(maxWidth: 280)
-            }
-            Spacer()
-            if store.isLoading { ProgressView().controlSize(.small) }
-            Button("Refresh") { Task { await store.refresh(using: model.config) } }
-                .buttonStyle(RoachSecondaryButtonStyle())
-        }
+    private var companySubtitle: String {
+        if let description = store.dashboard?.company.description, !description.isEmpty { return description }
+        return "Runs on this Mac. Approvals and joins sync to paired phones."
     }
 
     private var metrics: some View {
         HStack(spacing: 12) {
-            RoachMetricCard(label: "Approvals", value: "\(store.approvals.filter(\.isOpen).count)", detail: "Waiting on you")
-            RoachMetricCard(label: "Agents", value: "\(store.agents.filter { $0.status != "terminated" }.count)", detail: "On the books")
+            RoachMetricCard(label: "Approvals", value: "\(openApprovals.count)", detail: openApprovals.isEmpty ? "Nothing waiting" : "Waiting on you")
+            RoachMetricCard(label: "Agents", value: "\(activeAgents.count)", detail: "On the books")
             RoachMetricCard(label: "Open issues", value: "\(store.dashboard?.openIssues ?? 0)", detail: "Across projects")
             RoachMetricCard(label: "Running", value: "\(store.dashboard?.runningRuns ?? 0)", detail: "Heartbeats live")
         }
     }
 
+    private var openApprovals: [OrgDeskApproval] { store.approvals.filter(\.isOpen) }
+    private var activeAgents: [OrgDeskAgent] { store.agents.filter { $0.status != "terminated" } }
+    private var pendingJoins: [OrgDeskJoinRequest] { store.joinRequests.filter { $0.status == "pending_approval" } }
+
+    // MARK: Approvals
+
     private var approvalsPanel: some View {
         RoachPanel {
             VStack(alignment: .leading, spacing: 12) {
-                RoachKicker("Waiting on you")
-                let open = store.approvals.filter(\.isOpen)
-                if open.isEmpty {
-                    Text("Nothing waiting. The agents are behaving.").foregroundStyle(RoachPalette.muted)
-                }
-                ForEach(open) { approval in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            RoachTag(approval.typeTitle, accent: RoachPalette.magenta)
-                            if approval.status == "revision_requested" { RoachTag("Sent back", accent: RoachPalette.bronze) }
-                            Spacer()
-                        }
-                        Text(approval.headline).font(.headline).foregroundStyle(RoachPalette.text)
-                        ForEach(approval.details, id: \.0) { line in
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(line.0).font(.caption.monospaced()).foregroundStyle(RoachPalette.muted).frame(width: 90, alignment: .leading)
-                                Text(line.1).foregroundStyle(RoachPalette.text)
-                            }
-                        }
-                        TextField("Note for the agent (optional)", text: Binding(get: { notes[approval.id] ?? "" }, set: { notes[approval.id] = $0 }))
-                            .textFieldStyle(.roundedBorder)
-                        HStack {
-                            Button("Approve") { decide(approval, "approve") }.buttonStyle(RoachPrimaryButtonStyle())
-                            Button("Send back") { decide(approval, "request-revision") }.buttonStyle(RoachSecondaryButtonStyle())
-                            Button("Reject") { decide(approval, "reject") }.buttonStyle(RoachUtilityButtonStyle())
-                        }
+                HStack {
+                    RoachKicker("Waiting on you")
+                    Spacer()
+                    if !openApprovals.isEmpty {
+                        RoachTag("\(openApprovals.count) open", accent: RoachPalette.magenta)
                     }
-                    .padding(.vertical, 6)
-                    Divider()
+                }
+                if openApprovals.isEmpty {
+                    emptyLine("checkmark.circle", "Nothing waiting. The agents are behaving.")
+                }
+                ForEach(Array(openApprovals.enumerated()), id: \.element.id) { index, approval in
+                    if index > 0 { Divider().overlay(RoachPalette.border) }
+                    approvalRow(approval)
                 }
             }
         }
+    }
+
+    private func approvalRow(_ approval: OrgDeskApproval) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                RoachTag(approval.typeTitle, accent: RoachPalette.magenta)
+                if approval.status == "revision_requested" { RoachTag("Sent back", accent: RoachPalette.bronze) }
+                Spacer()
+                if let when = OrgDeskFormat.relative(approval.createdAt) {
+                    Text(when)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(RoachPalette.muted)
+                }
+            }
+            Text(approval.headline)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(RoachPalette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            if !approval.details.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(approval.details, id: \.0) { line in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(line.0)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(RoachPalette.muted)
+                                .frame(width: 120, alignment: .leading)
+                            Text(line.1)
+                                .font(.system(size: 13))
+                                .foregroundStyle(RoachPalette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.22)))
+            }
+            RoachInlineField(
+                title: "Note for the agent (optional)",
+                value: Binding(get: { notes[approval.id] ?? "" }, set: { notes[approval.id] = $0 }),
+                placeholder: "Why, or what to change"
+            )
+            HStack(spacing: 8) {
+                Button("Approve") { decide(approval, "approve") }
+                    .buttonStyle(RoachPrimaryButtonStyle())
+                    .accessibilityIdentifier("org.approve")
+                Button("Send back") { decide(approval, "request-revision") }
+                    .buttonStyle(RoachSecondaryButtonStyle())
+                Button("Reject") { decide(approval, "reject") }
+                    .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.warning))
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     private func decide(_ approval: OrgDeskApproval, _ decision: String) {
@@ -360,28 +608,64 @@ struct OrgWorkspaceView: View {
         }
     }
 
+    private func emptyLine(_ systemName: String, _ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemName)
+                .foregroundStyle(RoachPalette.green)
+                .accessibilityHidden(true)
+            Text(text).foregroundStyle(RoachPalette.muted)
+        }
+        .font(.system(size: 13))
+        .padding(.vertical, 2)
+    }
+
+    // MARK: Agents
+
     private var agentsPanel: some View {
         RoachPanel {
             VStack(alignment: .leading, spacing: 10) {
-                RoachKicker("Agents")
+                HStack {
+                    RoachKicker("Agents")
+                    Spacer()
+                    if !activeAgents.isEmpty {
+                        Text("\(activeAgents.count) on the books")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(RoachPalette.muted)
+                    }
+                }
                 if store.agents.isEmpty {
-                    Text("No agents hired yet. Agents can request hires; you approve them above.").foregroundStyle(RoachPalette.muted)
+                    emptyLine("person.badge.plus", "No agents hired yet. Agents can request hires; you approve them above.")
                 }
                 ForEach(store.agents) { agent in
-                    HStack {
-                        RoachStatusRow(title: "\(agent.name) · \(agent.title ?? agent.role?.uppercased() ?? "Agent")", value: agent.status.capitalized,
-                                       accent: agent.status == "running" ? RoachPalette.green : agent.status == "paused" ? RoachPalette.bronze : RoachPalette.cyan)
+                    HStack(spacing: 10) {
+                        RoachStatusRow(
+                            title: "\(agent.name) · \(agent.title ?? agent.role?.uppercased() ?? "Agent")",
+                            value: agent.status.capitalized,
+                            accent: agentAccent(agent.status)
+                        )
                         if agent.status != "terminated" {
                             Button(agent.status == "paused" ? "Resume" : "Pause") {
                                 Task { await store.setAgent(agent, agent.status == "paused" ? "resume" : "pause", using: model.config) }
                             }
                             .buttonStyle(RoachSecondaryButtonStyle())
+                            .accessibilityLabel("\(agent.status == "paused" ? "Resume" : "Pause") \(agent.name)")
                         }
                     }
                 }
             }
         }
     }
+
+    private func agentAccent(_ status: String) -> Color {
+        switch status {
+        case "running", "active": return RoachPalette.green
+        case "paused": return RoachPalette.bronze
+        case "terminated": return RoachPalette.muted
+        default: return RoachPalette.cyan
+        }
+    }
+
+    // MARK: Invites and joins
 
     private var invitePanel: some View {
         RoachInsetPanel {
@@ -389,49 +673,90 @@ struct OrgWorkspaceView: View {
                 RoachKicker("Invite a person")
                 Text("Send the link to a phone paired over RoachTail. They ask to join; you approve below.")
                     .font(.callout).foregroundStyle(RoachPalette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
                 Picker("Role", selection: $inviteRole) {
                     Text("Viewer").tag("viewer")
                     Text("Operator").tag("operator")
-                    Text("Admin (can approve)").tag("admin")
+                    Text("Admin").tag("admin")
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel("Invite role")
+                Text(inviteRoleHint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(RoachPalette.muted)
                 Button("Create invite") { Task { await store.createInvite(role: inviteRole, using: model.config) } }
                     .buttonStyle(RoachPrimaryButtonStyle())
+                    .accessibilityIdentifier("org.createInvite")
                 if let invite = store.lastInvite {
-                    Text(invite.link)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .foregroundStyle(RoachPalette.text)
-                        .lineLimit(3)
-                    Button("Copy link") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(invite.link, forType: .string)
-                        store.message = "Invite link copied."
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            RoachTag(invite.role.capitalized, accent: RoachPalette.cyan)
+                            Text("One use · 72 hours")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(RoachPalette.muted)
+                        }
+                        Text(invite.link)
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                            .foregroundStyle(RoachPalette.text)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Copy link") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(invite.link, forType: .string)
+                            store.message = "Invite link copied."
+                        }
+                        .buttonStyle(RoachSecondaryButtonStyle())
                     }
-                    .buttonStyle(RoachSecondaryButtonStyle())
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.22)))
                 }
             }
+        }
+    }
+
+    private var inviteRoleHint: String {
+        switch inviteRole {
+        case "viewer": return "Viewers watch the board and read issues."
+        case "admin": return "Admins can approve hires, budgets and joins from their phone."
+        default: return "Operators work issues and talk to agents, but can't approve."
         }
     }
 
     private var joinPanel: some View {
         RoachInsetPanel {
             VStack(alignment: .leading, spacing: 10) {
-                RoachKicker("Asking to join")
-                let pending = store.joinRequests.filter { $0.status == "pending_approval" }
-                if pending.isEmpty {
-                    Text("Nobody waiting at the door.").font(.callout).foregroundStyle(RoachPalette.muted)
+                HStack {
+                    RoachKicker("Asking to join")
+                    Spacer()
+                    if !pendingJoins.isEmpty { RoachTag("\(pendingJoins.count)", accent: RoachPalette.cyan) }
                 }
-                ForEach(pending) { request in
+                if pendingJoins.isEmpty {
+                    emptyLine("door.left.hand.closed", "Nobody waiting at the door.")
+                }
+                ForEach(pendingJoins) { request in
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(request.userName ?? request.agentName ?? "Someone").font(.headline).foregroundStyle(RoachPalette.text)
+                        HStack(spacing: 8) {
+                            Text(request.userName ?? request.agentName ?? "Someone")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(RoachPalette.text)
+                            if request.requestType == "agent" { RoachTag("Agent", accent: RoachPalette.bronze) }
+                            Spacer()
+                            if let when = OrgDeskFormat.relative(request.createdAt) {
+                                Text(when).font(.system(size: 11, design: .monospaced)).foregroundStyle(RoachPalette.muted)
+                            }
+                        }
                         if let email = request.email { Text(email).font(.caption).foregroundStyle(RoachPalette.muted) }
-                        HStack {
+                        HStack(spacing: 8) {
                             Button("Let them in") { Task { await store.decideJoin(request, approve: true, using: model.config) } }
                                 .buttonStyle(RoachPrimaryButtonStyle())
                             Button("Turn away") { Task { await store.decideJoin(request, approve: false, using: model.config) } }
                                 .buttonStyle(RoachSecondaryButtonStyle())
                         }
                     }
+                    .padding(.vertical, 4)
                 }
             }
         }
