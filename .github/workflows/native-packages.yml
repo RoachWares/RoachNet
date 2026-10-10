@@ -82,7 +82,7 @@ jobs:
           printf '%s  %s\n' '59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e' "$RUNNER_TEMP/jfk.wav" | shasum -a 256 -c -
           ROACHNET_WHISPER_PARITY_AUDIO="$RUNNER_TEMP/jfk.wav" npm run smoke:release-gates
       - name: Upload diagnostic artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: roachnet-macos-diagnostic-${{ github.sha }}
           path: |
@@ -336,7 +336,7 @@ jobs:
             --provenance "$DIST/release-evidence/release-provenance.json" \
             --body "$DIST/release-evidence/stable-release-body.md"
       - name: Bind provenance and rendered body to this immutable Actions run
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: roachnet-release-provenance-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
           path: |
@@ -421,7 +421,7 @@ jobs:
             --snapshot "$RUNNER_TEMP/staged-release-snapshot.json" \
             --output "$RUNNER_TEMP/release-gate-evidence.json"
       - name: Bind exact draft release and asset IDs to this immutable Actions run
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: roachnet-staged-release-snapshot-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
           path: |
@@ -430,7 +430,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Bind independently supplied P0/P1 evidence materials to this immutable Actions run
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: roachnet-release-gate-materials-${{ inputs.candidate_sha }}-${{ github.run_attempt }}
           path: |
