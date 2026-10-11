@@ -67,10 +67,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup Node 26
+        # No dependency cache: this privileged job runs the candidate's npm ci, and a
+        # cache it saved could be restored by later default-branch runs.
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 26
-          cache: npm
+          package-manager-cache: false
       - name: Prove tag, draft release, release copy, and candidate identity
         env:
           GH_TOKEN: ${{ github.token }}
@@ -242,10 +244,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup Node 26
+        # No dependency cache: this privileged job runs the candidate's npm ci, and a
+        # cache it saved could be restored by later default-branch runs.
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 26
-          cache: npm
+          package-manager-cache: false
       - name: Download successful read-only verification packet
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:

@@ -911,6 +911,9 @@ public final class SetupEngine {
             guard NativeRuntime.isTrustedLoopbackHost(request.header("host")) else {
                 return .json(403, ["error": "Setup requests must use a loopback Host."])
             }
+            guard NativeRuntime.isTrustedLoopbackOrigin(request.header("origin")) else {
+                return .json(403, ["error": "Setup requests from other sites are refused."])
+            }
             switch (request.method, url.pathname) {
             case ("GET", "/api/state"):
                 return .json(200, state(url))
