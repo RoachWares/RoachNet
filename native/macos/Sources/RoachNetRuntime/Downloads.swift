@@ -672,6 +672,9 @@ extension NativeRuntime {
                     : "No RoachSpeech pack URL provided.",
                 JSONObject([("packID", JSON(queued.packID)), ("kind", JSON(queued.kind))])
             )
+        case "pack":
+            // apps.roachnet.org lists RoachNet 1.1 feature packs; 1.0.x can only say so.
+            throw requestError("Feature packs install with RoachNet 1.1 or later, from Settings › Packs.", 400)
         default:
             throw requestError("Unsupported App Store install action: \(action).", 400)
         }

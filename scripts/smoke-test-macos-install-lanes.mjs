@@ -29,7 +29,13 @@ const packageVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json
 const pollIntervalMs = 1_500
 const startupTimeoutMs = 600_000
 const keepTempArtifacts = process.env.ROACHNET_SMOKE_KEEP_TEMP === '1'
-const smokeWorkspaceRoot = path.join(distRoot, '.smoke-work')
+// Defaults to the dist volume. ROACHNET_SMOKE_WORK_ROOT moves it, for example
+// to the internal disk when dist sits on an external drive: a freshly signed
+// RoachNet.app launched from a removable volume waits on a macOS
+// "access files on a removable volume" prompt that a person has to answer.
+const smokeWorkspaceRoot = process.env.ROACHNET_SMOKE_WORK_ROOT
+  ? path.resolve(process.env.ROACHNET_SMOKE_WORK_ROOT)
+  : path.join(distRoot, '.smoke-work')
 const bundledSourceForbiddenPathPrefixes = [
   'storage/',
   'admin/storage/',
@@ -679,17 +685,20 @@ async function runCommand(command, args, options = {}) {
 }
 
 async function terminateLingeringSmokeProcesses() {
-  const cleanupPatterns = [
-    '/native/macos/dist/.smoke-work/.*/Contents/Helpers/roachnet-runtime',
-    '/native/macos/dist/.smoke-work/.*/run-roachnet-setup.mjs',
-    '/native/macos/dist/.smoke-work/.*/run-roachnet-native-api.mjs',
-    '/native/macos/dist/.smoke-work/.*/run-roachnet.mjs',
-    '/native/macos/dist/.smoke-work/.*/roachnet-companion-server.mjs',
-    '/native/macos/dist/.smoke-work/.*/runtime-cache/.*/bin/server.js',
-    '/native/macos/dist/.smoke-work/.*/RoachNet\\.app/Contents/MacOS/RoachNetApp',
-    '/native/macos/dist/.smoke-work/.*/RoachNet Setup\\.app/Contents/MacOS/RoachNetSetup',
-  ]
-
+  const workRoots = ['/native/macos/dist/.smoke-work']
+  if (process.env.ROACHNET_SMOKE_WORK_ROOT) {
+    workRoots.push(path.resolve(process.env.ROACHNET_SMOKE_WORK_ROOT).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  }
+  const cleanupPatterns = workRoots.flatMap((root) => [
+    `${root}/.*/Contents/Helpers/roachnet-runtime`,
+    `${root}/.*/run-roachnet-setup.mjs`,
+    `${root}/.*/run-roachnet-native-api.mjs`,
+    `${root}/.*/run-roachnet.mjs`,
+    `${root}/.*/roachnet-companion-server.mjs`,
+    `${root}/.*/runtime-cache/.*/bin/server.js`,
+    `${root}/.*/RoachNet\\.app/Contents/MacOS/RoachNetApp`,
+    `${root}/.*/RoachNet Setup\\.app/Contents/MacOS/RoachNetSetup`,
+  ])
   for (const pattern of cleanupPatterns) {
     await runCommand('pkill', ['-f', pattern], {
       timeoutMs: 5_000,

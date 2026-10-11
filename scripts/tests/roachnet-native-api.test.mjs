@@ -1779,6 +1779,15 @@ test('native API rejects non-loopback Host headers and non-JSON bodies', async (
       timeoutMs: 5_000,
     })
     assert.equal(jsonPost.status, 200)
+    // apps.roachnet.org lists RoachNet 1.1 feature packs; 1.0.x says which release installs them.
+    const featurePack = await requestHttp(`http://127.0.0.1:${port}/api/companion/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: '{"action":"pack","pack":"roachwhisper-openai-whisper-base-en-coreml"}',
+      timeoutMs: 5_000,
+    })
+    assert.equal(featurePack.status, 400)
+    assert.match(await featurePack.text(), /RoachNet 1\.1 or later/)
   })
 })
 

@@ -4013,6 +4013,9 @@ final class WorkspaceModel: ObservableObject {
             let kind = queryValue("kind", in: components) ?? "roachVoice"
             selectedPane = .roachClaw
             await downloadRoachSpeechPack(url: remoteURL, packID: packID, kind: kind)
+        case "pack":
+            errorLine = "That feature pack installs with RoachNet 1.1 or later, from Settings › Packs."
+            statusLine = "Needs RoachNet 1.1."
         default:
             errorLine = "RoachNet didn't recognize that App Store install action."
             statusLine = "Unknown install action."

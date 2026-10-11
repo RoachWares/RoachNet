@@ -64,7 +64,7 @@ GitHub does not host the support widgets used on the public site, so the repo ke
 ## Platform Status
 
 - `macOS Apple Silicon`
-  v1.0.6 is the current release ([notes](./docs/releases/1.0.6.md), [security review](./docs/release-gates/1.0.6-security-review.md), [Mac gate results](./docs/release-gates/1.0.6-mac-gate-results.md)). It is ad-hoc signed and not Apple-notarized; the first launch of RoachNet Setup needs **Open Anyway** in Privacy & Security.
+  v1.0.7 is the current release ([notes](./docs/releases/1.0.7.md), [Mac gate results](./docs/release-gates/1.0.7-mac-gate-results.md)); it fixes a DNS-rebinding hole in 1.0.6, so update. It is ad-hoc signed and not Apple-notarized; the first launch of RoachNet Setup needs **Open Anyway** in Privacy & Security.
 - `Windows 11 x64`
   No public installer lane in this candidate. RoachArcade keeps Windows-game runner planning inside the macOS app instead of shipping another half-built desktop target.
 - `Linux`

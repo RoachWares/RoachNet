@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.0.7 - 2026-10-11
+
+Security and content patch for 1.0.6, gated by hand on the release Mac (see `docs/release-gates/1.0.7-mac-gate-results.md`). Ad-hoc signed, not Apple-notarized.
+
+### Security
+
+- The runtime and setup service no longer treat any `Host` starting with `127.` as loopback: `127.<domain>` names could be rebound to 127.0.0.1 and used to read and drive the local API. Only `localhost`, `::1` and dotted-quad 127/8 addresses pass.
+- Every loopback service (Swift runtime, Swift setup, and the JavaScript setup/API fallbacks) refuses a cross-site `Origin` (and `null`) and non-JSON bodies (`scripts/lib/roachnet_loopback_guard.mjs`).
+- Download descriptors are only followed under `ROACHNET_APPS_DOWNLOADS_BASE_URL` (https://apps.roachnet.org/downloads).
+- Non-Error throws return a generic message; the release workflow's privileged jobs use no npm cache and check out `github.sha`.
+
+### Changes
+
+- Bundled Kiwix and Wikipedia collections synced with apps.roachnet.org: titles re-pinned to what the library serves (124 dead downloads in 1.0.6), 20 withdrawn titles hidden from the installers, 10 new titles.
+- Bundled Ollama 0.40.3 (checksum-verified; same file list as 0.40.2).
+- Store items with the 1.1 `pack` install action (RoachSpeech feature packs) are declined with "needs RoachNet 1.1" by the app and the companion install route instead of "unsupported action".
+- CI: the mid-upgrade setup test uses its own hosts file, and RoachNetApp/RoachNetSetup build with `-parse-as-library` on every toolchain.
+- `smoke:macos-install-lanes` takes `ROACHNET_SMOKE_WORK_ROOT`, so a gate run from an external drive can install to the internal disk (a fresh ad-hoc build launched from a removable volume waits on the macOS removable-volume prompt).
+
 ## v1.0.6 - 2026-10-10
 
 Published from the hand-gated Apple Silicon candidate (see `docs/release-gates/1.0.6-mac-gate-results.md`). Ad-hoc signed, not Apple-notarized.

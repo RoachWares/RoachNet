@@ -64,6 +64,10 @@ const supportedInstallActions = new Set([
   'direct-download',
 ])
 
+// Actions apps.roachnet.org lists for a later release. This runtime refuses
+// them with a message instead of installing anything.
+const laterReleaseInstallActions = new Set(['pack'])
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message)
@@ -594,6 +598,15 @@ function validateAppsCatalogContract() {
   for (const item of catalog.items) {
     const intent = item?.installIntent
     assert(intent && typeof intent === 'object', `Catalog item ${item?.id || 'unknown'} is missing installIntent.`)
+    if (laterReleaseInstallActions.has(intent.action)) {
+      // 1.1 feature packs: this release declines them with a clear message, so
+      // the store must say which release they need.
+      assert(
+        typeof item.status === 'string' && item.status.includes('RoachNet 1.1'),
+        `Catalog item ${item.id} uses the 1.1 install action ${intent.action} but does not say it needs RoachNet 1.1.`
+      )
+      continue
+    }
     assert(
       supportedInstallActions.has(intent.action),
       `Catalog item ${item.id} uses unsupported install action ${intent.action || 'missing'}.`
