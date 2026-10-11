@@ -37,6 +37,8 @@ public final class RuntimeConfiguration {
     public let roachTailAuthKeyTTLms: Int
     public let maxRequestBodyBytes: Int
     public let downloadTimeoutMs: Int
+    public let downloadStallTimeoutMs: Int
+    public let downloadMaxAttempts: Int
     public let maxDownloadBytes: Int
     public let serviceHealthProbeTimeoutMs: Int
     public let runtimeProbeCacheMs: Int
@@ -88,7 +90,11 @@ public final class RuntimeConfiguration {
         roachTailJoinCodeTTLms = positiveInt("ROACHTAIL_JOIN_CODE_TTL_MS", 10 * 60 * 1000)
         roachTailAuthKeyTTLms = positiveInt("ROACHTAIL_AUTH_KEY_TTL_MS", 24 * 60 * 60 * 1000)
         maxRequestBodyBytes = positiveInt("ROACHNET_NATIVE_API_MAX_BODY_BYTES", 1024 * 1024)
-        downloadTimeoutMs = positiveInt("ROACHNET_NATIVE_API_DOWNLOAD_TIMEOUT_MS", 10 * 60 * 1000)
+        // Overall budget for one download job. Big maps and ZIMs take hours on a slow line, so
+        // the real guard is the stall timer: the job only fails when bytes stop arriving.
+        downloadTimeoutMs = positiveInt("ROACHNET_NATIVE_API_DOWNLOAD_TIMEOUT_MS", 24 * 60 * 60 * 1000)
+        downloadStallTimeoutMs = positiveInt("ROACHNET_NATIVE_API_DOWNLOAD_STALL_TIMEOUT_MS", 90 * 1000)
+        downloadMaxAttempts = positiveInt("ROACHNET_NATIVE_API_DOWNLOAD_MAX_ATTEMPTS", 6)
         maxDownloadBytes = positiveInt("ROACHNET_NATIVE_API_MAX_DOWNLOAD_BYTES", 512 * 1024 * 1024 * 1024)
         serviceHealthProbeTimeoutMs = positiveInt("ROACHNET_SERVICE_HEALTH_PROBE_TIMEOUT_MS", 1_500)
         runtimeProbeCacheMs = positiveInt("ROACHNET_RUNTIME_PROBE_CACHE_MS", 1_000)
@@ -113,6 +119,7 @@ public final class RuntimeConfiguration {
             ["id": "calendar-import", "label": "Calendar import", "lane": "roachclaw-calendar", "env": "ROACHNET_CALENDAR_IMPORT_MAX_BYTES", "bytes": JSON(calendar), "enforcement": "ics-import-intake"],
             ["id": "download", "label": "Download job", "lane": "installer-app-store", "env": "ROACHNET_NATIVE_API_MAX_DOWNLOAD_BYTES", "bytes": JSON(maxDownloadBytes), "enforcement": "download-to-partial-file"],
             ["id": "timeout", "label": "Download timeout", "lane": "installer-app-store", "env": "ROACHNET_NATIVE_API_DOWNLOAD_TIMEOUT_MS", "milliseconds": JSON(downloadTimeoutMs), "enforcement": "download-timeout"],
+            ["id": "stall", "label": "Download stall timeout", "lane": "installer-app-store", "env": "ROACHNET_NATIVE_API_DOWNLOAD_STALL_TIMEOUT_MS", "milliseconds": JSON(downloadStallTimeoutMs), "enforcement": "download-resume-after-stall"],
         ]
     }
 

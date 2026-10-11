@@ -23,6 +23,10 @@ final class DownloadJob {
     var sha256: String?
     var afterDownload: ((DownloadJob) throws -> Void)?
     var activeTransfer: StreamingDownload?
+    var attempts = 0
+    var resumedFrom: Int64?
+    var lastError: String?
+    var partialKept = false
 
     init(url: String, filepath: String, filetype: String, descriptorUrl: String?, expectedSha256: String?, parts: [JSON]) {
         self.url = url
@@ -53,6 +57,10 @@ final class DownloadJob {
             "completedAt": JSON(completedAt),
             "installPath": JSON(installPath),
             "installStatus": JSON(installStatus),
+            "attempts": JSON(attempts),
+            "resumedFrom": resumedFrom.map { JSON(Double($0)) } ?? .null,
+            "lastError": JSON(lastError),
+            "partialKept": JSON(partialKept),
         ]
         if let sha256 { object["sha256"] = JSON(sha256) }
         return object
@@ -211,12 +219,110 @@ extension NativeRuntime {
         }
     }
 
+    // MARK: Resume
+
+    /// Sidecar next to `<file>.part` recording which source the partial bytes came from.
+    func resumeMarkerPath(_ job: DownloadJob) -> String { "\(job.partialFilepath).json" }
+
+    /// A partial file is reused only for the same URL and the same expected checksum.
+    func partialIsResumable(_ job: DownloadJob) -> Bool {
+        guard job.parts.isEmpty, Files.isFile(job.partialFilepath),
+              let text = Files.readText(resumeMarkerPath(job)), let marker = try? JSON.parse(text) else { return false }
+        return marker["url"].stringValue == job.url && marker["sha256"].stringValue == job.expectedSha256
+    }
+
+    func writeResumeMarker(_ job: DownloadJob) {
+        let marker: JSON = ["url": JSON(job.url), "sha256": JSON(job.expectedSha256), "startedAt": JSON(job.createdAt)]
+        try? Files.writePrettyJSON(marker, to: resumeMarkerPath(job))
+    }
+
+    /// Timeouts, dropped connections, short bodies and 5xx/429 are worth another try.
+    func isTransientDownloadError(_ error: Error) -> Bool {
+        // Anything else (a full disk, a file we could not write) will fail the same way again.
+        guard let runtimeError = error as? RuntimeError else { return false }
+        switch runtimeError.statusCode {
+        case 408, 425, 429, 500, 502, 503, 504: return true
+        default: return false
+        }
+    }
+
+    func fileSize(_ path: String) -> Int64 {
+        Int64((try? FileManager.default.attributesOfItem(atPath: path)[.size] as? NSNumber)?.int64Value ?? 0)
+    }
+
+    /// Streams `job.url` into the partial file, resuming with `Range` after a stall or a
+    /// dropped connection. Only a quiet connection (`downloadStallTimeoutMs`) or the overall
+    /// budget (`downloadTimeoutMs`) ends it, so a 1 GB map on a slow line still finishes.
+    func streamWithResume(_ job: DownloadJob, _ handle: FileHandle, deadline: Date) throws {
+        guard let url = URL(string: job.url) else { throw RuntimeError("Invalid URL: \(job.url)", statusCode: 400) }
+        let maxBytes = Int64(config.maxDownloadBytes)
+        var attempt = 0
+        var restartedAfter416 = false
+        while true {
+            attempt += 1
+            let offset = Int64(try handle.seekToEnd())
+            let transfer = StreamingDownload(
+                url: url,
+                headers: ["user-agent": "RoachNet/\(version) native-downloader"],
+                maxBytes: maxBytes,
+                resumeFrom: offset,
+                onResponse: { restart in
+                    if restart {
+                        try handle.truncate(atOffset: 0)
+                        try handle.seek(toOffset: 0)
+                    }
+                }
+            ) { [weak self] data, progress in
+                try handle.write(contentsOf: data)
+                self?.updateProgress(job, received: progress.receivedBytes, total: progress.expectedBytes)
+                if progress.expectedBytes != nil { self?.withState { job.totalBytes = progress.expectedBytes } }
+            }
+            withState {
+                job.activeTransfer = transfer
+                job.attempts = attempt
+                job.resumedFrom = offset > 0 ? offset : job.resumedFrom
+            }
+            let remaining = Int(deadline.timeIntervalSinceNow * 1000)
+            if remaining <= 0 { throw RuntimeError("The operation was aborted due to timeout", statusCode: 504) }
+            do {
+                _ = try transfer.run(stallTimeoutMs: config.downloadStallTimeoutMs, totalTimeoutMs: remaining)
+                withState { job.activeTransfer = nil }
+                return
+            } catch {
+                withState { job.activeTransfer = nil }
+                if withState({ job.status }) == "cancelled" { throw RuntimeError("This operation was aborted", statusCode: 499) }
+                // The partial is as long as (or longer than) the file: start over once.
+                if let runtimeError = error as? RuntimeError, runtimeError.statusCode == 416, !restartedAfter416 {
+                    restartedAfter416 = true
+                    try handle.truncate(atOffset: 0)
+                    continue
+                }
+                guard isTransientDownloadError(error), attempt < config.downloadMaxAttempts else { throw error }
+                let pause = min(30.0, pow(2.0, Double(attempt)))
+                log("download \(job.jobId) attempt \(attempt) failed (\(error)); resuming in \(Int(pause))s")
+                withState { job.lastError = "\(error)"; job.updatedAt = JS.isoNow() }
+                let wakeAt = Date().addingTimeInterval(pause)
+                while Date() < wakeAt {
+                    if withState({ job.status }) == "cancelled" { throw RuntimeError("This operation was aborted", statusCode: 499) }
+                    Thread.sleep(forTimeInterval: 0.25)
+                }
+            }
+        }
+    }
+
     func downloadFile(_ job: DownloadJob) throws {
         withState { job.status = "downloading" }
         let deadline = Date().addingTimeInterval(Double(config.downloadTimeoutMs) / 1000)
-        Files.remove(job.partialFilepath)
+        let resuming = partialIsResumable(job)
+        if !resuming {
+            Files.remove(job.partialFilepath)
+            Files.remove(resumeMarkerPath(job))
+        }
         withState { job.updatedAt = JS.isoNow() }
-        _ = FileManager.default.createFile(atPath: job.partialFilepath, contents: nil)
+        if !Files.exists(job.partialFilepath) {
+            _ = FileManager.default.createFile(atPath: job.partialFilepath, contents: nil)
+        }
+        if job.parts.isEmpty { writeResumeMarker(job) }
         guard let handle = FileHandle(forWritingAtPath: job.partialFilepath) else {
             throw RuntimeError("Download from \(job.url) failed: unable to open \(job.partialFilepath)")
         }
@@ -227,26 +333,17 @@ extension NativeRuntime {
             if !job.parts.isEmpty {
                 try downloadChunkedFile(job, handle, deadline: deadline)
             } else {
-                guard let url = URL(string: job.url) else { throw RuntimeError("Invalid URL: \(job.url)") }
-                let maxBytes = Int64(config.maxDownloadBytes)
-                let transfer = StreamingDownload(url: url, headers: ["user-agent": "RoachNet/\(version) native-downloader"], maxBytes: maxBytes) { [weak self] data, progress in
-                    handle.write(data)
-                    self?.updateProgress(job, received: progress.receivedBytes, total: progress.expectedBytes)
-                    if progress.expectedBytes != nil { self?.withState { job.totalBytes = progress.expectedBytes } }
-                }
-                withState { job.activeTransfer = transfer }
-                let remaining = max(1, Int(deadline.timeIntervalSinceNow * 1000))
-                _ = try transfer.run(timeoutMs: remaining)
-                withState { job.activeTransfer = nil }
+                try streamWithResume(job, handle, deadline: deadline)
             }
             closeHandle()
             if withState({ job.status }) == "cancelled" { throw RuntimeError("This operation was aborted", statusCode: 499) }
             try Files.rename(job.partialFilepath, job.filepath)
+            Files.remove(resumeMarkerPath(job))
             if let expected = job.expectedSha256 {
                 let actual = try SHA256Digest.hexOfFile(atPath: job.filepath)
                 if actual != expected {
                     Files.remove(job.filepath)
-                    throw RuntimeError("Checksum mismatch for \(job.url). Expected \(expected), found \(actual).")
+                    throw RuntimeError("Checksum mismatch for \(job.url). Expected \(expected), found \(actual).", statusCode: 422)
                 }
                 withState { job.sha256 = actual }
             }
@@ -269,22 +366,32 @@ extension NativeRuntime {
         } catch {
             closeHandle()
             let wasCancelled = withState { job.status == "cancelled" }
-            Files.remove(job.partialFilepath)
+            // Keep what arrived when the network was the problem, so the next install resumes.
+            let keepPartial = !wasCancelled && job.parts.isEmpty && isTransientDownloadError(error)
+                && fileSize(job.partialFilepath) > 0
+            if !keepPartial {
+                Files.remove(job.partialFilepath)
+                Files.remove(resumeMarkerPath(job))
+            }
             Files.remove(job.filepath)
             withState {
                 job.activeTransfer = nil
                 job.updatedAt = JS.isoNow()
+                job.partialKept = keepPartial
                 if wasCancelled {
                     job.progress = 0
                     job.completedAt = job.updatedAt
                 }
             }
             if wasCancelled { return }
-            let message: String
+            var message: String
             if let runtimeError = error as? RuntimeError, runtimeError.statusCode == 504 {
-                message = "Download from \(job.url) timed out after \(config.downloadTimeoutMs)ms."
+                message = "Download from \(job.url) timed out: \(runtimeError.message)"
             } else {
                 message = "Download from \(job.url) failed: \(error)"
+            }
+            if keepPartial {
+                message += " \(fileSize(job.partialFilepath)) bytes are kept; install it again to pick up where it stopped."
             }
             throw RuntimeError(message)
         }

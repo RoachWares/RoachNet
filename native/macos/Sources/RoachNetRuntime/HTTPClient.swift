@@ -94,15 +94,28 @@ public enum HTTPClient {
 /// Streams one HTTP response into a file handle with byte-ceiling checks.
 /// Mutable state is touched only from the session's serial delegate queue or
 /// under `lock`, so the unchecked Sendable conformance is sound.
+///
+/// Two clocks: `stallTimeoutMs` is how long the connection may go quiet before
+/// the transfer gives up (URLSession's request timeout is an idle timer), and
+/// `totalTimeoutMs` caps the whole transfer. A big map over a slow line can take
+/// hours; it only fails if the bytes stop coming.
+///
+/// `resumeFrom` asks for `Range: bytes=<n>-`. A 206 continues the file; a 200
+/// means the server ignored the range and `onResponse(true)` tells the caller to
+/// start the file over.
 public final class StreamingDownload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     public struct Progress {
+        /// Size of the whole file when the server said so (not just this response).
         public var expectedBytes: Int64?
+        /// Bytes of the whole file written so far, including a resumed prefix.
         public var receivedBytes: Int64
     }
 
     private let url: URL
     private let headers: [String: String]
     private let maxBytes: Int64
+    private let resumeFrom: Int64
+    private let onResponse: ((Bool) throws -> Void)?
     private let onChunk: (Data, Progress) throws -> Void
     private let semaphore = DispatchSemaphore(value: 0)
     private var session: URLSession?
@@ -113,11 +126,15 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
     private var received: Int64 = 0
     private let lock = NSLock()
     private var cancelled = false
+    private var stallSeconds = 0
 
-    public init(url: URL, headers: [String: String], maxBytes: Int64, onChunk: @escaping (Data, Progress) throws -> Void) {
+    public init(url: URL, headers: [String: String], maxBytes: Int64, resumeFrom: Int64 = 0,
+                onResponse: ((Bool) throws -> Void)? = nil, onChunk: @escaping (Data, Progress) throws -> Void) {
         self.url = url
         self.headers = headers
         self.maxBytes = maxBytes
+        self.resumeFrom = max(0, resumeFrom)
+        self.onResponse = onResponse
         self.onChunk = onChunk
     }
 
@@ -128,22 +145,35 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
         task?.cancel()
     }
 
-    /// Runs the transfer; returns the number of bytes received.
+    /// Single-clock form kept for callers that want one overall limit.
     public func run(timeoutMs: Int) throws -> (received: Int64, expected: Int64?) {
+        try run(stallTimeoutMs: timeoutMs, totalTimeoutMs: timeoutMs)
+    }
+
+    /// Runs the transfer; returns the bytes of the file written so far and its full size.
+    public func run(stallTimeoutMs: Int, totalTimeoutMs: Int) throws -> (received: Int64, expected: Int64?) {
+        let stall = max(1, min(stallTimeoutMs, totalTimeoutMs))
+        stallSeconds = max(1, stall / 1000)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = Double(timeoutMs) / 1000
-        configuration.timeoutIntervalForResource = Double(timeoutMs) / 1000
+        configuration.timeoutIntervalForRequest = Double(stall) / 1000
+        configuration.timeoutIntervalForResource = Double(totalTimeoutMs) / 1000
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: queue)
         self.session = session
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Double(timeoutMs) / 1000)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Double(stall) / 1000)
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        if resumeFrom > 0 {
+            request.setValue("bytes=\(resumeFrom)-", forHTTPHeaderField: "Range")
+            // A transparently decompressed body cannot be resumed byte for byte.
+            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        }
         let task = session.dataTask(with: request)
         self.task = task
         task.resume()
-        let waitResult = semaphore.wait(timeout: .now() + .milliseconds(timeoutMs))
+        // URLSession enforces both clocks; this wait is only a backstop.
+        let waitResult = semaphore.wait(timeout: .now() + .milliseconds(totalTimeoutMs) + .seconds(15))
         session.invalidateAndCancel()
         if waitResult == .timedOut {
             task.cancel()
@@ -155,12 +185,24 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
         if wasCancelled { throw RuntimeError("This operation was aborted", statusCode: 499) }
         if let failure { throw failure }
         if !(200..<300).contains(statusCode) {
-            throw RuntimeError("HTTP \(statusCode) while downloading \(url.absoluteString)")
+            throw RuntimeError("HTTP \(statusCode) while downloading \(url.absoluteString)", statusCode: statusCode == 0 ? 502 : statusCode)
         }
         if let expected, expected > 0, received != expected {
-            throw RuntimeError("Download ended early after \(received) of \(expected) bytes.")
+            throw RuntimeError("Download ended early after \(received) of \(expected) bytes.", statusCode: 503)
         }
         return (received, expected)
+    }
+
+    /// `bytes 100-199/1000` → (100, 1000). The total is nil when the server sends `*`.
+    static func parseContentRange(_ value: String?) -> (start: Int64, total: Int64?)? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        guard trimmed.lowercased().hasPrefix("bytes ") else { return nil }
+        let spec = trimmed.dropFirst(6)
+        let halves = spec.split(separator: "/", maxSplits: 1)
+        guard halves.count == 2, let dash = halves[0].firstIndex(of: "-"),
+              let start = Int64(halves[0][halves[0].startIndex..<dash]) else { return nil }
+        return (start, Int64(halves[1]))
     }
 
     public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
@@ -173,10 +215,32 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
             completionHandler(.cancel)
             return
         }
-        let length = http.expectedContentLength
-        expected = length > 0 ? length : nil
+        let length = http.expectedContentLength > 0 ? http.expectedContentLength : nil
+        var restart = false
+        if resumeFrom > 0 && statusCode == 206 {
+            guard let range = StreamingDownload.parseContentRange(http.value(forHTTPHeaderField: "Content-Range")),
+                  range.start == resumeFrom else {
+                failure = RuntimeError("The server resumed \(url.absoluteString) at the wrong offset.", statusCode: 502)
+                completionHandler(.cancel)
+                return
+            }
+            received = resumeFrom
+            expected = range.total ?? length.map { $0 + resumeFrom }
+        } else {
+            // A plain 200, including a server that ignored the Range header.
+            restart = resumeFrom > 0
+            received = 0
+            expected = length
+        }
         if let expected, expected > maxBytes {
-            failure = RuntimeError("Download is larger than the configured \(maxBytes) byte limit.")
+            failure = RuntimeError("Download is larger than the configured \(maxBytes) byte limit.", statusCode: 413)
+            completionHandler(.cancel)
+            return
+        }
+        do {
+            try onResponse?(restart)
+        } catch {
+            failure = error
             completionHandler(.cancel)
             return
         }
@@ -187,7 +251,7 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
         if failure != nil { return }
         received += Int64(data.count)
         if received > maxBytes {
-            failure = RuntimeError("Download exceeded the configured \(maxBytes) byte limit.")
+            failure = RuntimeError("Download exceeded the configured \(maxBytes) byte limit.", statusCode: 413)
             dataTask.cancel()
             return
         }
@@ -201,7 +265,22 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
 
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error, failure == nil, (200..<300).contains(statusCode) || statusCode == 0 {
-            failure = RuntimeError(error.localizedDescription)
+            if let urlError = error as? URLError {
+                switch urlError.code {
+                case .timedOut:
+                    failure = RuntimeError("No data arrived for \(stallSeconds)s; the connection stalled.", statusCode: 504)
+                case .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost,
+                     .dnsLookupFailed, .secureConnectionFailed, .resourceUnavailable, .dataNotAllowed, .internationalRoamingOff:
+                    failure = RuntimeError(urlError.localizedDescription, statusCode: 503)
+                case .cancelled:
+                    failure = RuntimeError(urlError.localizedDescription, statusCode: 499)
+                default:
+                    // TLS, bad URLs and the like: retrying will not help.
+                    failure = RuntimeError(urlError.localizedDescription, statusCode: 520)
+                }
+            } else {
+                failure = RuntimeError(error.localizedDescription, statusCode: 520)
+            }
         }
         semaphore.signal()
     }
