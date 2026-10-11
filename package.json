@@ -1,7 +1,7 @@
 {
   "name": "roachnet",
-  "version": "1.0.6",
-  "buildNumber": 106,
+  "version": "1.1.0",
+  "buildNumber": 110,
   "description": "RoachNet offline operations platform",
   "main": "scripts/run-roachnet-native-api.mjs",
   "scripts": {

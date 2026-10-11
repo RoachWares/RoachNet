@@ -30,7 +30,7 @@ on:
       release_notes_path:
         description: 'Tracked, finalized release notes file (stage mode only)'
         required: false
-        default: 'docs/releases/1.0.6.md'
+        default: 'docs/releases/1.1.0.md'
         type: string
       ios_companion_sha:
         description: 'Full 40-character RoachNet-iOS commit SHA for companion Gate C validation (stage mode only)'
@@ -169,7 +169,7 @@ jobs:
           VERSION="$(node -p 'require("./package.json").version')"
           BUILD_NUMBER="$(node -p 'require("./package.json").buildNumber')"
           [[ "$RELEASE_TAG" == "v$VERSION" ]]
-          node -e 'const p=require("./package.json"),l=require("./package-lock.json"); if(p.version!==l.version||p.version!==l.packages[""].version||p.version==="1.0.5"||Number(p.buildNumber)<=105) process.exit(1)'
+          node -e 'const p=require("./package.json"),l=require("./package-lock.json"); if(p.version!==l.version||p.version!==l.packages[""].version||p.version==="1.0.7"||Number(p.buildNumber)<=107) process.exit(1)'
           git ls-files --error-unmatch -- "$RELEASE_NOTES_PATH"
           grep -Fq "$VERSION" "$RELEASE_NOTES_PATH"
           if grep -Eiq '\b(TODO|TBD|PLACEHOLDER)\b' "$RELEASE_NOTES_PATH"; then echo 'Release notes are not finalized.' >&2; exit 1; fi

@@ -18,7 +18,7 @@ on:
       release_notes_path:
         description: 'Tracked finalized release notes path'
         required: true
-        default: 'docs/releases/1.0.6.md'
+        default: 'docs/releases/1.1.0.md'
         type: string
       go_live_decision:
         description: 'Exact release authorization literal; must be GO-LIVE'
