@@ -229,6 +229,10 @@ test('native setup recovers from an install that was killed mid-upgrade', requir
         ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
         ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
         ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
+        // Without it the install edits /etc/hosts, which prompts for an admin
+        // password: a CI runner waits out the timeout, and a Mac that already
+        // has the alias passes only by luck.
+        ROACHNET_HOSTS_FILE: path.join(tempRoot, 'hosts'),
       },
       encoding: 'utf8',
       timeout: 90_000,
