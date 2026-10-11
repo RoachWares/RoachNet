@@ -30,7 +30,7 @@ on:
       release_notes_path:
         description: 'Tracked, finalized release notes file (stage mode only)'
         required: false
-        default: 'docs/releases/1.0.6.md'
+        default: 'docs/releases/1.0.7.md'
         type: string
       ios_companion_sha:
         description: 'Full 40-character RoachNet-iOS commit SHA for companion Gate C validation (stage mode only)'

@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-08",
+  "checkedAt": "2026-10-11",
   "nativeRuntime": {
     "mode": "swift-native",
     "executable": "roachnet-runtime",
@@ -29,17 +29,17 @@
     "releasePolicy": "Public 1.0.6+ builds ship the native Swift runtime (roachnet-runtime) and no Node. The pin is used only when ROACHNET_BUNDLE_NODE_COMPAT=1 builds a legacy compatibility payload."
   },
   "ollama": {
-    "bundledVersion": "0.40.2",
-    "latestReviewedVersion": "0.40.2",
-    "source": "https://github.com/ollama/ollama/releases/tag/v0.40.2",
+    "bundledVersion": "0.40.3",
+    "latestReviewedVersion": "0.40.3",
+    "source": "https://github.com/ollama/ollama/releases/tag/v0.40.3",
     "license": "MIT",
     "artifact": {
       "filename": "ollama-darwin.tgz",
-      "url": "https://github.com/ollama/ollama/releases/download/v0.40.2/ollama-darwin.tgz",
-      "bytes": 167473220,
-      "sha256": "e888b7637291ceb80b622c00ea067f62c86d9c50d419b3eb903032e4f1f8a4f6"
+      "url": "https://github.com/ollama/ollama/releases/download/v0.40.3/ollama-darwin.tgz",
+      "bytes": 167455486,
+      "sha256": "a2d1d906a2c8febd9cb18f5c183854d0a6db5dc522940d68b0c0ed048e8dfdea"
     },
-    "reviewNotes": "2026-10-09: 0.40.2 (published 2026-10-08) SHA-256 and size match the GitHub release digest; archive file list is identical to 0.40.1 (which matched 0.33.1). Patch release: model-upgrade backups, ollama list de-duplication, launch context length. Mac Gate C must pull and chat with a model before tagging. 2026-10-10: OSV (pkg:golang/github.com/ollama/ollama@v0.40.2) lists nine open Go advisories with no fixed version; each is accepted below with its loopback-only reasoning for 1.0.6.",
+    "reviewNotes": "2026-10-09: 0.40.2 (published 2026-10-08) SHA-256 and size match the GitHub release digest; archive file list is identical to 0.40.1 (which matched 0.33.1). Patch release: model-upgrade backups, ollama list de-duplication, launch context length. Mac Gate C must pull and chat with a model before tagging. 2026-10-10: OSV (pkg:golang/github.com/ollama/ollama@v0.40.2) lists nine open Go advisories with no fixed version; each is accepted below with its loopback-only reasoning for 1.0.6. 2026-10-11: 0.40.3 (published 2026-10-11) for 1.0.7: SHA-256 and size match the GitHub release digest (sha256:a2d1d906…dfdea, 167,455,486 bytes); the archive file list is identical to 0.40.2 (57 entries). Patch release: launch-command warnings removed, background model upgrades paused during requests. OSV lists the same nine advisories with no fixed version; Brennan accepted them again for 1.0.7 on the same loopback-only reasoning (Ollama binds 127.0.0.1 and checks Host). 1.1 retires the bundled Ollama.",
     "acceptedAdvisories": [
       {
         "id": "GO-2025-3557",
