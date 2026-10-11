@@ -905,6 +905,16 @@ async function verifyBundleVersions() {
         helperVersion === packageVersion,
         `${label} roachnet-runtime reports ${helperVersion || 'nothing'}, expected ${packageVersion}`
       )
+      // ROA-40: the helper reads the source commit back from its app's Info.plist.
+      const stampedCommit = readPlistStringValue(bundlePath, 'RoachNetSourceCommit')
+      if (stampedCommit) {
+        const buildInfo = await runCommand(helper, ['--build-info'], { env: { ...process.env, ROACHNET_SOURCE_COMMIT: '' }, timeoutMs: 10_000 })
+        const reported = JSON.parse(String(buildInfo?.stdout ?? '{}')).sourceCommit
+        assert(
+          reported === stampedCommit,
+          `${label} roachnet-runtime --build-info reports ${reported || 'no commit'}, Info.plist says ${stampedCommit}`
+        )
+      }
     }
   }
 

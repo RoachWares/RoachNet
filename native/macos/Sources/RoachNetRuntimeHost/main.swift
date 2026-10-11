@@ -12,6 +12,16 @@ if arguments.contains("--version") {
     exit(0)
 }
 
+if arguments.contains("--build-info") {
+    // Version plus the source commit the build was stamped with (ROA-40).
+    let info: JSON = [
+        "version": JSON(RuntimeConfiguration.shared.version),
+        "sourceCommit": RuntimeBuildInfo.sourceCommit.map { JSON($0) } ?? .null,
+    ]
+    print(info.prettySerialized())
+    exit(0)
+}
+
 /// Value following `--flag`, if any.
 func argumentValue(_ flag: String) -> String? {
     guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
@@ -29,13 +39,14 @@ if arguments.contains("--help") || arguments.contains("-h") {
       roachnet-runtime --install [options]  headless install (same staged workflow as RoachNet Setup)
           --install-path PATH   default ~/RoachNet
           --storage-path PATH   default <install-path>/storage
-          --no-roachclaw        skip the contained Ollama runner
+          --no-roachclaw        install without RoachClaw (no starter model, smaller space check)
           --launch              open RoachNet when the install finishes
           --profile NAME        install profile recorded in the config (e.g. homebrew-cask)
           --no-companion        leave the iOS companion bridge off until enabled in the app
       roachnet-runtime --provision-alias [--hosts-file PATH] [--print-command]
                                             point the RoachTail hostname at loopback
-      roachnet-runtime --version
+      roachnet-runtime --version            print the version
+      roachnet-runtime --build-info         print the version and source commit as JSON
     """)
     exit(0)
 }

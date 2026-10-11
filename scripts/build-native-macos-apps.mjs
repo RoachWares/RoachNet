@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { cp, mkdtemp, readdir } from 'node:fs/promises'
@@ -41,6 +41,23 @@ const runtimePins = JSON.parse(
 )
 const appVersion = packageManifest.version || '1.0.0'
 const appBuildNumber = String(packageManifest.buildNumber || '')
+
+// ROA-40: stamp the source commit into each app's Info.plist (RoachNetSourceCommit)
+// so About and `roachnet-runtime --build-info` say exactly what was built.
+// "-dirty" marks a tree with uncommitted changes to tracked files.
+export function resolveSourceCommit(environment = process.env, cwd = repoRoot) {
+  const explicit = environment.ROACHNET_SOURCE_COMMIT?.trim()
+  if (explicit) {
+    if (!/^[0-9a-f]{40}(-dirty)?$/.test(explicit)) throw new Error('ROACHNET_SOURCE_COMMIT must be a full lowercase SHA, optionally with -dirty.')
+    return explicit
+  }
+  const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' })
+  if (head.status !== 0 || !/^[0-9a-f]{40}$/.test(head.stdout.trim())) return ''
+  const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd, encoding: 'utf8' })
+  const dirty = status.status !== 0 || status.stdout.trim() !== ''
+  return `${head.stdout.trim()}${dirty ? '-dirty' : ''}`
+}
+const sourceCommit = resolveSourceCommit()
 export function resolveBuildModes(environment = process.env) {
   const releaseBuild = environment.ROACHNET_RELEASE_BUILD === '1'
   // A public-release request always wins if both flags are set: it must never
@@ -780,15 +797,12 @@ async function ensureBundledNodeRuntime() {
   const archivePath = path.join(cacheRoot, archiveName)
   const extractedPath = path.join(cacheRoot, extractedFolderName)
   const bundledNodeBinary = path.join(extractedPath, 'bin', 'node')
-  const candidateRoots = [
-    process.env.ROACHNET_BUNDLED_NODE_ROOT?.trim(),
-    existsSync(bundledNodeBinary) ? extractedPath : null,
-  ].filter(Boolean)
-
-  for (const candidateRoot of candidateRoots) {
-    if (await verifyNodeRuntimeRoot(candidateRoot, { requirePortable: true })) {
-      return candidateRoot
-    }
+  // An explicit root is the builder's own choice. A previously extracted cache
+  // is never trusted as is (ROA-40): the archive is re-checked against its
+  // pinned SHA-256 and extracted fresh every time.
+  const explicitRoot = process.env.ROACHNET_BUNDLED_NODE_ROOT?.trim()
+  if (explicitRoot && (await verifyNodeRuntimeRoot(explicitRoot, { requirePortable: true }))) {
+    return explicitRoot
   }
 
   mkdirSync(cacheRoot, { recursive: true })
@@ -1625,7 +1639,7 @@ ${urlSchemes.map((scheme) => `        <string>${scheme}</string>`).join('\n')}
   <string>${appVersion}</string>
   <key>CFBundleVersion</key>
   <string>${appBuildNumber}</string>
-  <key>LSMinimumSystemVersion</key>
+${sourceCommit ? `  <key>RoachNetSourceCommit</key>\n  <string>${sourceCommit}</string>\n` : ''}  <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>

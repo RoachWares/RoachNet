@@ -24,6 +24,15 @@ struct RoachNetAboutView: View {
             ?? shortVersion
     }
 
+    /// The source commit the build script stamped into Info.plist (ROA-40),
+    /// shortened, with "-dirty" kept when the tree had uncommitted changes.
+    private var buildLabel: String {
+        guard let commit = Bundle.main.object(forInfoDictionaryKey: "RoachNetSourceCommit") as? String,
+              commit.count >= 12 else { return buildVersion }
+        let dirty = commit.hasSuffix("-dirty")
+        return "\(buildVersion) · \(commit.prefix(10))\(dirty ? "-dirty" : "")"
+    }
+
     private var macOSVersion: String {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         return "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
@@ -230,7 +239,7 @@ struct RoachNetAboutView: View {
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     AboutStatCard(label: "Version", value: shortVersion, accent: RoachPalette.green)
-                    AboutStatCard(label: "Build", value: buildVersion, accent: RoachPalette.magenta)
+                    AboutStatCard(label: "Build", value: buildLabel, accent: RoachPalette.magenta)
                     AboutStatCard(label: "Platform", value: "Apple Silicon", accent: RoachPalette.cyan)
                     AboutStatCard(label: "Command Bar", value: RoachNetGlobalHotKey.hint, accent: RoachPalette.bronze)
                 }

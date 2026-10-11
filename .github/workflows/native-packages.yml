@@ -98,14 +98,9 @@ jobs:
     environment: roachnet-release-staging
     permissions:
       contents: read
+    # Apple signing and notary secrets are scoped to the steps that use them
+    # (ROA-40), so npm, the test suites and the build tools never see them.
     env:
-      DEPLOYMENT_AUTHORIZED_USERS: ${{ secrets.DEPLOYMENT_AUTHORIZED_USERS }}
-      APPLE_DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_BASE64 }}
-      APPLE_DEVELOPER_ID_APP_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_PASSWORD }}
-      APPLE_DEVELOPER_ID_APP_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APP_IDENTITY }}
-      APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
-      APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
-      APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
       RELEASE_TAG: ${{ inputs.release_tag }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       ROACHNET_IOS_EXPECTED_SHA: ${{ inputs.ios_companion_sha }}
@@ -115,6 +110,14 @@ jobs:
     steps:
       - name: Fail closed on authorization and release prerequisites
         shell: bash
+        env:
+          DEPLOYMENT_AUTHORIZED_USERS: ${{ secrets.DEPLOYMENT_AUTHORIZED_USERS }}
+          APPLE_DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_BASE64 }}
+          APPLE_DEVELOPER_ID_APP_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_PASSWORD }}
+          APPLE_DEVELOPER_ID_APP_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APP_IDENTITY }}
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
           set -euo pipefail
           authorized=false
@@ -173,7 +176,7 @@ jobs:
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo 'Release already exists; staging never replaces assets.' >&2; exit 1; fi
       - name: Install dependencies and hydrate checksum-pinned RoachSpeech release packs
         run: |
-          npm ci
+          npm ci --ignore-scripts
           node scripts/prepare-roachspeech-release-packs.mjs
       - name: Run engineering and source-release gates
         run: |
@@ -193,6 +196,9 @@ jobs:
       - name: Import Developer ID certificate
         env:
           KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-roachnet
+          APPLE_DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_BASE64 }}
+          APPLE_DEVELOPER_ID_APP_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_PASSWORD }}
+          APPLE_DEVELOPER_ID_APP_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APP_IDENTITY }}
         run: |
           set -euo pipefail
           CERT_PATH="$RUNNER_TEMP/roachnet-developer-id.p12"
@@ -207,6 +213,10 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -F "$APPLE_DEVELOPER_ID_APP_IDENTITY"
           echo "ROACHNET_SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
       - name: Configure notarization profile
+        env:
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
           set -euo pipefail
           xcrun notarytool store-credentials roachnet-notary \
@@ -219,7 +229,7 @@ jobs:
       - name: Build signed, hardened, notarized native distribution
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          ROACHNET_CODESIGN_IDENTITY: ${{ env.APPLE_DEVELOPER_ID_APP_IDENTITY }}
+          ROACHNET_CODESIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APP_IDENTITY }}
           ROACHNET_NOTARY_PROFILE: ${{ env.ROACHNET_NOTARY_PROFILE }}
           ROACHNET_NOTARY_KEYCHAIN: ${{ env.ROACHNET_NOTARY_KEYCHAIN }}
           ROACHNET_RELEASE_BUILD: '1'
@@ -234,6 +244,8 @@ jobs:
           ROACHNET_IOS_REPO="$GITHUB_WORKSPACE/RoachNet-iOS" ROACHNET_WHISPER_PARITY_AUDIO="$RUNNER_TEMP/jfk.wav" npm run smoke:release-gates
       - name: Verify Developer ID, hardened runtime, notarization, stapling, Gatekeeper, and checksum
         shell: bash
+        env:
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
           set -euo pipefail
           DIST="$GITHUB_WORKSPACE/native/macos/dist"

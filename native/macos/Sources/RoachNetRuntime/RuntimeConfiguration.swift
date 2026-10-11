@@ -206,6 +206,34 @@ public enum RuntimeBuildInfo {
     /// Fallback when neither package metadata nor an app bundle is present.
     public static let version = "1.0.6"
     public static let executableName = "roachnet-runtime"
+
+    /// The source commit this build came from (ROA-40): `ROACHNET_SOURCE_COMMIT`,
+    /// else the `RoachNetSourceCommit` key the build script writes into the
+    /// enclosing app's Info.plist (`…/Contents/Helpers/roachnet-runtime` →
+    /// `…/Contents/Info.plist`). nil for a plain `swift build`.
+    public static var sourceCommit: String? {
+        if let explicit = ProcessInfo.processInfo.environment["ROACHNET_SOURCE_COMMIT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), isSourceCommit(explicit) {
+            return explicit
+        }
+        var directory = Path.dirname(executablePath)
+        for _ in 0..<3 {
+            let plistPath = Path.join(directory, "Info.plist")
+            if let data = FileManager.default.contents(atPath: plistPath),
+               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+               let commit = plist["RoachNetSourceCommit"] as? String, isSourceCommit(commit) {
+                return commit
+            }
+            directory = Path.dirname(directory)
+        }
+        return nil
+    }
+
+    /// A full 40-character lowercase hex SHA, optionally followed by "-dirty".
+    public static func isSourceCommit(_ value: String) -> Bool {
+        let sha = value.hasSuffix("-dirty") ? String(value.dropLast(6)) : value
+        return sha.count == 40 && sha.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
 }
 
 // MARK: - Logging and files

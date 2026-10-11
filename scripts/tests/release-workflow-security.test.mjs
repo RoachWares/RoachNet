@@ -9,7 +9,7 @@ import {
   exactActorIsAuthorized,
   validateCandidateIdentity,
 } from '../audit-release-configuration.mjs'
-import { resolveBuildModes } from '../build-native-macos-apps.mjs'
+import { resolveBuildModes, resolveSourceCommit } from '../build-native-macos-apps.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -82,4 +82,28 @@ test('candidate build pins runtime payloads without weakening public release sig
   assert.match(builder, /async function notarizeArtifact\(artifactPath\) \{\s*if \(candidateBuild\) \{\s*return/)
   assert.match(builder, /if \(releaseBuild && \(!codesignIdentity \|\| !notaryProfile \|\| skipDmg\)\)/)
   assert.match(builder, /if \(releaseBuild\) \{\s*throw new Error\('Public release builds require Developer ID signing and a configured notary profile\.'/)
+})
+
+test('builds stamp a full source commit and refuse a malformed override (ROA-40)', () => {
+  const sha = '0123456789abcdef0123456789abcdef01234567'
+  assert.equal(resolveSourceCommit({ ROACHNET_SOURCE_COMMIT: sha }), sha)
+  assert.equal(resolveSourceCommit({ ROACHNET_SOURCE_COMMIT: `${sha}-dirty` }), `${sha}-dirty`)
+  assert.throws(() => resolveSourceCommit({ ROACHNET_SOURCE_COMMIT: sha.slice(0, 12) }))
+  assert.throws(() => resolveSourceCommit({ ROACHNET_SOURCE_COMMIT: `${sha}</string>` }))
+  assert.match(resolveSourceCommit({}), /^([0-9a-f]{40}(-dirty)?)?$/)
+})
+
+test('the stage job scopes Apple secrets to the steps that use them (ROA-40)', () => {
+  const workflow = readFileSync(path.join(repoRoot, '.github', 'workflows', 'native-packages.yml'), 'utf8')
+  const stageJob = workflow.slice(workflow.indexOf('name: Build, verify, and quarantine signed RC'))
+  const jobEnv = stageJob.slice(stageJob.indexOf('\n    env:'), stageJob.indexOf('\n    steps:'))
+  assert.ok(jobEnv.length > 0, 'stage job env block not found')
+  assert.doesNotMatch(jobEnv, /secrets\./, 'stage job-level env must not carry secrets')
+  assert.match(stageJob, /npm ci --ignore-scripts/)
+  const installStep = stageJob.slice(stageJob.indexOf('- name: Install dependencies'), stageJob.indexOf('- name: Run engineering'))
+  assert.doesNotMatch(installStep, /APPLE_/)
+  for (const step of ['Import Developer ID certificate', 'Configure notarization profile']) {
+    const body = stageJob.slice(stageJob.indexOf(`- name: ${step}`))
+    assert.match(body.slice(0, body.indexOf('run: |')), /secrets\.APPLE_/, `${step} must receive its secrets at step level`)
+  }
 })
