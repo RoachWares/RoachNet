@@ -13947,8 +13947,14 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         // `settings:<pane>` (e.g. "settings:packs") opens the Settings window on
         // that pane and captures it instead.
         let paneFile = directory.appendingPathComponent("pane.txt")
-        let requested = (try? String(contentsOf: paneFile, encoding: .utf8))?
+        var requested = (try? String(contentsOf: paneFile, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // "Org#Issues" also opens that Org board section.
+        var orgSection: OrgBoardSection?
+        if let hash = requested.firstIndex(of: "#") {
+            orgSection = OrgBoardSection(rawValue: String(requested[requested.index(after: hash)...]))
+            requested = String(requested[..<hash])
+        }
         // An optional `theme.txt` ("<theme id> [dark|light|system]") switches
         // the theme first, so a gate can capture every pane in every theme.
         let themeFile = directory.appendingPathComponent("theme.txt")
@@ -13979,6 +13985,10 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        if let orgSection {
+            OrgBoardRequest.pending = orgSection
+            NotificationCenter.default.post(name: .roachOrgSectionRequest, object: orgSection.rawValue)
+        }
         if let pane = WorkspacePane(rawValue: requested),
            let model = model ?? Self.bootstrapModel,
            model.selectedPane != pane
@@ -13989,8 +13999,8 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        if themeChanged {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        if themeChanged || orgSection != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (orgSection != nil ? 2.0 : 0.8)) { [weak self] in
                 self?.captureWindowSnapshot(into: directory)
             }
             return

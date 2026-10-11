@@ -130,6 +130,17 @@ struct OrgDeskAgent: Decodable, Identifiable, Hashable {
     let role: String?
     let title: String?
     let status: String
+    let errorReason: String?
+
+    /// Why the last heartbeat failed, in words someone can act on.
+    var problem: String? {
+        guard status == "error" else { return nil }
+        guard let reason = errorReason, !reason.isEmpty else { return "Its last heartbeat failed." }
+        if reason.contains("returned 404") {
+            return "Its model isn't on this Mac. Pull one in RoachClaw, then try again."
+        }
+        return reason
+    }
 }
 
 struct OrgDeskJoinRequest: Decodable, Identifiable, Hashable {
@@ -278,6 +289,8 @@ private struct OrgDeskIgnored: Decodable {}
 struct OrgWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     @StateObject private var store = OrgDeskStore()
+    @StateObject private var board = OrgBoardStore()
+    @State private var section: OrgBoardSection = .desk
     @State private var newCompanyName = ""
     @State private var inviteRole = "operator"
     @State private var notes: [String: String] = [:]
@@ -304,31 +317,86 @@ struct OrgWorkspaceView: View {
                 } else {
                     companyCard
                     metrics
-                    HStack(alignment: .top, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 18) {
-                            approvalsPanel
-                            agentsPanel
-                        }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        VStack(alignment: .leading, spacing: 18) {
-                            invitePanel
-                            joinPanel
-                        }
-                        .frame(width: 340, alignment: .topLeading)
-                    }
+                    sectionPicker
+                    sectionContent
                 }
             }
             .padding(24)
         }
         .task {
+            if let pending = OrgBoardRequest.pending {
+                section = pending
+                OrgBoardRequest.pending = nil
+            }
             await store.refresh(using: model.config)
+            await loadBoard()
             while !Task.isCancelled {
                 try? await Task.sleep(for: refreshCadence)
                 guard !Task.isCancelled, !store.isLoading else { continue }
                 await store.refresh(using: model.config)
+                if !board.isLoading { await loadBoard() }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .roachOrgSectionRequest)) { note in
+            if let raw = note.object as? String, let requested = OrgBoardSection(rawValue: raw) {
+                section = requested
+                OrgBoardRequest.pending = nil
+            }
+        }
+        .onChange(of: section) { _, _ in
+            board.message = nil
+            Task { await loadBoard() }
+        }
+        .onChange(of: store.selectedCompanyID) { _, _ in
+            Task { await loadBoard() }
+        }
         .accessibilityIdentifier("pane.org")
+    }
+
+    // MARK: Sections
+
+    private func loadBoard() async {
+        guard section != .desk, let cid = store.selectedCompanyID else { return }
+        await board.load(section, company: cid, using: model.config)
+    }
+
+    private var sectionPicker: some View {
+        Picker("Section", selection: $section) {
+            ForEach(OrgBoardSection.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 560)
+        .accessibilityIdentifier("org.section")
+    }
+
+    @ViewBuilder
+    private var sectionContent: some View {
+        if let cid = store.selectedCompanyID {
+            switch section {
+            case .desk:
+                HStack(alignment: .top, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        approvalsPanel
+                        agentsPanel
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    VStack(alignment: .leading, spacing: 18) {
+                        invitePanel
+                        joinPanel
+                    }
+                    .frame(width: 340, alignment: .topLeading)
+                }
+            case .issues:
+                OrgIssuesBoard(store: board, companyID: cid, agents: store.agents, config: model.config)
+            case .chart:
+                OrgChartBoard(store: board)
+            case .routines:
+                OrgRoutinesBoard(store: board, companyID: cid, agents: store.agents, config: model.config)
+            case .budgets:
+                OrgBudgetsBoard(store: board, companyID: cid, agents: store.agents, config: model.config)
+            }
+        }
     }
 
     // MARK: Header and banners
@@ -365,7 +433,16 @@ struct OrgWorkspaceView: View {
 
     @ViewBuilder
     private var banners: some View {
-        if let error = store.errorMessage {
+        if let error = board.errorMessage ?? store.errorMessage {
+            RoachNotice(title: "That didn't go through", detail: error, accent: RoachPalette.magenta)
+        } else if let message = board.message {
+            RoachNotice(
+                title: message,
+                detail: "Agents see the change at their next heartbeat.",
+                accent: RoachPalette.green,
+                systemName: "checkmark.circle.fill"
+            )
+        } else if let error = store.errorMessage {
             RoachNotice(title: "That didn't go through", detail: error, accent: RoachPalette.magenta)
         } else if let message = store.message {
             RoachNotice(
@@ -637,18 +714,27 @@ struct OrgWorkspaceView: View {
                     emptyLine("person.badge.plus", "No agents hired yet. Agents can request hires; you approve them above.")
                 }
                 ForEach(store.agents) { agent in
-                    HStack(spacing: 10) {
-                        RoachStatusRow(
-                            title: "\(agent.name) · \(agent.title ?? agent.role?.uppercased() ?? "Agent")",
-                            value: agent.status.capitalized,
-                            accent: agentAccent(agent.status)
-                        )
-                        if agent.status != "terminated" {
-                            Button(agent.status == "paused" ? "Resume" : "Pause") {
-                                Task { await store.setAgent(agent, agent.status == "paused" ? "resume" : "pause", using: model.config) }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 10) {
+                            RoachStatusRow(
+                                title: "\(agent.name) · \(agent.title ?? agent.role?.uppercased() ?? "Agent")",
+                                value: OrgDeskWords.status(agent.status),
+                                accent: agentAccent(agent.status)
+                            )
+                            if agent.status != "terminated" {
+                                let resumes = agent.status == "paused" || agent.status == "error"
+                                Button(agent.status == "error" ? "Try again" : resumes ? "Resume" : "Pause") {
+                                    Task { await store.setAgent(agent, resumes ? "resume" : "pause", using: model.config) }
+                                }
+                                .buttonStyle(RoachSecondaryButtonStyle())
+                                .accessibilityLabel("\(agent.status == "error" ? "Try again with" : resumes ? "Resume" : "Pause") \(agent.name)")
                             }
-                            .buttonStyle(RoachSecondaryButtonStyle())
-                            .accessibilityLabel("\(agent.status == "paused" ? "Resume" : "Pause") \(agent.name)")
+                        }
+                        if let problem = agent.problem {
+                            Text(problem)
+                                .font(.roach(size: 11))
+                                .foregroundStyle(RoachPalette.warning)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -660,6 +746,7 @@ struct OrgWorkspaceView: View {
         switch status {
         case "running", "active": return RoachPalette.green
         case "paused": return RoachPalette.bronze
+        case "error": return RoachPalette.warning
         case "terminated": return RoachPalette.muted
         default: return RoachPalette.cyan
         }
