@@ -515,6 +515,8 @@ struct RoachNetSettingsView: View {
                     }
                 }
             }
+
+            RoachAPITokensSection(config: model.config)
         }
     }
 

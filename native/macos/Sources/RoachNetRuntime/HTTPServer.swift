@@ -10,6 +10,10 @@ public struct HTTPRequest {
     public var target: String
     public var headers: [String: String]   // lowercased names
     public var remoteAddress: String
+    /// True only for requests built in this process (the companion proxy).
+    /// Network requests can never set it, so it can mark them as already
+    /// authenticated.
+    public var inProcess = false
     fileprivate var bodyReader: (() throws -> Data)?
     private var cachedBody: Data?
 

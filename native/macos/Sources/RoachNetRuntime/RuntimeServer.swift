@@ -111,6 +111,9 @@ public final class RuntimeServer {
             "runtime": "native-swift",
             "repoRoot": JSON(config.repoRoot),
             "logPath": JSON(config.logPath),
+            // The app that started this runtime reads its API token back from
+            // here after a restart. The file is owner-only.
+            "apiToken": JSON(runtime.apiToken),
         ]
         try Files.writePrettyJSON([
             "pid": JSON(pid),
@@ -129,7 +132,7 @@ public final class RuntimeServer {
             "updatedAt": JSON(JS.isoNow()),
         ], to: config.processInfoPath)
         if let infoFile = config.trimmedEnv("ROACHNET_SERVER_INFO_FILE") {
-            try Files.writePrettyJSON(info, to: infoFile)
+            try Files.writePrettyJSON(info, to: infoFile, mode: Files.privateFileMode)
         }
     }
 
@@ -269,9 +272,27 @@ final class CompanionProxy {
         guard !tokenValue.isEmpty, let state = runtime.readRoachTailStateFile() else { return nil }
         if !state["enabled"].truthy && !allowDisabled { return nil }
         let hashed = SHA256Digest.hex(tokenValue)
-        return state["peers"].array.first { peer in
-            peer["id"].stringValue != nil && peer["tokenHash"].stringValue == hashed
+        let peer = state["peers"].array.first { peer in
+            peer["id"].stringValue != nil && CompanionProxy.tokensMatch(peer["tokenHash"].stringValue ?? "", hashed)
         }
+        guard let peer, !CompanionProxy.peerTokenIsIdle(peer, limitMs: peerIdleLimitMs) else { return nil }
+        return peer
+    }
+
+    /// Peer tokens die after this long unused (ROA-39): a lost or retired phone
+    /// stops working on its own. Every request refreshes `lastSeenAt`.
+    /// `ROACHTAIL_PEER_IDLE_DAYS` (default 90, 0 turns it off).
+    var peerIdleLimitMs: Double {
+        let raw = runtime.config.trimmedEnv("ROACHTAIL_PEER_IDLE_DAYS").map { JSCoercion.number(fromString: $0) } ?? 90
+        guard raw.isFinite, raw > 0 else { return 0 }
+        return raw * 86_400_000
+    }
+
+    static func peerTokenIsIdle(_ peer: JSON, limitMs: Double, nowMs: Double = JS.nowMs()) -> Bool {
+        guard limitMs > 0 else { return false }
+        let stamp = (peer["lastSeenAt"] || peer["createdAt"]).jsString
+        guard let seen = JS.parseDate(stamp) else { return false }
+        return nowMs - seen > limitMs
     }
 
     func peerCanUseWhenDisabled(_ pathname: String, _ method: String) -> Bool {
@@ -317,7 +338,8 @@ final class CompanionProxy {
                 updated["endpoint"] = endpoint.isEmpty ? (peer["endpoint"] || nil) : JSON(endpoint)
                 return updated
             })
-            try? Files.writePrettyJSON(next, to: runtime.config.roachTailStatePath)
+            // Owner-only, like every other write of this file: it holds token and join-code hashes.
+            try? Files.writePrettyJSON(next, to: runtime.config.roachTailStatePath, mode: Files.privateFileMode)
         }
     }
 
@@ -352,7 +374,7 @@ final class CompanionProxy {
                 peerId = peer["id"].stringValue
                 peerName = peer["name"].stringValue ?? "Linked device"
             } else {
-                return json(401, ["error": "Invalid or missing companion token"])
+                return json(401, ["error": "Invalid or missing companion token. A phone that went unused for a long time has to pair again."])
             }
         }
 
@@ -381,6 +403,7 @@ final class CompanionProxy {
             headers["x-roachtail-auth-peer-id"] = peerId
         }
         var upstream = HTTPRequest(method: request.method, target: pathname + url.search, headers: headers, remoteAddress: "127.0.0.1", body: body ?? Data())
+        upstream.inProcess = true
         let response = runtime.handle(&upstream)
         if response.body.count > maxResponseBodyBytes {
             return json(502, ["error": JSON("Local runtime response exceeded \(maxResponseBodyBytes) bytes.")])

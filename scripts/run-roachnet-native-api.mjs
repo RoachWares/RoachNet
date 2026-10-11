@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { chmodSync, closeSync, constants as fsConstants, createReadStream, createWriteStream, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, writeFileSync, rmSync, statSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
@@ -17,7 +17,7 @@ import {
   roachClawNativeAgentStatus,
 } from './lib/roachnet_roachclaw_agent.mjs'
 import { createAsyncTTLCache } from './lib/roachnet_async_cache.mjs'
-import { declaresJsonBody, loopbackRequestRejection } from './lib/roachnet_loopback_guard.mjs'
+import { apiTokenRejection, declaresJsonBody, loopbackRequestRejection } from './lib/roachnet_loopback_guard.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const repoRoot = path.resolve(path.dirname(__filename), '..')
@@ -2619,7 +2619,9 @@ function readRoachTailStateFile() {
 function writeRoachClawState(filename, state) {
   const target = roachClawVaultPath(filename)
   mkdirSync(path.dirname(target), { recursive: true })
-  writeFileSync(target, JSON.stringify(state, null, 2))
+  // Owner-only, like the Swift runtime: memories, contacts, token hashes, webhook digests.
+  writeFileSync(target, JSON.stringify(state, null, 2), { mode: 0o600 })
+  chmodSync(target, 0o600)
   return state
 }
 
@@ -2844,6 +2846,9 @@ function upsertRoachClawWebhook(body) {
   return roachClawUpsertCollectionItem('webhooks.json', 'webhooks', body, (item) => {
     const rawSecret = compactString(body.secret || body.signingSecret || '', '', 2000)
     const existingDigest = compactString(item.secretDigest || '', '', 160) || null
+    // Per-secret salt + HMAC, two-character hint (security review M11).
+    const salt = rawSecret ? randomBytes(16).toString('hex') : compactString(item.secretSalt || '', '', 64) || null
+    const digest = rawSecret ? createHmac('sha256', salt).update(rawSecret).digest('hex') : existingDigest
     return {
       id: item.id,
       name: compactString(item.name || item.label || 'Local webhook', 'Local webhook', 140),
@@ -2852,8 +2857,10 @@ function upsertRoachClawWebhook(body) {
       target: compactString(item.target || item.route || 'roachclaw', 'roachclaw', 160),
       scope: compactString(item.scope || 'local-integration', 'local-integration', 120),
       isActive: Boolean(item.isActive ?? item.enabled ?? true),
-      secretDigest: rawSecret ? createHash('sha256').update(rawSecret).digest('hex') : existingDigest,
-      secretHint: rawSecret ? `${rawSecret.slice(0, 2)}...${rawSecret.slice(-2)}` : (compactString(item.secretHint || '', '', 40) || null),
+      secretDigest: digest,
+      secretSalt: salt,
+      secretDigestAlgorithm: salt ? 'hmac-sha256-salted-v1' : digest ? 'sha256' : null,
+      secretHint: rawSecret ? `…${rawSecret.slice(-2)}` : (compactString(item.secretHint || '', '', 40) || null),
       tags: compactStringList(item.tags),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
@@ -3114,16 +3121,24 @@ function legacyRoachClawCloudProviderSecretPath(providerId) {
   return legacyRoachClawVaultPath('provider-secrets', `${providerId}.key`)
 }
 
+// The storage or runtime-state root that contains `stateDirectory` (the same
+// rule as the Swift runtime's secretTrustRoot).
+function roachClawSecretTrustRoot(stateDirectory) {
+  return [storageRoot, runtimeStateRoot]
+    .filter((root) => root && stateDirectory.startsWith(`${root}${path.sep}`))
+    .sort((left, right) => right.length - left.length)[0] || null
+}
+
+// Rejects symlinked folders between the storage (or runtime-state) root and
+// the secret, or non-directory secret folders. Symlinks at or above that root
+// (macOS /var -> /private/var, a storage folder on another volume) are the
+// user's own layout and are allowed, as in the Swift runtime.
 function isRoachClawCloudProviderSecretDirectorySafe(secretDirectory, stateDirectory) {
-  const root = path.parse(stateDirectory).root
-  const ancestors = []
-  for (let current = stateDirectory; current !== root; current = path.dirname(current)) {
-    ancestors.push(current)
-  }
-  ancestors.push(root)
-  for (const candidate of ancestors) {
+  const trustRoot = roachClawSecretTrustRoot(stateDirectory)
+  if (!trustRoot) return false
+  for (let current = stateDirectory; current !== trustRoot && current.length > trustRoot.length; current = path.dirname(current)) {
     try {
-      if (lstatSync(candidate).isSymbolicLink()) return false
+      if (lstatSync(current).isSymbolicLink()) return false
     } catch {
       return false
     }
@@ -3137,6 +3152,16 @@ function isRoachClawCloudProviderSecretDirectorySafe(secretDirectory, stateDirec
     }
   }
   return true
+}
+
+// realpath of the trust root plus the rest of the path. macOS volumes are
+// usually case-insensitive, so `vault/roachclaw` and `Vault/RoachClaw` can be
+// the same folder; file identity is checked separately (device + inode).
+function roachClawSecretPathMatches(resolvedPath, secretPath, stateDirectory) {
+  const trustRoot = roachClawSecretTrustRoot(stateDirectory)
+  if (!trustRoot || !secretPath.startsWith(trustRoot)) return false
+  const expected = realpathSync(trustRoot) + secretPath.slice(trustRoot.length)
+  return process.platform === 'darwin' ? resolvedPath.toLowerCase() === expected.toLowerCase() : resolvedPath === expected
 }
 
 function readRoachClawCloudProviderSecretFile(secretPath, source, stateDirectory) {
@@ -3155,7 +3180,7 @@ function readRoachClawCloudProviderSecretFile(secretPath, source, stateDirectory
     if (!isRoachClawCloudProviderSecretDirectorySafe(path.dirname(secretPath), stateDirectory)) return null
     const resolvedSecretPath = realpathSync(secretPath)
     const current = statSync(resolvedSecretPath)
-    if (resolvedSecretPath !== secretPath || current.dev !== completed.dev || current.ino !== completed.ino) return null
+    if (!roachClawSecretPathMatches(resolvedSecretPath, secretPath, stateDirectory) || current.dev !== completed.dev || current.ino !== completed.ino) return null
     const value = buffer.toString('utf8', 0, bytesRead).trim()
     if (!value) return null
     return { source, value }
@@ -4504,7 +4529,7 @@ function defaultRoachTailState() {
           'RoachTail is using a native RoachNet control plane shaped after Headscale: local node records, expiring join keys, route approval, and no user-content custody.',
           relayHost
             ? 'The bridge advertises a relay host instead of the raw machine address.'
-            : 'Add a relay host when you want paired devices to avoid the raw local address.',
+            : 'Paired phones need an https:// relay host or a tailnet address: RoachNet iOS 0.3 will not send its token over plain http:// on Wi-Fi.',
         ]
       : ['RoachTail is off in the dependency-free native bridge.'],
   }
@@ -5934,11 +5959,24 @@ async function pullModel(model) {
     .catch((error) => log(`model pull failed: ${error.message}`))
 }
 
+const apiToken = process.env.ROACHNET_API_TOKEN?.trim() || null
+
+function lookupRoachClawApiToken(rawToken) {
+  const digest = createHash('sha256').update(rawToken).digest('hex')
+  const record = (roachClawApiTokensState().tokens || []).find((item) => item.tokenHash === digest)
+  return record ? { isActive: record.isActive !== false, scopes: record.scopes || [] } : null
+}
+
 async function route(request, response) {
   // Same CSRF / DNS-rebinding stance as the Swift runtime: no rebound Host,
   // no cross-site Origin (see roachnet_loopback_guard).
   const rejection = loopbackRequestRejection(request)
   if (rejection) return sendJson(response, rejection.statusCode, { error: rejection.error })
+  const tokenRejection = apiTokenRejection(request, { requiredToken: apiToken, lookupToken: lookupRoachClawApiToken })
+  if (tokenRejection) {
+    const { statusCode, ...payload } = tokenRejection
+    return sendJson(response, statusCode, payload)
+  }
   const url = new URL(request.url, 'http://127.0.0.1')
   const method = request.method || 'GET'
   const pathname = url.pathname
@@ -6380,6 +6418,8 @@ function writeRuntimeInfo({ baseUrl, companion }) {
     target: 'native-api',
     repoRoot,
     logPath,
+    // The app reads its API token back from here after a restart (owner-only file).
+    apiToken,
   }
   writeFileSync(
     statePath,
@@ -6414,7 +6454,8 @@ function writeRuntimeInfo({ baseUrl, companion }) {
   )
   if (process.env.ROACHNET_SERVER_INFO_FILE) {
     mkdirSync(path.dirname(process.env.ROACHNET_SERVER_INFO_FILE), { recursive: true })
-    writeFileSync(process.env.ROACHNET_SERVER_INFO_FILE, JSON.stringify(info, null, 2))
+    writeFileSync(process.env.ROACHNET_SERVER_INFO_FILE, JSON.stringify(info, null, 2), { mode: 0o600 })
+    chmodSync(process.env.ROACHNET_SERVER_INFO_FILE, 0o600)
   }
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 public struct AIRuntimeStatusResponse: Decodable, Sendable {
     public let provider: String
@@ -667,6 +668,8 @@ public struct ManagedAppServerInfo: Decodable, Sendable {
     public let target: String?
     public let repoRoot: String?
     public let logPath: String?
+    /// The runtime's loopback API token (1.1+), from the owner-only server-info file.
+    public let apiToken: String?
 }
 
 public struct ManagedAppSnapshot: Sendable {
@@ -704,7 +707,11 @@ public actor ManagedAppRuntimeBridge {
 
     private var process: Process?
     private var serverInfoURL: URL?
-    private var cachedServerInfo: ManagedAppServerInfo?
+    private var cachedServerInfo: ManagedAppServerInfo? {
+        didSet { if let token = cachedServerInfo?.apiToken, !token.isEmpty { apiToken = token } }
+    }
+    /// Sent with every request to the runtime this bridge started (ROA-39).
+    private var apiToken: String?
     private var startupTask: Task<ManagedAppServerInfo, Error>?
     private let nativeStartupTimeoutSeconds: TimeInterval = 300
 
@@ -846,12 +853,16 @@ public actor ManagedAppRuntimeBridge {
             stderrPipe.fileHandleForReading.readabilityHandler = nil
         }
 
-        process.environment = runtimeLaunchEnvironment(
+        let launchToken = Self.newAPIToken()
+        apiToken = launchToken
+        var launchEnvironment = runtimeLaunchEnvironment(
             using: config,
             repoRoot: launch.repoRoot,
             nodeBinary: launch.nodeBinary,
             serverInfoURL: infoURL
         )
+        launchEnvironment["ROACHNET_API_TOKEN"] = launchToken
+        process.environment = launchEnvironment
 
         try process.run()
         self.process = process
@@ -1088,7 +1099,8 @@ public actor ManagedAppRuntimeBridge {
     public func affectRoachTail(
         using config: RoachNetInstallerConfig,
         action: String,
-        relayHost: String? = nil
+        relayHost: String? = nil,
+        peerId: String? = nil
     ) async throws -> ManagedRoachTailActionResponse {
         let serverInfo = try await ensureRunning(using: config)
         let baseURL = try runtimeBaseURL(from: serverInfo)
@@ -1096,12 +1108,13 @@ public actor ManagedAppRuntimeBridge {
         struct Payload: Encodable {
             let action: String
             let relayHost: String?
+            let peerId: String?
         }
 
         return try await post(
             "/api/companion/roachtail/affect",
             baseURL: baseURL,
-            body: Payload(action: action, relayHost: relayHost)
+            body: Payload(action: action, relayHost: relayHost, peerId: peerId)
         )
     }
 
@@ -1475,6 +1488,7 @@ public actor ManagedAppRuntimeBridge {
         serverInfoURL: URL? = nil
     ) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
+        environment.removeValue(forKey: "ROACHNET_API_TOKEN")
         let normalizedStoragePath = config.storagePath.isEmpty
             ? RoachNetRepositoryLocator.defaultStoragePath(installPath: config.installPath)
             : config.storagePath
@@ -2032,9 +2046,30 @@ public actor ManagedAppRuntimeBridge {
         try await get(url: baseURL.appending(path: path))
     }
 
+    /// 32 random bytes, hex.
+    static func newAPIToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        if SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) != errSecSuccess {
+            bytes = (0..<32).map { _ in UInt8.random(in: .min ... .max) }
+        }
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Adds the API token, but only to requests for the runtime's own origin,
+    /// so it never rides along to any other URL this bridge fetches.
+    private func authorize(_ request: inout URLRequest) {
+        guard let apiToken, let url = request.url,
+              let web = cachedServerInfo?.webUrl ?? cachedServerInfo.map({ $0.healthUrl }),
+              let runtime = URL(string: web),
+              url.scheme == runtime.scheme, url.host == runtime.host, url.port == runtime.port
+        else { return }
+        request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
+    }
+
     private func get<Response: Decodable>(url: URL) async throws -> Response {
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
+        authorize(&request)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500
 
@@ -2058,6 +2093,7 @@ public actor ManagedAppRuntimeBridge {
         request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(AnyEncodable(body))
+        authorize(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500
@@ -2097,6 +2133,7 @@ public actor ManagedAppRuntimeBridge {
             request.httpBody = jsonBody
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        authorize(&request)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500
         guard (200..<300).contains(status) else {
@@ -2112,6 +2149,7 @@ public actor ManagedAppRuntimeBridge {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "DELETE"
         request.timeoutInterval = 60
+        authorize(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500

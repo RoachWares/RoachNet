@@ -20,7 +20,8 @@ extension NativeRuntime {
 
     @discardableResult
     func writeRoachClawState(_ filename: String, _ state: JSON) -> JSON {
-        try? Files.writePrettyJSON(state, to: roachClawVaultPath(filename))
+        // Owner-only: these hold memories, contacts, token hashes and webhook digests.
+        try? Files.writePrettyJSON(state, to: roachClawVaultPath(filename), mode: Files.privateFileMode)
         return state
     }
 
@@ -256,11 +257,20 @@ extension NativeRuntime {
             let existingDigest = nullIfEmpty(JS.compactString(item["secretDigest"] || "", "", 160))
             let id = item["id"].jsString
             let hookPath = "/api/roachclaw/hooks/\(id)"
+            // A per-secret salt and HMAC instead of a bare SHA-256, and a hint
+            // that shows two characters, not four (security review M11).
             let secretHint: JSON
+            let secretSalt: JSON
+            let secretDigest: JSON
             if rawSecret.isEmpty {
                 secretHint = nullIfEmpty(JS.compactString(item["secretHint"] || "", "", 40))
+                secretSalt = nullIfEmpty(JS.compactString(item["secretSalt"] || "", "", 64))
+                secretDigest = existingDigest
             } else {
-                secretHint = JSON("\(JS.slice(rawSecret, 2))...\(JS.sliceTail(rawSecret, 2))")
+                let salt = JS.randomHex(32)
+                secretHint = JSON("…\(JS.sliceTail(rawSecret, 2))")
+                secretSalt = JSON(salt)
+                secretDigest = JSON(HMACSHA256.hex(key: salt, message: rawSecret))
             }
             return [
                 "id": item["id"],
@@ -270,7 +280,9 @@ extension NativeRuntime {
                 "target": JSON(JS.compactString(item["target"] || item["route"] || "roachclaw", "roachclaw", 160)),
                 "scope": JSON(JS.compactString(item["scope"] || "local-integration", "local-integration", 120)),
                 "isActive": JSON((item["isActive"] ?? item["enabled"] ?? true).truthy),
-                "secretDigest": rawSecret.isEmpty ? existingDigest : JSON(SHA256Digest.hex(rawSecret)),
+                "secretDigest": secretDigest,
+                "secretSalt": secretSalt,
+                "secretDigestAlgorithm": secretSalt.isNullish ? (secretDigest.isNullish ? nil : "sha256") : "hmac-sha256-salted-v1",
                 "secretHint": secretHint,
                 "tags": jsonStrings(JS.compactStringList(item["tags"])),
                 "createdAt": item["createdAt"],

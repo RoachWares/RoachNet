@@ -79,3 +79,57 @@ export class UnsupportedMediaTypeError extends Error {
     this.statusCode = 415
   }
 }
+
+// The loopback API's own credential, the same rules as the Swift runtime
+// (LoopbackAPIToken.swift, ROA-39). Only enforced when whoever starts the
+// runtime sets ROACHNET_API_TOKEN (RoachNet.app does, per launch).
+const CHAT_PREFIXES = ['/api/ollama/chat', '/api/companion/chat', '/api/roachclaw/chat', '/api/roachclaw/sessions', '/api/chat']
+
+export function apiTokenScope(method, pathname) {
+  if (CHAT_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return 'chat'
+  if (method === 'GET' || method === 'HEAD') return 'read'
+  return 'admin'
+}
+
+export function presentedApiToken(headers = {}) {
+  const header = String(headers['x-roachnet-api-token'] || '').trim()
+  if (header) return header
+  const authorization = String(headers.authorization || '').trim()
+  const match = /^bearer\s+(.+)$/i.exec(authorization)
+  return match ? match[1].trim() : ''
+}
+
+function constantTimeEquals(left, right) {
+  const a = Buffer.from(String(left))
+  const b = Buffer.from(String(right))
+  if (a.length !== b.length) return false
+  let difference = 0
+  for (let index = 0; index < a.length; index += 1) difference |= a[index] ^ b[index]
+  return difference === 0
+}
+
+// `lookupToken(rawToken)` returns the stored record ({ isActive, scopes }) or null.
+// Returns null when the request may go on, or { statusCode, error } to send.
+export function apiTokenRejection(request, { requiredToken, lookupToken = () => null } = {}) {
+  if (!requiredToken) return null
+  const headers = request?.headers || {}
+  const url = new URL(request?.url || '/', 'http://127.0.0.1')
+  const method = request?.method || 'GET'
+  if (method === 'GET' && url.pathname === '/api/health') return null
+  if ((url.pathname === '/api/org' || url.pathname.startsWith('/api/org/')) && String(headers['x-roachnet-org-key'] || '').trim()) return null
+  const presented = presentedApiToken(headers)
+  if (!presented) {
+    return { statusCode: 401, error: 'This RoachNet API needs its token. RoachNet passes it automatically; scripts can use a RoachClaw API token from Settings.' }
+  }
+  if (constantTimeEquals(presented, requiredToken)) return null
+  if (presented.startsWith('rn_')) {
+    const record = lookupToken(presented)
+    if (record && record.isActive) {
+      const scope = apiTokenScope(method, url.pathname)
+      const scopes = Array.isArray(record.scopes) ? record.scopes : []
+      if (scopes.includes(scope) || scopes.includes('admin')) return null
+      return { statusCode: 403, error: `That API token can't use this route (it needs "${scope}"; the token has ${scopes.join(', ')}).`, requiredScope: scope }
+    }
+  }
+  return { statusCode: 401, error: 'That RoachNet API token is not valid.' }
+}

@@ -3406,11 +3406,11 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    func affectRoachTail(_ action: String) async {
+    func affectRoachTail(_ action: String, peerId: String? = nil) async {
         let trimmedAction = action.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedAction.isEmpty else { return }
 
-        let actionID = "roachtail-\(trimmedAction)"
+        let actionID = "roachtail-\(trimmedAction)\(peerId.map { "-\($0)" } ?? "")"
         guard !activeActions.contains(actionID) else { return }
 
         activeActions.insert(actionID)
@@ -3441,7 +3441,8 @@ final class WorkspaceModel: ObservableObject {
                 action: trimmedAction,
                 relayHost: config.companionAdvertisedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil
-                    : config.companionAdvertisedURL
+                    : config.companionAdvertisedURL,
+                peerId: peerId
             )
             try? await Task.sleep(for: .milliseconds(250))
             snapshot = try await ManagedAppRuntimeBridge.shared.fetchSnapshot(using: config)
@@ -11849,15 +11850,23 @@ private struct RootWorkspaceView: View {
                         if !roachTail.peers.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Linked Devices")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
 
-                                ForEach(roachTail.peers.prefix(4)) { peer in
-                                    RoachStatusRow(
-                                        title: peer.name,
-                                        value: "\(peer.platform.capitalized) · \(peer.status.capitalized)\(peer.endpoint.map { " · \($0)" } ?? "")",
-                                        accent: RoachPalette.green
-                                    )
+                                ForEach(roachTail.peers.prefix(8)) { peer in
+                                    HStack(spacing: 8) {
+                                        RoachStatusRow(
+                                            title: peer.name,
+                                            value: "\(peer.platform.capitalized) · \(peer.status.capitalized)\(peer.endpoint.map { " · \($0)" } ?? "")",
+                                            accent: RoachPalette.green
+                                        )
+                                        Button("Remove") {
+                                            Task { await model.affectRoachTail("remove-peer", peerId: peer.id) }
+                                        }
+                                        .buttonStyle(RoachSecondaryButtonStyle())
+                                        .disabled(model.roachTailActionInFlight)
+                                        .help("Unlink \(peer.name). Its token stops working at once; it can pair again with a fresh join code.")
+                                    }
                                 }
                             }
                         }

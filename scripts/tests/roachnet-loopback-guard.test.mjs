@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import http from 'node:http'
 import net from 'node:net'
@@ -10,6 +10,8 @@ import process from 'node:process'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
+  apiTokenRejection,
+  apiTokenScope,
   declaresJsonBody,
   isLoopbackHostname,
   isTrustedLoopbackHost,
@@ -61,6 +63,25 @@ test('JSON content types', () => {
   assert.equal(loopbackRequestRejection({ headers: { host: '127.0.0.1:1' } }), null)
   assert.equal(loopbackRequestRejection({ headers: { host: '127.example.net:1' } }).statusCode, 403)
   assert.equal(loopbackRequestRejection({ headers: { host: '127.0.0.1:1', origin: 'https://evil.example' } }).statusCode, 403)
+})
+
+test('API token rules (ROA-39)', () => {
+  const requiredToken = 'a'.repeat(64)
+  const request = (headers = {}, url = '/api/system/info', method = 'GET') => ({ headers: { host: '127.0.0.1:1', ...headers }, url, method })
+  assert.equal(apiTokenRejection(request(), {}), null, 'no token configured: nothing changes')
+  assert.equal(apiTokenRejection(request(), { requiredToken }).statusCode, 401)
+  assert.equal(apiTokenRejection(request({ authorization: 'Bearer nope' }), { requiredToken }).statusCode, 401)
+  assert.equal(apiTokenRejection(request({ authorization: `Bearer ${requiredToken}` }), { requiredToken }), null)
+  assert.equal(apiTokenRejection(request({ 'x-roachnet-api-token': requiredToken }), { requiredToken }), null)
+  assert.equal(apiTokenRejection(request({}, '/api/health'), { requiredToken }), null, 'health stays public')
+  assert.equal(apiTokenRejection(request({ 'x-roachnet-org-key': 'rnorg_x' }, '/api/org/companies'), { requiredToken }), null, 'Org checks its own keys')
+  const lookupToken = (raw) => (raw === 'rn_chat' ? { isActive: true, scopes: ['chat'] } : null)
+  assert.equal(apiTokenRejection(request({ authorization: 'Bearer rn_chat' }, '/api/companion/chat/sessions'), { requiredToken, lookupToken }), null)
+  assert.equal(apiTokenRejection(request({ authorization: 'Bearer rn_chat' }), { requiredToken, lookupToken }).statusCode, 403)
+  assert.equal(apiTokenRejection(request({ authorization: 'Bearer rn_gone' }), { requiredToken, lookupToken }).statusCode, 401)
+  assert.equal(apiTokenScope('POST', '/api/ollama/chat'), 'chat')
+  assert.equal(apiTokenScope('GET', '/api/system/info'), 'read')
+  assert.equal(apiTokenScope('POST', '/api/roachclaw/tokens'), 'admin')
 })
 
 async function freePort() {
@@ -161,12 +182,13 @@ test('the JavaScript setup service refuses rebound and cross-site requests', asy
   }
 })
 
-async function startNativeApi(command, args, root) {
+async function startNativeApi(command, args, root, extraEnv = {}) {
   const port = await freePort()
   const child = spawn(command, args, {
     cwd: repoRoot,
     env: {
       ...process.env,
+      ...extraEnv,
       HOME: root,
       HOST: '127.0.0.1',
       PORT: String(port),
@@ -213,6 +235,55 @@ test('the Swift setup service refuses rebound and cross-site requests', needsBin
   try {
     const url = await waitFor(async () => existsSync(readyFile) && JSON.parse(readFileSync(readyFile, 'utf8')).url, child, 'Swift setup')
     await assertGuards(Number(new URL(url).port), { postPath: '/api/launch', label: 'Swift setup' })
+  } finally {
+    await stop(child)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+// With ROACHNET_API_TOKEN set (RoachNet.app sets one per launch), another
+// process on the Mac gets nothing without the token; health stays public.
+async function assertTokenGate(port, token, label, serverInfoFile) {
+  const own = `127.0.0.1:${port}`
+  assert.equal((await send(port, { pathname: '/api/health', headers: { host: own } })).status, 200, `${label}: health`)
+  assert.equal((await send(port, { pathname: '/api/system/info', headers: { host: own } })).status, 401, `${label}: no token`)
+  assert.equal((await send(port, { pathname: '/api/system/info', headers: { host: own, authorization: 'Bearer wrong' } })).status, 401, `${label}: wrong token`)
+  assert.equal((await send(port, { pathname: '/api/system/info', headers: { host: own, authorization: `Bearer ${token}` } })).status, 200, `${label}: launch token`)
+  const minted = await send(port, { method: 'POST', pathname: '/api/roachclaw/tokens', headers: { host: own, authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'script', scopes: ['chat'] }) })
+  assert.equal(minted.status, 200, `${label}: mint: ${minted.text}`)
+  const raw = JSON.parse(minted.text).token
+  // The JS runner has no companion chat routes (404); what matters is that the gate let it through.
+  const chat = (await send(port, { pathname: '/api/companion/chat/sessions', headers: { host: own, authorization: `Bearer ${raw}` } })).status
+  assert.ok(chat !== 401 && chat !== 403, `${label}: chat token on a chat route got ${chat}`)
+  assert.equal((await send(port, { pathname: '/api/system/info', headers: { host: own, authorization: `Bearer ${raw}` } })).status, 403, `${label}: chat token elsewhere`)
+  if (serverInfoFile) {
+    const info = JSON.parse(readFileSync(serverInfoFile, 'utf8'))
+    assert.equal(info.apiToken, token, `${label}: the app can read the token back`)
+    assert.equal(statSync(serverInfoFile).mode & 0o077, 0, `${label}: server info is owner-only`)
+  }
+}
+
+test('the JavaScript native API requires its token when one is set', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'roachnet-api-token-js-'))
+  const token = 'b'.repeat(64)
+  const serverInfoFile = path.join(root, 'server-info.json')
+  const { child, port } = await startNativeApi(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], root,
+    { ROACHNET_API_TOKEN: token, ROACHNET_SERVER_INFO_FILE: serverInfoFile })
+  try {
+    await assertTokenGate(port, token, 'JS native API', serverInfoFile)
+  } finally {
+    await stop(child)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('the Swift runtime requires its token when one is set', needsBinary, async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'roachnet-api-token-swift-'))
+  const token = 'c'.repeat(64)
+  const serverInfoFile = path.join(root, 'server-info.json')
+  const { child, port } = await startNativeApi(nativeBinary, [], root, { ROACHNET_API_TOKEN: token, ROACHNET_SERVER_INFO_FILE: serverInfoFile })
+  try {
+    await assertTokenGate(port, token, 'Swift runtime', serverInfoFile)
   } finally {
     await stop(child)
     await rm(root, { recursive: true, force: true })

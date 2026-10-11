@@ -79,6 +79,7 @@ extension NativeRuntime {
             guard Self.isTrustedLoopbackOrigin(request.header("origin")) else {
                 return .json(403, ["error": "Loopback API requests from other sites are refused."])
             }
+            if let refusal = apiTokenRefusal(request) { return refusal }
             return try route(&request)
         } catch let error as RuntimeError {
             if error.statusCode >= 500 { log("request failed: \(error.message)") }

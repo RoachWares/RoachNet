@@ -2,7 +2,7 @@
 
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import {
@@ -122,19 +122,28 @@ async function resolvePeerToken(tokenValue, { allowDisabled = false } = {}) {
     }
 
     const hashed = hashToken(tokenValue)
-    return (
+    const peer =
       parsed.peers.find(
-        (peer) =>
-          peer &&
-          typeof peer === 'object' &&
-          typeof peer.id === 'string' &&
-          typeof peer.tokenHash === 'string' &&
-          peer.tokenHash === hashed
+        (candidate) =>
+          candidate &&
+          typeof candidate === 'object' &&
+          typeof candidate.id === 'string' &&
+          typeof candidate.tokenHash === 'string' &&
+          candidate.tokenHash === hashed
       ) || null
-    )
+    // Same idle limit as the Swift runtime (ROA-39): a phone unused for
+    // ROACHTAIL_PEER_IDLE_DAYS (default 90; 0 = off) has to pair again.
+    return peer && !peerTokenIsIdle(peer) ? peer : null
   } catch {
     return null
   }
+}
+
+function peerTokenIsIdle(peer, { idleDays = Number(process.env.ROACHTAIL_PEER_IDLE_DAYS ?? 90), now = Date.now() } = {}) {
+  if (!Number.isFinite(idleDays) || idleDays <= 0) return false
+  const seen = Date.parse(peer?.lastSeenAt || peer?.createdAt || '')
+  if (!Number.isFinite(seen)) return false
+  return now - seen > idleDays * 86_400_000
 }
 
 function peerCanUseWhenDisabled(pathname, request) {
@@ -234,7 +243,9 @@ async function recordPeerActivity(authContext, request) {
     }
 
     await mkdir(path.dirname(roachTailStatePath), { recursive: true })
-    await writeFile(roachTailStatePath, JSON.stringify(nextState, null, 2), 'utf8')
+    // Owner-only: the file holds token and join-code hashes.
+    await writeFile(roachTailStatePath, JSON.stringify(nextState, null, 2), { encoding: 'utf8', mode: 0o600 })
+    await chmod(roachTailStatePath, 0o600)
   } catch {
     // Keep proxying even if peer activity could not be persisted.
   }
@@ -248,6 +259,10 @@ async function proxyRequest(request, response, requestUrl, authContext = null) {
   const upstreamHeaders = {
     Accept: 'application/json',
     'Content-Type': request.headers['content-type'] || 'application/json',
+  }
+  // The runtime's own credential (ROA-39); the phone's token never goes upstream.
+  if (process.env.ROACHNET_API_TOKEN?.trim()) {
+    upstreamHeaders.Authorization = `Bearer ${process.env.ROACHNET_API_TOKEN.trim()}`
   }
 
   if (authContext?.kind === 'peer') {

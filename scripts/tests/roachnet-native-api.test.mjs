@@ -879,6 +879,10 @@ test('native API exposes app catalogs and companion payloads without the legacy 
     })
     assert.equal(webhook.webhooks[0].isActive, true)
     assert.equal(webhook.webhooks[0].secretDigest.length, 64)
+    assert.equal(webhook.webhooks[0].secretSalt.length, 32, 'each webhook secret gets its own salt')
+    assert.equal(webhook.webhooks[0].secretDigestAlgorithm, 'hmac-sha256-salted-v1')
+    assert.notEqual(webhook.webhooks[0].secretDigest, createHash('sha256').update('do-not-store-me').digest('hex'), 'not a bare SHA-256')
+    assert.equal(webhook.webhooks[0].secretHint, '…me')
     assert.equal(JSON.stringify(webhook).includes('do-not-store-me'), false)
     const trackedRun = await requestJson(`http://127.0.0.1:${port}/api/roachclaw/agent-runs`, {
       method: 'POST',

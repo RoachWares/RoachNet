@@ -121,7 +121,7 @@ extension NativeRuntime {
                 "RoachTail is using a native RoachNet control plane shaped after Headscale: local node records, expiring join keys, route approval, and no user-content custody.",
                 JSON(relayHost != nil
                     ? "The bridge advertises a relay host instead of the raw machine address."
-                    : "Add a relay host when you want paired devices to avoid the raw local address."),
+                    : "Paired phones need an https:// relay host or a tailnet address: RoachNet iOS 0.3 will not send its token over plain http:// on Wi-Fi."),
             ]
             : ["RoachTail is off in the dependency-free native bridge."]
         return [

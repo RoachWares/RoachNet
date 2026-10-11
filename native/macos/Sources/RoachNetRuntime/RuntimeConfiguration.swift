@@ -5,6 +5,24 @@ import Darwin
 import Glibc
 #endif
 
+/// POSIX `write`, which `Files.write` would otherwise shadow.
+private func posixWrite(_ fd: Int32, _ buffer: UnsafeRawPointer, _ count: Int) -> Int {
+    #if canImport(Darwin)
+    return Darwin.write(fd, buffer, count)
+    #else
+    return Glibc.write(fd, buffer, count)
+    #endif
+}
+
+/// POSIX `rename`, which `Files.rename` would otherwise shadow.
+private func posixRename(_ from: String, _ to: String) -> Int32 {
+    #if canImport(Darwin)
+    return Darwin.rename(from, to)
+    #else
+    return Glibc.rename(from, to)
+    #endif
+}
+
 /// Environment-derived runtime configuration (same variables the app and
 /// installer already pass to the runtime process).
 public final class RuntimeConfiguration {
@@ -229,10 +247,34 @@ public enum Files {
     }
 
     /// Atomic write (temp file + rename), creating parents.
+    /// With a `mode`, the temp file is created with that mode, so a private
+    /// file is never readable by others, not even between write and chmod.
     public static func write(_ data: Data, to path: String, mode: Int? = nil) throws {
         try mkdirp(Path.dirname(path))
-        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
-        if let mode { chmod(path, mode_t(mode)) }
+        guard let mode else {
+            try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            return
+        }
+        let temp = Path.join(Path.dirname(path), ".\(Path.basename(path)).\(JS.randomHex(12)).tmp")
+        let fd = open(temp, O_WRONLY | O_CREAT | O_EXCL, mode_t(mode))
+        guard fd >= 0 else { throw RuntimeError("Could not create \(temp): \(String(cString: strerror(errno)))") }
+        var written = 0
+        let ok = data.withUnsafeBytes { buffer -> Bool in
+            guard let base = buffer.baseAddress else { return true }
+            while written < buffer.count {
+                let count = posixWrite(fd, base + written, buffer.count - written)
+                if count <= 0 { return false }
+                written += count
+            }
+            return true
+        }
+        fchmod(fd, mode_t(mode))
+        close(fd)
+        guard ok, posixRename(temp, path) == 0 else {
+            let message = String(cString: strerror(errno))
+            unlink(temp)
+            throw RuntimeError("Could not write \(path): \(message)")
+        }
     }
 
     public static func write(_ text: String, to path: String, mode: Int? = nil) throws {
