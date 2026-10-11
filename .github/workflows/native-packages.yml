@@ -75,7 +75,7 @@ jobs:
           node scripts/smoke-test-command-bar-lane.mjs
           npm audit --audit-level=high
           npm run native:test
-          npm run native:dist
+          ROACHNET_ROACHSPEECH_DIGEST_SCOPE=upstream npm run native:dist
           curl --fail --location --proto '=https' --tlsv1.2 \
             'https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.8.4/samples/jfk.wav' \
             --output "$RUNNER_TEMP/jfk.wav"
@@ -233,6 +233,8 @@ jobs:
           ROACHNET_NOTARY_PROFILE: ${{ env.ROACHNET_NOTARY_PROFILE }}
           ROACHNET_NOTARY_KEYCHAIN: ${{ env.ROACHNET_NOTARY_KEYCHAIN }}
           ROACHNET_RELEASE_BUILD: '1'
+          # The packs were re-imported above; pin their upstream bytes (ROA-40).
+          ROACHNET_ROACHSPEECH_DIGEST_SCOPE: upstream
         run: npm run native:dist
       - name: Run complete post-build aggregate release gate
         run: |

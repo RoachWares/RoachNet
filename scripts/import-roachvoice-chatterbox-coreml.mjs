@@ -6,6 +6,8 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
+import { verifyImportedUpstreamFiles } from './lib/roachspeech_pack_digests.mjs'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
@@ -260,6 +262,8 @@ async function importChatterbox(args) {
     },
   })
 
+  const pinned = await verifyImportedUpstreamFiles(path.join(repoRoot, 'docs', 'release-gates', 'roachspeech-pack-digests.json'), packID, outputRoot)
+  if (pinned) console.log(`Chatterbox: ${pinned} upstream files match the recorded digests.`)
   console.log(`Imported RoachVoice Chatterbox Core ML pack into ${path.relative(repoRoot, outputRoot)}`)
 }
 

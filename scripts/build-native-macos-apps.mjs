@@ -10,6 +10,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { writeSha256Sidecar } from './build-native-macos-packaging-support.mjs'
+import { readDigestManifest, verifyImportedUpstreamFiles, verifyPackAgainstManifest } from './lib/roachspeech_pack_digests.mjs'
 import { downloadHttpToFile, requestHttp } from './lib/roachnet_http.mjs'
 import { parseAcceptedNotarySubmission } from './lib/roachnet_notary_evidence.mjs'
 
@@ -96,6 +97,28 @@ const baselineRoachSpeechPackIDs = new Set([
   'roachvoice-kokoro-82m-int8-coreml',
 ])
 const notarizationSubmissions = []
+// ROA-40: every RoachSpeech pack the build bundles or archives must match the
+// committed per-file digests. ROACHNET_ALLOW_UNPINNED_ROACHSPEECH=1 skips the
+// check for local experiments only; release and candidate builds ignore it.
+const roachSpeechDigestManifestPath = path.join(repoRoot, 'docs', 'release-gates', 'roachspeech-pack-digests.json')
+const allowUnpinnedRoachSpeech = !pinnedRuntimeBuild && process.env.ROACHNET_ALLOW_UNPINNED_ROACHSPEECH === '1'
+// `upstream` checks only the files that came byte for byte from the pinned
+// Hugging Face commits. The hosted stage job re-imports the packs, which
+// rewrites the importer's own files (timestamps, compiled models), so it uses
+// this scope; a build from the release Mac's cache checks every file.
+const roachSpeechDigestScope = process.env.ROACHNET_ROACHSPEECH_DIGEST_SCOPE === 'upstream' ? 'upstream' : 'all'
+
+async function requireRecordedRoachSpeechPack(packID, packRoot) {
+  if (allowUnpinnedRoachSpeech) {
+    console.warn(`RoachSpeech ${packID}: digest check skipped (ROACHNET_ALLOW_UNPINNED_ROACHSPEECH=1).`)
+    return
+  }
+  const count = roachSpeechDigestScope === 'upstream'
+    ? await verifyImportedUpstreamFiles(roachSpeechDigestManifestPath, packID, packRoot)
+    : await verifyPackAgainstManifest(readDigestManifest(roachSpeechDigestManifestPath), packID, packRoot)
+  if (count === 0) throw new Error(`RoachSpeech pack ${packID} has no recorded digests.`)
+  console.log(`RoachSpeech ${packID}: ${count} files match the recorded digests (${roachSpeechDigestScope}).`)
+}
 
 if (!/^\d+$/.test(appBuildNumber)) {
   throw new Error('package.json buildNumber must be a positive integer for native packaging.')
@@ -1378,6 +1401,7 @@ async function copyBundledRoachSpeechRuntime(resourcesPath) {
   discardPath(destinationPath)
   mkdirSync(path.join(destinationPath, 'ModelPacks'), { recursive: true })
   for (const packID of bundledPackIDs) {
+    await requireRecordedRoachSpeechPack(packID, path.join(sourcePath, 'ModelPacks', packID))
     await copyTreeFast(
       path.join(sourcePath, 'ModelPacks', packID),
       path.join(destinationPath, 'ModelPacks', packID)
@@ -1497,6 +1521,7 @@ async function createRoachSpeechPackArchive(packID) {
     return null
   }
 
+  await requireRecordedRoachSpeechPack(packID, sourcePath)
   const archivePath = path.join(distPath, 'RoachSpeechPacks', `${packID}.zip`)
   discardPath(archivePath)
   mkdirSync(path.dirname(archivePath), { recursive: true })

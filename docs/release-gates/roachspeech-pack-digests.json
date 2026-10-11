@@ -1,0 +1,976 @@
+{
+  "schema": "org.roachnet.roachspeech-pack-digests.v1",
+  "note": "SHA-256 and size of every file in the RoachSpeech Core ML packs RoachNet bundles and publishes. \"upstream\" names the file in the pinned Hugging Face commit with identical bytes; null marks files the importer writes itself (pack manifest, tokenizer, voice tables, parity fixtures).",
+  "recordedAt": "2026-10-11",
+  "packs": {
+    "roachwhisper-openai-whisper-base-en-coreml": {
+      "upstream": [
+        {
+          "repository": "argmaxinc/whisperkit-coreml",
+          "revision": "0f63a7800b00dd0226abd051b906c246e1907482"
+        },
+        {
+          "repository": "openai/whisper-base.en",
+          "revision": "911407f4214e0e1d82085af863093ec0b66f9cd6"
+        }
+      ],
+      "files": {
+        "RoachSpeechPack.json": {
+          "sha256": "84eb2b010d8b1b6ef2b775bddb3138efa1c71f16bbb601aa3eaed3d9fd5ce97d",
+          "bytes": 1276,
+          "upstream": null
+        },
+        "RoachWhisper/Reference/Tokenizer/added_tokens.json": {
+          "sha256": "560be47bea388757f8d4cc185c5d82067426cbb6361e38016dd90ddc01ab203a",
+          "bytes": 34604,
+          "upstream": "openai/whisper-base.en@911407f4214e:added_tokens.json"
+        },
+        "RoachWhisper/Reference/Tokenizer/merges.txt": {
+          "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5",
+          "bytes": 456318,
+          "upstream": "openai/whisper-base.en@911407f4214e:merges.txt"
+        },
+        "RoachWhisper/Reference/Tokenizer/normalizer.json": {
+          "sha256": "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd",
+          "bytes": 52666,
+          "upstream": "openai/whisper-base.en@911407f4214e:normalizer.json"
+        },
+        "RoachWhisper/Reference/Tokenizer/preprocessor_config.json": {
+          "sha256": "9b5cd03a36fbb8a627c64d98a5b5b126ead95a77720723944487311f0110b666",
+          "bytes": 184990,
+          "upstream": "openai/whisper-base.en@911407f4214e:preprocessor_config.json"
+        },
+        "RoachWhisper/Reference/Tokenizer/special_tokens_map.json": {
+          "sha256": "014f8f802366ed818919550be0ad9e35907327cb9e142e8aaa102420f460bda8",
+          "bytes": 1830,
+          "upstream": "openai/whisper-base.en@911407f4214e:special_tokens_map.json"
+        },
+        "RoachWhisper/Reference/Tokenizer/tokenizer_config.json": {
+          "sha256": "14f84bdf4b9ecdbd4738ddc81c17a1baedfc02bb93c6e049c951e15a1b40b70d",
+          "bytes": 805,
+          "upstream": "openai/whisper-base.en@911407f4214e:tokenizer_config.json"
+        },
+        "RoachWhisper/Reference/Tokenizer/vocab.json": {
+          "sha256": "3ba3c3109ff33976c4bd966589c11ee14fcaa1f4c9e5e154c2ed7f99d80709e7",
+          "bytes": 798156,
+          "upstream": "openai/whisper-base.en@911407f4214e:vocab.json"
+        },
+        "RoachWhisper/Reference/config.json": {
+          "sha256": "ab22779256bdb966a5dc4f033cb9ac6471e0e1e2574fda258655c8ad2a5ea700",
+          "bytes": 1454,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/config.json"
+        },
+        "RoachWhisper/Reference/generation_config.json": {
+          "sha256": "ea4714d2f89ab6de18c6dead99c10fbeeb383768fa6b564d9d4d7889140d70b5",
+          "bytes": 982,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/generation_config.json"
+        },
+        "RoachWhisper/RoachWhisperDecoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "e870aac5de88676c1ad93cb3939f257e6de30e5235c3f9d7686398ebecafdb8d",
+          "bytes": 243,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/TextDecoder.mlmodelc/analytics/coremldata.bin"
+        },
+        "RoachWhisper/RoachWhisperDecoder.mlmodelc/coremldata.bin": {
+          "sha256": "4b23ff9d9fe376f2b86f9cf55af3218560a4e4d692041360510fbad490c0db43",
+          "bytes": 633,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/TextDecoder.mlmodelc/coremldata.bin"
+        },
+        "RoachWhisper/RoachWhisperDecoder.mlmodelc/metadata.json": {
+          "sha256": "da9be60fd96a13938445fd589a54bf56f77474efd541027bfb79537ddf67d10c",
+          "bytes": 4753,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/TextDecoder.mlmodelc/metadata.json"
+        },
+        "RoachWhisper/RoachWhisperDecoder.mlmodelc/model.mil": {
+          "sha256": "e380edc70b68dc1e06c1ae19aaa8fd5f85a2b14242b9cc871ce5648cfb3ed3ce",
+          "bytes": 200444,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/TextDecoder.mlmodelc/model.mil"
+        },
+        "RoachWhisper/RoachWhisperDecoder.mlmodelc/model.mlmodel": {
+          "sha256": "72f1214f7c8b26e467dd8233572eaa5cbe200f30a36b918d4c289f9fc8c4f401",
+          "bytes": 160348,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/TextDecoder.mlmodelc/model.mlmodel"
+        },
+        "RoachWhisper/RoachWhisperDecoder.mlmodelc/weights/weight.bin": {
+          "sha256": "4649599bd2d97f87ffc716e6da2f61a06c06ac5a9424dd23edc3d4bf66fb6221",
+          "bytes": 104121136,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/TextDecoder.mlmodelc/weights/weight.bin"
+        },
+        "RoachWhisper/RoachWhisperEncoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "c4e096b2abd561f00b9b698401df3fbe1a0d0c8d2476ff19cb4e1995680e827e",
+          "bytes": 243,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base/AudioEncoder.mlmodelc/analytics/coremldata.bin"
+        },
+        "RoachWhisper/RoachWhisperEncoder.mlmodelc/coremldata.bin": {
+          "sha256": "e316980638e2099e83cb1a93b903717dc12b3c2168d0ab69113764c3767696ba",
+          "bytes": 347,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base/AudioEncoder.mlmodelc/coremldata.bin"
+        },
+        "RoachWhisper/RoachWhisperEncoder.mlmodelc/metadata.json": {
+          "sha256": "d6785fae31c3f86d60058c14c79902f716f106dd9e36af7d3fe78b9c34867fce",
+          "bytes": 1863,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base/AudioEncoder.mlmodelc/metadata.json"
+        },
+        "RoachWhisper/RoachWhisperEncoder.mlmodelc/model.mil": {
+          "sha256": "dc74813e26fce790fe22a33dcef8be535b9dce566f38a8bdb677f5e07dcf9138",
+          "bytes": 579125,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base/AudioEncoder.mlmodelc/model.mil"
+        },
+        "RoachWhisper/RoachWhisperEncoder.mlmodelc/model.mlmodel": {
+          "sha256": "1d42038f84b508da5ce9b953302387ffedc097c346d36a56b765109002b6080e",
+          "bytes": 79853,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base/AudioEncoder.mlmodelc/model.mlmodel"
+        },
+        "RoachWhisper/RoachWhisperEncoder.mlmodelc/weights/weight.bin": {
+          "sha256": "74f15e6d2f7694af54e90227cbf22fd6c04082638f163b78a909967b16edc1c7",
+          "bytes": 41189632,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/AudioEncoder.mlmodelc/weights/weight.bin"
+        },
+        "RoachWhisper/RoachWhisperMelSpectrogram.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "7f77e6457285248f99cd7aa3fd4cc2efbb17733e63e7023ac53abe1f95785d07",
+          "bytes": 243,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-tiny/MelSpectrogram.mlmodelc/analytics/coremldata.bin"
+        },
+        "RoachWhisper/RoachWhisperMelSpectrogram.mlmodelc/coremldata.bin": {
+          "sha256": "dabdc5aa69f6ef4d97dc9499f5c30514e00e96b53b750b33a5a6471363c71662",
+          "bytes": 328,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-tiny/MelSpectrogram.mlmodelc/coremldata.bin"
+        },
+        "RoachWhisper/RoachWhisperMelSpectrogram.mlmodelc/metadata.json": {
+          "sha256": "66a60d0babfcae566910a6d699471efde002d92205a7d349e16989ca4d6729d3",
+          "bytes": 1848,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-small/MelSpectrogram.mlmodelc/metadata.json"
+        },
+        "RoachWhisper/RoachWhisperMelSpectrogram.mlmodelc/model.mil": {
+          "sha256": "b8063d8e57c113472ac7c2d248e44383568a018978a753c1884ac406b997a374",
+          "bytes": 10176,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-tiny/MelSpectrogram.mlmodelc/model.mil"
+        },
+        "RoachWhisper/RoachWhisperMelSpectrogram.mlmodelc/weights/weight.bin": {
+          "sha256": "ee77f9b67765f7abc33f16374081b2389cf1d3a89536187b241950c5a2e5d6c1",
+          "bytes": 354080,
+          "upstream": "argmaxinc/whisperkit-coreml@0f63a7800b00:openai_whisper-base.en/MelSpectrogram.mlmodelc/weights/weight.bin"
+        },
+        "RoachWhisper/RoachWhisperParity.json": {
+          "sha256": "185e1839b59741934257c19842a85c0cc46108f516ce34fef30af43d0dcf2da3",
+          "bytes": 1645,
+          "upstream": null
+        },
+        "RoachWhisper/RoachWhisperTokenizer.json": {
+          "sha256": "5eb60cec1e77aeeb6869a2bb5a8e01a84c3fe5d072d75369343021fe6f5310d0",
+          "bytes": 2405679,
+          "upstream": "openai/whisper-base.en@911407f4214e:tokenizer.json"
+        }
+      }
+    },
+    "roachvoice-kokoro-82m-int8-coreml": {
+      "upstream": [
+        {
+          "repository": "aufklarer/Kokoro-82M-CoreML-INT8",
+          "revision": "4bc7df470ea4612a5b6539af16ebf301a027f491"
+        }
+      ],
+      "files": {
+        "RoachSpeechPack.json": {
+          "sha256": "44c3659453ad4f3e774e1db90967bfea1218406da5837a5536ef2ab8674ed073",
+          "bytes": 804,
+          "upstream": null
+        },
+        "RoachVoice/Reference/README.md": {
+          "sha256": "08d6b645ab15d20a9a2acbbb4c175d2e7c58d3091df6964c05780887b1d0428a",
+          "bytes": 3424,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:README.md"
+        },
+        "RoachVoice/Reference/g2p_vocab.json": {
+          "sha256": "295ed64b86c2820cd665b0602ae50c6947c0e82ac643082873e0be87dca282ce",
+          "bytes": 1665,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:g2p_vocab.json"
+        },
+        "RoachVoice/Reference/pipeline_config.json": {
+          "sha256": "129f048bb8d670c9659f276f689f75c2da9e89b408b8161bfceb558b63c86072",
+          "bytes": 317,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:pipeline_config.json"
+        },
+        "RoachVoice/Reference/us_gold.json": {
+          "sha256": "8507f89840f0813b10cf584740942f58e9cc9ad3660e24088b442ab0a6b126be",
+          "bytes": 3001196,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:us_gold.json"
+        },
+        "RoachVoice/Reference/us_silver.json": {
+          "sha256": "ea0e1abca0c9b18fb0d3402034633a337154a3153e9a9f49f97d668c908e140c",
+          "bytes": 3105352,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:us_silver.json"
+        },
+        "RoachVoice/Reference/vocab_index.json": {
+          "sha256": "433690ab1da1256639c00179e7961a9e9f50ec91077a9c0877107c14e04fb989",
+          "bytes": 2034,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:vocab_index.json"
+        },
+        "RoachVoice/RoachVoiceEmbedding.json": {
+          "sha256": "41986601fa707cf64885e0ae11552b078d7fc2aac7eebfc959617fc84619f667",
+          "bytes": 321,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceG2PDecoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "dbf1767747fdc188222d467a45b04608b396c76c71db3abb18a5fb3680ef9827",
+          "bytes": 243,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PDecoder.mlmodelc/analytics/coremldata.bin"
+        },
+        "RoachVoice/RoachVoiceG2PDecoder.mlmodelc/coremldata.bin": {
+          "sha256": "607e960f19b4d9a30317a5a11869fcce84b300a909fcab2cc756c0d98e2dacd9",
+          "bytes": 545,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PDecoder.mlmodelc/coremldata.bin"
+        },
+        "RoachVoice/RoachVoiceG2PDecoder.mlmodelc/metadata.json": {
+          "sha256": "e54e98484fd60d26f22fd3c4e7fe87b0d92a5d2de1f958cc3c4bb36d4ae06a44",
+          "bytes": 3064,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PDecoder.mlmodelc/metadata.json"
+        },
+        "RoachVoice/RoachVoiceG2PDecoder.mlmodelc/model.mil": {
+          "sha256": "fe647c598e0d9454d360b8ee49a59ae57ca147fc5330863ba84ccb90dce482ad",
+          "bytes": 19737,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PDecoder.mlmodelc/model.mil"
+        },
+        "RoachVoice/RoachVoiceG2PDecoder.mlmodelc/weights/weight.bin": {
+          "sha256": "cbaeb4e743359f607ab161af0c6d8a817462fdaec622ee788ef8ef952c5f8214",
+          "bytes": 828030,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PDecoder.mlmodelc/weights/weight.bin"
+        },
+        "RoachVoice/RoachVoiceG2PEncoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "cf7fbd7e7a65529b2d2bf3941e458a0ab6dff7a298bf48e205a1727c81c26a99",
+          "bytes": 243,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PEncoder.mlmodelc/analytics/coremldata.bin"
+        },
+        "RoachVoice/RoachVoiceG2PEncoder.mlmodelc/coremldata.bin": {
+          "sha256": "0f14d46ca9fd06c68b4717294575b2b99449e67d40b7a2c56f926bf05cd90b11",
+          "bytes": 398,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PEncoder.mlmodelc/coremldata.bin"
+        },
+        "RoachVoice/RoachVoiceG2PEncoder.mlmodelc/metadata.json": {
+          "sha256": "c8e0cfd7f494ac1b3662ff8f1914b2b45f79ffb2791724cdc0576981996732e1",
+          "bytes": 2034,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PEncoder.mlmodelc/metadata.json"
+        },
+        "RoachVoice/RoachVoiceG2PEncoder.mlmodelc/model.mil": {
+          "sha256": "8c617e569f37286b056dad800d862dc145be9a95fa9ed43857bb646ba199d7da",
+          "bytes": 20392,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PEncoder.mlmodelc/model.mil"
+        },
+        "RoachVoice/RoachVoiceG2PEncoder.mlmodelc/weights/weight.bin": {
+          "sha256": "6926bcd2827d21fec82839487b987e06f85fd8a6a5bb896bc4f6062461d014ec",
+          "bytes": 694592,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:G2PEncoder.mlmodelc/weights/weight.bin"
+        },
+        "RoachVoice/RoachVoiceNarrator.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "b23a957d09f0e3f450f3e3ba1f99d2b9ded01f4c3ec2ed4248e5ef14865e9ee7",
+          "bytes": 243,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:kokoro_5s.mlmodelc/analytics/coremldata.bin"
+        },
+        "RoachVoice/RoachVoiceNarrator.mlmodelc/coremldata.bin": {
+          "sha256": "ac531805ce987d3c9482879f5f94b8f8ea8f14ab2ce13d1a3530643550399c6c",
+          "bytes": 478,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:kokoro_5s.mlmodelc/coremldata.bin"
+        },
+        "RoachVoice/RoachVoiceNarrator.mlmodelc/model.mil": {
+          "sha256": "d3ee5b02bf963391164d5fe8b70c20a0eb8e76a5704907371c7d9e89fc8d709f",
+          "bytes": 849632,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:kokoro_5s.mlmodelc/model.mil"
+        },
+        "RoachVoice/RoachVoiceNarrator.mlmodelc/weights/weight.bin": {
+          "sha256": "b7f39486fedf500970b00a896a13fa051cf9b9368f63b20efd2b7691e5941a1c",
+          "bytes": 81762944,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:kokoro_5s.mlmodelc/weights/weight.bin"
+        },
+        "RoachVoice/Voices/af_alloy.json": {
+          "sha256": "8376694f70d17b611be5d3359e0e8a6903de97862178fb78b19bdea7ed9851e0",
+          "bytes": 5494,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_alloy.json"
+        },
+        "RoachVoice/Voices/af_aoede.json": {
+          "sha256": "33c9bab709b20f42c2693dabfb89ab5801e44ac80cafcc545ca1a81091bb14c2",
+          "bytes": 5507,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_aoede.json"
+        },
+        "RoachVoice/Voices/af_bella.json": {
+          "sha256": "3fee6c5728f669f8b3bbca31cca30ebfee6fb00723f5fce3f2c7d47bcaa14a36",
+          "bytes": 5505,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_bella.json"
+        },
+        "RoachVoice/Voices/af_heart.json": {
+          "sha256": "c00984469c315ee8709bebb8ea0bd8321eae2d952f6db7c6214d660028d01ed2",
+          "bytes": 5517,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_heart.json"
+        },
+        "RoachVoice/Voices/af_jessica.json": {
+          "sha256": "3e517aaa90d3fde9b3ece12fcc7b0fcbe814d32f4e7a010f6a71e2ea95115244",
+          "bytes": 5484,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_jessica.json"
+        },
+        "RoachVoice/Voices/af_kore.json": {
+          "sha256": "e0c5e319824ae5429b2103c08711f803b6ebd387bca54f0b03bf012eb63825f2",
+          "bytes": 5516,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_kore.json"
+        },
+        "RoachVoice/Voices/af_nicole.json": {
+          "sha256": "04a2662bd077ce4676f6d755fce9abaac6667e0f656924fa18b59701c60a47ab",
+          "bytes": 5515,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_nicole.json"
+        },
+        "RoachVoice/Voices/af_nova.json": {
+          "sha256": "ee64f57a913ec0989d1a2c98c38e835e63b38088176bb6818263f1bcb500d73d",
+          "bytes": 5503,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_nova.json"
+        },
+        "RoachVoice/Voices/af_river.json": {
+          "sha256": "db75347212a79d092ab1b1f8d8605c5a184fc2ffe3d61cd77e475a1359df05bf",
+          "bytes": 5486,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_river.json"
+        },
+        "RoachVoice/Voices/af_sarah.json": {
+          "sha256": "35cc117b08d1550806b9760f916ed1bbf64a31c5791e35111a9914e40899845c",
+          "bytes": 5504,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_sarah.json"
+        },
+        "RoachVoice/Voices/af_sky.json": {
+          "sha256": "f638ac5280fa5d394ad787ba6039d39b3371705230a24b1514171d81d2646304",
+          "bytes": 5500,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/af_sky.json"
+        },
+        "RoachVoice/Voices/am_adam.json": {
+          "sha256": "8ca01f0a2fc23c963034d287981af3e975ebb1d26e6f57a1498405c53b1e5e2c",
+          "bytes": 5501,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_adam.json"
+        },
+        "RoachVoice/Voices/am_echo.json": {
+          "sha256": "3496730716cfcf95b456d3772ec2064b1dd959da790eed10040e964fa3f3cfb9",
+          "bytes": 5478,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_echo.json"
+        },
+        "RoachVoice/Voices/am_eric.json": {
+          "sha256": "965f5c1b490459f616989393a04db832c39098b93be0da6a9a98af0b657c685c",
+          "bytes": 5466,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_eric.json"
+        },
+        "RoachVoice/Voices/am_fenrir.json": {
+          "sha256": "b2f6cc029ed9bbfd227e5bb3ebb242adbf1c09ed291a8d831922db9e0669d9f6",
+          "bytes": 5515,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_fenrir.json"
+        },
+        "RoachVoice/Voices/am_liam.json": {
+          "sha256": "ce9c3b532f41d13ef9541a1537771dfee821a94525efe7a8e453d068be187474",
+          "bytes": 5481,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_liam.json"
+        },
+        "RoachVoice/Voices/am_michael.json": {
+          "sha256": "df8ba32be906749caee1be1d26ad5f913bae14fdaefbda03da17fe50da3f4827",
+          "bytes": 5477,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_michael.json"
+        },
+        "RoachVoice/Voices/am_onyx.json": {
+          "sha256": "3d73666b4b7f21d7714932c7099aaeaa4ff3c9fb46b9f4483dfbf9f683fb59ce",
+          "bytes": 5503,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_onyx.json"
+        },
+        "RoachVoice/Voices/am_puck.json": {
+          "sha256": "11c60b69722445e9490bc55449f66cd189f7969656ef3ca7ca6ed1a75c8587df",
+          "bytes": 5505,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_puck.json"
+        },
+        "RoachVoice/Voices/am_santa.json": {
+          "sha256": "23a4ac56915e92e236ab23d561ec0fdac66fdc64ad351f088dfc708eecd2fbc0",
+          "bytes": 5508,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/am_santa.json"
+        },
+        "RoachVoice/Voices/bf_alice.json": {
+          "sha256": "a7e17e383f720a0497046121f72b6503630d56a508d2538243463c95a11dd94f",
+          "bytes": 5477,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bf_alice.json"
+        },
+        "RoachVoice/Voices/bf_emma.json": {
+          "sha256": "170694d56013cafeea73f547d671152033e5e5e7efef861d6c9be0ea0b5f4549",
+          "bytes": 5507,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bf_emma.json"
+        },
+        "RoachVoice/Voices/bf_isabella.json": {
+          "sha256": "82496256eb3a72b3f0b54d2408f1c85a35bf67a1c2a55c5c26ef1f1a63aed635",
+          "bytes": 5502,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bf_isabella.json"
+        },
+        "RoachVoice/Voices/bf_lily.json": {
+          "sha256": "0df56d0d8c70a17aab24cf734cbc0132f0b1552d74bf5c708aab3c2dc0938003",
+          "bytes": 5472,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bf_lily.json"
+        },
+        "RoachVoice/Voices/bm_daniel.json": {
+          "sha256": "810ec61eb7742466c0b1bf90d03798d0f7a68156511396c6e3d4ce13ba6a6e03",
+          "bytes": 5475,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bm_daniel.json"
+        },
+        "RoachVoice/Voices/bm_fable.json": {
+          "sha256": "e811d47125e1165430e7b7cd5f61fe68835c04f42a3da384dcc796a2b47e17e2",
+          "bytes": 5458,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bm_fable.json"
+        },
+        "RoachVoice/Voices/bm_george.json": {
+          "sha256": "e540f0cd8bc1f08fe1705307d9782c5ca75caff690088b848fc5122faa403729",
+          "bytes": 5492,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bm_george.json"
+        },
+        "RoachVoice/Voices/bm_lewis.json": {
+          "sha256": "b7a375a3e7cfb9f459e74a2c1d5b56aae8ced84aa95ab61b8df3089e20e752cf",
+          "bytes": 5481,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/bm_lewis.json"
+        },
+        "RoachVoice/Voices/ef_dora.json": {
+          "sha256": "1447aadcde20431870fa7ddcdbbc9b64057c3a034675ecc92e6d7aa09df5ea87",
+          "bytes": 5523,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/ef_dora.json"
+        },
+        "RoachVoice/Voices/em_alex.json": {
+          "sha256": "bf29099062af9ccc4f889793bc9439c4e8c6cc27698a21b17e9bc8e6f377b345",
+          "bytes": 5513,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/em_alex.json"
+        },
+        "RoachVoice/Voices/em_santa.json": {
+          "sha256": "b5b1a9c347fc5da7fefb97a542ba79d297cd111b9fd2571fa28d510c171f8b4e",
+          "bytes": 5515,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/em_santa.json"
+        },
+        "RoachVoice/Voices/ff_siwis.json": {
+          "sha256": "cbbc9dc248d246bf79fb5bc305780ff6e894394f44f881af7dc02e90fc2ba090",
+          "bytes": 5490,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/ff_siwis.json"
+        },
+        "RoachVoice/Voices/hf_alpha.json": {
+          "sha256": "25c4aeeb7ef7dc7281fc1cff87fb5866036dcddff6f154b126350d948635dc73",
+          "bytes": 5499,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/hf_alpha.json"
+        },
+        "RoachVoice/Voices/hf_beta.json": {
+          "sha256": "baf401a5cfde20846a3a61e129b4743c501d5ca1081d0cdfd81a9a2f60731afc",
+          "bytes": 5497,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/hf_beta.json"
+        },
+        "RoachVoice/Voices/hm_omega.json": {
+          "sha256": "d56bbe7c1e04ce931e77236df825f5ccb9313a6a3b52d3525457909adfe19c54",
+          "bytes": 5509,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/hm_omega.json"
+        },
+        "RoachVoice/Voices/hm_psi.json": {
+          "sha256": "cc380ba2e596d257d37d7321e1b9eb8d78cd7f466c87277eb25da8c5359f9b5a",
+          "bytes": 5483,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/hm_psi.json"
+        },
+        "RoachVoice/Voices/if_sara.json": {
+          "sha256": "29bd8cdc438619f70f014e515af923c4ab76364b8e9acbd965301807d0736a54",
+          "bytes": 5495,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/if_sara.json"
+        },
+        "RoachVoice/Voices/im_nicola.json": {
+          "sha256": "4075918555e4c98809baabc71133e6c20b43462d63681c1ebc235679d1b12efb",
+          "bytes": 5459,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/im_nicola.json"
+        },
+        "RoachVoice/Voices/jf_alpha.json": {
+          "sha256": "fde92e7b2f1e5c880c89d6ce2ce5ed1b3ae25979fb32aa4f4609cd3364c7b621",
+          "bytes": 5493,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/jf_alpha.json"
+        },
+        "RoachVoice/Voices/jf_gongitsune.json": {
+          "sha256": "05305d8d1f2789623c383d117680bb61140e6ce61122069bbc864c3a233ad870",
+          "bytes": 5490,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/jf_gongitsune.json"
+        },
+        "RoachVoice/Voices/jf_nezumi.json": {
+          "sha256": "f541618b73dcf93b47abc8ddefb75a4c446e29e71a8541103f8e8be32cfab3c0",
+          "bytes": 5483,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/jf_nezumi.json"
+        },
+        "RoachVoice/Voices/jf_tebukuro.json": {
+          "sha256": "6e50ec54db655d8045d1a90820b0e07ac015fd87f354bfbd334f25e0a1a7c551",
+          "bytes": 5450,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/jf_tebukuro.json"
+        },
+        "RoachVoice/Voices/jm_kumo.json": {
+          "sha256": "80925a57a5b6ecee8247b7cb814d06f1ce44809170c3d66dce37dcff13244f52",
+          "bytes": 5512,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/jm_kumo.json"
+        },
+        "RoachVoice/Voices/pf_dora.json": {
+          "sha256": "12c3d09639e601781115530f93aa1c12caba3fd9e22d8a67e88a639b334858ee",
+          "bytes": 5525,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/pf_dora.json"
+        },
+        "RoachVoice/Voices/pm_alex.json": {
+          "sha256": "7f9eb8ab9be8e5c534fa3809c7bd5622eba5622d3fe30be5bac0306ab9ae907f",
+          "bytes": 5513,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/pm_alex.json"
+        },
+        "RoachVoice/Voices/pm_santa.json": {
+          "sha256": "926f02d81007834c95536dc92a911d08ab5f60fb3af8784a9c80fe96b0ee8869",
+          "bytes": 5524,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/pm_santa.json"
+        },
+        "RoachVoice/Voices/zf_xiaobei.json": {
+          "sha256": "a4bd82ccfb5ff17cbac389e7875ba1d728ee82a2f30c7b3dc10a22d604b29973",
+          "bytes": 5496,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zf_xiaobei.json"
+        },
+        "RoachVoice/Voices/zf_xiaoni.json": {
+          "sha256": "ff868f40d369e709ee0af9a33622286285d409deaed4ad4bad1e63c16db74715",
+          "bytes": 5500,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zf_xiaoni.json"
+        },
+        "RoachVoice/Voices/zf_xiaoxiao.json": {
+          "sha256": "2dda0fdc1580040c4aa45bf63fbfa5c65f1a553f11304301d63404143d8d03c4",
+          "bytes": 5493,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zf_xiaoxiao.json"
+        },
+        "RoachVoice/Voices/zf_xiaoyi.json": {
+          "sha256": "cdfe73a5e1ded595a18cb76b7c4d7a888d60b10053bf6a815843fe22f93f7ee1",
+          "bytes": 5516,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zf_xiaoyi.json"
+        },
+        "RoachVoice/Voices/zm_yunjian.json": {
+          "sha256": "19390902e6170519b7c8af0b225e3923a41acdf85fe8d503742a26a8d45d0a54",
+          "bytes": 5490,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zm_yunjian.json"
+        },
+        "RoachVoice/Voices/zm_yunxi.json": {
+          "sha256": "520cba96dbff34a37a721d3f0d5be4effac1d6b88ce14d2e45de8060e48e2e08",
+          "bytes": 5513,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zm_yunxi.json"
+        },
+        "RoachVoice/Voices/zm_yunxia.json": {
+          "sha256": "c383a3ea5c68cf461c5f0adc1c3c0e4c9bf26383aa72afb9f3f35229f40a8fc2",
+          "bytes": 5497,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zm_yunxia.json"
+        },
+        "RoachVoice/Voices/zm_yunyang.json": {
+          "sha256": "18281d33145a1b04d70a97fdc8d1041ba2a15a63568c1c91c63d4fbe476f8508",
+          "bytes": 5485,
+          "upstream": "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4:voices/zm_yunyang.json"
+        }
+      }
+    },
+    "roachvoice-chatterbox-coreml": {
+      "upstream": [
+        {
+          "repository": "yepher/screen-cut-pro-tts-coreml",
+          "revision": "f4fae0751b59970c170ca8d40cbf0c53dc20ad37"
+        }
+      ],
+      "files": {
+        "RoachSpeechPack.json": {
+          "sha256": "76fc1ffeda2f72195461d0678f3e9427018a8d032028aedec0150e895b68ef5d",
+          "bytes": 939,
+          "upstream": null
+        },
+        "RoachVoice/Reference/LICENSE": {
+          "sha256": "129fc49ba9fd11e20688f4cf87c192f75685fc49e508a89683b477cf7b368942",
+          "bytes": 1068,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:LICENSE"
+        },
+        "RoachVoice/Reference/NOTICE": {
+          "sha256": "6ab1a87dc0c6378d15b91598831af3f0c143d485c395016fa7f4dade3d3d6615",
+          "bytes": 1902,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:NOTICE"
+        },
+        "RoachVoice/Reference/README.md": {
+          "sha256": "56dab90dbc122d52d984457c8d75d8be56542c8426fbc50522dc0b962137f82c",
+          "bytes": 4314,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:README.md"
+        },
+        "RoachVoice/Reference/RoachVoiceCAMPPlusSpeakerEncoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "6cf8c807a3b133a432af7a24a9b19f3135e1811dc67c26ece3aec3d21933d831",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceCAMPPlusSpeakerEncoder.mlmodelc/coremldata.bin": {
+          "sha256": "aae0f40fd6be85285330b11d9d9251e959dd4a5161e40efde6a749f450fbddb1",
+          "bytes": 398,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceCAMPPlusSpeakerEncoder.mlmodelc/metadata.json": {
+          "sha256": "93635b31b2246f01e94aae0b2033785c892dde37a833edcbecd985d6e88f595c",
+          "bytes": 2343,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceCAMPPlusSpeakerEncoder.mlmodelc/model.mil": {
+          "sha256": "445cd7b2157660aa231e104577e4756b397584e10ebbec0f269f0bf719876f9d",
+          "bytes": 989225,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceCAMPPlusSpeakerEncoder.mlmodelc/weights/weight.bin": {
+          "sha256": "058c317b6a768cac30fcf89b46676d7df1aa1915357c44ecc7ada4e5b7c11590",
+          "bytes": 13854912,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:campplus.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceConditionEncoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "a2a399bfd9c49a64a432be6f1e34f31a8d7258697779e7c8958d8e088596aca1",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceConditionEncoder.mlmodelc/coremldata.bin": {
+          "sha256": "4ba099f7b1ee1632a766200fdef62e2565a2e1a970af279d7040f1dae09099c3",
+          "bytes": 448,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceConditionEncoder.mlmodelc/metadata.json": {
+          "sha256": "158cdf721352532f6a6d28b2fa72529ac963a1a6a250645494d69b5464cd3434",
+          "bytes": 2460,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceConditionEncoder.mlmodelc/model.mil": {
+          "sha256": "eea13e01441d669476ca84dad57af13bcb7f315ae4d01fa5d97ad93931cf1ec8",
+          "bytes": 16089,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceConditionEncoder.mlmodelc/weights/weight.bin": {
+          "sha256": "22d63452cf224c0a68e5531912b5bbe90419e57b83985bc9961c4a744ada1ea5",
+          "bytes": 9063488,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_cond_enc.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceFlowEncoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "71178bd88a307e44b82cfb52296fa4a278f44cd579570b91793e487c2fdf453e",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceFlowEncoder.mlmodelc/coremldata.bin": {
+          "sha256": "c2e8ee196fb09726e5b6a4b884b7a403fa8c6a5d8fa66ee35c7d3352cabfa44a",
+          "bytes": 487,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceFlowEncoder.mlmodelc/metadata.json": {
+          "sha256": "6d4fc360276e37918f3e0c93de53d862cee85da4c45fbfe8d1b649e6020aeaa5",
+          "bytes": 3497,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceFlowEncoder.mlmodelc/model.mil": {
+          "sha256": "56e9de16b718f0684c89479edefe0849288ab86de52574981210cc2c0c280e55",
+          "bytes": 185692,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceFlowEncoder.mlmodelc/weights/weight.bin": {
+          "sha256": "5a9a69972da456b5c63eb63c65a5dfd0ed36c1a2a3e63ea6adee8fa8ee3f3be5",
+          "bytes": 177470976,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:flow_encoder.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceMelVocoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "b1d9e3eeeb53b540837a0568f95902c18201e5bfc481016f34c1ff4b69b56719",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceMelVocoder.mlmodelc/coremldata.bin": {
+          "sha256": "1e70afaa0cad225d2ce833379b4e17d7dc613ebad7cf48a4d6a3144e58202165",
+          "bytes": 372,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceMelVocoder.mlmodelc/metadata.json": {
+          "sha256": "1f2c5d5fd6cc024e851776ebc327097a3ba8ec9d30c673d387db30ee9ef6496b",
+          "bytes": 2409,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceMelVocoder.mlmodelc/model.mil": {
+          "sha256": "9e748dab0d413a3b04da521aea41744ebe43c37de43fa7a7e61c2d7fb77e5a65",
+          "bytes": 318148,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceMelVocoder.mlmodelc/weights/weight.bin": {
+          "sha256": "bd7f58d462153e189987b8ba3696de26fc5c0b5a5e19e14d66def43b361cbac4",
+          "bytes": 59351872,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:mel2wav.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechHead.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "67cabbc66f498e9c5fc6c477e4ae56bc240e59f7a363ed47fe5e406f666b0d02",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechHead.mlmodelc/coremldata.bin": {
+          "sha256": "4493d1df56711d1f0ae3cad3832a28d610bcc50b9614cfa538dd7d38a2612f5f",
+          "bytes": 366,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechHead.mlmodelc/metadata.json": {
+          "sha256": "000ff5a90b76c03cbdb9d6570f60a75786d3040f405d7175fdef1c315041d2e7",
+          "bytes": 1563,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechHead.mlmodelc/model.mil": {
+          "sha256": "6bc832d8dbff6676e6cc4d1b830ba3e36a214f7624021f2e0189aaa1b5e6c1b4",
+          "bytes": 1023,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechHead.mlmodelc/weights/weight.bin": {
+          "sha256": "a62b8c63de39a92fa798973cf459a4d8be4efb23bc8d2581da04c73ead276f68",
+          "bytes": 16797892,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_speech_head.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechPositionEmbedding.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "cdc40b611f05ab89ff283a592ffb64ca8a624f794c292ae62f1b394bf8c2d53d",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechPositionEmbedding.mlmodelc/coremldata.bin": {
+          "sha256": "62385f2695151d8f6319045ac149695180593f18cc6b31ca312dd23854744d11",
+          "bytes": 378,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechPositionEmbedding.mlmodelc/metadata.json": {
+          "sha256": "863a181037452da5a8f1649356292af23c5d945e6c4127bfe212f23bc0fca7b8",
+          "bytes": 1754,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechPositionEmbedding.mlmodelc/model.mil": {
+          "sha256": "c4c1c7f6ed13912397fcf73d9d93529532bd4598efff25c3a089ae49d84a30f0",
+          "bytes": 3153,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechPositionEmbedding.mlmodelc/weights/weight.bin": {
+          "sha256": "42ef3648346ef6affacb3e9280ef9f19545481f9a42b64ce89b31f9773849b9e",
+          "bytes": 8396928,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_speech_pos_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenEmbedding.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "8e9787c879ff677dc00aa3494f5dae6d83025453d148d8c5c9bb072b72c9bf45",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenEmbedding.mlmodelc/coremldata.bin": {
+          "sha256": "9cefac61c13ec443b0d0857232041c69c7bddeb53fd769139bfa922838d86bdd",
+          "bytes": 378,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenEmbedding.mlmodelc/metadata.json": {
+          "sha256": "3f6b2aa4a07a5b553786c97dd4d4335d5ae45e85004049b89be2dbfea37a1509",
+          "bytes": 1750,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenEmbedding.mlmodelc/model.mil": {
+          "sha256": "9ff0a014b6506dadae248af2db339f8e7a0ba5deb282f312ce2d323c0648a352",
+          "bytes": 3153,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenEmbedding.mlmodelc/weights/weight.bin": {
+          "sha256": "e61b8816b4c2e5a93f17d1c0c450c905e2b11d1a0011d89c501e44d829bdb05f",
+          "bytes": 16781440,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_speech_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenizer.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "f66b16aed62227b6481bddc05c8959034ad66a8349e21bd7fb5871407fe6d982",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenizer.mlmodelc/coremldata.bin": {
+          "sha256": "21c90b703cfa961c94c7a85a2881162b7a85fae96b7f851835371ea2ba53983f",
+          "bytes": 369,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenizer.mlmodelc/metadata.json": {
+          "sha256": "3cfef209a78dd0877033925cb5060696a741df1630db2ba10a91dc4ab70685b8",
+          "bytes": 2001,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenizer.mlmodelc/model.mil": {
+          "sha256": "c72a8eebe81a1a1ca5c7ca183b3259f8d082b47c607a37aab7aa815408f3a488",
+          "bytes": 119544,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceSpeechTokenizer.mlmodelc/weights/weight.bin": {
+          "sha256": "447cf6b85d2c1f14ee0ee0e41005a374894a106cf48ab02b8c7c5aeff0937dbd",
+          "bytes": 247630400,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:s3_tokenizer.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceTextEmbedding.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "40993ecb554b575ed948e4e27b13c31d25b91f34d2ad72aa105fb4036ab15094",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextEmbedding.mlmodelc/coremldata.bin": {
+          "sha256": "8d0e47591e81727fbca32eac3032f1c23ffcc1bb66d3faa41f171cf6106fff30",
+          "bytes": 378,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextEmbedding.mlmodelc/metadata.json": {
+          "sha256": "c19770340e0a424e2271fee6f12203898348bcf52975360016fd88ac4d176eb7",
+          "bytes": 1748,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextEmbedding.mlmodelc/model.mil": {
+          "sha256": "efad4104a3ba08d6062c1d6a24e7a9c168fa7ce31c94590724b9a1bf3ce23dcf",
+          "bytes": 3150,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextEmbedding.mlmodelc/weights/weight.bin": {
+          "sha256": "e7ac5f96426245aa70e470c10d0d4b220448c3d9e7d3aec8c8a2a03f2035e4fd",
+          "bytes": 1441920,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_text_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/RoachVoiceTextPositionEmbedding.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "6c6f1ee80d3386e84749d09eb1ed5bbd1b741d802deb5980ca74ad91a6b2f3bf",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextPositionEmbedding.mlmodelc/coremldata.bin": {
+          "sha256": "ae132f45670ea8f3c823f895e3176ccec9e910750d2d264633b9da32e1206843",
+          "bytes": 378,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextPositionEmbedding.mlmodelc/metadata.json": {
+          "sha256": "ccc0a26655ada87ebf391d7e05abc592dd8df0256f395043e9ec229339f020cc",
+          "bytes": 1752,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextPositionEmbedding.mlmodelc/model.mil": {
+          "sha256": "ec4963f13bbc5674ada717bea1b2a187f08ed5f403c3eb71b2f0d20700fe0bd5",
+          "bytes": 3153,
+          "upstream": null
+        },
+        "RoachVoice/Reference/RoachVoiceTextPositionEmbedding.mlmodelc/weights/weight.bin": {
+          "sha256": "e419c0c490a9808b8fe3bb56ef13b01284d13e514ffccebf19af644f7385a70b",
+          "bytes": 4198528,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_text_pos_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/Reference/default_flow_prompt_feat.bin": {
+          "sha256": "7a711eaa94b9840690970f5a1d1e49ef73e13927aceb3b4be05ed58e43551531",
+          "bytes": 100480,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:default_flow_prompt_feat.bin"
+        },
+        "RoachVoice/Reference/default_flow_prompt_token.bin": {
+          "sha256": "68691e3e117b00cbce53a31759c069eb9a9559ca4d55bead57c2aca221552dc6",
+          "bytes": 628,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:default_flow_prompt_token.bin"
+        },
+        "RoachVoice/Reference/default_flow_speaker_embedding.bin": {
+          "sha256": "b17e082542db0f3d826626cc8a1d2e752899e16e02bab55db511cd9a36579ac6",
+          "bytes": 768,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:default_flow_speaker_embedding.bin"
+        },
+        "RoachVoice/Reference/default_t3_cond_prompt_tokens.bin": {
+          "sha256": "47fd3482f943d97ac25e213bed97288e75ad27c2201d075a320e3345bb1d5010",
+          "bytes": 600,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:default_t3_cond_prompt_tokens.bin"
+        },
+        "RoachVoice/Reference/default_t3_speaker_emb.bin": {
+          "sha256": "e7557a2e0b48b76704ae48d2d3f21417161d932089789ff8fc474acd2d040541",
+          "bytes": 1024,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:default_t3_speaker_emb.bin"
+        },
+        "RoachVoice/Reference/metadata.json": {
+          "sha256": "f48ac5e925209f0af2a71afec4f77f96da3186e7ff3baaea1a894738bbb143e6",
+          "bytes": 1704,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:metadata.json"
+        },
+        "RoachVoice/RoachVoiceConditionalDecoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "c27f479351a367871c4df806a504434244af1710cdafd9cc5f1bc83c5b029613",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceConditionalDecoder.mlmodelc/coremldata.bin": {
+          "sha256": "f2da030644b8494d3af13a2654e6a7015571d90e56a230f80bb321df56bf95a9",
+          "bytes": 466,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceConditionalDecoder.mlmodelc/metadata.json": {
+          "sha256": "c2b2c7e291d2854ce542c96ed569329e1aa3b728b7fc15b33c3a3b3c9090bf2d",
+          "bytes": 3604,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceConditionalDecoder.mlmodelc/model.mil": {
+          "sha256": "de0225f17aeb689480715319213c8074cae4472bc0dde54058aed270c35c42fe",
+          "bytes": 778657,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceConditionalDecoder.mlmodelc/weights/weight.bin": {
+          "sha256": "464e6ed3edc5027c2a28148feca07388067222571157f75de202427fd5ba66e7",
+          "bytes": 285271040,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:flow_estimator.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/RoachVoiceEmbedTokens.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "40993ecb554b575ed948e4e27b13c31d25b91f34d2ad72aa105fb4036ab15094",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceEmbedTokens.mlmodelc/coremldata.bin": {
+          "sha256": "8d0e47591e81727fbca32eac3032f1c23ffcc1bb66d3faa41f171cf6106fff30",
+          "bytes": 378,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceEmbedTokens.mlmodelc/metadata.json": {
+          "sha256": "c19770340e0a424e2271fee6f12203898348bcf52975360016fd88ac4d176eb7",
+          "bytes": 1748,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceEmbedTokens.mlmodelc/model.mil": {
+          "sha256": "efad4104a3ba08d6062c1d6a24e7a9c168fa7ce31c94590724b9a1bf3ce23dcf",
+          "bytes": 3150,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceEmbedTokens.mlmodelc/weights/weight.bin": {
+          "sha256": "e7ac5f96426245aa70e470c10d0d4b220448c3d9e7d3aec8c8a2a03f2035e4fd",
+          "bytes": 1441920,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_text_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/RoachVoiceEmbedding.json": {
+          "sha256": "992e814815f619cda0c56d61f8b77f28ab4cd9ff5cb988b2d7e3cbd0aecf8982",
+          "bytes": 711,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceLanguageModel.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "822ca0536bd548ff2fdd5b7151493a4c45fd2e1a82a2d38927f42ebbcc1976aa",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceLanguageModel.mlmodelc/coremldata.bin": {
+          "sha256": "69f3ef94edfb0431131d757fe58680e91bf907221050261938da721c81877290",
+          "bytes": 409,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceLanguageModel.mlmodelc/metadata.json": {
+          "sha256": "f2f5dd22f195800bf5b76d70f1a7107beb2e70667ff95eb00b2b103144202464",
+          "bytes": 2499,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceLanguageModel.mlmodelc/model.mil": {
+          "sha256": "c7fe93a25c4106aea569a2fccd50e5af8262083df03ccaefc3cba73a79ec2e93",
+          "bytes": 633801,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceLanguageModel.mlmodelc/weights/weight.bin": {
+          "sha256": "c177ef5b3a97bfd212d934c81a986c122ef2931c4aea4530c32a191718fb1758",
+          "bytes": 1006785792,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:t3_tfmr.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/RoachVoiceSpeechEncoder.mlmodelc/analytics/coremldata.bin": {
+          "sha256": "772289c215e01e81788ea36d5b049f3cf824ed4da06864e880506c1345a0fc17",
+          "bytes": 243,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceSpeechEncoder.mlmodelc/coremldata.bin": {
+          "sha256": "c39c0f4b30c6e4fb3173b4d9db57634522969c9105e381cb330edadd660f879d",
+          "bytes": 394,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceSpeechEncoder.mlmodelc/metadata.json": {
+          "sha256": "88fd370cb758010ecc0d69ff90d08bff3dcc63a7d464aabd6cd50d267bc5ca8b",
+          "bytes": 1884,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceSpeechEncoder.mlmodelc/model.mil": {
+          "sha256": "27b970739cbcfc2b00dec233752204d2052be214922e358d7c3fa115fa9cf152",
+          "bytes": 11158,
+          "upstream": null
+        },
+        "RoachVoice/RoachVoiceSpeechEncoder.mlmodelc/weights/weight.bin": {
+          "sha256": "6e563d4711691ad3258de020c21c67a439ae323c5f21b6b0315aa253f4f6c2e3",
+          "bytes": 2842432,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:voice_encoder.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        },
+        "RoachVoice/RoachVoiceTokenizer.json": {
+          "sha256": "00f6a079e5b67be81d933e5a7c241f927642e7085e20cc784f05e7dcf985c988",
+          "bytes": 33207,
+          "upstream": "yepher/screen-cut-pro-tts-coreml@f4fae0751b59:tokenizer.json"
+        }
+      }
+    }
+  }
+}
