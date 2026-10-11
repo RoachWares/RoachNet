@@ -17,6 +17,7 @@ import {
   roachClawNativeAgentStatus,
 } from './lib/roachnet_roachclaw_agent.mjs'
 import { createAsyncTTLCache } from './lib/roachnet_async_cache.mjs'
+import { declaresJsonBody, loopbackRequestRejection } from './lib/roachnet_loopback_guard.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const repoRoot = path.resolve(path.dirname(__filename), '..')
@@ -314,6 +315,12 @@ async function readRequestJson(request) {
   if (!raw) {
     return {}
   }
+  // A page elsewhere can post text/plain or form bodies to loopback without a
+  // preflight; it cannot send a JSON content type without one, and this API
+  // answers no preflight.
+  if (!declaresJsonBody(request.headers)) {
+    throw new NativeApiRequestError('Request body must be sent as application/json.', 415)
+  }
 
   try {
     return JSON.parse(raw)
@@ -449,7 +456,8 @@ async function resolveDownloadDescriptor(rawUrl) {
 
 function sendError(response, error, fallbackStatusCode = 500) {
   const statusCode = Number(error?.statusCode || fallbackStatusCode)
-  sendJson(response, statusCode, { error: error instanceof Error ? error.message : String(error) })
+  // Only an Error's message goes back; anything else thrown stays in the log.
+  sendJson(response, statusCode, { error: error instanceof Error ? error.message : 'The RoachNet runtime hit an unexpected error.' })
 }
 
 function abortErrorMessage(error, label) {
@@ -5927,6 +5935,10 @@ async function pullModel(model) {
 }
 
 async function route(request, response) {
+  // Same CSRF / DNS-rebinding stance as the Swift runtime: no rebound Host,
+  // no cross-site Origin (see roachnet_loopback_guard).
+  const rejection = loopbackRequestRejection(request)
+  if (rejection) return sendJson(response, rejection.statusCode, { error: rejection.error })
   const url = new URL(request.url, 'http://127.0.0.1')
   const method = request.method || 'GET'
   const pathname = url.pathname

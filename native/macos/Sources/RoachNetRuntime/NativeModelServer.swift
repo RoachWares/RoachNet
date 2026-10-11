@@ -55,7 +55,26 @@ final class NativeModelServer {
 
     // MARK: Routing
 
+    /// Desktop shells whose pages Ollama accepts by default (OLLAMA_ORIGINS).
+    static let appOriginSchemes = ["app://", "file://", "tauri://", "vscode-webview://"]
+
+    /// Ollama's stance: no rebound Host and no cross-site Origin, so a web page
+    /// can neither read this port nor run pulls, chats or deletes on it. Bodies
+    /// stay free-form because Ollama clients (`curl -d`) post without a JSON type.
+    static func refusal(_ request: HTTPRequest) -> HTTPResponse? {
+        guard NativeRuntime.isTrustedLoopbackHost(request.header("host")) else {
+            return .json(403, ["error": "Model server requests must use a loopback Host."])
+        }
+        let origin = request.header("origin")
+        let appOrigin = origin.map { value in appOriginSchemes.contains { value.lowercased().hasPrefix($0) } } ?? false
+        guard appOrigin || NativeRuntime.isTrustedLoopbackOrigin(origin) else {
+            return .json(403, ["error": "Model server requests from other sites are refused."])
+        }
+        return nil
+    }
+
     func handle(_ request: inout HTTPRequest) -> HTTPResponse {
+        if let refusal = Self.refusal(request) { return refusal }
         let path = String(request.target.split(separator: "?", maxSplits: 1).first ?? "")
         do {
             switch (request.method, path) {
