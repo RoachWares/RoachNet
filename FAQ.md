@@ -1,65 +1,64 @@
 # Frequently Asked Questions
 
-Answers to the common questions around RoachNet, its current runtime model, and the direction of the project.
-
 ## What is RoachNet?
 
-RoachNet is an offline-first command center for maps, archives, local AI, and day-to-day utility workflows that need to keep running when the network is gone. The current codebase started from an open-source upstream base and is being adapted into a broader local operations platform with guided onboarding, user-managed agents and skills, and OpenClaw support.
+A native macOS app that keeps local AI, an agent company, maps, a vault of notes and archives, games, and dev tools on your own Mac, working with the network off. An iOS companion pairs with it over RoachTail.
 
-## Can I run RoachNet on macOS or Apple Silicon?
+## What do I need to run it?
 
-Yes. Local development works on macOS, and Apple Silicon is now a first-class optimization target for local AI runtime guidance inside the app. For AI workloads, the preferred path on Apple Silicon is native local runtimes on loopback endpoints instead of Docker-managed AI containers.
+An Apple Silicon Mac on macOS 14 or later. For local AI, 16 GB of memory or more is the comfortable floor, and a fast SSD helps with maps, archives and models. RoachNet reads the machine and suggests model sizes that fit it.
 
-## Does RoachNet still require Debian?
+## Does it need Docker, Node, Homebrew or Debian?
 
-The legacy installer and management compose flow are still Debian-oriented because they came from the imported upstream base. That does not mean RoachNet itself is conceptually Debian-only. The current project direction is broader: local development on macOS is supported, and the runtime layer is being moved toward provider-based local execution rather than Docker-only assumptions.
+No. RoachNet Setup and the app run on `roachnet-runtime`, a native Swift helper built on Apple system frameworks. Homebrew is one way to install it, not a requirement. Docker-backed support services are an opt-in in Setup and off by default. The Debian and Docker lanes from the imported upstream base are gone.
 
-## Do I need Docker to use RoachNet?
+## Do I need Ollama?
 
-Not for every part of the platform. The imported management stack still uses Docker for some services, but RoachNet now detects local Ollama before falling back to a managed Docker runtime, and OpenClaw is being added through the same provider abstraction. The long-term direction is to prefer direct local runtimes where that improves reliability and performance.
+No. Since 1.1 RoachClaw runs on RoachInference, RoachNet's own GGUF engine with Metal kernels, on the same Ollama-compatible API at `127.0.0.1`. Models you already pulled with Ollama are read in place, so nothing is downloaded twice. If you would rather keep using an Ollama you installed yourself, set `ROACHNET_INFERENCE_ENGINE=ollama`. RoachNet 1.0.x bundled Ollama; 1.1 doesn't.
 
-## What AI runtimes are supported right now?
+## Can RoachClaw use cloud models?
 
-Ollama is fully wired for runtime discovery, model controls, chat access, and benchmarking. OpenClaw has an initial integration layer for endpoint discovery and health checks, and the next phase is guided onboarding plus agent and connector controls.
+Only if you add a provider and its key yourself. Local models are the default, and a cloud route is always an explicit choice.
 
-## What hardware works best?
+## What are feature packs?
 
-The best current experience is:
+1.1 installs a small core and lets you add the rest: panes (RoachClaw, Org, Dev, Vault, RoachArcade, Maps, Education, speech, the companion bridge), speech models, map collections, knowledge bundles and themes. Manage them in Settings › Packs. Disabling or removing a pack unloads it and stops its background work. Removing keeps your data unless you choose to move it to a Retired folder. Resource packs are checked by SHA-256 and size before they're swapped in.
 
-- Apple Silicon with 16 GB or more of memory for local AI and content workflows
-- Fast local SSD storage for maps, archives, and model files
-- Native arm64 runtimes on Apple Silicon whenever possible
+## How do themes work?
 
-RoachNet now exposes an optimization profile in the System settings page so the app can recommend model size ranges and runtime posture from the actual machine it is running on.
+Settings › Appearance has 31 built-in themes, 13 snippets that tweak one thing (corners, glass, glow, text size, motion), and an editor for every color, font, radius, shadow and background token. A theme is a JSON file: export it, share it, or drop one into your themes folder. Theme packs on RoachNet Apps add more. Every built-in theme is tested for readable text in each mode it ships, and the iOS companion follows the theme you pick on the Mac.
 
-## Can I customize ports and storage locations?
+## Is my Vault encrypted?
 
-Yes. The imported compose-based stack is still configurable through its compose and environment files, and the local development setup is documented in [docs/LOCAL_BOOT.md](docs/LOCAL_BOOT.md). As RoachNet moves further toward native local runtime management, more of these settings will be surfaced directly in the UI.
+RoachNet doesn't add its own encryption to Vault files. They are ordinary files in your RoachNet storage folder, so turn on FileVault to encrypt them at rest. RoachClaw state, provider keys, RoachTail state and the runtime's server-info file are written readable by your macOS account only. Dev secrets go in the macOS Keychain.
 
-## Is RoachNet only for AI?
+## Can a website talk to RoachNet's local API?
 
-No. Local AI is one subsystem. The broader goal is an all-in-one offline toolkit that keeps maps, documents, learning resources, and operational utilities available without depending on a live internet connection.
+It shouldn't be able to. The loopback API only answers `localhost`, `::1` and `127.x.x.x` hosts, refuses requests whose `Origin` is another site, and only accepts JSON bodies. Since 1.1 the app also starts the runtime with a fresh per-launch token, so other programs on your Mac need that token or a RoachClaw API token too. Make RoachClaw API tokens in Settings › RoachClaw, give each only the scopes it needs (`chat`, `read`, `admin`), and revoke them there.
+
+## How does pairing an iPhone work?
+
+RoachTail shows a one-use, expiring join code. The phone trades it for its own peer token; RoachNet keeps only a hash. A token that goes unused for 90 days stops working, and you can remove a single device from the list. The companion refuses plain HTTP to anything but loopback, your tailnet or the simulator.
+
+## Why does macOS say RoachNet Setup can't be verified?
+
+Releases are ad-hoc signed and not Apple-notarized until RoachWares has a Developer ID. Check the DMG against the `.sha256` file on the release page, then open System Settings › Privacy & Security and choose **Open Anyway**.
+
+## Can I change where things are stored?
+
+Yes. Setup asks for an install root and keeps the app, runtime, models, workspace and storage under it. [docs/LOCAL_BOOT.md](docs/LOCAL_BOOT.md) covers the environment variables for development builds.
 
 ## What languages does the UI support?
 
-The current UI is English-first. Internationalization is still a future enhancement.
+English only for now.
 
 ## Is RoachNet free and open source?
 
-Yes. The project remains open source under the Apache License 2.0.
+Yes, under the Apache License 2.0. The iOS companion is Apache-2.0 too.
 
-## Where should I report bugs or request features?
-
-Use the RoachNet repository:
+## Where do I report bugs or ask for features?
 
 - Issues: [github.com/RoachWares/RoachNet/issues](https://github.com/RoachWares/RoachNet/issues)
 - Discussions: [github.com/RoachWares/RoachNet/discussions](https://github.com/RoachWares/RoachNet/discussions)
 
-## Where should I look before opening a bug?
-
-Start with:
-
-- [README.md](README.md)
-- [docs/LOCAL_BOOT.md](docs/LOCAL_BOOT.md)
-- [docs/SURFACE_MAP.md](docs/SURFACE_MAP.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
+Before opening one, check [README.md](README.md), [docs/LOCAL_BOOT.md](docs/LOCAL_BOOT.md) and [CONTRIBUTING.md](CONTRIBUTING.md).

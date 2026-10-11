@@ -1,11 +1,91 @@
 # Changelog
 
-## Unreleased — v1.1 (feature/1.1-native-ai)
+## v1.1.0 - unreleased
 
-- RoachNet no longer bundles or installs Ollama. RoachClaw runs on the native RoachInference engine (hand-written Metal kernels) served from `roachnet-runtime` on the same Ollama-compatible local API. Existing Ollama model folders are still imported in place, and `ROACHNET_INFERENCE_ENGINE=ollama` keeps using a runner you installed yourself.
-- Metal decode is now about 91% of Ollama's speed on 1.5B and 3B models and faster on 0.5B (M2 Pro).
+Feature release. Includes every fix in 1.0.6 and 1.0.7. Ad-hoc signed, not Apple-notarized.
 
-## Unreleased — v1.0.6 release candidate
+### RoachClaw and local models
+
+- RoachNet no longer bundles or installs Ollama. RoachClaw runs on RoachInference, a native GGUF engine with hand-written Metal kernels, served by `roachnet-runtime` on the same Ollama-compatible loopback API. Models in an existing Ollama folder are read in place; `ROACHNET_INFERENCE_ENGINE=ollama` keeps using a runner you installed yourself.
+- On an M2 Pro, Metal decode runs at about 91% of Ollama's speed on 1.5B and 3B models and faster on 0.5B. CPU and Metal produce identical tokens on six reference models.
+- Model pulls resume where they stopped, restart cleanly when a server ignores the resume request, and are checked by SHA-256 before install. The model catalog adds verified Qwen2 models.
+- The Ollama-compatible model server takes Ollama's own Host and Origin stance: loopback, plus app, file, tauri and vscode-webview origins.
+
+### Org
+
+- RoachClaw Org, a native multi-agent company runtime: agents with roles and budgets propose hires and spend, and nothing happens until you approve it.
+- The Org pane on the Mac: create a company, see the month's spend against its budget, pause and resume agents, answer approvals, and invite a paired phone as viewer, operator or admin with a one-use link that expires in 72 hours.
+- `roachnet://` links no longer open duplicate windows.
+
+### Feature packs
+
+- RoachNet installs a small core and treats the rest as packs (`org.roachnet.pack.v1` manifests, a registry and a transactional installer). Panes mount only when their pack is enabled. Disabling or removing a pack unloads it; removing keeps its data unless you choose to move the data to a Retired folder.
+- Settings › Packs lists what each pack is, what it touches and what an uninstall would leave behind.
+- Speech models are installable resource packs instead of always-bundled payloads. The pack catalog comes live from apps.roachnet.org, and store items open with a `pack` install link.
+
+### Themes
+
+- A theme engine drives every color, font, radius, shadow, glass layer and background in the app and in RoachNet Setup.
+- 31 built-in themes, 13 snippets, and an editor in Settings › Appearance with import, export and a watched themes folder. Every built-in theme is tested for readable text in each mode it ships. Signal dark matches the 1.0 look exactly.
+- Theme packs install from RoachNet Apps. The iOS companion follows the Mac's theme (`GET /api/companion/theme`).
+- Animated and dithered backgrounds stop under Reduce Motion.
+
+### Maps, library and downloads
+
+- The Maps pane draws the PMTiles packs you install with a dependency-free PMTiles v3 and vector-tile reader: pan, pinch, zoom, fit, GPS fix and route, labels with collision culling, OpenStreetMap and Protomaps credit. Install Base also queues the World Atlas.
+- Map, Kiwix and Wikipedia collections come live from apps.roachnet.org (HTTPS only, 4 MB cap, schema-checked, owner-only cache, refreshed every 6 hours; `GET /api/collections`). The bundled lists match the 2026-10 storefront.
+- Downloads resume after a stall instead of failing at ten minutes: a 90-second stall timer, up to six attempts with Range resume, and partial files kept across network failures. App updates still fail and clean up rather than resume.
+- Download descriptors are only followed under the Apps downloads base.
+
+### Security
+
+- When `ROACHNET_API_TOKEN` is set, the loopback API needs that token or a scoped RoachClaw API token on every route except `GET /api/health` and Org requests carrying a member key. RoachNet.app sets a fresh token per launch and sends it only to its own runtime. Settings › RoachClaw lists, creates and revokes RoachClaw API tokens.
+- Webhook secrets are stored as salted HMAC-SHA256 digests.
+- RoachClaw state, RoachTail state and the runtime's server-info file are written readable by your account only, created that way before they are moved into place.
+- RoachTail peer tokens are compared in constant time and stop working after 90 days unused (`ROACHTAIL_PEER_IDLE_DAYS`, `0` turns it off). Linked Devices can remove one phone.
+- The 1.0.7 Host, Origin and body checks apply to every loopback service here too.
+
+### Fixes
+
+- Light themes get a proper shade token, sheets get scrims, and metric cards, button rows and filter chips no longer clip or overflow.
+- Byte counts read "0 KB" instead of "Zero KB".
+- The JS runner's legacy provider-secret lookup follows the Swift rules on macOS volumes.
+- `smoke:macos-install-lanes` takes `ROACHNET_SMOKE_WORK_ROOT` (from 1.0.7).
+
+## v1.0.7 - 2026-10-11
+
+Security and content patch for 1.0.6, gated by hand on the release Mac (see `docs/release-gates/1.0.7-mac-gate-results.md`). Ad-hoc signed, not Apple-notarized.
+
+### Security
+
+- The runtime and setup service no longer treat any `Host` starting with `127.` as loopback: `127.<domain>` names could be rebound to 127.0.0.1 and used to read and drive the local API. Only `localhost`, `::1` and dotted-quad 127/8 addresses pass.
+- Every loopback service (Swift runtime, Swift setup, and the JavaScript setup/API fallbacks) refuses a cross-site `Origin` (and `null`) and non-JSON bodies (`scripts/lib/roachnet_loopback_guard.mjs`).
+- Download descriptors are only followed under `ROACHNET_APPS_DOWNLOADS_BASE_URL` (https://apps.roachnet.org/downloads).
+- Non-Error throws return a generic message; the release workflow's privileged jobs use no npm cache and check out `github.sha`.
+
+### Changes
+
+- Bundled Kiwix and Wikipedia collections synced with apps.roachnet.org: titles re-pinned to what the library serves (124 dead downloads in 1.0.6), 20 withdrawn titles hidden from the installers, 10 new titles.
+- Bundled Ollama 0.40.3 (checksum-verified; same file list as 0.40.2).
+- Store items with the 1.1 `pack` install action (RoachSpeech feature packs) are declined with "needs RoachNet 1.1" by the app and the companion install route instead of "unsupported action".
+- CI: the mid-upgrade setup test uses its own hosts file, and RoachNetApp/RoachNetSetup build with `-parse-as-library` on every toolchain.
+- `smoke:macos-install-lanes` takes `ROACHNET_SMOKE_WORK_ROOT`, so a gate run from an external drive can install to the internal disk (a fresh ad-hoc build launched from a removable volume waits on the macOS removable-volume prompt).
+
+## v1.0.6 - 2026-10-10
+
+Published from the hand-gated Apple Silicon candidate (see `docs/release-gates/1.0.6-mac-gate-results.md`). Ad-hoc signed, not Apple-notarized.
+
+### Security (pre-publication review, `docs/release-gates/1.0.6-security-review.md`)
+
+- The update lane requires the release's `.sha256` sidecar, verifies the downloaded installer and discards a mismatch; assets must be https.
+- Malformed HTTP body framing can no longer crash the runtime before authentication.
+- The loopback API and setup service reject non-loopback `Host` headers and non-JSON bodies.
+- RoachTail join codes pair once and retire after five wrong guesses; peer ids are server-generated; token compare is constant-time.
+- Paired phones can only queue downloads from public hosts; download descriptors are capped.
+- Installer config, RoachTail state and provider keys are written owner-only; the companion token stays out of the Ollama child environment; the privileged hosts-file alias validates the hostname.
+- Release evidence queries OSV with a working purl, records reviewed Ollama advisories, and no longer lists a Node runtime that is not shipped. Every workflow action is SHA-pinned and docker publishing exact-matches the authorized actor.
+
+### Changes since v1.0.5
 
 - Replaced the bundled Node runtime with `roachnet-runtime`, a native Swift helper built only on Apple system frameworks. It serves the same loopback API and environment contract, runs the iOS companion bridge in-process, and the default packaging lane now refuses to embed Node.
 - Rebuilt RoachNet Setup on the native helper. Installs check the hardware and OS first, stage beside the target, smoke-test the staged runtime before swapping it in, preserve storage across upgrades, and roll back cleanly on failure.
