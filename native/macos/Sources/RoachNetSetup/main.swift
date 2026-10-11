@@ -1351,23 +1351,23 @@ private struct SetupRootView: View {
                         RoachOrbitMark()
                             .frame(width: 42, height: 42)
                         Image(systemName: "apple.logo")
-                            .font(.system(size: 13, weight: .black))
+                            .font(.roach(size: 13, weight: .black))
                             .foregroundStyle(RoachPalette.text)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Native Installer")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .font(.roach(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                         Text(controller.isBooting ? "Waking the lane." : "Local lane ready.")
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                     }
 
                     Spacer(minLength: 0)
 
                     Image(systemName: controller.isBooting ? "arrow.triangle.2.circlepath" : "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.roach(size: 13, weight: .bold))
                         .foregroundStyle(controller.isBooting ? RoachPalette.warning : RoachPalette.green)
                 }
             }
@@ -1376,7 +1376,7 @@ private struct SetupRootView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     RoachKicker("Install Path")
                     Text(installRootLabel(controller.config.installPath))
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .font(.roach(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(2)
                     Text(contentFolderLabel(
@@ -1384,7 +1384,7 @@ private struct SetupRootView: View {
                             ? RoachNetRepositoryLocator.defaultStoragePath(installPath: controller.config.installPath)
                             : controller.config.storagePath
                     ))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.roach(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -1404,7 +1404,7 @@ private struct SetupRootView: View {
                             RoachKicker("Active Task")
                             Spacer()
                             Text("\(progress)%")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.green)
                         }
                         GeometryReader { proxy in
@@ -1442,16 +1442,16 @@ private struct SetupRootView: View {
                     .fill(isActive ? stageAccent.opacity(0.18) : RoachPalette.panelRaised.opacity(0.72))
                     .frame(width: 28, height: 28)
                 Image(systemName: isComplete ? "checkmark" : stageIcon(for: stage))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.roach(size: 11, weight: .bold))
                     .foregroundStyle(isComplete ? RoachPalette.green : (isActive ? stageAccent : RoachPalette.muted))
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(stage.title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.roach(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(isActive ? RoachPalette.text : RoachPalette.muted)
                 Text(isComplete ? "Done" : (isActive ? "Now" : "Waiting"))
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(isComplete ? RoachPalette.green : (isActive ? stageAccent : RoachPalette.muted.opacity(0.74)))
             }
 
@@ -1460,11 +1460,11 @@ private struct SetupRootView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .fill(isActive ? stageAccent.opacity(0.11) : RoachPalette.panel.opacity(0.28))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .stroke(isActive ? stageAccent.opacity(0.26) : RoachPalette.border.opacity(0.70), lineWidth: 1)
         )
         .scaleEffect(isActive ? 1.018 : 1.0, anchor: .center)
@@ -1479,10 +1479,10 @@ private struct SetupRootView: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("RoachNet Setup")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.roach(size: 24, weight: .bold))
                         .foregroundStyle(RoachPalette.text)
                     Text("Contained install for this Mac")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.roach(size: 13, weight: .regular))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
@@ -1493,10 +1493,10 @@ private struct SetupRootView: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("RoachNet Setup")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.roach(size: 22, weight: .bold))
                         .foregroundStyle(RoachPalette.text)
                     Text("Contained install for this Mac")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.roach(size: 12, weight: .regular))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
@@ -1507,14 +1507,14 @@ private struct SetupRootView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Setup Flow")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .tracking(1.4)
                     .foregroundStyle(RoachPalette.muted)
 
                 Spacer()
 
                 Text("\(controller.stage.rawValue + 1) / \(SetupStage.allCases.count)")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
             }
 
@@ -1549,11 +1549,11 @@ private struct SetupRootView: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title.uppercased())
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 8, weight: .bold, design: .monospaced))
                     .tracking(0.7)
                     .foregroundStyle(accent)
                 Text(value)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.roach(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(RoachPalette.text)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -1563,11 +1563,11 @@ private struct SetupRootView: View {
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .fill(RoachPalette.panel.opacity(0.50))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .stroke(accent.opacity(0.18), lineWidth: 1)
         )
     }
@@ -1646,7 +1646,7 @@ private struct SetupRootView: View {
                     }
 
                     Text("You can change this later from Runtime.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1680,10 +1680,10 @@ private struct SetupRootView: View {
                     Toggle(isOn: $controller.config.useDockerContainerization) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Use Docker containerization")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.roach(size: 15, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Text("Leave this off for the contained Apple Silicon path. Turn it on only if you want Docker-backed support services.")
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.roach(size: 13, weight: .regular))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     }
@@ -1694,10 +1694,10 @@ private struct SetupRootView: View {
                     Toggle(isOn: $controller.config.companionEnabled) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Enable RoachTail pairing")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.roach(size: 15, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Text("Leave the private device lane on if you want iPhone and iPad builds to pair with a one-time join code.")
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.roach(size: 13, weight: .regular))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     }
@@ -1719,10 +1719,10 @@ private struct SetupRootView: View {
                     Toggle(isOn: $controller.config.installRoachClaw) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Install RoachClaw")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.roach(size: 15, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Text("Stage the first local AI lane now so chat is ready when the shell opens.")
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.roach(size: 13, weight: .regular))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     }
@@ -1775,7 +1775,7 @@ private struct SetupRootView: View {
                         RoachKicker("Recent setup log")
                         ForEach(Array(logs.suffix(2).enumerated()), id: \.offset) { _, log in
                             Text(log)
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .font(.roach(size: 12, weight: .medium, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(2)
                         }
@@ -1802,11 +1802,11 @@ private struct SetupRootView: View {
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(RoachPalette.backgroundRaised.opacity(0.72))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .stroke(RoachPalette.border.opacity(0.82), lineWidth: 1)
         )
     }
@@ -1817,18 +1817,18 @@ private struct SetupRootView: View {
                 Circle()
                     .fill(footerAccent.opacity(0.16))
                 Image(systemName: footerIcon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.roach(size: 11, weight: .bold))
                     .foregroundStyle(footerAccent)
             }
             .frame(width: 30, height: 30)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(footerTitle)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.roach(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(RoachPalette.text)
                     .lineLimit(1)
                 Text(footerDetail)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -1907,10 +1907,10 @@ private struct SetupRootView: View {
         RoachInsetPanel {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.roach(size: 17, weight: .semibold))
                     .foregroundStyle(RoachPalette.text)
                 Text(detail)
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.roach(size: 13, weight: .regular))
                     .foregroundStyle(RoachPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -2037,12 +2037,12 @@ private struct SetupRootView: View {
         VStack(alignment: .leading, spacing: 12) {
             RoachKicker(controller.stage.title)
             Text(controller.stage.headline)
-                .font(.system(size: 30, weight: .black, design: .rounded))
+                .font(.roach(size: 30, weight: .black, design: .rounded))
                 .foregroundStyle(RoachPalette.text)
                 .minimumScaleFactor(0.80)
                 .fixedSize(horizontal: false, vertical: true)
             Text(controller.stage.detail)
-                .font(.system(size: 13, weight: .medium))
+                .font(.roach(size: 13, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -2055,15 +2055,15 @@ private struct SetupRootView: View {
                 .frame(width: 86, height: 86)
         } else {
             Image(systemName: stageSystemImage)
-                .font(.system(size: 28, weight: .semibold))
+                .font(.roach(size: 28, weight: .semibold))
                 .foregroundStyle(stageAccent)
                 .frame(width: 78, height: 78)
                 .background(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                         .fill(stageAccent.opacity(0.12))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                         .stroke(stageAccent.opacity(0.18), lineWidth: 1)
                 )
         }

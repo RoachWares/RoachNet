@@ -1,0 +1,12 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.still-background",
+  "name": "Still background",
+  "author": "RoachWares",
+  "description": "Freezes the background animation. Reduce Motion in macOS does this too.",
+  "all": {
+    "background": {
+      "motion": false
+    }
+  }
+}

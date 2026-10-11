@@ -7,6 +7,7 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
     static let requestedPaneUserDefaultsKey = "roachnet.settings.requested-pane"
 
     case general
+    case appearance
     case packs
     case roachClaw
     case vault
@@ -26,6 +27,8 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "General"
+        case .appearance:
+            return "Appearance"
         case .packs:
             return "Packs"
         case .roachClaw:
@@ -57,6 +60,8 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "Paths, startup, exits"
+        case .appearance:
+            return "Themes, type, motion"
         case .packs:
             return "Install only what you need"
         case .roachClaw:
@@ -88,6 +93,8 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "slider.horizontal.3"
+        case .appearance:
+            return "paintpalette.fill"
         case .packs:
             return "puzzlepiece.extension.fill"
         case .roachClaw:
@@ -119,6 +126,8 @@ enum RoachNetSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general, .packs:
             return RoachPalette.green
+        case .appearance:
+            return RoachPalette.magenta
         case .roachClaw:
             return RoachPalette.magenta
         case .vault:
@@ -151,7 +160,7 @@ struct RoachNetSettingsView: View {
 
             ZStack {
                 RoachBackground()
-                    .overlay(Color.black.opacity(0.48))
+                    .overlay(RoachPalette.backdropDim(0.48))
                     .ignoresSafeArea()
 
                 if isCompact {
@@ -172,7 +181,7 @@ struct RoachNetSettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .roachThemed()
     }
 
     private var settingsRail: some View {
@@ -183,10 +192,10 @@ struct RoachNetSettingsView: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Settings")
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .font(.roach(size: 17, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                         Text("Local knobs. No rent-a-dashboard.")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                     }
                 }
@@ -226,7 +235,7 @@ struct RoachNetSettingsView: View {
                         selectPane(pane)
                     } label: {
                         Label(pane.title, systemImage: pane.systemName)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.roach(size: 12, weight: .semibold))
                             .foregroundStyle(selectedPane == pane ? RoachPalette.text : RoachPalette.muted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
@@ -236,7 +245,7 @@ struct RoachNetSettingsView: View {
                             )
                             .overlay(
                                 Capsule(style: .continuous)
-                                    .stroke(selectedPane == pane ? pane.accent.opacity(0.32) : RoachPalette.border, lineWidth: 1)
+                                    .stroke(selectedPane == pane ? pane.accent.opacity(0.32) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                     }
                     .buttonStyle(.plain)
@@ -254,6 +263,8 @@ struct RoachNetSettingsView: View {
                 switch selectedPane {
                 case .general:
                     general
+                case .appearance:
+                    AppearanceSettingsView(store: RoachThemeStore.shared)
                 case .packs:
                     FeaturePacksSettingsView(model: model, store: model.featurePacks)
                 case .roachClaw:
@@ -301,20 +312,20 @@ struct RoachNetSettingsView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: pane.systemName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .foregroundStyle(isSelected ? pane.accent : RoachPalette.muted)
                     .frame(width: 28, height: 28)
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
                             .fill(isSelected ? pane.accent.opacity(0.14) : RoachPalette.panelGlass)
                     )
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(pane.title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.roach(size: 13, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                     Text(pane.subtitle)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(1)
                 }
@@ -330,12 +341,12 @@ struct RoachNetSettingsView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                     .fill(isSelected ? RoachPalette.panelSoft.opacity(0.78) : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? pane.accent.opacity(0.22) : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                    .stroke(isSelected ? pane.accent.opacity(0.22) : Color.clear, lineWidth: RoachMetrics.line(1))
             )
         }
         .buttonStyle(.plain)
@@ -460,10 +471,10 @@ struct RoachNetSettingsView: View {
                     ) {
                         HStack {
                             Text("BUDGET")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                             Text("\(model.roachClawContextCharacterBudget) chars")
-                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 14, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.text)
                         }
                     }
@@ -475,18 +486,18 @@ struct RoachNetSettingsView: View {
                                 set: { model.setRoachClawContext(scope, enabled: $0) }
                             )) {
                                 Label(scope.title, systemImage: scope.systemImage)
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                             }
                             .toggleStyle(.switch)
                             .padding(12)
                             .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                                     .fill(RoachPalette.panelRaised.opacity(0.54))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                         }
                     }
@@ -533,7 +544,7 @@ struct RoachNetSettingsView: View {
                         placeholder: "https://cdn.emulatorjs.org/stable/data/"
                     )
                     Text("CDN first. Local data folder for offline ROMs.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -567,7 +578,7 @@ struct RoachNetSettingsView: View {
                         placeholder: "/opt/homebrew/bin/wine64"
                     )
                     Text("Missing Windows runners keep those games blocked instead of pretending they are ready.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -631,7 +642,7 @@ struct RoachNetSettingsView: View {
                         placeholder: "~/RoachNet/storage/RoachArchive/Metadata"
                     )
                     Text("Use a local mirror/API or decompressed bulk metadata.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -686,7 +697,7 @@ struct RoachNetSettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     settingTitle("RoachAtlas")
                     Text("Packs stay local. RoachPhone GPS bridges over Bluetooth.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -747,21 +758,21 @@ struct RoachNetSettingsView: View {
                             ForEach(Array(collections.prefix(6)), id: \.slug) { collection in
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(collection.name)
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.roach(size: 13, weight: .semibold))
                                         .foregroundStyle(RoachPalette.text)
                                         .lineLimit(1)
                                     Text("\(collection.installed_count ?? 0) / \(collection.resources.count) assets")
-                                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                        .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                         .foregroundStyle(RoachPalette.muted)
                                 }
                                 .padding(12)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                                         .fill(RoachPalette.panelRaised.opacity(0.54))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .stroke(RoachPalette.border, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                                        .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                                 )
                             }
                         }
@@ -963,7 +974,7 @@ struct RoachNetSettingsView: View {
                             accent: updateStatus.stage == "error" ? RoachPalette.warning : RoachPalette.green
                         )
                         Text(updateStatus.message)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1088,11 +1099,11 @@ struct RoachNetSettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     settingTitle("Notices")
                     Text("RoachNet keeps local custody first. Online services are for discovery, downloads, account-aware metadata, and release checks.")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.roach(size: 13, weight: .medium))
                         .foregroundStyle(RoachPalette.text)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("Third-party runtimes and content sources keep their own licenses and terms. RoachNet does not turn your vault into someone else's dashboard.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1122,10 +1133,10 @@ struct RoachNetSettingsView: View {
                     Stepper(value: $model.config.companionPort, in: 1_024...65_535) {
                         HStack {
                             Text("PORT")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                             Text("\(model.config.companionPort)")
-                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 14, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.text)
                         }
                     }
@@ -1181,12 +1192,12 @@ struct RoachNetSettingsView: View {
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.86))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(hasError ? RoachPalette.warning.opacity(0.24) : RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(hasError ? RoachPalette.warning.opacity(0.24) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -1202,18 +1213,18 @@ struct RoachNetSettingsView: View {
 
     private func saveBarStatusIcon(hasError: Bool) -> some View {
         Image(systemName: hasError ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
-            .font(.system(size: 14, weight: .semibold))
+            .font(.roach(size: 14, weight: .semibold))
             .foregroundStyle(hasError ? RoachPalette.warning : RoachPalette.green)
             .frame(width: 30, height: 30)
             .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(11), style: .continuous)
                     .fill((hasError ? RoachPalette.warning : RoachPalette.green).opacity(0.13))
             )
     }
 
     private func saveBarStatusText(_ text: String, hasError: Bool) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .medium))
+            .font(.roach(size: 12, weight: .medium))
             .foregroundStyle(hasError ? RoachPalette.warning : RoachPalette.muted)
             .lineLimit(2)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1238,10 +1249,10 @@ struct RoachNetSettingsView: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(pane.title)
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .font(.roach(size: 18, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                         Text(pane.subtitle)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                     }
@@ -1256,11 +1267,11 @@ struct RoachNetSettingsView: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(pane.title)
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .font(.roach(size: 17, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(1)
                         Text(pane.subtitle)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                     }
@@ -1273,7 +1284,7 @@ struct RoachNetSettingsView: View {
 
     private func settingTitle(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
             .tracking(1.1)
             .foregroundStyle(RoachPalette.muted)
     }
@@ -1281,17 +1292,17 @@ struct RoachNetSettingsView: View {
     private func modelChip(_ modelName: String, active: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: active ? "checkmark.circle.fill" : "cpu")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.roach(size: 13, weight: .semibold))
                 .foregroundStyle(active ? RoachPalette.green : RoachPalette.muted)
                 .frame(width: 24, height: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(modelName)
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 13, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.text)
                     .lineLimit(1)
                 Text(active ? "Default route" : "Set as default")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.roach(size: 11, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
             }
@@ -1300,12 +1311,12 @@ struct RoachNetSettingsView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(active ? RoachPalette.green.opacity(0.12) : RoachPalette.panelRaised.opacity(0.54))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(active ? RoachPalette.green.opacity(0.28) : RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(active ? RoachPalette.green.opacity(0.28) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -1316,21 +1327,21 @@ struct RoachNetSettingsView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Image(systemName: installed ? "checkmark.seal.fill" : "square.grid.2x2")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.roach(size: 14, weight: .semibold))
                     .foregroundStyle(installed ? RoachPalette.green : RoachPalette.muted)
                     .frame(width: 28, height: 28)
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
                             .fill((installed ? RoachPalette.green : RoachPalette.magenta).opacity(0.12))
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.roach(size: 13, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(1)
                     Text(installed ? (service.status ?? "Installed") : "Install")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(installed ? RoachPalette.green : RoachPalette.muted)
                         .lineLimit(1)
                 }
@@ -1340,7 +1351,7 @@ struct RoachNetSettingsView: View {
 
             if let description = service.description, !description.isEmpty {
                 Text(description)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(2)
             }
@@ -1348,12 +1359,12 @@ struct RoachNetSettingsView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.54))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(installed ? RoachPalette.green.opacity(0.24) : RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(installed ? RoachPalette.green.opacity(0.24) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -1361,10 +1372,10 @@ struct RoachNetSettingsView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.roach(size: 12, weight: .semibold))
                     .foregroundStyle(RoachPalette.text)
                 Text(path)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .font(.roach(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -1376,18 +1387,18 @@ struct RoachNetSettingsView: View {
                 model.revealPathInFinder(path)
             } label: {
                 Image(systemName: "arrow.up.forward.app")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
             }
             .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.cyan))
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.54))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -1399,7 +1410,7 @@ struct RoachNetSettingsView: View {
     private func settingsToggle(_ title: String, isOn: Binding<Bool>) -> some View {
         Toggle(isOn: isOn) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.roach(size: 13, weight: .semibold))
                 .foregroundStyle(RoachPalette.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
@@ -1407,12 +1418,12 @@ struct RoachNetSettingsView: View {
         .toggleStyle(.switch)
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.54))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 }

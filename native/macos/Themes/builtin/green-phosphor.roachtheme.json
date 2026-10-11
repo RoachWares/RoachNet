@@ -1,0 +1,51 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.green-phosphor",
+  "name": "Green Phosphor",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "The green-screen terminal: phosphor text, scanlines, and corners that barely round.",
+  "tags": [
+    "dark",
+    "retro",
+    "mono"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#010903",
+      "backgroundRaised": "#020D05",
+      "panel": "#031207",
+      "panelRaised": "#051A0A",
+      "panelSoft": "#08240F",
+      "text": "#8CFF9E",
+      "muted": "rgba(140,255,158,0.70)",
+      "accent": "#33FF66",
+      "accentSecondary": "#1FD655",
+      "accentTertiary": "#B6FF5C",
+      "accentInfo": "#66FFCC",
+      "success": "#33FF66",
+      "warning": "#D4FF4D",
+      "danger": "#FF6B5C",
+      "ink": "#8CFF9E",
+      "border": "rgba(51,255,102,0.14)",
+      "borderStrong": "rgba(51,255,102,0.26)"
+    },
+    "background": {
+      "style": "scanlines",
+      "intensity": 1,
+      "speed": 1
+    }
+  },
+  "typography": {
+    "display": "system-mono",
+    "body": "system-mono",
+    "mono": "system-mono"
+  },
+  "shape": {
+    "radiusScale": 0.35
+  },
+  "effects": {
+    "glass": 0.5,
+    "glow": 1.4
+  }
+}

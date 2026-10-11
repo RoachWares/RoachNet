@@ -1,0 +1,36 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.rust-belt",
+  "name": "Rust Belt",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Oxidized steel, sodium lights and sparks off the grinder.",
+  "tags": [
+    "dark",
+    "warm",
+    "industrial"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#0F0B09",
+      "backgroundRaised": "#150F0D",
+      "panel": "#1A1411",
+      "panelRaised": "#231B17",
+      "panelSoft": "#2E241F",
+      "text": "#EFE6DF",
+      "accent": "#E0703F",
+      "accentSecondary": "#8FA3A8",
+      "accentTertiary": "#E3B04B",
+      "accentInfo": "#7FA7B5"
+    },
+    "background": {
+      "style": "particles",
+      "intensity": 0.55,
+      "speed": 1.4,
+      "rise": true
+    }
+  },
+  "shape": {
+    "radiusScale": 0.6
+  }
+}

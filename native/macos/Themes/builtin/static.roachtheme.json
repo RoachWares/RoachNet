@@ -1,0 +1,42 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.static",
+  "name": "Static",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Grayscale with one red light. Dead channel scanlines behind it.",
+  "tags": [
+    "dark",
+    "neutral",
+    "retro"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#0A0A0A",
+      "backgroundRaised": "#0F0F0F",
+      "panel": "#141414",
+      "panelRaised": "#1C1C1C",
+      "panelSoft": "#262626",
+      "text": "#F2F2F2",
+      "accent": "#FF4545",
+      "accentSecondary": "#BDBDBD",
+      "accentTertiary": "#9E9E9E",
+      "accentInfo": "#D9D9D9",
+      "success": "#E0E0E0",
+      "warning": "#FFB3B3"
+    },
+    "background": {
+      "style": "scanlines",
+      "intensity": 0.6,
+      "speed": 0.7,
+      "colors": [
+        "#FFFFFF",
+        "#BDBDBD",
+        "#FF4545"
+      ]
+    }
+  },
+  "effects": {
+    "glow": 0.6
+  }
+}

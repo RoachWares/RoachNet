@@ -1,0 +1,32 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.nebula",
+  "name": "Nebula",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Violet gas clouds and starlight, for long nights with the models.",
+  "tags": [
+    "dark",
+    "vivid",
+    "cool"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#0A0716",
+      "backgroundRaised": "#0E0A1D",
+      "panel": "#120E24",
+      "panelRaised": "#191331",
+      "panelSoft": "#221A40",
+      "text": "#EEE9FF",
+      "accent": "#A68CFF",
+      "accentSecondary": "#F77FC0",
+      "accentTertiary": "#F9C440",
+      "accentInfo": "#3DD6EE"
+    },
+    "background": {
+      "style": "starfield",
+      "intensity": 1.1,
+      "speed": 0.8
+    }
+  }
+}

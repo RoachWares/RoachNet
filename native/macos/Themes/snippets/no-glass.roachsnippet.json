@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.no-glass",
+  "name": "No glass",
+  "author": "RoachWares",
+  "description": "Flat panels without the translucent wash and specular edge.",
+  "effects": {
+    "glass": 0
+  }
+}

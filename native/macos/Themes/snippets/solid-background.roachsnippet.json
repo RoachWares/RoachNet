@@ -1,0 +1,12 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.solid-background",
+  "name": "Solid background",
+  "author": "RoachWares",
+  "description": "Replaces the background effect with the plain gradient.",
+  "all": {
+    "background": {
+      "style": "solid"
+    }
+  }
+}

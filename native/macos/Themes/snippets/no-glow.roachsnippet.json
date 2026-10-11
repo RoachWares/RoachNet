@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.no-glow",
+  "name": "No glow",
+  "author": "RoachWares",
+  "description": "Turns off accent glows around buttons, tiles and marks.",
+  "effects": {
+    "glow": 0
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.ember",
+  "name": "Ember",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Warm charcoal with orange coals and embers drifting up the window.",
+  "tags": [
+    "dark",
+    "warm"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#110A08",
+      "backgroundRaised": "#170E0B",
+      "panel": "#1C1310",
+      "panelRaised": "#251915",
+      "panelSoft": "#31221C",
+      "text": "#F6EAE2",
+      "accent": "#FF7A3D",
+      "accentSecondary": "#E8435A",
+      "accentTertiary": "#FFC24B",
+      "accentInfo": "#E3B66F"
+    },
+    "background": {
+      "style": "particles",
+      "intensity": 0.9,
+      "rise": true
+    }
+  }
+}

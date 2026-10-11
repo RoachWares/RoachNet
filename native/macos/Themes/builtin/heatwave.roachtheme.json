@@ -1,0 +1,35 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.heatwave",
+  "name": "Heatwave",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Midday glare over hot asphalt. Saturated golds and orange, a shimmering aurora.",
+  "tags": [
+    "dark",
+    "warm",
+    "vivid"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#110804",
+      "backgroundRaised": "#170B06",
+      "panel": "#1D0F07",
+      "panelRaised": "#28150A",
+      "panelSoft": "#341C0E",
+      "text": "#FFF1E6",
+      "accent": "#FFB01F",
+      "accentSecondary": "#FF6A33",
+      "accentTertiary": "#FFE14D",
+      "accentInfo": "#FF967A"
+    },
+    "background": {
+      "style": "aurora",
+      "intensity": 1,
+      "speed": 1.2
+    }
+  },
+  "effects": {
+    "glow": 1.3
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.sakura",
+  "name": "Sakura",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Blossom pink on white, a little plum, and petals falling past.",
+  "tags": [
+    "light",
+    "warm",
+    "calm"
+  ],
+  "light": {
+    "palette": {
+      "background": "#FAF0F2",
+      "backgroundRaised": "#F3E4E8",
+      "panel": "#FFFFFF",
+      "panelRaised": "#FFF8FA",
+      "panelSoft": "#F2E0E5",
+      "text": "#2E1E24",
+      "accent": "#BA1656",
+      "accentSecondary": "#6A4C93",
+      "accentTertiary": "#8E5B00",
+      "accentInfo": "#2B6CB0"
+    },
+    "background": {
+      "style": "particles",
+      "intensity": 0.5,
+      "speed": 0.5,
+      "rise": false,
+      "colors": [
+        "#F48FB1",
+        "#F8BBD0",
+        "#CE93D8"
+      ]
+    }
+  },
+  "shape": {
+    "radiusScale": 1.3
+  }
+}

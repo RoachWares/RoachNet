@@ -1,0 +1,36 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.moss",
+  "name": "Moss",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Forest floor after rain. Soft greens, bark browns and spores drifting down.",
+  "tags": [
+    "dark",
+    "calm",
+    "warm"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#0A100B",
+      "backgroundRaised": "#0E150F",
+      "panel": "#121A13",
+      "panelRaised": "#19241A",
+      "panelSoft": "#223024",
+      "text": "#E7F0E3",
+      "accent": "#9BD36A",
+      "accentSecondary": "#D7B86E",
+      "accentTertiary": "#E58F5B",
+      "accentInfo": "#7FC4B8"
+    },
+    "background": {
+      "style": "particles",
+      "intensity": 0.6,
+      "speed": 0.5,
+      "rise": false
+    }
+  },
+  "shape": {
+    "radiusScale": 1.2
+  }
+}

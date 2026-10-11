@@ -101,15 +101,15 @@ struct RoachArcadeView: View {
                     } label: {
                         HStack(spacing: 9) {
                             Image(systemName: summary.core == nil ? "questionmark.square.dashed" : "memorychip.fill")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.roach(size: 12, weight: .semibold))
                                 .foregroundStyle(summary.core == nil ? RoachPalette.warning : RoachPalette.green)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(summary.system)
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .font(.roach(size: 11, weight: .bold, design: .rounded))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(1)
                                 Text(summary.readinessLabel)
-                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                                     .foregroundStyle(RoachPalette.muted)
                             }
                         }
@@ -121,7 +121,7 @@ struct RoachArcadeView: View {
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(RoachPalette.magenta.opacity(0.22), lineWidth: 1)
+                                .stroke(RoachPalette.magenta.opacity(0.22), lineWidth: RoachMetrics.line(1))
                         )
                     }
                     .buttonStyle(.plain)
@@ -212,10 +212,10 @@ struct RoachArcadeView: View {
                 }
                 RoachArcadeEmbeddedPlayer(session: session)
                     .frame(minHeight: 420)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(RoachPalette.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                            .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                     )
             }
         }
@@ -229,16 +229,16 @@ struct RoachArcadeView: View {
                     HStack(spacing: 8) {
                         TextField("Search games", text: $store.searchText)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.roach(size: 13, weight: .medium))
                             .padding(.horizontal, 11)
                             .padding(.vertical, 8)
                             .background(
-                                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                    .fill(Color.black.opacity(0.22))
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
+                                    .fill(RoachPalette.shade.opacity(0.22))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                         Picker("Filter", selection: $store.libraryFilter) {
                             ForEach(RoachArcadeLibraryFilter.allCases) { filter in
@@ -252,16 +252,16 @@ struct RoachArcadeView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Search games", text: $store.searchText)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.roach(size: 13, weight: .medium))
                             .padding(.horizontal, 11)
                             .padding(.vertical, 8)
                             .background(
-                                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                    .fill(Color.black.opacity(0.22))
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
+                                    .fill(RoachPalette.shade.opacity(0.22))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                         Picker("Filter", selection: $store.libraryFilter) {
                             ForEach(RoachArcadeLibraryFilter.allCases) { filter in
@@ -275,7 +275,7 @@ struct RoachArcadeView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
                         Text("\(store.libraryFilter.label) · \(store.filteredGames.count) shown")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 12, weight: .semibold, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
 
@@ -289,7 +289,7 @@ struct RoachArcadeView: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("\(store.libraryFilter.label) · \(store.filteredGames.count) shown")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 12, weight: .semibold, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
 
                         Button("Reveal") {
@@ -320,7 +320,7 @@ struct RoachArcadeView: View {
 
                         if store.filteredGames.isEmpty {
                             Label("No fossils on the shelf", systemImage: "tray")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.roach(size: 13, weight: .semibold))
                                 .foregroundStyle(RoachPalette.muted)
                                 .frame(maxWidth: .infinity, minHeight: 96, alignment: .center)
                                 .padding(14)
@@ -341,16 +341,16 @@ struct RoachArcadeView: View {
                     HStack(spacing: 6) {
                         if game.favorite {
                             Image(systemName: "star.fill")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.roach(size: 10, weight: .bold))
                                 .foregroundStyle(RoachPalette.bronze)
                         }
                         Text(game.title)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.roach(size: 14, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(1)
                     }
                     Text("\(game.system) · \(game.kind.label) · \(game.source)")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(1)
                 }
@@ -360,12 +360,12 @@ struct RoachArcadeView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(isSelected ? RoachPalette.panelSoft.opacity(0.90) : RoachPalette.panelRaised.opacity(0.60))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(isSelected ? RoachPalette.green.opacity(0.28) : RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(isSelected ? RoachPalette.green.opacity(0.28) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -413,20 +413,20 @@ struct RoachArcadeView: View {
     private var arcadeEmptyStateTitle: some View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                     .fill(RoachPalette.magenta.opacity(0.14))
                 Image(systemName: store.games.isEmpty ? "gamecontroller.fill" : "list.bullet.rectangle")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.roach(size: 24, weight: .semibold))
                     .foregroundStyle(RoachPalette.magenta)
             }
             .frame(width: 58, height: 58)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(store.games.isEmpty ? "Build the shelf." : "Pick a fossil.")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.roach(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(RoachPalette.text)
                 Text("Library root: \(displayStoragePath)")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.roach(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -584,18 +584,18 @@ struct RoachArcadeView: View {
                 }
 
                 TextEditor(text: $metadataNotes)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.text)
                     .scrollContentBackground(.hidden)
                     .padding(10)
                     .frame(minHeight: 92)
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(0.64))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(RoachPalette.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                            .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                     )
 
                 ViewThatFits(in: .horizontal) {
@@ -658,10 +658,10 @@ struct RoachArcadeView: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: width, height: height)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(cornerRadius), style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(cornerRadius), style: .continuous)
+                        .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
                 )
         } else {
             ZStack {
@@ -669,20 +669,20 @@ struct RoachArcadeView: View {
                     colors: [
                         RoachPalette.panelRaised.opacity(0.92),
                         game.kind == .rom ? RoachPalette.magenta.opacity(0.18) : RoachPalette.green.opacity(0.16),
-                        Color.black.opacity(0.28),
+                        RoachPalette.shade.opacity(0.28),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Image(systemName: game.kind == .rom ? "rectangle.on.rectangle.circle.fill" : (game.kind == .windows ? "pc" : "gamecontroller.fill"))
-                    .font(.system(size: min(width, height) * 0.36, weight: .semibold))
+                    .font(.roach(size: min(width, height) * 0.36, weight: .semibold))
                     .foregroundStyle(RoachPalette.green.opacity(0.84))
             }
             .frame(width: width, height: height)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(cornerRadius), style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(RoachPalette.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(cornerRadius), style: .continuous)
+                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
             )
         }
     }
@@ -713,10 +713,10 @@ struct RoachArcadeView: View {
                         .buttonStyle(.plain)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(cheat.name)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.roach(size: 13, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Text(cheat.code)
-                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                .font(.roach(size: 12, weight: .regular, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                         Spacer()
@@ -726,7 +726,7 @@ struct RoachArcadeView: View {
                         .buttonStyle(RoachSecondaryButtonStyle())
                     }
                     .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(RoachPalette.panelRaised.opacity(0.56)))
+                    .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous).fill(RoachPalette.panelRaised.opacity(0.56)))
                 }
             }
         }
@@ -792,7 +792,7 @@ struct RoachArcadeView: View {
                                     }
                                 }
                                 .padding(10)
-                                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(RoachPalette.panelRaised.opacity(0.48)))
+                                .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous).fill(RoachPalette.panelRaised.opacity(0.48)))
                             }
                         }
                     }
@@ -805,7 +805,7 @@ struct RoachArcadeView: View {
     private func modFolderControls(_ game: RoachArcadeGame) -> some View {
         RoachTag(game.modDirectoryPath == nil ? "No deploy folder" : "Deploy folder set", accent: game.modDirectoryPath == nil ? RoachPalette.warning : RoachPalette.green)
         Text(game.modDirectoryPath ?? "Pick the folder this game reads for mods.")
-            .font(.system(size: 12, weight: .medium))
+            .font(.roach(size: 12, weight: .medium))
             .foregroundStyle(RoachPalette.muted)
             .lineLimit(2)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -831,10 +831,10 @@ struct RoachArcadeView: View {
     private func profileHeaderControls(_ profile: RoachArcadeModProfile, game: RoachArcadeGame) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(profile.name)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.roach(size: 16, weight: .semibold))
                 .foregroundStyle(RoachPalette.text)
             Text("\(profile.mods.count) mod\(profile.mods.count == 1 ? "" : "s")")
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -867,10 +867,10 @@ struct RoachArcadeView: View {
 
         VStack(alignment: .leading, spacing: 3) {
             Text("\(mod.loadOrder). \(mod.name)")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.roach(size: 13, weight: .semibold))
                 .foregroundStyle(RoachPalette.text)
             Text(URL(fileURLWithPath: mod.sourcePath).lastPathComponent)
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(1)
         }
@@ -908,10 +908,10 @@ struct RoachArcadeView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(collection.title)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.roach(size: 13, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Text(collection.sourceURL.isEmpty ? "Local collection" : collection.sourceURL)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.roach(size: 12, weight: .medium))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(1)
                         }
@@ -919,7 +919,7 @@ struct RoachArcadeView: View {
                         RoachTag(collection.status, accent: RoachPalette.cyan)
                     }
                     .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(RoachPalette.panelRaised.opacity(0.56)))
+                    .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous).fill(RoachPalette.panelRaised.opacity(0.56)))
                 }
             }
         }
@@ -961,18 +961,18 @@ struct RoachArcadeView: View {
     ) -> some View {
         TextField(placeholder, text: text)
             .textFieldStyle(.plain)
-            .font(.system(size: 12, weight: .medium, design: monospaced ? .monospaced : .rounded))
+            .font(.roach(size: 12, weight: .medium, design: monospaced ? .monospaced : .rounded))
             .foregroundStyle(RoachPalette.text)
             .lineLimit(1)
             .padding(.horizontal, 11)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
                                 RoachPalette.panelRaised.opacity(0.74),
-                                Color.black.opacity(0.20),
+                                RoachPalette.shade.opacity(0.20),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -980,8 +980,8 @@ struct RoachArcadeView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(RoachPalette.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
+                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
             )
     }
 
@@ -1053,7 +1053,7 @@ struct RoachArcadeFloatingPlayer: View {
                     VStack(alignment: .leading, spacing: 4) {
                         RoachKicker("RoachArcade")
                         Text(session.title)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.roach(size: 15, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(1)
                     }
@@ -1072,10 +1072,10 @@ struct RoachArcadeFloatingPlayer: View {
                 }
 
                 RoachArcadeEmbeddedPlayer(session: session)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(RoachPalette.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                            .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                     )
             }
         }

@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.square-corners",
+  "name": "Square corners",
+  "author": "RoachWares",
+  "description": "Every panel, button and tile with sharp corners.",
+  "shape": {
+    "radiusScale": 0
+  }
+}

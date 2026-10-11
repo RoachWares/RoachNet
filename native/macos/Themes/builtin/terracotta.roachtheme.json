@@ -1,0 +1,31 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.terracotta",
+  "name": "Terracotta",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Sun-baked clay and limewash. Earthy, low-key and warm.",
+  "tags": [
+    "light",
+    "warm",
+    "calm"
+  ],
+  "light": {
+    "palette": {
+      "background": "#F0E8DC",
+      "backgroundRaised": "#E7DCCC",
+      "panel": "#FAF5EE",
+      "panelRaised": "#FFFCF7",
+      "panelSoft": "#E6DACA",
+      "text": "#2D261F",
+      "accent": "#A8461A",
+      "accentSecondary": "#5F5290",
+      "accentTertiary": "#7D5800",
+      "accentInfo": "#1F6A85"
+    },
+    "background": {
+      "style": "paper",
+      "intensity": 0.8
+    }
+  }
+}

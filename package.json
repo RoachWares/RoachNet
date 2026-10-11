@@ -9,6 +9,7 @@
     "release:apple-secrets": "bash scripts/configure-apple-release-secrets.sh",
     "native:build": "xcrun swift build --package-path native/macos",
     "native:test": "xcrun swift test --package-path native/macos",
+    "native:themes": "node scripts/generate-builtin-themes.mjs",
     "native:dist": "node scripts/build-native-macos-apps.mjs",
     "runtime:build": "swift build --package-path native/macos -c release --product roachnet-runtime",
     "runtime:start": "native/macos/.build/release/roachnet-runtime",

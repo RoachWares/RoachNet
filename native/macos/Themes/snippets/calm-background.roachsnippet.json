@@ -1,0 +1,13 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.calm-background",
+  "name": "Calm background",
+  "author": "RoachWares",
+  "description": "Keeps the theme's background but turns it down and slows it.",
+  "all": {
+    "background": {
+      "intensity": 0.4,
+      "speed": 0.5
+    }
+  }
+}

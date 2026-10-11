@@ -1,0 +1,35 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.neon-dusk",
+  "name": "Neon Dusk",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "The sky just after sunset over a lit-up city: violet dark, pink neon, a horizon grid.",
+  "tags": [
+    "dark",
+    "vivid",
+    "retro"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#110A1E",
+      "backgroundRaised": "#160D27",
+      "panel": "#1B1030",
+      "panelRaised": "#241640",
+      "panelSoft": "#2F1D52",
+      "text": "#F5EEFF",
+      "accent": "#FF5ADB",
+      "accentSecondary": "#8B70FF",
+      "accentTertiary": "#FFB347",
+      "accentInfo": "#3DE1FF"
+    },
+    "background": {
+      "style": "grid",
+      "intensity": 1.1,
+      "speed": 0.9
+    }
+  },
+  "effects": {
+    "glow": 1.4
+  }
+}

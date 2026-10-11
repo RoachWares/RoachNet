@@ -31,13 +31,13 @@ struct RoachArchiveVaultPanel: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             RoachPalette.panelRaised.opacity(0.88),
                             RoachPalette.panel.opacity(0.82),
-                            Color.black.opacity(0.18),
+                            RoachPalette.shade.opacity(0.18),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -45,8 +45,8 @@ struct RoachArchiveVaultPanel: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
+                .stroke(RoachPalette.ink.opacity(0.07), lineWidth: RoachMetrics.line(1))
                 .allowsHitTesting(false)
         )
         .shadow(color: RoachPalette.shadow.opacity(0.10), radius: 14, x: 0, y: 8)
@@ -108,7 +108,7 @@ struct RoachArchiveVaultPanel: View {
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -121,8 +121,8 @@ struct RoachArchiveVaultPanel: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(RoachPalette.borderStrong.opacity(0.82), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(RoachPalette.borderStrong.opacity(0.82), lineWidth: RoachMetrics.line(1))
         )
         .shadow(color: RoachPalette.shadow.opacity(0.10), radius: 14, x: 0, y: 8)
         .layoutPriority(1)
@@ -179,7 +179,7 @@ struct RoachArchiveVaultPanel: View {
 
     private var archiveStatusText: some View {
         Text(store.statusLine)
-            .font(.system(size: 12, weight: .medium))
+            .font(.roach(size: 12, weight: .medium))
             .foregroundStyle(RoachPalette.muted)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -189,17 +189,17 @@ struct RoachArchiveVaultPanel: View {
     private var archiveSearchField: some View {
         TextField("Title, author, ISBN, DOI, keyword", text: $store.query)
             .textFieldStyle(.plain)
-            .font(.system(size: 13, weight: .medium))
+            .font(.roach(size: 13, weight: .medium))
             .foregroundStyle(RoachPalette.text)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.black.opacity(0.22))
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                    .fill(RoachPalette.shade.opacity(0.22))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                    .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
             )
             .onSubmit {
                 Task { await store.search() }
@@ -249,20 +249,20 @@ struct RoachArchiveVaultPanel: View {
     private var archiveEmptyStateCopy: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "books.vertical.fill")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.roach(size: 22, weight: .semibold))
                 .foregroundStyle(RoachPalette.cyan)
                 .frame(width: 44, height: 44)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                         .fill(RoachPalette.panelGlass)
                 )
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(store.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Build the local shelf." : "No match in the stacks yet.")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.roach(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(RoachPalette.text)
                 Text(store.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Search title, author, DOI, ISBN, or keyword." : "Try a broader title, author, DOI, or ISBN.")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.roach(size: 13, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -406,11 +406,11 @@ struct RoachArchiveVaultPanel: View {
                         ForEach(store.torrentItems.filter(\.isMetadata).prefix(12)) { item in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(item.groupName)
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .font(.roach(size: 11, weight: .bold, design: .monospaced))
                                     .foregroundStyle(RoachPalette.cyan)
                                     .lineLimit(1)
                                 Text(item.displayName)
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.roach(size: 12, weight: .medium))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(2)
                                 HStack(spacing: 6) {
@@ -423,12 +423,12 @@ struct RoachArchiveVaultPanel: View {
                             .frame(width: 230, alignment: .leading)
                             .padding(12)
                             .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                     .fill(RoachPalette.panelRaised.opacity(0.58))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                         }
                     }
@@ -499,19 +499,19 @@ private struct RoachArchiveResultCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "book.closed.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.roach(size: 18, weight: .semibold))
                     .foregroundStyle(RoachPalette.magenta)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(result.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.roach(size: 14, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(2)
                         .truncationMode(.tail)
                     if !result.authors.isEmpty {
                         Text(result.authors.joined(separator: ", "))
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -531,7 +531,7 @@ private struct RoachArchiveResultCard: View {
 
             if let description = result.description {
                 Text(description)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.roach(size: 12, weight: .regular))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(3)
             }
@@ -540,7 +540,7 @@ private struct RoachArchiveResultCard: View {
 
             HStack {
                 Text(result.downloadURL == nil ? "Metadata first" : "File available")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(result.downloadURL == nil ? RoachPalette.bronze : RoachPalette.green)
                 Spacer()
                 Button(result.downloadURL == nil ? "Add Record" : "Add to Vault") {
@@ -552,12 +552,12 @@ private struct RoachArchiveResultCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 210, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.62))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 }

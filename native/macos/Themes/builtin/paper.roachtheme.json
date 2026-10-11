@@ -1,0 +1,41 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.paper",
+  "name": "Paper",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Warm cream stock, sienna ink and serif type. Made for reading.",
+  "tags": [
+    "light",
+    "warm",
+    "serif",
+    "calm"
+  ],
+  "light": {
+    "palette": {
+      "background": "#F3EEE4",
+      "backgroundRaised": "#EBE4D7",
+      "panel": "#FBF8F2",
+      "panelRaised": "#FFFDF9",
+      "panelSoft": "#E9E2D4",
+      "text": "#2B2620",
+      "accent": "#A0441A",
+      "accentSecondary": "#3D5A80",
+      "accentTertiary": "#7E6100",
+      "accentInfo": "#2F6F6A"
+    },
+    "background": {
+      "style": "paper",
+      "intensity": 1
+    }
+  },
+  "typography": {
+    "display": "system-serif",
+    "body": "system-serif",
+    "mono": "system-mono"
+  },
+  "effects": {
+    "glass": 0.5,
+    "glow": 0.2
+  }
+}

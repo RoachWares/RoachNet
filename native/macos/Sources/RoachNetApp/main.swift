@@ -943,10 +943,10 @@ private struct EmbeddedRouteView: View {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(title)
-                                        .font(.system(size: isTight ? 21 : 24, weight: .bold))
+                                        .font(.roach(size: isTight ? 21 : 24, weight: .bold))
                                         .foregroundStyle(RoachPalette.text)
                                     Text(url.absoluteString)
-                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .font(.roach(size: 12, weight: .medium, design: .monospaced))
                                         .foregroundStyle(RoachPalette.muted)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
@@ -970,10 +970,10 @@ private struct EmbeddedRouteView: View {
                             VStack(alignment: .leading, spacing: 14) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(title)
-                                        .font(.system(size: isTight ? 21 : 24, weight: .bold))
+                                        .font(.roach(size: isTight ? 21 : 24, weight: .bold))
                                         .foregroundStyle(RoachPalette.text)
                                     Text(url.absoluteString)
-                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .font(.roach(size: 12, weight: .medium, design: .monospaced))
                                         .foregroundStyle(RoachPalette.muted)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
@@ -996,10 +996,10 @@ private struct EmbeddedRouteView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     NativeWebView(url: url)
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                 }
                 .padding(isTight ? 16 : 24)
@@ -1022,16 +1022,16 @@ private struct CommandPaletteRow: View {
 
     var body: some View {
         HStack(spacing: 11) {
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(3), style: .continuous)
                 .fill(isSelected ? entry.accent : Color.clear)
                 .frame(width: 3, height: 34)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isSelected ? entry.accent.opacity(0.18) : Color.white.opacity(0.055))
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
+                    .fill(isSelected ? entry.accent.opacity(0.18) : RoachPalette.ink.opacity(0.055))
 
                 Image(systemName: entry.systemImage)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.roach(size: 14, weight: .semibold))
                     .foregroundStyle(isSelected ? RoachPalette.text : entry.accent)
             }
             .frame(width: 34, height: 34)
@@ -1039,7 +1039,7 @@ private struct CommandPaletteRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(entry.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.roach(size: 14, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(1)
                         .minimumScaleFactor(0.84)
@@ -1051,7 +1051,7 @@ private struct CommandPaletteRow: View {
                 }
 
                 Text(entry.detail)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.roach(size: 11, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -1063,18 +1063,18 @@ private struct CommandPaletteRow: View {
             HStack(spacing: 6) {
                 if let index, index < 9 {
                     Text("\(index + 1)")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.roach(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(isSelected ? RoachPalette.text : RoachPalette.muted)
                         .frame(width: 20, height: 20)
                         .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(7), style: .continuous)
                                 .fill(RoachPalette.panelGlass.opacity(isSelected ? 1 : 0.72))
                         )
                         .accessibilityHidden(true)
                 }
 
                 Text(isSelected ? "Return" : (entry.shortcut ?? entry.actionLabel))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(isSelected ? RoachPalette.text : RoachPalette.muted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -1089,15 +1089,15 @@ private struct CommandPaletteRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isSelected ? Color.white.opacity(0.075) : Color.white.opacity(0.025))
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                .fill(isSelected ? RoachPalette.ink.opacity(0.075) : RoachPalette.ink.opacity(0.025))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isSelected ? entry.accent.opacity(0.46) : Color.white.opacity(0.05), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                .stroke(isSelected ? entry.accent.opacity(0.46) : RoachPalette.ink.opacity(0.05), lineWidth: RoachMetrics.line(1))
         )
         .shadow(color: isSelected ? entry.accent.opacity(0.11) : .clear, radius: 16, y: 9)
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous))
         .animation(.spring(response: 0.22, dampingFraction: 0.86), value: isSelected)
     }
 }
@@ -1113,26 +1113,26 @@ private struct CommandPalettePreview: View {
             if let entry {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: entry.systemImage)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.roach(size: 20, weight: .semibold))
                         .foregroundStyle(entry.accent)
                         .frame(width: 40, height: 40)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                 .fill(entry.accent.opacity(0.12))
                         )
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(entry.compactSectionLabel)
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .font(.roach(size: 9, weight: .bold, design: .monospaced))
                             .tracking(1.0)
                             .foregroundStyle(entry.accent)
                         Text(entry.title)
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .font(.roach(size: 18, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(2)
                             .minimumScaleFactor(0.82)
                         Text(entry.detail)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1144,9 +1144,9 @@ private struct CommandPalettePreview: View {
                     } label: {
                         HStack(spacing: 7) {
                             Image(systemName: "return")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.roach(size: 10, weight: .bold))
                             Text(entry.actionLabel)
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .bold, design: .monospaced))
                         }
                     }
                     .buttonStyle(RoachUtilityButtonStyle(tint: entry.accent))
@@ -1157,9 +1157,9 @@ private struct CommandPalettePreview: View {
                     } label: {
                         HStack(spacing: 7) {
                             Image(systemName: "doc.on.doc")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.roach(size: 10, weight: .bold))
                             Text(entry.secondaryActionLabel)
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .bold, design: .monospaced))
                                 .lineLimit(1)
                         }
                     }
@@ -1169,29 +1169,29 @@ private struct CommandPalettePreview: View {
 
                 if let previewNote = entry.previewNote {
                     Text(previewNote)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.text.opacity(0.76))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                 .fill(entry.accent.opacity(0.08))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(entry.accent.opacity(0.14), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                                .stroke(entry.accent.opacity(0.14), lineWidth: RoachMetrics.line(1))
                         )
                 }
 
                 Divider()
-                    .overlay(Color.white.opacity(0.08))
+                    .overlay(RoachPalette.ink.opacity(0.08))
 
                 if let badge = entry.badge {
                     HStack(spacing: 8) {
                         RoachTag("State", accent: entry.accent)
                         Text(badge)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.roach(size: 11, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                     }
@@ -1200,7 +1200,7 @@ private struct CommandPalettePreview: View {
                 if showActionPanel {
                     VStack(alignment: .leading, spacing: 9) {
                         Text("Actions")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.roach(size: 10, weight: .bold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(entry.accent)
 
@@ -1212,22 +1212,22 @@ private struct CommandPalettePreview: View {
                     }
                     .padding(12)
                     .background(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(0.58))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(RoachPalette.border.opacity(0.75), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
+                            .stroke(RoachPalette.border.opacity(0.75), lineWidth: RoachMetrics.line(1))
                     )
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Command Bar")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.roach(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(RoachPalette.text)
                     Text("Type a lane, file, model, or task. Return runs it; Option-Return copies where it points.")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.roach(size: 13, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
@@ -1235,12 +1235,12 @@ private struct CommandPalettePreview: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.24))
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .fill(RoachPalette.shade.opacity(0.24))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.075), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(RoachPalette.ink.opacity(0.075), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -1252,18 +1252,18 @@ private struct CommandPaletteActionLine: View {
     var body: some View {
         HStack(spacing: 9) {
             Text(key)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.roach(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(RoachPalette.text)
                 .frame(width: 48, alignment: .leading)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(8), style: .continuous)
                         .fill(RoachPalette.panelGlass)
                 )
 
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.roach(size: 11, weight: .semibold))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -1279,14 +1279,14 @@ private struct CommandPaletteFeaturedRail: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Suggested moves")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .bold, design: .monospaced))
                     .tracking(1.1)
                     .foregroundStyle(RoachPalette.muted)
 
                 Spacer(minLength: 8)
 
                 Text("\(entries.count) ready")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.green)
             }
 
@@ -1298,21 +1298,21 @@ private struct CommandPaletteFeaturedRail: View {
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: entry.systemImage)
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.roach(size: 13, weight: .bold))
                                     .foregroundStyle(entry.accent)
                                     .frame(width: 30, height: 30)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
                                             .fill(entry.accent.opacity(0.12))
                                     )
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(entry.compactSectionLabel)
-                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .font(.roach(size: 9, weight: .bold, design: .monospaced))
                                         .tracking(0.8)
                                         .foregroundStyle(RoachPalette.muted)
                                     Text(entry.title)
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.roach(size: 13, weight: .semibold))
                                         .foregroundStyle(RoachPalette.text)
                                         .lineLimit(1)
                                 }
@@ -1323,13 +1323,13 @@ private struct CommandPaletteFeaturedRail: View {
                             .padding(.vertical, 10)
                             .frame(width: 218, alignment: .leading)
                             .background(
-                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
                                     .fill(
                                         LinearGradient(
                                             colors: [
                                                 entry.accent.opacity(0.10),
                                                 RoachPalette.panelRaised.opacity(0.76),
-                                                Color.black.opacity(0.16),
+                                                RoachPalette.shade.opacity(0.16),
                                             ],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
@@ -1337,8 +1337,8 @@ private struct CommandPaletteFeaturedRail: View {
                                     )
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                    .stroke(entry.accent.opacity(0.14), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
+                                    .stroke(entry.accent.opacity(0.14), lineWidth: RoachMetrics.line(1))
                             )
                         }
                         .buttonStyle(RoachCardButtonStyle())
@@ -1371,16 +1371,16 @@ private struct CommandPaletteKeyHintStrip: View {
     private func hint(_ key: String, _ label: String) -> some View {
         HStack(spacing: 5) {
             Text(key)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.roach(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(RoachPalette.text)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(7), style: .continuous)
                         .fill(RoachPalette.panelGlass)
                 )
             Text(label)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
@@ -1396,7 +1396,7 @@ private struct CommandPaletteSectionHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.roach(size: 10, weight: .bold, design: .monospaced))
                 .tracking(1.1)
                 .foregroundStyle(accent)
 
@@ -1405,7 +1405,7 @@ private struct CommandPaletteSectionHeader: View {
                 .frame(height: 1)
 
             Text("\(count)")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.roach(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(RoachPalette.muted)
         }
     }
@@ -1417,26 +1417,26 @@ private struct CommandPaletteEmptyState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: hasQuery ? "magnifyingglass" : "command.circle")
-                .font(.system(size: 24, weight: .semibold))
+                .font(.roach(size: 24, weight: .semibold))
                 .foregroundStyle(RoachPalette.green)
 
             Text(hasQuery ? "Nothing crawled out." : "Command index is empty.")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.roach(size: 15, weight: .semibold))
                 .foregroundStyle(RoachPalette.text)
 
             Text(hasQuery ? "Try vault, dev, update, logs, model, or anything with a real file behind it." : "Refresh the runtime and try again.")
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.58))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -1492,7 +1492,7 @@ private struct CommandPaletteSheet: View {
             let panelHeight = min(proxy.size.height - 34, isTight ? 570 : 620)
 
             ZStack {
-                Color.black.opacity(0.48)
+                RoachPalette.scrim(0.48)
                     .ignoresSafeArea()
                     .onTapGesture {
                         onDismiss()
@@ -1502,20 +1502,20 @@ private struct CommandPaletteSheet: View {
                     HStack(spacing: 12) {
                         HStack(spacing: 10) {
                             Image(systemName: "command")
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.roach(size: 15, weight: .bold))
                                 .foregroundStyle(RoachPalette.green)
                                 .frame(width: 32, height: 32)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(11), style: .continuous)
                                         .fill(RoachPalette.green.opacity(0.12))
                                 )
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Command Bar")
-                                    .font(.system(size: isTight ? 18 : 20, weight: .bold, design: .rounded))
+                                    .font(.roach(size: isTight ? 18 : 20, weight: .bold, design: .rounded))
                                     .foregroundStyle(RoachPalette.text)
                                 Text(trimmedQuery.isEmpty ? "Search the whole machine room." : "\(filteredEntries.count) matches")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .font(.roach(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundStyle(RoachPalette.muted)
                             }
                         }
@@ -1526,7 +1526,7 @@ private struct CommandPaletteSheet: View {
                             onDismiss()
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.roach(size: 12, weight: .bold))
                                 .frame(width: 16, height: 16)
                         }
                         .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.muted))
@@ -1536,11 +1536,11 @@ private struct CommandPaletteSheet: View {
                     HStack(spacing: 12) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(selectedEntry?.accent ?? RoachPalette.green)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.roach(size: 15, weight: .semibold))
 
                         TextField("Search RoachNet", text: $query)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.roach(size: 16, weight: .medium))
                             .foregroundStyle(RoachPalette.text)
                             .focused($queryFocused)
                             .onSubmit {
@@ -1554,7 +1554,7 @@ private struct CommandPaletteSheet: View {
                                 query = ""
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(RoachPalette.muted)
@@ -1569,12 +1569,12 @@ private struct CommandPaletteSheet: View {
                     .padding(.horizontal, 13)
                     .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(17), style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
                                         RoachPalette.panelRaised.opacity(0.82),
-                                        Color.black.opacity(0.24),
+                                        RoachPalette.shade.opacity(0.24),
                                         (selectedEntry?.accent ?? RoachPalette.green).opacity(0.07),
                                     ],
                                     startPoint: .topLeading,
@@ -1583,8 +1583,8 @@ private struct CommandPaletteSheet: View {
                             )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 17, style: .continuous)
-                            .stroke((selectedEntry?.accent ?? RoachPalette.green).opacity(0.18), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(17), style: .continuous)
+                            .stroke((selectedEntry?.accent ?? RoachPalette.green).opacity(0.18), lineWidth: RoachMetrics.line(1))
                     )
                     .shadow(color: (selectedEntry?.accent ?? RoachPalette.green).opacity(0.10), radius: 18, y: 10)
 
@@ -1606,15 +1606,15 @@ private struct CommandPaletteSheet: View {
                 }
                 .padding(isTight ? 14 : 16)
                 .frame(width: panelWidth, height: panelHeight, alignment: .topLeading)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous))
                 .background(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.black.opacity(0.94),
+                                    RoachPalette.shade.opacity(0.94),
                                     RoachPalette.panel.opacity(0.98),
-                                    Color.black.opacity(0.88),
+                                    RoachPalette.shade.opacity(0.88),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -1622,11 +1622,11 @@ private struct CommandPaletteSheet: View {
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.08),
+                                    RoachPalette.ink.opacity(0.08),
                                     Color.clear,
                                     RoachPalette.green.opacity(0.035),
                                 ],
@@ -1638,13 +1638,13 @@ private struct CommandPaletteSheet: View {
                         .allowsHitTesting(false)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                         .stroke(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.14),
+                                    RoachPalette.ink.opacity(0.14),
                                     (selectedEntry?.accent ?? RoachPalette.green).opacity(0.20),
-                                    Color.white.opacity(0.04),
+                                    RoachPalette.ink.opacity(0.04),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -1652,7 +1652,7 @@ private struct CommandPaletteSheet: View {
                             lineWidth: 1
                         )
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous))
                 .shadow(color: RoachPalette.shadow.opacity(0.62), radius: 44, x: 0, y: 24)
                 .shadow(color: (selectedEntry?.accent ?? RoachPalette.green).opacity(0.09), radius: 54, x: 0, y: 28)
                 .padding(17)
@@ -1895,20 +1895,20 @@ private struct DetachedCommandPaletteView: View {
                 VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .center, spacing: 12) {
                             Image(systemName: "command")
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.roach(size: 15, weight: .bold))
                                 .foregroundStyle(RoachPalette.green)
                                 .frame(width: 32, height: 32)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(11), style: .continuous)
                                         .fill(RoachPalette.green.opacity(0.12))
                                 )
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Command Bar")
-                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .font(.roach(size: 17, weight: .bold, design: .rounded))
                                     .foregroundStyle(RoachPalette.text)
                                 Text(trimmedQuery.isEmpty ? "Search the whole machine room." : "\(filteredEntries.count) matches")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .font(.roach(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundStyle(RoachPalette.muted)
                             }
 
@@ -1917,12 +1917,12 @@ private struct DetachedCommandPaletteView: View {
 
                         HStack(spacing: 12) {
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.roach(size: 15, weight: .semibold))
                                 .foregroundStyle(selectedEntry?.accent ?? RoachPalette.green)
 
                             TextField("Search RoachNet", text: $query)
                                 .textFieldStyle(.plain)
-                                .font(.system(size: 16, weight: .medium))
+                                .font(.roach(size: 16, weight: .medium))
                                 .foregroundStyle(RoachPalette.text)
                                 .focused($queryFocused)
                                 .onSubmit {
@@ -1934,7 +1934,7 @@ private struct DetachedCommandPaletteView: View {
                                     query = ""
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.roach(size: 13, weight: .semibold))
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundStyle(RoachPalette.muted)
@@ -1949,12 +1949,12 @@ private struct DetachedCommandPaletteView: View {
                         .padding(.horizontal, 13)
                         .padding(.vertical, 11)
                         .background(
-                            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(17), style: .continuous)
                                 .fill(RoachPalette.panelRaised.opacity(0.82))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                                .stroke((selectedEntry?.accent ?? RoachPalette.green).opacity(0.18), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(17), style: .continuous)
+                                .stroke((selectedEntry?.accent ?? RoachPalette.green).opacity(0.18), lineWidth: RoachMetrics.line(1))
                         )
 
                         if isWide {
@@ -1978,15 +1978,15 @@ private struct DetachedCommandPaletteView: View {
                     width: panelWidth,
                     height: panelHeight
                 )
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous))
                 .background(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.black.opacity(0.94),
+                                    RoachPalette.shade.opacity(0.94),
                                     RoachPalette.panel.opacity(0.98),
-                                    Color.black.opacity(0.88),
+                                    RoachPalette.shade.opacity(0.88),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -1994,13 +1994,13 @@ private struct DetachedCommandPaletteView: View {
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous)
                         .stroke(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.14),
+                                    RoachPalette.ink.opacity(0.14),
                                     (selectedEntry?.accent ?? RoachPalette.green).opacity(0.20),
-                                    Color.white.opacity(0.04),
+                                    RoachPalette.ink.opacity(0.04),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -2008,7 +2008,7 @@ private struct DetachedCommandPaletteView: View {
                             lineWidth: 1
                         )
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous))
                 .shadow(color: RoachPalette.shadow.opacity(0.62), radius: 44, x: 0, y: 24)
                 .shadow(color: (selectedEntry?.accent ?? RoachPalette.green).opacity(0.09), radius: 54, x: 0, y: 28)
                 .padding(.top, 22)
@@ -2280,7 +2280,7 @@ private final class DetachedCommandPaletteWindowController: NSWindowController, 
             }
         )
 
-        window.contentViewController = NSHostingController(rootView: rootView)
+        window.contentViewController = NSHostingController(rootView: rootView.roachThemed())
         window.delegate = self
     }
 
@@ -3425,6 +3425,8 @@ final class WorkspaceModel: ObservableObject {
             statusLine = "Refreshing the RoachTail join code."
         case "clear-peers":
             statusLine = "Clearing linked RoachTail peers."
+        case "remove-peer":
+            statusLine = "Removing that device from RoachTail."
         default:
             statusLine = "Updating RoachTail."
         }
@@ -4596,22 +4598,22 @@ private struct ChatBubble: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             Text(roleLabel)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                 .tracking(1.4)
                 .foregroundStyle(accent)
             Text(line.text)
-                .font(.system(size: 15, weight: .medium))
+                .font(.roach(size: 15, weight: .medium))
                 .foregroundStyle(RoachPalette.text)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.88))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -4622,7 +4624,7 @@ private struct HomeMascotDialogBubble: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .font(.roach(size: 12, weight: .bold, design: .rounded))
             .foregroundStyle(RoachPalette.text)
             .lineLimit(3)
             .minimumScaleFactor(0.78)
@@ -4643,7 +4645,7 @@ private struct HomeMascotDialogBubble: View {
                         colors: [
                             accent.opacity(0.16),
                             RoachPalette.panelRaised.opacity(0.82),
-                            Color.black.opacity(0.18),
+                            RoachPalette.shade.opacity(0.18),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -4658,9 +4660,9 @@ private struct HomeMascotDialogBubble: View {
                     topTrailingRadius: 18,
                     style: .continuous
                 )
-                .stroke(accent.opacity(0.22), lineWidth: 1)
+                .stroke(accent.opacity(0.22), lineWidth: RoachMetrics.line(1))
             )
-            .shadow(color: accent.opacity(0.10), radius: 18, y: 10)
+            .shadow(color: accent.opacity(RoachMetrics.glow(0.10)), radius: 18, y: 10)
     }
 }
 
@@ -4706,7 +4708,7 @@ private struct RoachHomeMascotView: View {
         )
         context.fill(
             Path(ellipseIn: shadowRect),
-            with: .color(Color.black.opacity(0.32))
+            with: .color(RoachPalette.shade.opacity(0.32))
         )
 
         drawDitherHalo(context: &context, size: size, time: time, center: center, scale: scale)
@@ -4905,7 +4907,7 @@ private struct GlobalRoachClawPanel: View {
 
                 if let speechStatus = model.speechStatusLine, !speechStatus.isEmpty {
                     Text(speechStatus)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.roach(size: 12, weight: .semibold))
                         .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.muted)
                         .lineLimit(2)
                 }
@@ -4917,7 +4919,7 @@ private struct GlobalRoachClawPanel: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     RoachKicker("Last Ask")
                                     Text(latestPrompt)
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(.roach(size: 12, weight: .semibold))
                                         .foregroundStyle(RoachPalette.muted)
                                         .lineLimit(3)
                                 }
@@ -4972,14 +4974,14 @@ private struct GlobalRoachClawPanel: View {
                     .frame(width: 52, height: 52)
 
                 Image(systemName: "sparkles")
-                    .font(.system(size: 21, weight: .bold))
+                    .font(.roach(size: 21, weight: .bold))
                     .foregroundStyle(RoachPalette.green)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                         RoachKicker("RoachClaw")
                         Text("Ask anywhere.")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(.roach(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(1)
                             .minimumScaleFactor(0.78)
@@ -5010,7 +5012,7 @@ private struct GlobalRoachClawPanel: View {
                         toggleVoice()
                     } label: {
                         Image(systemName: model.isDictatingPrompt ? "waveform.circle.fill" : "mic.circle.fill")
-                            .font(.system(size: 24, weight: .semibold))
+                            .font(.roach(size: 24, weight: .semibold))
                             .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.magenta)
                     }
                     .buttonStyle(.plain)
@@ -5018,7 +5020,7 @@ private struct GlobalRoachClawPanel: View {
 
                     TextField("Ask RoachClaw, or start voice and speak the request", text: $model.promptDraft, axis: .vertical)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.roach(size: 15, weight: .medium))
                         .foregroundStyle(RoachPalette.text)
                         .focused($promptFocused)
                         .lineLimit(2...6)
@@ -5075,10 +5077,10 @@ private struct GlobalRoachClawPanel: View {
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: scope.systemImage)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.roach(size: 12, weight: .semibold))
                                     .foregroundStyle(scope.accent)
                                 Text(scope.title)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.roach(size: 12, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(1)
                                 Spacer(minLength: 4)
@@ -5089,12 +5091,12 @@ private struct GlobalRoachClawPanel: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 9)
                             .background(
-                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
                                     .fill(enabled ? scope.accent.opacity(0.12) : RoachPalette.panelRaised.opacity(0.68))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                    .stroke(enabled ? scope.accent.opacity(0.28) : RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(13), style: .continuous)
+                                    .stroke(enabled ? scope.accent.opacity(0.28) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                         }
                         .buttonStyle(.plain)
@@ -5127,7 +5129,7 @@ private struct GlobalRoachClawPanel: View {
                 Spacer(minLength: 8)
 
                 Text(RoachNetGlobalHotKey.hint)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
             }
@@ -5148,7 +5150,7 @@ private struct GlobalRoachClawPanel: View {
                 }
 
                 Text(RoachNetGlobalHotKey.hint)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
             }
         }
@@ -5392,13 +5394,13 @@ private struct LaunchGuideHero: View {
                     }
 
                     Text("Your local command bunker.")
-                        .font(.system(size: 34, weight: .bold))
+                        .font(.roach(size: 34, weight: .bold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(2)
                         .minimumScaleFactor(0.72)
 
                     Text("The fast route through Home, command search, RoachClaw, RoachSpeech, Dev, RoachArcade, Maps, Vault, and the runtime bits that keep the machine honest.")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.roach(size: 14, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -5422,24 +5424,24 @@ private struct LaunchGuidePulseMark: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             accent.opacity(0.18),
                             RoachPalette.panelGlass,
-                            Color.black.opacity(0.28),
+                            RoachPalette.shade.opacity(0.28),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(accent.opacity(0.32), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
+                        .stroke(accent.opacity(0.32), lineWidth: RoachMetrics.line(1))
                 )
 
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
                 .stroke(accent.opacity(pulse ? 0.12 : 0.34), lineWidth: 2)
                 .scaleEffect(pulse ? 1.08 : 0.94)
 
@@ -5478,12 +5480,12 @@ private struct LaunchGuideSignalPill: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.roach(size: 11, weight: .bold, design: .monospaced))
                 .foregroundStyle(accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
             Text(detail)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.roach(size: 10, weight: .semibold))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
@@ -5492,12 +5494,12 @@ private struct LaunchGuideSignalPill: View {
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
                 .fill(accent.opacity(0.09))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(accent.opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
+                .stroke(accent.opacity(0.16), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -5509,22 +5511,22 @@ private struct LaunchGuideNowReading: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Text(progressText)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.roach(size: 11, weight: .bold, design: .monospaced))
                 .foregroundStyle(feature.accent)
                 .frame(width: 44, height: 30)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
                         .fill(feature.accent.opacity(0.12))
                 )
 
             VStack(alignment: .leading, spacing: 4) {
                 Label("Reading: \(feature.title)", systemImage: feature.systemImage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.roach(size: 12, weight: .semibold))
                     .foregroundStyle(RoachPalette.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
                 Text(feature.commandHint)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -5534,12 +5536,12 @@ private struct LaunchGuideNowReading: View {
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .fill(RoachPalette.panelGlass)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(feature.accent.opacity(0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                .stroke(feature.accent.opacity(0.18), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -5556,7 +5558,7 @@ private struct LaunchGuidePathway: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Label("First ten minutes", systemImage: "checklist.checked")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.roach(size: 13, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(1)
                     Spacer(minLength: 8)
@@ -5583,13 +5585,13 @@ private struct LaunchGuideStepTile: View {
                     Circle()
                         .fill(step.accent.opacity(0.14))
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.roach(size: 10, weight: .bold))
                         .foregroundStyle(step.accent)
                 }
                 .frame(width: 24, height: 24)
 
                 Text(step.number)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(step.accent)
                     .lineLimit(1)
 
@@ -5597,13 +5599,13 @@ private struct LaunchGuideStepTile: View {
             }
 
             Label(step.title, systemImage: step.systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.roach(size: 12, weight: .semibold))
                 .foregroundStyle(RoachPalette.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
 
             Text(step.detail)
-                .font(.system(size: 11, weight: .medium))
+                .font(.roach(size: 11, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -5611,13 +5613,13 @@ private struct LaunchGuideStepTile: View {
         .padding(9)
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             step.accent.opacity(0.08),
                             RoachPalette.panelGlass,
-                            Color.black.opacity(0.08),
+                            RoachPalette.shade.opacity(0.08),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -5625,8 +5627,8 @@ private struct LaunchGuideStepTile: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(step.accent.opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
+                .stroke(step.accent.opacity(0.16), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -5641,12 +5643,12 @@ private struct LaunchGuideFeatureWorkbench: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     Label("Feature map", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.roach(size: 13, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Text("Pick a lane. Get the useful move.")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
@@ -5732,27 +5734,27 @@ private struct LaunchGuideFeatureButton: View {
     var body: some View {
         Button(action: action) {
             HStack(alignment: .center, spacing: 9) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(2), style: .continuous)
                     .fill(isSelected ? feature.accent : Color.clear)
                     .frame(width: 3, height: isCompact ? 28 : 38)
 
                 Image(systemName: feature.systemImage)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.roach(size: 13, weight: .bold))
                     .foregroundStyle(isSelected ? feature.accent : RoachPalette.muted)
                     .frame(width: 30, height: 30)
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
                             .fill(isSelected ? feature.accent.opacity(0.16) : RoachPalette.panelGlass)
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(feature.title)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.roach(size: 12, weight: .semibold))
                         .foregroundStyle(isSelected ? RoachPalette.text : RoachPalette.muted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     Text(feature.section)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 10, weight: .medium, design: .monospaced))
                         .foregroundStyle(feature.accent.opacity(isSelected ? 0.92 : 0.58))
                         .lineLimit(1)
                         .minimumScaleFactor(0.76)
@@ -5765,12 +5767,12 @@ private struct LaunchGuideFeatureButton: View {
             .padding(.trailing, 9)
             .frame(maxWidth: .infinity, minHeight: isCompact ? 52 : 50, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
                     .fill(isSelected ? feature.accent.opacity(0.13) : RoachPalette.panelRaised.opacity(0.44))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? feature.accent.opacity(0.42) : RoachPalette.border.opacity(0.78), lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
+                    .stroke(isSelected ? feature.accent.opacity(0.42) : RoachPalette.border.opacity(0.78), lineWidth: RoachMetrics.line(1))
             )
         }
         .buttonStyle(.plain)
@@ -5784,11 +5786,11 @@ private struct LaunchGuideFeatureDetail: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: feature.systemImage)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.roach(size: 22, weight: .bold))
                     .foregroundStyle(feature.accent)
                     .frame(width: 48, height: 48)
                     .background(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
                             .fill(feature.accent.opacity(0.15))
                     )
 
@@ -5796,13 +5798,13 @@ private struct LaunchGuideFeatureDetail: View {
                     LaunchGuideTagCloud(tags: [feature.section] + feature.tags, accent: feature.accent)
 
                     Text(feature.title)
-                        .font(.system(size: 23, weight: .bold))
+                        .font(.roach(size: 23, weight: .bold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(2)
                         .minimumScaleFactor(0.76)
 
                     Text(feature.detail)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.roach(size: 13, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -5832,13 +5834,13 @@ private struct LaunchGuideFeatureDetail: View {
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             feature.accent.opacity(0.10),
                             RoachPalette.panelGlass,
-                            Color.black.opacity(0.10),
+                            RoachPalette.shade.opacity(0.10),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -5846,8 +5848,8 @@ private struct LaunchGuideFeatureDetail: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(feature.accent.opacity(0.20), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                .stroke(feature.accent.opacity(0.20), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -5877,23 +5879,23 @@ private struct LaunchGuideHintRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.roach(size: 12, weight: .semibold))
                 .foregroundStyle(accent)
                 .frame(width: 26, height: 26)
                 .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(9), style: .continuous)
                         .fill(accent.opacity(0.12))
                 )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(accent)
                     .textCase(.uppercase)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                 Text(detail)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.text.opacity(0.86))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -5914,12 +5916,12 @@ private struct LaunchGuideVideoColumn: View {
                     VStack(alignment: .leading, spacing: 5) {
                         RoachKicker("Launch Controls")
                         Text("Watch, search, or just drive.")
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.roach(size: 24, weight: .bold))
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(2)
                             .minimumScaleFactor(0.76)
                         Text("The guide is useful without the video. The command bar is the real map.")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.roach(size: 13, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -5935,7 +5937,7 @@ private struct LaunchGuideVideoColumn: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .firstTextBaseline) {
                             Label("Quick actions", systemImage: "wand.and.stars")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.roach(size: 13, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Spacer(minLength: 8)
                             RoachTag("search these", accent: RoachPalette.magenta)
@@ -5948,7 +5950,7 @@ private struct LaunchGuideVideoColumn: View {
                 RoachInsetPanel {
                     VStack(alignment: .leading, spacing: 9) {
                         Label("Access stays put", systemImage: "pin.fill")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.roach(size: 13, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
 
                         LaunchGuideHintRow(
@@ -6013,13 +6015,13 @@ private struct LaunchGuideReelCard: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             RoachPalette.cyan.opacity(0.16),
                             RoachPalette.magenta.opacity(0.08),
-                            Color.black.opacity(0.26),
+                            RoachPalette.shade.opacity(0.26),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -6037,34 +6039,34 @@ private struct LaunchGuideReelCard: View {
                         let alpha = 0.020 + 0.016 * abs(sin(time + Double(row) * 0.41))
                         context.fill(
                             Path(CGRect(x: 0, y: y, width: size.width, height: 1)),
-                            with: .color(Color.white.opacity(alpha))
+                            with: .color(RoachPalette.ink.opacity(alpha))
                         )
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous))
             }
             .allowsHitTesting(false)
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: playbackController.hasVideo ? "play.rectangle.fill" : "play.slash.fill")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.roach(size: 22, weight: .bold))
                         .foregroundStyle(playbackController.hasVideo ? RoachPalette.cyan : RoachPalette.muted)
                         .frame(width: 46, height: 46)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.black.opacity(0.22))
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                                .fill(RoachPalette.shade.opacity(0.22))
                         )
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(playbackController.hasVideo ? "Native launch reel" : "Written guide mode")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.roach(size: 18, weight: .bold))
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(2)
                             .minimumScaleFactor(0.76)
 
                         Text(playbackController.hasVideo ? "Home, command search, local AI, voice packs, games, maps, vault shelves, settings, updates." : "Video asset is missing; the field guide still carries the release path.")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -6078,7 +6080,7 @@ private struct LaunchGuideReelCard: View {
                 )
 
                 Text(playbackController.isPresentingWindow ? "Reel window is open." : playbackController.hasVideo ? "Reel is ready." : "Rebuild `roachnet-launch-guide.mp4` when capture refresh lands.")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(playbackController.hasVideo ? RoachPalette.green : RoachPalette.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -6086,8 +6088,8 @@ private struct LaunchGuideReelCard: View {
         }
         .frame(maxWidth: .infinity, minHeight: 184, alignment: .topLeading)
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(RoachPalette.cyan.opacity(0.20), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(RoachPalette.cyan.opacity(0.20), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -6115,16 +6117,16 @@ private struct LaunchGuideQuickActionTile: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Image(systemName: action.systemImage)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.roach(size: 12, weight: .bold))
                     .foregroundStyle(action.accent)
                     .frame(width: 26, height: 26)
                     .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(9), style: .continuous)
                             .fill(action.accent.opacity(0.12))
                     )
 
                 Text(action.title)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(action.accent)
                     .textCase(.uppercase)
                     .lineLimit(1)
@@ -6132,7 +6134,7 @@ private struct LaunchGuideQuickActionTile: View {
             }
 
             Text(action.detail)
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.text.opacity(0.86))
                 .lineLimit(4)
                 .fixedSize(horizontal: false, vertical: true)
@@ -6140,12 +6142,12 @@ private struct LaunchGuideQuickActionTile: View {
         .padding(9)
         .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
                 .fill(action.accent.opacity(0.08))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(action.accent.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
+                .stroke(action.accent.opacity(0.15), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -6335,7 +6337,7 @@ private struct LaunchGuideSheet: View {
     var body: some View {
         ZStack {
             RoachBackground()
-                .overlay(Color.black.opacity(0.64))
+                .overlay(RoachPalette.backdropDim(0.64))
                 .ignoresSafeArea()
 
             GeometryReader { proxy in
@@ -6410,6 +6412,7 @@ struct RoachNetMacApp: App {
         let model = WorkspaceModel()
         _model = StateObject(wrappedValue: model)
         RoachNetMacAppDelegate.bootstrapModel = model
+        RoachThemeStore.shared.bootstrap(storageRoot: URL(fileURLWithPath: model.storagePath, isDirectory: true))
     }
 
     var body: some Scene {
@@ -6417,6 +6420,11 @@ struct RoachNetMacApp: App {
             RootWorkspaceView(model: model)
                 .background(MainWindowConfigurator())
                 .frame(minWidth: 760, idealWidth: 1360, minHeight: 580, idealHeight: 860)
+                .roachThemed()
+                .onChange(of: model.storagePath) { _, path in
+                    // Themes live with the rest of the storage.
+                    RoachThemeStore.shared.bootstrap(storageRoot: URL(fileURLWithPath: path, isDirectory: true))
+                }
                 .onAppear {
                     roachWindowDebug("RootWorkspaceView appeared.")
                     appDelegate.model = model
@@ -6460,7 +6468,7 @@ private final class RoachNetAboutWindowPresenter {
             return
         }
 
-        let host = NSHostingController(rootView: RoachNetAboutView())
+        let host = NSHostingController(rootView: RoachNetAboutView().roachThemed())
         let aboutWindow = NSWindow(contentViewController: host)
         aboutWindow.title = "About RoachNet"
         aboutWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
@@ -6886,7 +6894,7 @@ private struct RootWorkspaceView: View {
                 }
 
                 if showGlobalRoachClaw {
-                    Color.black.opacity(0.30)
+                    RoachPalette.shade.opacity(0.30)
                         .ignoresSafeArea()
                         .onTapGesture {
                             closeGlobalRoachClaw()
@@ -7014,7 +7022,7 @@ private struct RootWorkspaceView: View {
         HStack(spacing: isTight ? 8 : 10) {
             HStack(spacing: 9) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(11), style: .continuous)
                         .fill(paneAccent.opacity(0.13))
                     RoachModuleMark(
                         systemName: activePane.icon,
@@ -7027,12 +7035,12 @@ private struct RootWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(activePane.rawValue)
-                        .font(.system(size: isTight ? 12 : 13, weight: .bold, design: .rounded))
+                        .font(.roach(size: isTight ? 12 : 13, weight: .bold, design: .rounded))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(1)
                     if !isVeryTight {
                         Text(shellHintSummary)
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                             .minimumScaleFactor(0.78)
@@ -7086,15 +7094,15 @@ private struct RootWorkspaceView: View {
         }
         .padding(.horizontal, isTight ? 9 : 11)
         .padding(.vertical, isTight ? 7 : 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.black.opacity(0.82),
+                            RoachPalette.shade.opacity(0.82),
                             RoachPalette.panel.opacity(0.88),
-                            Color.black.opacity(0.64),
+                            RoachPalette.shade.opacity(0.64),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -7102,11 +7110,11 @@ private struct RootWorkspaceView: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(paneAccent.opacity(0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(paneAccent.opacity(0.18), lineWidth: RoachMetrics.line(1))
         )
-        .shadow(color: Color.black.opacity(0.30), radius: 18, x: 0, y: 10)
-        .shadow(color: paneAccent.opacity(0.05), radius: 24, x: 0, y: 12)
+        .shadow(color: RoachPalette.shade.opacity(0.30), radius: 18, x: 0, y: 10)
+        .shadow(color: paneAccent.opacity(RoachMetrics.glow(0.05)), radius: 24, x: 0, y: 12)
     }
 
     private func openGlobalRoachClaw() {
@@ -7235,12 +7243,12 @@ private struct RootWorkspaceView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 RoachKicker("Welcome to")
                                 Text("RoachNet")
-                                    .font(.system(size: isTight ? 19 : 22, weight: .bold))
+                                    .font(.roach(size: isTight ? 19 : 22, weight: .bold))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.74)
                                 Text("Offline on purpose.")
-                                    .font(.system(size: isTight ? 11 : 12, weight: .medium))
+                                    .font(.roach(size: isTight ? 11 : 12, weight: .medium))
                                     .foregroundStyle(RoachPalette.muted)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.82)
@@ -7279,16 +7287,16 @@ private struct RootWorkspaceView: View {
 
                                 if !isVeryTight {
                                     Rectangle()
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(RoachPalette.ink.opacity(0.06))
                                         .frame(height: 1)
 
                                     VStack(alignment: .leading, spacing: 6) {
                                         Text(RoachNetGlobalHotKey.hint)
-                                            .font(.system(size: 12, weight: .medium))
+                                            .font(.roach(size: 12, weight: .medium))
                                             .foregroundStyle(RoachPalette.text.opacity(0.92))
                                             .fixedSize(horizontal: false, vertical: true)
                                         Text("Search. Claw. Settings.")
-                                            .font(.system(size: 12, weight: .medium))
+                                            .font(.roach(size: 12, weight: .medium))
                                             .foregroundStyle(RoachPalette.muted)
                                             .fixedSize(horizontal: false, vertical: true)
                                     }
@@ -7409,10 +7417,10 @@ private struct RootWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         RoachKicker("Welcome to")
                         Text("RoachNet")
-                            .font(.system(size: isTight ? 22 : 26, weight: .bold))
+                            .font(.roach(size: isTight ? 22 : 26, weight: .bold))
                             .foregroundStyle(RoachPalette.text)
                         Text("Offline on purpose.")
-                            .font(.system(size: isTight ? 12 : 13, weight: .medium))
+                            .font(.roach(size: isTight ? 12 : 13, weight: .medium))
                             .foregroundStyle(paneAccent)
                     }
 
@@ -7432,7 +7440,7 @@ private struct RootWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             RoachKicker("Surfaces")
                             Text(activePane.rawValue)
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.roach(size: 16, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                         }
 
@@ -7444,7 +7452,7 @@ private struct RootWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         RoachKicker("Surfaces")
                         Text(activePane.rawValue)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.roach(size: 16, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         RoachTag(activePane.rawValue, accent: RoachPalette.green)
                     }
@@ -7469,10 +7477,10 @@ private struct RootWorkspaceView: View {
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(pane.rawValue)
-                                        .font(.system(size: isTight ? 13 : 14, weight: .semibold))
+                                        .font(.roach(size: isTight ? 13 : 14, weight: .semibold))
                                         .foregroundStyle(activePane == pane ? RoachPalette.text : RoachPalette.text.opacity(0.92))
                                     Text(pane.subtitle)
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.roach(size: 11, weight: .medium))
                                         .foregroundStyle(RoachPalette.muted)
                                         .lineLimit(2)
                                 }
@@ -7482,7 +7490,7 @@ private struct RootWorkspaceView: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 14)
                             .background(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                                     .fill(
                                         activePane == pane
                                             ? RoachPalette.panelSoft.opacity(0.78)
@@ -7490,7 +7498,7 @@ private struct RootWorkspaceView: View {
                                     )
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                                     .stroke(
                                         activePane == pane ? RoachPalette.green.opacity(0.24) : RoachPalette.border,
                                         lineWidth: 1
@@ -7601,31 +7609,31 @@ private struct RootWorkspaceView: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(shellTitle)
-                                .font(.system(size: isTight ? 26 : 30, weight: .bold))
+                                .font(.roach(size: isTight ? 26 : 30, weight: .bold))
                                 .foregroundStyle(RoachPalette.text)
                             Text(shellDetail)
-                                .font(.system(size: isTight ? 13 : 14, weight: .regular))
+                                .font(.roach(size: isTight ? 13 : 14, weight: .regular))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(shellTitle)
-                            .font(.system(size: isTight ? 26 : 30, weight: .bold))
+                            .font(.roach(size: isTight ? 26 : 30, weight: .bold))
                             .foregroundStyle(RoachPalette.text)
                         Text(shellDetail)
-                            .font(.system(size: isTight ? 13 : 14, weight: .medium))
+                            .font(.roach(size: isTight ? 13 : 14, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                     }
                 }
             } actions: {
                 VStack(alignment: .trailing, spacing: 5) {
                     Text(shellStatusSummary)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(model.setupCompleted ? paneAccent.opacity(0.92) : RoachPalette.warning)
                         .multilineTextAlignment(.trailing)
                     Text(shellHintSummary)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .multilineTextAlignment(.trailing)
                         .fixedSize(horizontal: false, vertical: true)
@@ -7853,7 +7861,7 @@ private struct RootWorkspaceView: View {
             responsiveBar {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Contained desktop build v\(bundleVersion)")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                 }
             } actions: {
@@ -7937,14 +7945,14 @@ private struct RootWorkspaceView: View {
             VStack(alignment: .leading, spacing: 8) {
                 RoachKicker("Home")
                 Text("Home is where the Roach is!")
-                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .font(.roach(size: 30, weight: .black, design: .rounded))
                     .foregroundStyle(RoachPalette.text)
                     .lineLimit(2)
                     .minimumScaleFactor(0.72)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(homeMascotLine)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .foregroundStyle(RoachPalette.muted)
                     .lineSpacing(2)
                     .lineLimit(3)
@@ -7954,7 +7962,7 @@ private struct RootWorkspaceView: View {
             homeHeroCommandWell
 
             Text(hardware == nil ? "Apple Silicon lane warming up." : "\(hardware?.platformLabel ?? "Apple Silicon") · \(hardware?.recommendedModelClass ?? "local")")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(RoachPalette.green.opacity(0.88))
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
@@ -7971,17 +7979,17 @@ private struct RootWorkspaceView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "command.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.roach(size: 15, weight: .bold))
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Command")
-                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .font(.roach(size: 11, weight: .black, design: .rounded))
                         Text(RoachNetGlobalHotKey.hint)
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .font(.roach(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(RoachPalette.green.opacity(0.86))
                     }
                     Spacer(minLength: 4)
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.roach(size: 9, weight: .black))
                         .foregroundStyle(RoachPalette.green)
                 }
                 .foregroundStyle(RoachPalette.text)
@@ -7989,13 +7997,13 @@ private struct RootWorkspaceView: View {
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
                                     RoachPalette.green.opacity(0.16),
                                     RoachPalette.panelRaised.opacity(0.72),
-                                    Color.black.opacity(0.20),
+                                    RoachPalette.shade.opacity(0.20),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -8003,8 +8011,8 @@ private struct RootWorkspaceView: View {
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .stroke(RoachPalette.green.opacity(0.22), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
+                        .stroke(RoachPalette.green.opacity(0.22), lineWidth: RoachMetrics.line(1))
                 )
             }
             .buttonStyle(RoachCardButtonStyle())
@@ -8014,16 +8022,16 @@ private struct RootWorkspaceView: View {
                 homePromptFocused = true
             } label: {
                 Image(systemName: "text.cursor")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.roach(size: 14, weight: .bold))
                     .foregroundStyle(RoachPalette.magenta)
                     .frame(width: 44, height: 44)
                     .background(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
                             .fill(RoachPalette.magenta.opacity(0.11))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(RoachPalette.magenta.opacity(0.18), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
+                            .stroke(RoachPalette.magenta.opacity(0.18), lineWidth: RoachMetrics.line(1))
                     )
             }
             .buttonStyle(RoachCardButtonStyle())
@@ -8107,29 +8115,29 @@ private struct RootWorkspaceView: View {
     ) -> some View {
         HStack(spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .bold))
+                .font(.roach(size: 13, weight: .bold))
                 .foregroundStyle(accent)
                 .frame(width: 30, height: 30)
                 .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(11), style: .continuous)
                         .fill(accent.opacity(0.12))
                 )
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title.uppercased())
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.roach(size: 9, weight: .bold, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                     Spacer(minLength: 4)
                     Text(value)
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .bold, design: .monospaced))
                         .foregroundStyle(accent)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
                 }
 
                 Text(detail)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.roach(size: 11, weight: .medium))
                     .foregroundStyle(RoachPalette.text.opacity(0.76))
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
@@ -8138,12 +8146,12 @@ private struct RootWorkspaceView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.62))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(accent.opacity(0.14), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
+                .stroke(accent.opacity(0.14), lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -8160,9 +8168,9 @@ private struct RootWorkspaceView: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "command")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.roach(size: 10, weight: .bold))
                             Text(RoachNetGlobalHotKey.hint)
-                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                .font(.roach(size: 10, weight: .black, design: .monospaced))
                         }
                         .foregroundStyle(RoachPalette.green)
                         .padding(.horizontal, 8)
@@ -8181,7 +8189,7 @@ private struct RootWorkspaceView: View {
                         Task { await model.togglePromptDictation() }
                     } label: {
                         Image(systemName: model.isDictatingPrompt ? "waveform.circle.fill" : "mic.circle.fill")
-                            .font(.system(size: 21, weight: .semibold))
+                            .font(.roach(size: 21, weight: .semibold))
                             .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.magenta)
                             .frame(width: 34, height: 34)
                     }
@@ -8190,7 +8198,7 @@ private struct RootWorkspaceView: View {
 
                     TextField("Ask RoachClaw what to do next.", text: $model.promptDraft, axis: .vertical)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.roach(size: 14, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(1...3)
                         .focused($homePromptFocused)
@@ -8202,7 +8210,7 @@ private struct RootWorkspaceView: View {
                         sendHomePrompt()
                     } label: {
                         Image(systemName: model.isSendingPrompt ? "hourglass" : "arrow.up.circle.fill")
-                            .font(.system(size: 21, weight: .bold))
+                            .font(.roach(size: 21, weight: .bold))
                             .foregroundStyle(homeCanSendPrompt ? RoachPalette.green : RoachPalette.muted)
                             .frame(width: 34, height: 34)
                     }
@@ -8231,7 +8239,7 @@ private struct RootWorkspaceView: View {
                 RoachKicker("RoachClaw Picks")
                 Spacer(minLength: 8)
                 Text("\(homeNextMoves.count) next moves")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -8252,18 +8260,18 @@ private struct RootWorkspaceView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: move.systemImage)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.roach(size: 14, weight: .bold))
                         .foregroundStyle(move.accent)
                         .frame(width: 32, height: 32)
                         .background(
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(11), style: .continuous)
                                 .fill(move.accent.opacity(0.13))
                         )
 
                     Spacer(minLength: 8)
 
                     Text(move.badge.uppercased())
-                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .font(.roach(size: 9, weight: .black, design: .monospaced))
                         .foregroundStyle(move.accent)
                         .lineLimit(1)
                         .minimumScaleFactor(0.70)
@@ -8271,13 +8279,13 @@ private struct RootWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(move.title)
-                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .font(.roach(size: 15, weight: .black, design: .rounded))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
 
                     Text(move.detail)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
@@ -8286,13 +8294,13 @@ private struct RootWorkspaceView: View {
             .padding(11)
             .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
                                 move.accent.opacity(0.13),
                                 RoachPalette.panelRaised.opacity(0.68),
-                                Color.black.opacity(0.18),
+                                RoachPalette.shade.opacity(0.18),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -8300,8 +8308,8 @@ private struct RootWorkspaceView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(move.accent.opacity(0.18), lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                    .stroke(move.accent.opacity(0.18), lineWidth: RoachMetrics.line(1))
             )
         }
         .buttonStyle(RoachCardButtonStyle())
@@ -8427,7 +8435,7 @@ private struct RootWorkspaceView: View {
                     title: "Point at your notes",
                     detail: "Import an Obsidian vault without copying it into another note jail.",
                     badge: "Notes",
-                    systemImage: "square.stack.3d.up.badge.plus",
+                    systemImage: "folder.badge.plus",
                     accent: RoachPalette.cyan,
                     target: .importVault
                 )
@@ -8608,22 +8616,22 @@ private struct RootWorkspaceView: View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 10) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
                         .fill(accent.opacity(0.14))
                     Image(systemName: systemImage)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.roach(size: 14, weight: .semibold))
                         .foregroundStyle(accent)
                 }
                 .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.roach(size: 14, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                     Text(detail)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(2)
                         .minimumScaleFactor(0.82)
@@ -8632,19 +8640,19 @@ private struct RootWorkspaceView: View {
                 Spacer(minLength: 6)
 
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.roach(size: 11, weight: .bold))
                     .foregroundStyle(accent)
             }
             .padding(9)
             .frame(maxWidth: .infinity, minHeight: 52, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
                                 accent.opacity(0.10),
                                 RoachPalette.panelRaised.opacity(0.82),
-                                Color.black.opacity(0.16),
+                                RoachPalette.shade.opacity(0.16),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -8652,8 +8660,8 @@ private struct RootWorkspaceView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(accent.opacity(0.20), lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                    .stroke(accent.opacity(0.20), lineWidth: RoachMetrics.line(1))
             )
         }
         .buttonStyle(RoachCardButtonStyle())
@@ -8786,10 +8794,10 @@ private struct RootWorkspaceView: View {
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text("RoachClaw")
-                                .font(.system(size: 21, weight: .bold, design: .rounded))
+                                .font(.roach(size: 21, weight: .bold, design: .rounded))
                                 .foregroundStyle(RoachPalette.text)
                             Text("Local first.")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.roach(size: 11, weight: .medium))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     }
@@ -8860,11 +8868,11 @@ private struct RootWorkspaceView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.roach(size: 18, weight: .semibold))
                     .foregroundStyle(RoachPalette.text)
                     .frame(width: 42, height: 42)
                     .background(Circle().fill(RoachPalette.panelRaised.opacity(0.74)))
-                    .overlay(Circle().stroke(RoachPalette.border, lineWidth: 1))
+                    .overlay(Circle().stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1)))
             }
             .menuStyle(.borderlessButton)
         }
@@ -9859,7 +9867,7 @@ private struct RootWorkspaceView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 10) {
                                     ZStack {
-                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                             .fill(
                                                 LinearGradient(
                                                     colors: [
@@ -9873,17 +9881,17 @@ private struct RootWorkspaceView: View {
                                             .frame(width: 42, height: 42)
 
                                         Image(systemName: "bolt.fill")
-                                            .font(.system(size: 16, weight: .bold))
+                                            .font(.roach(size: 16, weight: .bold))
                                             .foregroundStyle(RoachPalette.text)
                                     }
 
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text("RoachClaw")
-                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                            .font(.roach(size: 11, weight: .bold, design: .monospaced))
                                             .tracking(1.2)
                                             .foregroundStyle(RoachPalette.magenta)
                                         Text(hasMessages ? "Thread" : "New chat")
-                                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                                            .font(.roach(size: 20, weight: .bold, design: .rounded))
                                             .foregroundStyle(RoachPalette.text)
                                     }
                                 }
@@ -9900,7 +9908,7 @@ private struct RootWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(spacing: 10) {
                                 ZStack {
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                         .fill(
                                             LinearGradient(
                                                 colors: [
@@ -9914,17 +9922,17 @@ private struct RootWorkspaceView: View {
                                         .frame(width: 42, height: 42)
 
                                     Image(systemName: "bolt.fill")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.roach(size: 16, weight: .bold))
                                         .foregroundStyle(RoachPalette.text)
                                 }
 
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("RoachClaw")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .font(.roach(size: 11, weight: .bold, design: .monospaced))
                                         .tracking(1.2)
                                         .foregroundStyle(RoachPalette.magenta)
                                     Text(hasMessages ? "Thread" : "New chat")
-                                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                                        .font(.roach(size: 20, weight: .bold, design: .rounded))
                                         .foregroundStyle(RoachPalette.text)
                                 }
                             }
@@ -9939,14 +9947,14 @@ private struct RootWorkspaceView: View {
                     if let speechStatusLine = model.speechStatusLine {
                         HStack(spacing: 10) {
                             Image(systemName: model.isDictatingPrompt ? "waveform.circle.fill" : "speaker.wave.2.circle.fill")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.roach(size: 15, weight: .semibold))
                                 .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.cyan)
                             Text(speechStatusLine)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.roach(size: 12, weight: .medium))
                                 .foregroundStyle(RoachPalette.muted)
                             Spacer(minLength: 8)
                             Text(model.isDictatingPrompt ? "Voice prompt live" : "Reply playback")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .font(.roach(size: 10, weight: .bold, design: .monospaced))
                                 .tracking(1.0)
                                 .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.cyan)
                         }
@@ -9958,7 +9966,7 @@ private struct RootWorkspaceView: View {
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                     }
                 }
@@ -9969,7 +9977,7 @@ private struct RootWorkspaceView: View {
                             HStack(alignment: .center, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(threadTitle)
-                                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                                        .font(.roach(size: 18, weight: .bold, design: .rounded))
                                         .foregroundStyle(RoachPalette.text)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
@@ -9985,7 +9993,7 @@ private struct RootWorkspaceView: View {
 
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(threadTitle)
-                                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    .font(.roach(size: 18, weight: .bold, design: .rounded))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(2)
                                     .truncationMode(.middle)
@@ -10007,13 +10015,13 @@ private struct RootWorkspaceView: View {
                         .frame(minHeight: 360, idealHeight: 430, maxHeight: 520)
                         .padding(14)
                         .background(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [
                                             RoachPalette.panelRaised.opacity(0.84),
                                             RoachPalette.panel.opacity(0.74),
-                                            Color.black.opacity(0.28),
+                                            RoachPalette.shade.opacity(0.28),
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
@@ -10021,8 +10029,8 @@ private struct RootWorkspaceView: View {
                                 )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
+                                .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
                         )
                     }
                 } else {
@@ -10033,13 +10041,13 @@ private struct RootWorkspaceView: View {
                                     .fill(RoachPalette.cyan.opacity(0.14))
                                     .frame(width: 48, height: 48)
                                 Image(systemName: "message.badge.waveform.fill")
-                                    .font(.system(size: 19, weight: .bold))
+                                    .font(.roach(size: 19, weight: .bold))
                                     .foregroundStyle(RoachPalette.cyan)
                             }
 
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Start a thread.")
-                                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    .font(.roach(size: 18, weight: .bold, design: .rounded))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(1)
                             }
@@ -10049,13 +10057,13 @@ private struct RootWorkspaceView: View {
                     }
                     .padding(18)
                     .background(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
                                         RoachPalette.panelRaised.opacity(0.76),
                                         RoachPalette.panel.opacity(0.62),
-                                        Color.black.opacity(0.18),
+                                        RoachPalette.shade.opacity(0.18),
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -10063,8 +10071,8 @@ private struct RootWorkspaceView: View {
                             )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(24), style: .continuous)
+                            .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
                     )
                 }
 
@@ -10115,7 +10123,7 @@ private struct RootWorkspaceView: View {
 
                 if replies.isEmpty && memories.isEmpty {
                     Text("No saved output yet.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 12)], alignment: .leading, spacing: 12) {
@@ -10164,20 +10172,20 @@ private struct RootWorkspaceView: View {
                 Circle()
                     .fill(accent)
                     .frame(width: 8, height: 8)
-                    .shadow(color: accent.opacity(0.35), radius: 8, x: 0, y: 0)
+                    .shadow(color: accent.opacity(RoachMetrics.glow(0.35)), radius: 8, x: 0, y: 0)
                 Text(eyebrow)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .bold, design: .monospaced))
                     .tracking(0.9)
                     .foregroundStyle(accent)
             }
 
             Text(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled output" : title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.roach(size: 13, weight: .semibold))
                 .foregroundStyle(RoachPalette.text)
                 .lineLimit(2)
 
             Text(detail)
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(4)
 
@@ -10190,13 +10198,13 @@ private struct RootWorkspaceView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: 172, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             RoachPalette.panelRaised.opacity(0.82),
                             accent.opacity(0.08),
-                            Color.black.opacity(0.10),
+                            RoachPalette.shade.opacity(0.10),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -10204,8 +10212,8 @@ private struct RootWorkspaceView: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(accent.opacity(0.26), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(accent.opacity(0.26), lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -10213,7 +10221,7 @@ private struct RootWorkspaceView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Prompts")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .foregroundStyle(RoachPalette.text)
                 Spacer(minLength: 8)
                 RoachTag(RoachNetGlobalHotKey.hint, accent: RoachPalette.magenta)
@@ -10234,12 +10242,12 @@ private struct RootWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: "sparkles")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.roach(size: 13, weight: .bold))
                                     .foregroundStyle(RoachPalette.magenta)
                                     .frame(width: 24, height: 24)
 
                                 Text(prompt)
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                                     .multilineTextAlignment(.leading)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -10248,13 +10256,13 @@ private struct RootWorkspaceView: View {
                         .padding(12)
                         .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
                         .background(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [
                                             RoachPalette.panelRaised.opacity(0.88),
                                             RoachPalette.panel.opacity(0.74),
-                                            Color.black.opacity(0.12),
+                                            RoachPalette.shade.opacity(0.12),
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
@@ -10262,8 +10270,8 @@ private struct RootWorkspaceView: View {
                                 )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                     }
                     .buttonStyle(RoachCardButtonStyle())
@@ -10295,13 +10303,13 @@ private struct RootWorkspaceView: View {
 
             if let latestPrompt, !latestPrompt.isEmpty {
                 Text(latestPrompt)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.roach(size: 12, weight: .semibold))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(2)
             }
 
             Text(reply)
-                .font(.system(size: 14, weight: .medium))
+                .font(.roach(size: 14, weight: .medium))
                 .foregroundStyle(RoachPalette.text)
                 .lineLimit(5)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -10337,13 +10345,13 @@ private struct RootWorkspaceView: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             RoachPalette.panelRaised.opacity(0.92),
                             RoachPalette.panel.opacity(0.82),
-                            Color.black.opacity(0.16),
+                            RoachPalette.shade.opacity(0.16),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -10351,8 +10359,8 @@ private struct RootWorkspaceView: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(RoachPalette.borderStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
+                .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -10476,16 +10484,16 @@ private struct RootWorkspaceView: View {
                                 .frame(width: 34, height: 34)
 
                             Image(systemName: scope.systemImage)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.roach(size: 14, weight: .semibold))
                                 .foregroundStyle(scope.accent)
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(scope.title)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.roach(size: 13, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Text(scope.detail)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.roach(size: 11, weight: .medium))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -10497,12 +10505,12 @@ private struct RootWorkspaceView: View {
                     }
                     .padding(12)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(enabled ? 0.74 : 0.58))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(enabled ? scope.accent.opacity(0.24) : RoachPalette.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                            .stroke(enabled ? scope.accent.opacity(0.24) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
                     )
                 }
                 .buttonStyle(.plain)
@@ -10523,11 +10531,11 @@ private struct RootWorkspaceView: View {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(kicker.uppercased())
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.roach(size: 10, weight: .bold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
                         Text(title)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.roach(size: 15, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                             .multilineTextAlignment(.leading)
                     }
@@ -10535,29 +10543,29 @@ private struct RootWorkspaceView: View {
                     Spacer(minLength: 10)
 
                     Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.roach(size: 16, weight: .bold))
                         .foregroundStyle(isActive ? accent : RoachPalette.muted)
                 }
 
                 Text(detail)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(isActive ? "Active" : "Use")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(accent)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
                                 accent.opacity(isActive ? 0.16 : 0.08),
                                 RoachPalette.panelRaised.opacity(0.86),
-                                Color.black.opacity(0.16),
+                                RoachPalette.shade.opacity(0.16),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -10565,8 +10573,8 @@ private struct RootWorkspaceView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isActive ? accent.opacity(0.55) : RoachPalette.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                    .stroke(isActive ? accent.opacity(0.55) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
             )
         }
         .buttonStyle(RoachCardButtonStyle())
@@ -10578,7 +10586,7 @@ private struct RootWorkspaceView: View {
                 Task { await model.togglePromptDictation() }
             } label: {
                 Image(systemName: model.isDictatingPrompt ? "waveform.circle.fill" : "mic.circle.fill")
-                    .font(.system(size: 21, weight: .semibold))
+                    .font(.roach(size: 21, weight: .semibold))
                     .foregroundStyle(model.isDictatingPrompt ? RoachPalette.green : RoachPalette.magenta)
             }
             .buttonStyle(.plain)
@@ -10586,17 +10594,17 @@ private struct RootWorkspaceView: View {
 
                 TextField("Ask RoachClaw", text: $model.promptDraft, axis: .vertical)
                     .textFieldStyle(.plain)
-                .font(.system(size: 15, weight: .medium))
+                .font(.roach(size: 15, weight: .medium))
                 .foregroundStyle(RoachPalette.text)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                         .fill(RoachPalette.panelRaised.opacity(0.92))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(RoachPalette.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                        .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                 )
                 .lineLimit(1...4)
         }
@@ -11211,7 +11219,7 @@ private struct RootWorkspaceView: View {
                                 Button {
                                     model.importObsidianVault()
                                 } label: {
-                                    Label("Import Vault", systemImage: "square.stack.3d.up.badge.plus")
+                                    Label("Import Vault", systemImage: "folder.badge.plus")
                                         .labelStyle(.titleAndIcon)
                                 }
                                 .buttonStyle(RoachPrimaryButtonStyle())
@@ -11229,7 +11237,7 @@ private struct RootWorkspaceView: View {
                                 Button {
                                     model.importObsidianVault()
                                 } label: {
-                                    Label("Import Vault", systemImage: "square.stack.3d.up.badge.plus")
+                                    Label("Import Vault", systemImage: "folder.badge.plus")
                                         .labelStyle(.titleAndIcon)
                                 }
                                 .buttonStyle(RoachPrimaryButtonStyle())
@@ -11289,25 +11297,25 @@ private struct RootWorkspaceView: View {
             if isVaultDropTarget {
                 HStack(spacing: 10) {
                     Image(systemName: "tray.and.arrow.down.fill")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.roach(size: 16, weight: .bold))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Drop into Vault")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(.roach(size: 13, weight: .bold, design: .rounded))
                         Text("Files and folders get copied. No rental shelf involved.")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.roach(size: 11, weight: .medium))
                     }
                 }
                 .foregroundStyle(RoachPalette.text)
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                         .fill(RoachPalette.panelRaised.opacity(0.94))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(RoachPalette.green.opacity(0.72), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                        .stroke(RoachPalette.green.opacity(0.72), lineWidth: RoachMetrics.line(1))
                 )
-                .shadow(color: RoachPalette.green.opacity(0.22), radius: 18, x: 0, y: 8)
+                .shadow(color: RoachPalette.green.opacity(RoachMetrics.glow(0.22)), radius: 18, x: 0, y: 8)
                 .padding(14)
                 .transition(.scale(scale: 0.94).combined(with: .opacity))
             }
@@ -11713,7 +11721,7 @@ private struct RootWorkspaceView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(account.notes.prefix(3), id: \.self) { note in
                                     Text(note)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.roach(size: 12, weight: .medium))
                                         .foregroundStyle(RoachPalette.muted)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
@@ -11744,7 +11752,7 @@ private struct RootWorkspaceView: View {
                                 )
                             ) {
                                 Text("Enabled")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                             }
                             .toggleStyle(.switch)
@@ -11809,7 +11817,7 @@ private struct RootWorkspaceView: View {
                         if let keys = roachTail.preAuthKeys, !keys.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Join Keys")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
 
                                 ForEach(keys.prefix(3)) { key in
@@ -11825,7 +11833,7 @@ private struct RootWorkspaceView: View {
                         if let routes = roachTail.routes, !routes.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Approved Routes")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
 
                                 ForEach(routes.prefix(4)) { route in
@@ -11858,7 +11866,7 @@ private struct RootWorkspaceView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(roachTail.notes.prefix(3), id: \.self) { note in
                                     Text(note)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.roach(size: 12, weight: .medium))
                                         .foregroundStyle(RoachPalette.muted)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
@@ -11871,7 +11879,7 @@ private struct RootWorkspaceView: View {
                         {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Phone Pairing")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
 
                                 HStack(alignment: .top, spacing: 16) {
@@ -11881,24 +11889,24 @@ private struct RootWorkspaceView: View {
                                         .frame(width: 158, height: 158)
                                         .padding(10)
                                         .background(
-                                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                                .fill(Color.white.opacity(0.96))
+                                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                                .fill(RoachPalette.ink.opacity(0.96))
                                         )
 
                                     VStack(alignment: .leading, spacing: 8) {
                                         Text("Scan this in RoachNetiOS to load the bridge URL and one-time join code.")
-                                            .font(.system(size: 13, weight: .medium))
+                                            .font(.roach(size: 13, weight: .medium))
                                             .foregroundStyle(RoachPalette.text)
                                             .fixedSize(horizontal: false, vertical: true)
 
                                         if let expiresAt = roachTail.joinCodeExpiresAt, !expiresAt.isEmpty {
                                             Text("Code rotates at \(expiresAt).")
-                                                .font(.system(size: 12, weight: .medium))
+                                                .font(.roach(size: 12, weight: .medium))
                                                 .foregroundStyle(RoachPalette.muted)
                                         }
 
                                         Text("The phone mints its peer token during pairing.")
-                                            .font(.system(size: 12, weight: .medium))
+                                            .font(.roach(size: 12, weight: .medium))
                                             .foregroundStyle(RoachPalette.muted)
                                             .fixedSize(horizontal: false, vertical: true)
                                     }
@@ -11930,7 +11938,7 @@ private struct RootWorkspaceView: View {
                                 )
                             ) {
                                 Text("Enabled")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                             }
                             .toggleStyle(.switch)
@@ -11972,7 +11980,7 @@ private struct RootWorkspaceView: View {
                         if !roachSync.peers.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("RoachSync Peers")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
 
                                 ForEach(roachSync.peers.prefix(4)) { peer in
@@ -11989,7 +11997,7 @@ private struct RootWorkspaceView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(roachSync.notes.prefix(3), id: \.self) { note in
                                     Text(note)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.roach(size: 12, weight: .medium))
                                         .foregroundStyle(RoachPalette.muted)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
@@ -12021,12 +12029,12 @@ private struct RootWorkspaceView: View {
                         accent: RoachPalette.green
                     )
                     Text(RuntimeSurfacePathLabel.displayDetail(model.storagePath, kind: .storageRoot))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text("Maps, Wikipedia packages, archives, and logs use this root.")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.roach(size: 13, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -12445,7 +12453,7 @@ private struct RootWorkspaceView: View {
                     section: "Workspace",
                     title: "Import Obsidian Vault",
                     detail: "Bring an existing markdown vault into RoachNet without copying it into a second notes silo.",
-                    systemImage: "square.stack.3d.up.badge.plus",
+                    systemImage: "folder.badge.plus",
                     target: .importObsidianVault,
                     keywords: ["obsidian", "vault", "markdown", "notes", "import"],
                     aliases: ["import notes", "markdown vault"],
@@ -13347,7 +13355,7 @@ private struct RootWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(15), style: .continuous)
                                 .fill(accent.opacity(0.14))
 
                             RoachModuleMark(
@@ -13362,26 +13370,26 @@ private struct RootWorkspaceView: View {
                         Spacer(minLength: 8)
 
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.roach(size: 11, weight: .bold))
                             .foregroundStyle(accent)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(title)
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.roach(size: 18, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         Text(value)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 12, weight: .semibold, design: .monospaced))
                             .foregroundStyle(accent)
                         Text(detail)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.roach(size: 13, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Text("Open lane")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(accent)
                 }
             .frame(maxWidth: .infinity, minHeight: 156, alignment: .topLeading)
@@ -13418,18 +13426,18 @@ private struct RootWorkspaceView: View {
         } label: {
             HStack(spacing: 10) {
                 Text(section.rawValue)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .foregroundStyle(homeMenuSection == section ? RoachPalette.text : RoachPalette.muted)
                 Spacer(minLength: 10)
                 Text(homeMenuCount(for: section, installedCount: installedCount, availableCount: availableCount))
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(homeMenuSection == section ? paneAccent : RoachPalette.muted)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                     .fill(
                         homeMenuSection == section
                             ? paneAccent.opacity(0.14)
@@ -13437,7 +13445,7 @@ private struct RootWorkspaceView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                     .stroke(
                         homeMenuSection == section ? paneAccent.opacity(0.22) : RoachPalette.border,
                         lineWidth: 1
@@ -13466,10 +13474,10 @@ private struct RootWorkspaceView: View {
         RoachInsetPanel {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.roach(size: 16, weight: .semibold))
                     .foregroundStyle(RoachPalette.text)
                 Text(detail)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.roach(size: 13, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -13544,11 +13552,11 @@ private struct RootWorkspaceView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top) {
                     Image(systemName: descriptor.systemImage)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.roach(size: 18, weight: .semibold))
                         .foregroundStyle(isInstalled ? RoachPalette.green : RoachPalette.warning)
                         .frame(width: 38, height: 38)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                 .fill(RoachPalette.panelRaised.opacity(0.92))
                         )
 
@@ -13562,10 +13570,10 @@ private struct RootWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(descriptor.title)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.roach(size: 18, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                     Text(descriptor.detail)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(3)
                         .minimumScaleFactor(0.84)
@@ -13597,7 +13605,7 @@ private struct RootWorkspaceView: View {
 
                     if let poweredBy = service.powered_by, !poweredBy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(poweredBy)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                     }
@@ -13674,11 +13682,11 @@ private struct RootWorkspaceView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top) {
                     Image(systemName: item.systemImage)
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.roach(size: 19, weight: .semibold))
                         .foregroundStyle(RoachPalette.green)
                         .frame(width: 40, height: 40)
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                                 .fill(RoachPalette.panelRaised.opacity(0.92))
                         )
 
@@ -13693,11 +13701,11 @@ private struct RootWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.title)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.roach(size: 18, weight: .bold))
                         .foregroundStyle(RoachPalette.text)
                         .minimumScaleFactor(0.82)
                     Text(item.detail)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(3)
                         .minimumScaleFactor(0.84)
@@ -13705,7 +13713,7 @@ private struct RootWorkspaceView: View {
 
                 HStack {
                     Text(item.isInstalled ? "Open" : "Install")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(item.isInstalled ? RoachPalette.green : RoachPalette.warning)
                     Spacer()
                 }
@@ -13773,11 +13781,11 @@ private struct RootWorkspaceView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top) {
                     Image(systemName: step.systemImage)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.roach(size: 18, weight: .semibold))
                         .foregroundStyle(step.accent)
                         .frame(width: 38, height: 38)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                 .fill(RoachPalette.panelRaised.opacity(0.92))
                         )
 
@@ -13788,10 +13796,10 @@ private struct RootWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(step.title)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.roach(size: 18, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                     Text(step.detail)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(3)
                         .minimumScaleFactor(0.84)
@@ -13837,18 +13845,18 @@ private struct RootWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text((job.filepath as NSString).lastPathComponent)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 13, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.text)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer()
                             Text("\(job.progress)%")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .font(.roach(size: 12, weight: .bold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.green)
                         }
 
                         Text(job.status ?? "queued")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
 
                         GeometryReader { proxy in
@@ -13864,7 +13872,7 @@ private struct RootWorkspaceView: View {
 
                         if let failedReason = job.failedReason, !failedReason.isEmpty {
                             Text(failedReason)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.roach(size: 12, weight: .medium))
                                 .foregroundStyle(RoachPalette.warning)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -13932,6 +13940,27 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         let paneFile = directory.appendingPathComponent("pane.txt")
         let requested = (try? String(contentsOf: paneFile, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // An optional `theme.txt` ("<theme id> [dark|light|system]") switches
+        // the theme first, so a gate can capture every pane in every theme.
+        let themeFile = directory.appendingPathComponent("theme.txt")
+        var themeChanged = false
+        if let themeRequest = (try? String(contentsOf: themeFile, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !themeRequest.isEmpty
+        {
+            let parts = themeRequest.split(separator: " ").map(String.init)
+            let store = RoachThemeStore.shared
+            if let id = parts.first, let entry = store.themes.first(where: { $0.id == id }) {
+                themeChanged = true
+                store.update { settings in
+                    settings.themeID = entry.id
+                    if parts.count > 1, let mode = RoachAppearancePreference(rawValue: parts[1]) {
+                        settings.appearance = mode
+                    }
+                }
+            } else {
+                NSLog("[RoachNet snapshot] Unknown theme in theme.txt: \(themeRequest)")
+            }
+        }
         if requested.hasPrefix("settings:"),
            let pane = RoachNetSettingsPane(rawValue: String(requested.dropFirst("settings:".count)))
         {
@@ -13951,7 +13980,25 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        if themeChanged {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                self?.captureWindowSnapshot(into: directory)
+            }
+            return
+        }
         captureWindowSnapshot(into: directory)
+    }
+
+    private typealias WindowImageFunction = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+
+    /// `CGWindowListCreateImage` looked up at run time: it is deprecated in
+    /// favour of ScreenCaptureKit, which needs a capture permission even for a
+    /// window of our own, and this gate-only hook must not prompt anyone.
+    private static func compositedWindowImage(_ windowID: CGWindowID) -> CGImage? {
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
+        let create = unsafeBitCast(symbol, to: WindowImageFunction.self)
+        let options = CGWindowImageOption([.boundsIgnoreFraming, .bestResolution]).rawValue
+        return create(.null, CGWindowListOption.optionIncludingWindow.rawValue, windowID, options)?.takeRetainedValue()
     }
 
     private func captureWindowSnapshot(into directory: URL) {
@@ -13966,9 +14013,7 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         // belongs to this process, so no capture permission is involved. Fall
         // back to drawing the view hierarchy if the system declines.
         let data: Data?
-        if let composited = CGWindowListCreateImage(
-            .null, .optionIncludingWindow, CGWindowID(window.windowNumber), [.boundsIgnoreFraming, .bestResolution]
-        ), composited.width > 1 {
+        if let composited = Self.compositedWindowImage(CGWindowID(window.windowNumber)), composited.width > 1 {
             data = NSBitmapImageRep(cgImage: composited).representation(using: .png, properties: [:])
         } else {
             let bounds = contentView.bounds
@@ -14072,6 +14117,7 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
                 rootView: RootWorkspaceView(model: model)
                     .background(MainWindowConfigurator())
                     .frame(minWidth: 760, idealWidth: 1360, minHeight: 580, idealHeight: 860)
+                    .roachThemed()
             )
             let window = NSWindow(contentViewController: host)
             window.title = "RoachNet"

@@ -1,0 +1,32 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.lapis",
+  "name": "Lapis",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Deep lapis blue with gold leaf, and a circuit glinting underneath.",
+  "tags": [
+    "dark",
+    "cool",
+    "vivid"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#050B1A",
+      "backgroundRaised": "#070F22",
+      "panel": "#0A1430",
+      "panelRaised": "#0F1C40",
+      "panelSoft": "#152551",
+      "text": "#EAF0FF",
+      "accent": "#FFC93C",
+      "accentSecondary": "#5AAAFF",
+      "accentTertiary": "#FF85BA",
+      "accentInfo": "#4BE3C1"
+    },
+    "background": {
+      "style": "circuit",
+      "intensity": 0.8,
+      "speed": 0.7
+    }
+  }
+}

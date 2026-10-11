@@ -2334,21 +2334,21 @@ struct DevWorkspaceView: View {
                     HStack(alignment: .center, spacing: 12) {
                         HStack(spacing: 10) {
                             Image(systemName: "terminal.fill")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.roach(size: 14, weight: .bold))
                                 .foregroundStyle(RoachPalette.cyan)
                                 .frame(width: 28, height: 28)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous)
                                         .fill(RoachPalette.cyan.opacity(0.12))
                                 )
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Dev")
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.roach(size: 15, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(1)
                                 Text(devModel.displayWorkingDirectory())
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                     .foregroundStyle(RoachPalette.muted)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
@@ -2399,10 +2399,10 @@ struct DevWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Dev Workspace")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.roach(size: 16, weight: .semibold))
                                 .foregroundStyle(RoachPalette.text)
                             Text(devModel.displayWorkingDirectory())
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -2440,7 +2440,7 @@ struct DevWorkspaceView: View {
 
                 if devModel.importStatus != "Dev desk ready." {
                     Text(devModel.importStatus)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -2561,13 +2561,13 @@ struct DevWorkspaceView: View {
         content()
             .padding(4)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
                                 RoachPalette.panelRaised.opacity(0.92),
                                 RoachPalette.panel.opacity(0.82),
-                                Color.black.opacity(0.16),
+                                RoachPalette.shade.opacity(0.16),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -2575,10 +2575,10 @@ struct DevWorkspaceView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                    .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
             )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
     }
 
     private var verticalWorkbenchDivider: some View {
@@ -2621,17 +2621,17 @@ struct DevWorkspaceView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Explorer")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.roach(size: 15, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         Text(devModel.displayWorkingDirectory())
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .font(.roach(size: 11, weight: .medium, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
                     Spacer()
                     Text("\(devModel.filteredFileTree.count)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                 }
 
@@ -2663,17 +2663,17 @@ struct DevWorkspaceView: View {
 
                 TextField("Filter files or folders", text: $devModel.fileSearchQuery)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.text)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(0.64))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(RoachPalette.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                            .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                     )
 
                 List {
@@ -2687,7 +2687,7 @@ struct DevWorkspaceView: View {
                                 Image(systemName: node.isDirectory ? "folder.fill" : "doc.plaintext")
                                     .foregroundStyle(node.isDirectory ? RoachPalette.bronze : RoachPalette.green)
                                 Text(node.name)
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(.roach(size: 13, weight: .medium))
                                     .foregroundStyle(node.id == devModel.activeDocumentID ? RoachPalette.green : RoachPalette.text)
                             }
                         }
@@ -2733,10 +2733,10 @@ struct DevWorkspaceView: View {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Editor")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.roach(size: 16, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         Text(devModel.activeDocumentLabel)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .font(.roach(size: 11, weight: .medium, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -2758,7 +2758,7 @@ struct DevWorkspaceView: View {
 
                 if devModel.openDocuments.isEmpty {
                     Text("Open a project or scratch pad.")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.roach(size: 14, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .frame(maxWidth: .infinity, minHeight: max(textEditorMinHeight, 220), alignment: .topLeading)
                 } else {
@@ -2777,12 +2777,12 @@ struct DevWorkspaceView: View {
                                     ForEach(Array(devModel.activeDocumentPathComponents.enumerated()), id: \.offset) { index, component in
                                         HStack(spacing: 6) {
                                             Text(component)
-                                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                                .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                                 .foregroundStyle(index == devModel.activeDocumentPathComponents.count - 1 ? RoachPalette.text : RoachPalette.muted)
                                                 .lineLimit(1)
                                             if index < devModel.activeDocumentPathComponents.count - 1 {
                                                 Image(systemName: "chevron.right")
-                                                    .font(.system(size: 8, weight: .bold))
+                                                    .font(.roach(size: 8, weight: .bold))
                                                     .foregroundStyle(RoachPalette.muted)
                                             }
                                         }
@@ -2799,7 +2799,7 @@ struct DevWorkspaceView: View {
 
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Editing in \(devModel.displayWorkingDirectory())")
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                     .foregroundStyle(RoachPalette.muted)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
@@ -2820,18 +2820,18 @@ struct DevWorkspaceView: View {
                                 get: { devModel.activeDocument?.text ?? "" },
                                 set: { devModel.updateActiveDocumentText($0) }
                             ))
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .font(.roach(size: 13, weight: .medium, design: .monospaced))
                             .foregroundStyle(RoachPalette.text)
                             .scrollContentBackground(.hidden)
                             .padding(14)
                             .frame(minHeight: textEditorMinHeight)
                             .background(
-                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
                                     .fill(
                                         LinearGradient(
                                             colors: [
-                                                Color.black.opacity(0.28),
-                                                Color.black.opacity(0.22),
+                                                RoachPalette.shade.opacity(0.28),
+                                                RoachPalette.shade.opacity(0.22),
                                             ],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
@@ -2839,8 +2839,8 @@ struct DevWorkspaceView: View {
                                     )
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                    .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
+                                    .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
                             )
                         }
                         .frame(minHeight: documentDeckMinHeight)
@@ -2853,7 +2853,7 @@ struct DevWorkspaceView: View {
                             }
                             Spacer()
                             Text("\(devModel.activeDocumentLineCount) lines  ·  \(devModel.activeDocumentCharacterCount) chars")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     }
@@ -2908,9 +2908,9 @@ struct DevWorkspaceView: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: mode.systemName)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.roach(size: 10, weight: .bold))
                             Text(mode.rawValue)
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.82)
                                 .fixedSize(horizontal: true, vertical: false)
@@ -2947,11 +2947,11 @@ struct DevWorkspaceView: View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles")
                 .foregroundStyle(RoachPalette.magenta)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.roach(size: 12, weight: .semibold))
 
             TextField("Ask about this file or use // roachclaw:", text: $devModel.aiPrompt)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.text)
                 .onSubmit {
                     selectedRailSection = .assist
@@ -2964,12 +2964,12 @@ struct DevWorkspaceView: View {
         .padding(.vertical, 10)
         .frame(minWidth: 220, maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.74))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -2989,7 +2989,7 @@ struct DevWorkspaceView: View {
             }
 
             Text(devModel.inlineCompletion.isEmpty ? inlineAssistPlaceholder : devModel.inlineCompletion)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.roach(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(devModel.inlineCompletion.isEmpty ? RoachPalette.muted : RoachPalette.text.opacity(0.86))
                 .lineLimit(3)
                 .truncationMode(.tail)
@@ -2998,12 +2998,12 @@ struct DevWorkspaceView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             RoachPalette.panelRaised.opacity(0.88),
-                            Color.black.opacity(0.18),
+                            RoachPalette.shade.opacity(0.18),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -3011,19 +3011,19 @@ struct DevWorkspaceView: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(RoachPalette.borderStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
         )
     }
 
     private var inlineAssistSummary: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(devModel.inlinePromptDirective == nil ? "Inline" : "Inline Prompt")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                 .tracking(1.1)
                 .foregroundStyle(RoachPalette.muted)
             Text(devModel.inlineCompletionStatus)
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(2)
                 .truncationMode(.tail)
@@ -3118,11 +3118,11 @@ struct DevWorkspaceView: View {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("RoachClaw Studio")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
                         Text("Local code lane.")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.roach(size: 17, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                     }
 
@@ -3136,11 +3136,11 @@ struct DevWorkspaceView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("RoachClaw Studio")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.1)
                         .foregroundStyle(RoachPalette.muted)
                     Text("Local code lane.")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.roach(size: 17, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
 
                     HStack(spacing: 8) {
@@ -3152,18 +3152,18 @@ struct DevWorkspaceView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(roachClawStatusText)  ·  \(devModel.assistantMode.rawValue)  ·  \(model.selectedChatModelLabel)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.text.opacity(0.92))
                     .fixedSize(horizontal: false, vertical: true)
                 if let activeDocument = devModel.activeDocument {
                     Text(activeDocument.relativePath)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else if cloudLaneText != "No cloud lane" || model.config.distributedInferenceBackend == "exo" {
                     Text([cloudLaneText, model.config.distributedInferenceBackend == "exo" ? exoStatusText : nil].compactMap { $0 }.joined(separator: "  ·  "))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
@@ -3185,12 +3185,12 @@ struct DevWorkspaceView: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             RoachPalette.panelRaised.opacity(0.82),
-                            Color.black.opacity(0.16),
+                            RoachPalette.shade.opacity(0.16),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -3198,8 +3198,8 @@ struct DevWorkspaceView: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(RoachPalette.borderStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
+                .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -3209,29 +3209,29 @@ struct DevWorkspaceView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Prompt")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .tracking(1.1)
                     .foregroundStyle(RoachPalette.muted)
 
                 TextEditor(text: $devModel.aiPrompt)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.roach(size: 13, weight: .medium))
                     .foregroundStyle(RoachPalette.text)
                     .scrollContentBackground(.hidden)
                     .padding(12)
                     .frame(minHeight: 118)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .fill(
                                 LinearGradient(
-                                    colors: [Color.black.opacity(0.28), Color.black.opacity(0.18)],
+                                    colors: [RoachPalette.shade.opacity(0.28), RoachPalette.shade.opacity(0.18)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                            .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
                     )
             }
 
@@ -3268,11 +3268,11 @@ struct DevWorkspaceView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Thread")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.1)
                         .foregroundStyle(RoachPalette.muted)
                     Text(devModel.aiResponse.isEmpty ? "Waiting" : "Live response")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.roach(size: 15, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                 }
 
@@ -3286,7 +3286,7 @@ struct DevWorkspaceView: View {
                             ? "Ask from editor."
                             : devModel.aiResponse
                 )
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.roach(size: 13, weight: .medium))
                     .foregroundStyle(devModel.aiResponse.isEmpty ? RoachPalette.muted : RoachPalette.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
@@ -3294,11 +3294,11 @@ struct DevWorkspaceView: View {
             .frame(minHeight: 238)
             .padding(12)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.black.opacity(0.22),
+                                RoachPalette.shade.opacity(0.22),
                                 RoachPalette.panelRaised.opacity(0.64),
                             ],
                             startPoint: .topLeading,
@@ -3307,8 +3307,8 @@ struct DevWorkspaceView: View {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(RoachPalette.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
             )
 
             ViewThatFits(in: .horizontal) {
@@ -3351,11 +3351,11 @@ struct DevWorkspaceView: View {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Inline Assist")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
                         Text(devModel.inlineCompletionStatus)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -3390,11 +3390,11 @@ struct DevWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Inline Assist")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
                         Text(devModel.inlineCompletionStatus)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -3426,19 +3426,19 @@ struct DevWorkspaceView: View {
             }
 
             Text(devModel.inlineCompletion.isEmpty ? inlineAssistPlaceholder : devModel.inlineCompletion)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.roach(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(devModel.inlineCompletion.isEmpty ? RoachPalette.muted : RoachPalette.text.opacity(0.84))
                 .lineLimit(5)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
                                     RoachPalette.panelRaised.opacity(0.74),
-                                    Color.black.opacity(0.18),
+                                    RoachPalette.shade.opacity(0.18),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -3446,7 +3446,7 @@ struct DevWorkspaceView: View {
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                         .stroke(RoachPalette.border, style: StrokeStyle(lineWidth: 1, dash: devModel.inlineCompletion.isEmpty ? [5, 5] : []))
                 )
         }
@@ -3480,15 +3480,15 @@ struct DevWorkspaceView: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Assist Rail")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.roach(size: 16, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         Text(devModel.assistantMode.rawValue)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(devModel.assistantMode.accent)
                     }
                     Spacer()
                     Text(devModel.terminalAwaitingPrompt ? "Live" : "Idle")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(devModel.terminalAwaitingPrompt ? RoachPalette.green : RoachPalette.muted)
                 }
 
@@ -3521,14 +3521,14 @@ struct DevWorkspaceView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(section.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.roach(size: 12, weight: .semibold))
                         }
                         .foregroundStyle(selectedRailSection == section ? RoachPalette.text : RoachPalette.muted)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [
@@ -3541,8 +3541,8 @@ struct DevWorkspaceView: View {
                                 )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(selectedRailSection == section ? section.accent.opacity(0.35) : RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                                .stroke(selectedRailSection == section ? section.accent.opacity(0.35) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                     }
                     .buttonStyle(.plain)
@@ -3556,11 +3556,11 @@ struct DevWorkspaceView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("AI Reply")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.1)
                         .foregroundStyle(RoachPalette.muted)
                     Text(devModel.aiResponse.isEmpty ? "Waiting" : "Ready")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.roach(size: 16, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                 }
 
@@ -3572,12 +3572,12 @@ struct DevWorkspaceView: View {
 
             if devModel.assistantTurns.isEmpty {
                 Text("No asks yet.")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Recent asks")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.1)
                         .foregroundStyle(RoachPalette.muted)
 
@@ -3592,19 +3592,19 @@ struct DevWorkspaceView: View {
                                     .frame(width: 8, height: 8)
                                     .padding(.top, 4)
                                 Text(turn.prompt)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.roach(size: 12, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .lineLimit(2)
                             }
                             .padding(10)
                             .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                     .fill(RoachPalette.panelRaised.opacity(0.58))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                         }
                         .buttonStyle(.plain)
@@ -3619,7 +3619,7 @@ struct DevWorkspaceView: View {
                             ? "Ask from the editor bar."
                             : devModel.aiResponse
                     )
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.roach(size: 13, weight: .medium))
                         .foregroundStyle(devModel.aiResponse.isEmpty ? RoachPalette.muted : RoachPalette.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
@@ -3627,11 +3627,11 @@ struct DevWorkspaceView: View {
                 .frame(minHeight: 160)
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.black.opacity(0.22),
+                                    RoachPalette.shade.opacity(0.22),
                                     RoachPalette.panelRaised.opacity(0.64),
                                 ],
                                 startPoint: .topLeading,
@@ -3640,8 +3640,8 @@ struct DevWorkspaceView: View {
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(RoachPalette.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                        .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                 )
 
                 ViewThatFits(in: .horizontal) {
@@ -3696,11 +3696,11 @@ struct DevWorkspaceView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Guidebook")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.1)
                         .foregroundStyle(RoachPalette.muted)
                     Text("Reference links.")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.roach(size: 14, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                 }
                 Spacer()
@@ -3713,10 +3713,10 @@ struct DevWorkspaceView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(resource.title)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.roach(size: 13, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         Text(resource.detail)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.roach(size: 11, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -3730,12 +3730,12 @@ struct DevWorkspaceView: View {
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(0.62))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(RoachPalette.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                            .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                     )
                 }
                 .buttonStyle(.plain)
@@ -3748,11 +3748,11 @@ struct DevWorkspaceView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("RoachBrain")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.1)
                         .foregroundStyle(RoachPalette.muted)
                     Text(devModel.roachBrainStatus)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.roach(size: 15, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                 }
                 Spacer()
@@ -3761,22 +3761,22 @@ struct DevWorkspaceView: View {
 
             TextField("Search local memory", text: $devModel.roachBrainQuery)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.text)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                         .fill(RoachPalette.panelRaised.opacity(0.64))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(RoachPalette.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                        .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                 )
 
             if devModel.roachBrainVisibleMatches.isEmpty {
                 Text("Saved recalls appear here after the first assist pass or any manual save.")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
@@ -3784,7 +3784,7 @@ struct DevWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text(match.memory.title)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.roach(size: 12, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(1)
                                 Spacer()
@@ -3794,7 +3794,7 @@ struct DevWorkspaceView: View {
                             }
 
                             Text(match.memory.summary)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.roach(size: 11, weight: .medium))
                                 .foregroundStyle(RoachPalette.muted)
                                 .fixedSize(horizontal: false, vertical: true)
 
@@ -3810,12 +3810,12 @@ struct DevWorkspaceView: View {
                         }
                         .padding(12)
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color.black.opacity(0.18))
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                                .fill(RoachPalette.shade.opacity(0.18))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                     }
                 }
@@ -3828,16 +3828,16 @@ struct DevWorkspaceView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Secrets")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.1)
                         .foregroundStyle(RoachPalette.muted)
                     Text("Keychain-backed workspace values.")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.roach(size: 15, weight: .semibold))
                         .foregroundStyle(RoachPalette.text)
                 }
                 Spacer()
                 Text("\(devModel.secretRecords.count)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
             }
 
@@ -3851,7 +3851,7 @@ struct DevWorkspaceView: View {
                                 Text("\(summary.count)")
                                     .foregroundStyle(RoachPalette.green)
                             }
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
                             .background(
@@ -3860,7 +3860,7 @@ struct DevWorkspaceView: View {
                             )
                             .overlay(
                                 Capsule(style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                         }
                     }
@@ -3882,16 +3882,16 @@ struct DevWorkspaceView: View {
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                         .foregroundStyle(RoachPalette.text)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     }
                 }
             }
 
             Text("Templates stage the label and scope. Values stay in Keychain until you reveal or rotate them.")
-                .font(.system(size: 11, weight: .medium))
+                .font(.roach(size: 11, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
 
             if !devModel.secretRecords.isEmpty {
@@ -3916,18 +3916,18 @@ struct DevWorkspaceView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Value")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .tracking(1.1)
                     .foregroundStyle(RoachPalette.muted)
 
                 SecureField("Secret value", text: $devModel.secretValueDraft)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(.roach(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(RoachPalette.text)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [RoachPalette.panelRaised.opacity(0.72), RoachPalette.panel.opacity(0.62)],
@@ -3937,14 +3937,14 @@ struct DevWorkspaceView: View {
                             )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                            .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
                     )
             }
 
             if !devModel.revealedSecretValue.isEmpty {
                 Text("Revealed value: \(devModel.revealedSecretValue)")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .font(.roach(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(RoachPalette.green)
             }
 
@@ -4001,12 +4001,12 @@ struct DevWorkspaceView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: document.isDirty ? "circle.fill" : "circle")
-                        .font(.system(size: 7, weight: .bold))
+                        .font(.roach(size: 7, weight: .bold))
                     Text(document.relativePath)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .font(.roach(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(isActive ? RoachPalette.text : RoachPalette.muted)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -4017,7 +4017,7 @@ struct DevWorkspaceView: View {
                 )
                 .overlay(
                     Capsule(style: .continuous)
-                        .stroke(isActive ? RoachPalette.green.opacity(0.26) : RoachPalette.border, lineWidth: 1)
+                        .stroke(isActive ? RoachPalette.green.opacity(0.26) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
                 )
             }
             .buttonStyle(.plain)
@@ -4026,12 +4026,12 @@ struct DevWorkspaceView: View {
                 devModel.closeDocument(id: document.id)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.roach(size: 8, weight: .semibold))
                     .foregroundStyle(RoachPalette.muted)
                     .frame(width: 18, height: 18)
                     .background(
                         Circle()
-                            .fill(Color.black.opacity(0.22))
+                            .fill(RoachPalette.shade.opacity(0.22))
                     )
             }
             .buttonStyle(.plain)
@@ -4103,7 +4103,7 @@ struct DevWorkspaceView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.roach(size: 13, weight: .semibold))
                 .frame(width: 18, height: 18)
         }
         .buttonStyle(RoachUtilityButtonStyle(tint: tint))
@@ -4122,10 +4122,10 @@ struct DevWorkspaceView: View {
                             Circle()
                                 .fill(theme.accent)
                                 .frame(width: 8, height: 8)
-                                .shadow(color: theme.accent.opacity(0.45), radius: 8, x: 0, y: 0)
+                                .shadow(color: theme.accent.opacity(RoachMetrics.glow(0.45)), radius: 8, x: 0, y: 0)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(theme.rawValue)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             }
                         }
                         .foregroundStyle(devModel.terminalTheme == theme ? RoachPalette.text : RoachPalette.muted)
@@ -4137,7 +4137,7 @@ struct DevWorkspaceView: View {
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(devModel.terminalTheme == theme ? theme.accent.opacity(0.44) : RoachPalette.border, lineWidth: 1)
+                                .stroke(devModel.terminalTheme == theme ? theme.accent.opacity(0.44) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                     }
                     .buttonStyle(.plain)
@@ -4149,13 +4149,13 @@ struct DevWorkspaceView: View {
     private var terminalPromptField: some View {
         HStack(spacing: 10) {
             Text("$")
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .font(.roach(size: 14, weight: .bold, design: .monospaced))
                 .foregroundStyle(RoachPalette.green)
                 .padding(.leading, 14)
 
             TextField("Enter shell command", text: $devModel.terminalCommand)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .font(.roach(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(RoachPalette.text)
                 .onSubmit {
                     devModel.runTerminalCommand()
@@ -4164,12 +4164,12 @@ struct DevWorkspaceView: View {
                 .padding(.trailing, 14)
         }
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.22))
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .fill(RoachPalette.shade.opacity(0.22))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -4202,7 +4202,7 @@ struct DevWorkspaceView: View {
                 devModel.runTerminalCommand()
             } label: {
                 Image(systemName: "paperplane.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.green))
@@ -4230,7 +4230,7 @@ struct DevWorkspaceView: View {
                 devModel.stopTerminalCommand()
             } label: {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.warning))
@@ -4258,7 +4258,7 @@ struct DevWorkspaceView: View {
                 devModel.relaunchTerminalSession()
             } label: {
                 Image(systemName: "plus.rectangle.on.rectangle")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.cyan))
@@ -4284,7 +4284,7 @@ struct DevWorkspaceView: View {
                 devModel.clearTerminalOutput()
             } label: {
                 Image(systemName: "eraser.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.bronze))
@@ -4310,7 +4310,7 @@ struct DevWorkspaceView: View {
                 devModel.copyTerminalOutput()
             } label: {
                 Image(systemName: "doc.on.doc.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.roach(size: 13, weight: .semibold))
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(RoachUtilityButtonStyle(tint: RoachPalette.magenta))
@@ -4346,10 +4346,10 @@ struct DevWorkspaceView: View {
 
                         VStack(alignment: .trailing, spacing: 6) {
                             Text(devModel.terminalStatus)
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(devModel.terminalAwaitingPrompt ? RoachPalette.green : RoachPalette.muted)
                             Text(devModel.displayWorkingDirectory())
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -4365,10 +4365,10 @@ struct DevWorkspaceView: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(devModel.terminalStatus)
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(devModel.terminalAwaitingPrompt ? RoachPalette.green : RoachPalette.muted)
                             Text(devModel.displayWorkingDirectory())
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -4427,7 +4427,7 @@ struct DevWorkspaceView: View {
                 if !devModel.terminalRecentCommands.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Recent commands")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
 
@@ -4442,14 +4442,14 @@ struct DevWorkspaceView: View {
                                     .padding(.vertical, 8)
                                     .background(
                                         Capsule(style: .continuous)
-                                            .fill(Color.black.opacity(0.24))
+                                            .fill(RoachPalette.shade.opacity(0.24))
                                     )
                                     .overlay(
                                         Capsule(style: .continuous)
-                                            .stroke(RoachPalette.border, lineWidth: 1)
+                                            .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                                     )
                                     .foregroundStyle(RoachPalette.text)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 }
                             }
                         }
@@ -4470,10 +4470,10 @@ struct DevWorkspaceView: View {
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("RoachNet Shell")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.text)
                             Text(devModel.displayWorkingDirectory())
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .font(.roach(size: 10, weight: .medium, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -4482,7 +4482,7 @@ struct DevWorkspaceView: View {
                         Spacer()
 
                         Text(devModel.terminalAwaitingPrompt ? "Command live" : "Prompt ready")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(devModel.terminalAwaitingPrompt ? RoachPalette.green : RoachPalette.magenta)
                     }
                     .padding(.horizontal, 14)
@@ -4497,18 +4497,18 @@ struct DevWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             if devModel.terminalOutput.isEmpty {
                                 Text("Shell opening.")
-                                    .font(.system(size: devModel.terminalFontSize, weight: .medium, design: .monospaced))
+                                    .font(.roach(size: devModel.terminalFontSize, weight: .medium, design: .monospaced))
                                     .foregroundStyle(devModel.terminalTheme.mutedForeground)
                                     .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Text("user@roachnet " + devModel.displayWorkingDirectory() + " %")
-                                    .font(.system(size: devModel.terminalFontSize, weight: .semibold, design: .monospaced))
+                                    .font(.roach(size: devModel.terminalFontSize, weight: .semibold, design: .monospaced))
                                     .foregroundStyle(devModel.terminalTheme.accent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
 
                             } else {
                                 Text(devModel.terminalOutput)
-                                    .font(.system(size: devModel.terminalFontSize, weight: .medium, design: .monospaced))
+                                    .font(.roach(size: devModel.terminalFontSize, weight: .medium, design: .monospaced))
                                     .foregroundStyle(devModel.terminalTheme.outputForeground)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .fixedSize(horizontal: !devModel.terminalSoftWrap, vertical: true)
@@ -4546,33 +4546,33 @@ struct DevWorkspaceView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 10) {
                             Text("zsh  ·  \(devModel.terminalTheme.rawValue)  ·  \(devModel.terminalOutputLineCount) lines  ·  \(devModel.terminalHistoryCount) recent")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.text.opacity(0.92))
                                 .lineLimit(1)
                             Spacer()
                             Text(devModel.terminalIsRunning ? "session live" : "offline")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                                 .lineLimit(1)
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text("zsh  ·  \(devModel.terminalTheme.rawValue)  ·  \(devModel.terminalOutputLineCount) lines")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.text.opacity(0.92))
                             Text(devModel.terminalIsRunning ? "session live" : "offline")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.22))
+                    .background(RoachPalette.shade.opacity(0.22))
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(RoachPalette.borderStrong, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(20), style: .continuous)
+                        .stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1))
                 )
             }
         }
@@ -4597,17 +4597,17 @@ struct DevWorkspaceView: View {
                                     .frame(width: 32, height: 32)
 
                                 Image(systemName: mode.systemName)
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.roach(size: 13, weight: .bold))
                                     .foregroundStyle(mode.accent)
                             }
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(mode.rawValue)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.roach(size: 12, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                                     .lineLimit(1)
                                 Text(mode.detail)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.roach(size: 11, weight: .medium))
                                     .foregroundStyle(RoachPalette.muted)
                                     .multilineTextAlignment(.leading)
                                     .lineLimit(2)
@@ -4616,20 +4616,20 @@ struct DevWorkspaceView: View {
                             Spacer(minLength: 6)
 
                             Image(systemName: mode == devModel.assistantMode ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.roach(size: 14, weight: .bold))
                                 .foregroundStyle(mode == devModel.assistantMode ? mode.accent : RoachPalette.muted)
                         }
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
                                         mode.accent.opacity(mode == devModel.assistantMode ? 0.16 : 0.08),
                                         RoachPalette.panelRaised.opacity(0.78),
-                                        Color.black.opacity(0.12),
+                                        RoachPalette.shade.opacity(0.12),
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -4637,7 +4637,7 @@ struct DevWorkspaceView: View {
                             )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .stroke(
                                 mode == devModel.assistantMode ? mode.accent.opacity(0.52) : RoachPalette.border,
                                 lineWidth: 1

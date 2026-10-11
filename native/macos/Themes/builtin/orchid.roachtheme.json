@@ -1,0 +1,35 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.orchid",
+  "name": "Orchid",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Plum shadows and orchid petals, with a slow pink aurora.",
+  "tags": [
+    "dark",
+    "warm",
+    "calm"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#130A13",
+      "backgroundRaised": "#180E18",
+      "panel": "#1E111E",
+      "panelRaised": "#281728",
+      "panelSoft": "#341E34",
+      "text": "#F8ECF6",
+      "accent": "#EB86EE",
+      "accentSecondary": "#FF8FB1",
+      "accentTertiary": "#F5C26B",
+      "accentInfo": "#8FB8FF"
+    },
+    "background": {
+      "style": "aurora",
+      "intensity": 0.8,
+      "speed": 0.6
+    }
+  },
+  "shape": {
+    "radiusScale": 1.25
+  }
+}

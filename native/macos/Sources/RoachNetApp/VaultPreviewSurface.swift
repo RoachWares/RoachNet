@@ -331,7 +331,7 @@ struct VaultPreviewSurfaceView: View {
             )
 
             Text(asset.subtitle)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.roach(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(RoachPalette.muted)
                 .lineLimit(2)
                 .truncationMode(.middle)
@@ -371,11 +371,11 @@ struct VaultPreviewSurfaceView: View {
 
             if let loadErrorLine {
                 Text(loadErrorLine)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.warning)
             } else if let saveStatusLine {
                 Text(saveStatusLine)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
             }
         }
@@ -498,10 +498,10 @@ struct VaultPreviewSurfaceView: View {
 
                     NativeImagePreview(url: asset.url)
                         .frame(minHeight: 520)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                 }
             }
@@ -526,10 +526,10 @@ struct VaultPreviewSurfaceView: View {
 
                     NativeMediaPreview(url: asset.url)
                         .frame(minHeight: 460)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                 }
             }
@@ -543,7 +543,7 @@ struct VaultPreviewSurfaceView: View {
             RoachInsetPanel {
                 NativeQuickLookPreview(url: asset.url)
                     .frame(minHeight: 560)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
             }
 
             assetInsightsPanel
@@ -565,15 +565,15 @@ struct VaultPreviewSurfaceView: View {
                     #if canImport(PDFKit)
                     NativePDFPreview(url: asset.url, scaleFactor: CGFloat(readerScale))
                         .frame(minHeight: 560)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                     #else
                     NativeQuickLookPreview(url: asset.url)
                         .frame(minHeight: 560)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
                     #endif
                 }
             }
@@ -596,10 +596,10 @@ struct VaultPreviewSurfaceView: View {
 
                     NativeQuickLookPreview(url: asset.url)
                         .frame(minHeight: 560)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                 }
             }
@@ -633,12 +633,12 @@ struct VaultPreviewSurfaceView: View {
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.58))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(RoachPalette.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
         )
     }
 
@@ -686,17 +686,17 @@ struct VaultPreviewSurfaceView: View {
 
                     TextField("Filter this folder", text: $folderQuery)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.text)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                                 .fill(RoachPalette.panelRaised.opacity(0.64))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
 
                     if filteredFolderChildren.isEmpty {
@@ -718,21 +718,21 @@ struct VaultPreviewSurfaceView: View {
                                     } label: {
                                         HStack(alignment: .top, spacing: 12) {
                                             Image(systemName: shelfIcon(for: kind, isDirectory: child.hasDirectoryPath))
-                                                .font(.system(size: 16, weight: .semibold))
+                                                .font(.roach(size: 16, weight: .semibold))
                                                 .foregroundStyle(shelfAccent(for: kind))
                                                 .frame(width: 18)
 
                                             VStack(alignment: .leading, spacing: 4) {
                                                 HStack(spacing: 8) {
                                                     Text(child.lastPathComponent)
-                                                        .font(.system(size: 13, weight: .semibold))
+                                                        .font(.roach(size: 13, weight: .semibold))
                                                         .foregroundStyle(RoachPalette.text)
                                                         .lineLimit(1)
                                                     RoachTag(kind.shelfLabel, accent: shelfAccent(for: kind))
                                                 }
 
                                                 Text(child.path)
-                                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                                    .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                                     .foregroundStyle(RoachPalette.muted)
                                                     .lineLimit(1)
                                                     .truncationMode(.middle)
@@ -741,18 +741,18 @@ struct VaultPreviewSurfaceView: View {
                                             Spacer(minLength: 8)
 
                                             Text("Open in Vault")
-                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                .font(.roach(size: 10, weight: .bold, design: .monospaced))
                                                 .tracking(0.9)
                                                 .foregroundStyle(shelfAccent(for: kind))
                                         }
                                         .padding(12)
                                         .background(
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                                                 .fill(RoachPalette.panelRaised.opacity(0.72))
                                         )
                                         .overlay(
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .stroke(RoachPalette.border, lineWidth: 1)
+                                            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                                         )
                                     }
                                     .buttonStyle(.plain)
@@ -778,16 +778,16 @@ struct VaultPreviewSurfaceView: View {
                 )
 
                 TextEditor(text: $markdownDraft)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(.roach(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(RoachPalette.text)
                     .scrollContentBackground(.hidden)
                     .padding(14)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(0.92))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                     )
                     .frame(minHeight: 460)
@@ -805,16 +805,16 @@ struct VaultPreviewSurfaceView: View {
                 )
 
                 TextEditor(text: $markdownDraft)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(.roach(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(RoachPalette.text)
                     .scrollContentBackground(.hidden)
                     .padding(14)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(0.92))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                     )
                     .frame(minHeight: 460)
@@ -834,14 +834,14 @@ struct VaultPreviewSurfaceView: View {
                 VaultRenderedMarkdownView(markdown: markdownDraft)
                     .frame(minHeight: 460)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                             .fill(RoachPalette.panelRaised.opacity(0.76))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(RoachPalette.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                    .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                             )
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
             }
         }
     }
@@ -857,7 +857,7 @@ struct VaultPreviewSurfaceView: View {
 
                 ScrollView {
                     Text(markdownDraft.isEmpty ? "No text loaded yet." : markdownDraft)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(markdownDraft.isEmpty ? RoachPalette.muted : RoachPalette.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
@@ -865,11 +865,11 @@ struct VaultPreviewSurfaceView: View {
                 }
                 .frame(minHeight: 300)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                         .fill(RoachPalette.panelRaised.opacity(0.76))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(RoachPalette.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                                .stroke(RoachPalette.border, lineWidth: RoachMetrics.line(1))
                         )
                 )
             }
@@ -898,12 +898,12 @@ struct VaultPreviewSurfaceView: View {
                 if let assetExcerpt, !assetExcerpt.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Excerpt")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
 
                         Text(assetExcerpt)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.roach(size: 13, weight: .medium))
                             .foregroundStyle(RoachPalette.text)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -912,7 +912,7 @@ struct VaultPreviewSurfaceView: View {
                 if !markdownWikiLinks.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Obsidian Links")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
 
@@ -929,7 +929,7 @@ struct VaultPreviewSurfaceView: View {
                 if !speechActionPlans.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("RoachSpeech")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.muted)
 
@@ -939,15 +939,15 @@ struct VaultPreviewSurfaceView: View {
                             ForEach(speechActionPlans, id: \.action) { plan in
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(plan.action.displayName)
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(.roach(size: 12, weight: .semibold))
                                         .foregroundStyle(RoachPalette.text)
                                     Text(plan.statusLabel(runtime: runtime, voiceProfile: voiceProfile))
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.roach(size: 11, weight: .medium))
                                         .foregroundStyle(RoachPalette.muted)
                                         .lineLimit(2)
                                     if let outputURL = plan.outputURL {
                                         Text(outputURL.lastPathComponent)
-                                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                            .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                                             .foregroundStyle(RoachPalette.cyan)
                                             .lineLimit(1)
                                     }
@@ -955,12 +955,12 @@ struct VaultPreviewSurfaceView: View {
                                 .padding(10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                                         .fill(RoachPalette.panelRaised.opacity(0.54))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(plan.isReady(runtime: runtime, voiceProfile: voiceProfile) ? RoachPalette.green.opacity(0.42) : RoachPalette.border, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
+                                        .stroke(plan.isReady(runtime: runtime, voiceProfile: voiceProfile) ? RoachPalette.green.opacity(0.42) : RoachPalette.border, lineWidth: RoachMetrics.line(1))
                                 )
                             }
                         }

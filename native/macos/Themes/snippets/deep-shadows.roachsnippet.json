@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.deep-shadows",
+  "name": "Deep shadows",
+  "author": "RoachWares",
+  "description": "Heavier drop shadows, for more depth between layers.",
+  "effects": {
+    "shadow": 1.8
+  }
+}

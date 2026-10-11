@@ -125,12 +125,12 @@ struct RoachNetAboutView: View {
         VStack(alignment: .leading, spacing: 10) {
             RoachKicker("About RoachNet")
             Text("One native shell for AI, vault, games, maps, and dev.")
-                .font(.system(size: 28, weight: .black, design: .rounded))
+                .font(.roach(size: 28, weight: .black, design: .rounded))
                 .foregroundStyle(RoachPalette.text)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("Local-first, native, and kept under one roof.")
-                .font(.system(size: 13, weight: .medium))
+                .font(.roach(size: 13, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -152,15 +152,15 @@ struct RoachNetAboutView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Manifest")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(.roach(size: 11, weight: .bold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(RoachPalette.green)
                         Text("Native shell. Global bar. Contained services.")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.roach(size: 15, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("Command bar: \(RoachNetGlobalHotKey.hint)")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                     }
                 }
@@ -272,7 +272,7 @@ struct RoachNetAboutView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("RoachWares LLC")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(.roach(size: 12, weight: .bold, design: .monospaced))
                             .tracking(1.0)
                             .foregroundStyle(RoachPalette.green)
                         creditLine
@@ -281,7 +281,7 @@ struct RoachNetAboutView: View {
                     Spacer(minLength: 18)
 
                     Text("Offline first. Apple Silicon native.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }
 
@@ -290,13 +290,13 @@ struct RoachNetAboutView: View {
                         RoachWaresHeartMark()
                             .frame(width: 34, height: 34)
                         Text("RoachWares LLC")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(.roach(size: 12, weight: .bold, design: .monospaced))
                             .tracking(1.0)
                             .foregroundStyle(RoachPalette.green)
                     }
                     creditLine
                     Text("Offline first. Apple Silicon native.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
@@ -310,7 +310,7 @@ struct RoachNetAboutView: View {
                 .frame(width: 18, height: 18)
             Text("by Brennan Lesher.")
         }
-        .font(.system(size: 12, weight: .medium))
+        .font(.roach(size: 12, weight: .medium))
         .foregroundStyle(RoachPalette.muted)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -318,11 +318,11 @@ struct RoachNetAboutView: View {
     private func aboutFeatureLine(_ title: String, detail: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.roach(size: 13, weight: .semibold))
                 .foregroundStyle(RoachPalette.text)
                 .frame(width: 96, alignment: .leading)
             Text(detail)
-                .font(.system(size: 12, weight: .medium))
+                .font(.roach(size: 12, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -335,7 +335,7 @@ private struct RoachWaresHeartMark: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(9), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -348,13 +348,13 @@ private struct RoachWaresHeartMark: View {
                     )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .stroke(RoachPalette.green.opacity(pulse ? 0.46 : 0.22), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(9), style: .continuous)
+                        .stroke(RoachPalette.green.opacity(pulse ? 0.46 : 0.22), lineWidth: RoachMetrics.line(1))
                 )
-                .shadow(color: RoachPalette.green.opacity(pulse ? 0.24 : 0.08), radius: pulse ? 12 : 4)
+                .shadow(color: RoachPalette.green.opacity(RoachMetrics.glow(pulse ? 0.24 : 0.08)), radius: pulse ? 12 : 4)
 
             Image(systemName: "heart.fill")
-                .font(.system(size: 10, weight: .black))
+                .font(.roach(size: 10, weight: .black))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [RoachPalette.green, RoachPalette.bronze],
@@ -395,7 +395,7 @@ private struct AboutBackdropView: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color.black,
+                    RoachPalette.shade,
                     RoachPalette.panel.opacity(0.94),
                     RoachPalette.backgroundRaised.opacity(0.98),
                 ],
@@ -426,7 +426,7 @@ private struct AboutBackdropView: View {
             Rectangle()
                 .fill(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.02), Color.clear, Color.white.opacity(0.012)],
+                        colors: [RoachPalette.ink.opacity(0.02), Color.clear, RoachPalette.ink.opacity(0.012)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -466,12 +466,12 @@ private struct AboutSignalMark: View {
         ZStack {
             RoachOrbitMark()
 
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(RoachPalette.ink.opacity(0.08), lineWidth: RoachMetrics.line(1))
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("LIVE")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .bold, design: .monospaced))
                     .tracking(1.1)
                     .foregroundStyle(RoachPalette.green)
 
@@ -489,7 +489,7 @@ private struct AboutSignalMark: View {
                 .frame(height: 44)
 
                 Text(phase ? "native · local · command" : "local · native · command")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -528,20 +528,20 @@ private struct AboutCapabilityRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.roach(size: 14, weight: .semibold))
                 .foregroundStyle(accent)
                 .frame(width: 32, height: 32)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
                         .fill(accent.opacity(0.12))
                 )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.roach(size: 14, weight: .semibold))
                     .foregroundStyle(RoachPalette.text)
                 Text(detail)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -550,12 +550,12 @@ private struct AboutCapabilityRow: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.60))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(accent.opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(accent.opacity(0.16), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -568,11 +568,11 @@ private struct AboutStatCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.roach(size: 10, weight: .bold, design: .monospaced))
                 .tracking(1.0)
                 .foregroundStyle(RoachPalette.muted)
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.roach(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(accent)
                 .lineLimit(2)
                 .minimumScaleFactor(0.82)
@@ -580,12 +580,12 @@ private struct AboutStatCard: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(RoachPalette.panelRaised.opacity(0.60))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(accent.opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                .stroke(accent.opacity(0.16), lineWidth: RoachMetrics.line(1))
         )
     }
 }
@@ -599,20 +599,20 @@ private struct AboutActionLink: View {
             Link(destination: url) {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: action.systemImage)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.roach(size: 14, weight: .semibold))
                         .foregroundStyle(action.accent)
                         .frame(width: 34, height: 34)
                         .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous)
                                 .fill(action.accent.opacity(0.12))
                         )
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(action.title)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.roach(size: 14, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         Text(action.detail)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -620,19 +620,19 @@ private struct AboutActionLink: View {
                     Spacer(minLength: 10)
 
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.roach(size: 11, weight: .bold))
                         .foregroundStyle(action.accent.opacity(hovered ? 1 : 0.72))
                         .offset(x: hovered ? 1 : 0, y: hovered ? -1 : 0)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                         .fill(RoachPalette.panelRaised.opacity(0.60))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(action.accent.opacity(hovered ? 0.22 : 0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
+                        .stroke(action.accent.opacity(hovered ? 0.22 : 0.12), lineWidth: RoachMetrics.line(1))
                 )
                 .scaleEffect(hovered ? 1.01 : 1)
                 .offset(y: hovered ? -1 : 0)

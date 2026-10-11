@@ -1,0 +1,40 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.bunker",
+  "name": "Bunker",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Poured concrete and caged work lights. Olive signal, amber warnings, rust on the edges.",
+  "tags": [
+    "dark",
+    "calm",
+    "industrial"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#090A09",
+      "backgroundRaised": "#0F110F",
+      "panel": "#141614",
+      "panelRaised": "#1B1E1B",
+      "panelSoft": "#252925",
+      "text": "#E8EDE6",
+      "accent": "#8BE36B",
+      "accentSecondary": "#C9A227",
+      "accentTertiary": "#D9773B",
+      "accentInfo": "#6FB7C9"
+    },
+    "background": {
+      "style": "grid",
+      "intensity": 0.8,
+      "speed": 0.6
+    }
+  },
+  "typography": {
+    "display": "system-rounded",
+    "body": "system",
+    "mono": "system-mono"
+  },
+  "shape": {
+    "radiusScale": 0.7
+  }
+}

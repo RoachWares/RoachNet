@@ -304,8 +304,8 @@ struct RoachTileMapView: View {
             }
             .onChange(of: proxy.size) { _, newSize in if !fitted { fit(size: newSize) } }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(accent.opacity(0.28), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(26), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: RoachMetrics.radius(26), style: .continuous).stroke(accent.opacity(0.28), lineWidth: RoachMetrics.line(1)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Offline map")
     }
@@ -440,10 +440,10 @@ struct RoachTileMapView: View {
             placed.append(rect)
             seen.insert(key)
             let text = Text(label.tier == 0 ? label.text.uppercased() : label.text)
-                .font(.system(size: label.fontSize, weight: label.weight, design: .default))
+                .font(.roach(size: label.fontSize, weight: label.weight, design: .default))
                 .foregroundColor(label.color)
             context.draw(Text(label.tier == 0 ? label.text.uppercased() : label.text)
-                .font(.system(size: label.fontSize, weight: label.weight))
+                .font(.roach(size: label.fontSize, weight: label.weight))
                 .foregroundColor(.black.opacity(0.7)), at: CGPoint(x: point.x + 0.8, y: point.y + 0.8))
             context.draw(text, at: point)
         }
@@ -462,7 +462,7 @@ struct RoachTileMapView: View {
         let point = screen(RoachMercator.project(lon: fix.longitude, lat: fix.latitude), size: size)
         context.fill(Path(ellipseIn: CGRect(x: point.x - 11, y: point.y - 11, width: 22, height: 22)), with: .color(RoachPalette.green.opacity(0.22)))
         context.fill(Path(ellipseIn: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)), with: .color(RoachPalette.green))
-        context.stroke(Path(ellipseIn: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)), with: .color(.black.opacity(0.6)), lineWidth: 1)
+        context.stroke(Path(ellipseIn: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)), with: .color(.black.opacity(0.6)), lineWidth: RoachMetrics.line(1))
     }
 
     // MARK: Chrome
@@ -472,7 +472,7 @@ struct RoachTileMapView: View {
             HStack(alignment: .top) {
                 if let problem = store.problem {
                     Text(problem)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.roach(size: 11, weight: .semibold))
                         .foregroundStyle(RoachPalette.warning)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(Capsule().fill(RoachPalette.panelRaised.opacity(0.9)))
@@ -495,15 +495,15 @@ struct RoachTileMapView: View {
             Spacer()
             HStack {
                 Text(coordinateLabel)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.text.opacity(0.85))
                 Spacer()
                 Text("© OpenStreetMap contributors · Protomaps")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.roach(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted.opacity(0.85))
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.45)))
+            .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(10), style: .continuous).fill(Color.black.opacity(0.45)))
         }
         .padding(12)
     }
@@ -516,10 +516,10 @@ struct RoachTileMapView: View {
     private func mapButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .bold))
+                .font(.roach(size: 13, weight: .bold))
                 .frame(width: 30, height: 30)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(RoachPalette.panelRaised.opacity(0.92)))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(RoachPalette.borderStrong, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(9), style: .continuous).fill(RoachPalette.panelRaised.opacity(0.92)))
+                .overlay(RoundedRectangle(cornerRadius: RoachMetrics.radius(9), style: .continuous).stroke(RoachPalette.borderStrong, lineWidth: RoachMetrics.line(1)))
         }
         .buttonStyle(.plain)
         .foregroundStyle(RoachPalette.text)

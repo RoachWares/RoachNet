@@ -1,0 +1,74 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.high-contrast",
+  "name": "High Contrast",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Maximum legibility: black and white, strong borders, saturated status colors, no glass.",
+  "tags": [
+    "dark",
+    "light",
+    "high-contrast",
+    "accessibility"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#000000",
+      "backgroundRaised": "#000000",
+      "panel": "#0A0A0A",
+      "panelRaised": "#141414",
+      "panelSoft": "#1F1F1F",
+      "text": "#FFFFFF",
+      "muted": "rgba(255,255,255,0.86)",
+      "accent": "#3DFF8F",
+      "accentSecondary": "#FF7AFF",
+      "accentTertiary": "#FFD700",
+      "accentInfo": "#33E6FF",
+      "success": "#3DFF8F",
+      "warning": "#FFD700",
+      "danger": "#FF6B6B",
+      "border": "rgba(255,255,255,0.40)",
+      "borderStrong": "rgba(255,255,255,0.72)",
+      "glass": "rgba(255,255,255,0)",
+      "specular": "rgba(255,255,255,0.12)"
+    },
+    "background": {
+      "style": "solid",
+      "vignette": 0
+    }
+  },
+  "light": {
+    "palette": {
+      "background": "#FFFFFF",
+      "backgroundRaised": "#FFFFFF",
+      "panel": "#FFFFFF",
+      "panelRaised": "#F5F5F5",
+      "panelSoft": "#EBEBEB",
+      "text": "#000000",
+      "muted": "rgba(0,0,0,0.82)",
+      "accent": "#00602F",
+      "accentSecondary": "#8B008B",
+      "accentTertiary": "#7A4E00",
+      "accentInfo": "#00566E",
+      "success": "#00602F",
+      "warning": "#7A4E00",
+      "danger": "#B00020",
+      "border": "rgba(0,0,0,0.45)",
+      "borderStrong": "rgba(0,0,0,0.78)",
+      "glass": "rgba(0,0,0,0)",
+      "specular": "rgba(0,0,0,0.10)"
+    },
+    "background": {
+      "style": "solid",
+      "vignette": 0
+    }
+  },
+  "shape": {
+    "borderWidth": 1.5
+  },
+  "effects": {
+    "glass": 0,
+    "glow": 0,
+    "shadow": 0.6
+  }
+}

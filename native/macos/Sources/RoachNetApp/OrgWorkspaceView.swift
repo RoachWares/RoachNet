@@ -397,11 +397,11 @@ struct OrgWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         RoachKicker("Start one")
                         Text("A company of agents. You hold the pen.")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .font(.roach(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("Name it and RoachClaw sets up the org chart, issues and budgets. Agents propose hires and spend; nothing happens until you say so, here or on a paired phone.")
-                            .font(.system(size: 14))
+                            .font(.roach(size: 14))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(alignment: .bottom, spacing: 12) {
@@ -418,11 +418,11 @@ struct OrgWorkspaceView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "person.3.sequence.fill")
-                        .font(.system(size: 64, weight: .semibold))
+                        .font(.roach(size: 64, weight: .semibold))
                         .foregroundStyle(
                             LinearGradient(colors: [RoachPalette.magenta, RoachPalette.green], startPoint: .topLeading, endPoint: .bottomTrailing)
                         )
-                        .shadow(color: RoachPalette.magenta.opacity(0.35), radius: 24, y: 8)
+                        .shadow(color: RoachPalette.magenta.opacity(RoachMetrics.glow(0.35)), radius: 24, y: 8)
                         .padding(.top, 8)
                         .padding(.trailing, 12)
                         .accessibilityHidden(true)
@@ -471,21 +471,21 @@ struct OrgWorkspaceView: View {
         RoachInsetPanel {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.roach(size: 20, weight: .semibold))
                     .foregroundStyle(RoachPalette.magenta)
                     .frame(width: 40, height: 40)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(RoachPalette.magenta.opacity(0.14)))
+                    .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous).fill(RoachPalette.magenta.opacity(0.14)))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(store.dashboard?.company.name ?? store.companies.first(where: { $0.id == store.selectedCompanyID })?.name ?? "Company")
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .font(.roach(size: 17, weight: .bold, design: .rounded))
                             .foregroundStyle(RoachPalette.text)
                         let status = store.dashboard?.company.status ?? "active"
                         RoachTag(status.capitalized, accent: status == "active" ? RoachPalette.green : RoachPalette.bronze)
                     }
                     Text(companySubtitle)
-                        .font(.system(size: 12))
+                        .font(.roach(size: 12))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(2)
                 }
@@ -494,10 +494,10 @@ struct OrgWorkspaceView: View {
                     let spend = store.dashboard?.monthSpendCents ?? 0
                     VStack(alignment: .trailing, spacing: 4) {
                         Text("\(OrgDeskFormat.dollars(spend)) of \(OrgDeskFormat.dollars(budget))")
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .font(.roach(size: 13, weight: .semibold, design: .monospaced))
                             .foregroundStyle(spend > budget ? RoachPalette.warning : RoachPalette.text)
                         Text("This month's budget")
-                            .font(.system(size: 11))
+                            .font(.roach(size: 11))
                             .foregroundStyle(RoachPalette.muted)
                     }
                     .accessibilityElement(children: .combine)
@@ -555,12 +555,12 @@ struct OrgWorkspaceView: View {
                 Spacer()
                 if let when = OrgDeskFormat.relative(approval.createdAt) {
                     Text(when)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.roach(size: 11, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
             Text(approval.headline)
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .font(.roach(size: 16, weight: .semibold, design: .rounded))
                 .foregroundStyle(RoachPalette.text)
                 .fixedSize(horizontal: false, vertical: true)
             if !approval.details.isEmpty {
@@ -568,11 +568,11 @@ struct OrgWorkspaceView: View {
                     ForEach(approval.details, id: \.0) { line in
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Text(line.0)
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .font(.roach(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                                 .frame(width: 120, alignment: .leading)
                             Text(line.1)
-                                .font(.system(size: 13))
+                                .font(.roach(size: 13))
                                 .foregroundStyle(RoachPalette.text)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -580,7 +580,7 @@ struct OrgWorkspaceView: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.22)))
+                .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous).fill(RoachPalette.shade.opacity(0.22)))
             }
             RoachInlineField(
                 title: "Note for the agent (optional)",
@@ -615,7 +615,7 @@ struct OrgWorkspaceView: View {
                 .accessibilityHidden(true)
             Text(text).foregroundStyle(RoachPalette.muted)
         }
-        .font(.system(size: 13))
+        .font(.roach(size: 13))
         .padding(.vertical, 2)
     }
 
@@ -629,7 +629,7 @@ struct OrgWorkspaceView: View {
                     Spacer()
                     if !activeAgents.isEmpty {
                         Text("\(activeAgents.count) on the books")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.roach(size: 11, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                     }
                 }
@@ -683,7 +683,7 @@ struct OrgWorkspaceView: View {
                 .labelsHidden()
                 .accessibilityLabel("Invite role")
                 Text(inviteRoleHint)
-                    .font(.system(size: 11))
+                    .font(.roach(size: 11))
                     .foregroundStyle(RoachPalette.muted)
                 Button("Create invite") { Task { await store.createInvite(role: inviteRole, using: model.config) } }
                     .buttonStyle(RoachPrimaryButtonStyle())
@@ -693,11 +693,11 @@ struct OrgWorkspaceView: View {
                         HStack {
                             RoachTag(invite.role.capitalized, accent: RoachPalette.cyan)
                             Text("One use · 72 hours")
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.roach(size: 11, design: .monospaced))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                         Text(invite.link)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.roach(size: 11, design: .monospaced))
                             .textSelection(.enabled)
                             .foregroundStyle(RoachPalette.text)
                             .lineLimit(3)
@@ -711,7 +711,7 @@ struct OrgWorkspaceView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.22)))
+                    .background(RoundedRectangle(cornerRadius: RoachMetrics.radius(12), style: .continuous).fill(RoachPalette.shade.opacity(0.22)))
                 }
             }
         }
@@ -740,12 +740,12 @@ struct OrgWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
                             Text(request.userName ?? request.agentName ?? "Someone")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.roach(size: 14, weight: .semibold, design: .rounded))
                                 .foregroundStyle(RoachPalette.text)
                             if request.requestType == "agent" { RoachTag("Agent", accent: RoachPalette.bronze) }
                             Spacer()
                             if let when = OrgDeskFormat.relative(request.createdAt) {
-                                Text(when).font(.system(size: 11, design: .monospaced)).foregroundStyle(RoachPalette.muted)
+                                Text(when).font(.roach(size: 11, design: .monospaced)).foregroundStyle(RoachPalette.muted)
                             }
                         }
                         if let email = request.email { Text(email).font(.caption).foregroundStyle(RoachPalette.muted) }

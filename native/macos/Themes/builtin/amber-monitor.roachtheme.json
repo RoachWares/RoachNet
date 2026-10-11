@@ -1,0 +1,51 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.amber-monitor",
+  "name": "Amber Monitor",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "A single-color amber CRT: monospaced everything, scanlines and a soft phosphor glow.",
+  "tags": [
+    "dark",
+    "retro",
+    "mono"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#090600",
+      "backgroundRaised": "#0E0A01",
+      "panel": "#120D02",
+      "panelRaised": "#1A1304",
+      "panelSoft": "#241A06",
+      "text": "#FFCF7A",
+      "muted": "rgba(255,207,122,0.70)",
+      "accent": "#FFB000",
+      "accentSecondary": "#FF8A1F",
+      "accentTertiary": "#FFE08A",
+      "accentInfo": "#FFC94D",
+      "success": "#FFD24D",
+      "warning": "#FF9F1A",
+      "danger": "#FF6A3D",
+      "ink": "#FFCF7A",
+      "border": "rgba(255,176,0,0.14)",
+      "borderStrong": "rgba(255,176,0,0.26)"
+    },
+    "background": {
+      "style": "scanlines",
+      "intensity": 1,
+      "speed": 1
+    }
+  },
+  "typography": {
+    "display": "system-mono",
+    "body": "system-mono",
+    "mono": "system-mono"
+  },
+  "shape": {
+    "radiusScale": 0.35
+  },
+  "effects": {
+    "glass": 0.5,
+    "glow": 1.4
+  }
+}

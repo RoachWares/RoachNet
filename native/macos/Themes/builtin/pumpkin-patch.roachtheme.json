@@ -1,0 +1,37 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.pumpkin-patch",
+  "name": "Pumpkin Patch",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "October after dark: pumpkin orange, witch-hat purple, embers from the bonfire.",
+  "tags": [
+    "dark",
+    "seasonal",
+    "halloween",
+    "warm"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#110904",
+      "backgroundRaised": "#170D06",
+      "panel": "#1C1007",
+      "panelRaised": "#26170A",
+      "panelSoft": "#33200F",
+      "text": "#FFF0E0",
+      "accent": "#FF8C1A",
+      "accentSecondary": "#A970F0",
+      "accentTertiary": "#FFD23F",
+      "accentInfo": "#7BD389"
+    },
+    "background": {
+      "style": "particles",
+      "intensity": 1,
+      "speed": 0.9,
+      "rise": true
+    }
+  },
+  "effects": {
+    "glow": 1.3
+  }
+}

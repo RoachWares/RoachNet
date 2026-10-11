@@ -1,0 +1,38 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.graveyard",
+  "name": "Graveyard",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Cold stone, ghost-green lanterns and ash drifting down through the fog.",
+  "tags": [
+    "dark",
+    "seasonal",
+    "halloween",
+    "cool"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#06080A",
+      "backgroundRaised": "#0A0D10",
+      "panel": "#0E1215",
+      "panelRaised": "#141A1E",
+      "panelSoft": "#1C2328",
+      "text": "#E4ECEE",
+      "accent": "#9EE6B8",
+      "accentSecondary": "#B28DFF",
+      "accentTertiary": "#E9C46A",
+      "accentInfo": "#8FB9C9"
+    },
+    "background": {
+      "style": "particles",
+      "intensity": 0.6,
+      "speed": 0.5,
+      "rise": false,
+      "vignette": 0.7
+    }
+  },
+  "shape": {
+    "radiusScale": 0.8
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.trench",
+  "name": "Trench",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "The bottom of the ocean at night. Navy black, electric blue, a few far-off lights.",
+  "tags": [
+    "dark",
+    "cool",
+    "calm"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#04060D",
+      "backgroundRaised": "#070A14",
+      "panel": "#0A0F1C",
+      "panelRaised": "#101729",
+      "panelSoft": "#182138",
+      "text": "#E2E8F7",
+      "accent": "#6B92FF",
+      "accentSecondary": "#A07BFF",
+      "accentTertiary": "#FFB86B",
+      "accentInfo": "#3ED6C5"
+    },
+    "background": {
+      "style": "starfield",
+      "intensity": 0.8,
+      "speed": 0.5
+    }
+  }
+}

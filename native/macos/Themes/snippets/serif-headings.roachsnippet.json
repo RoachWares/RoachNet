@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.serif-headings",
+  "name": "Serif headings",
+  "author": "RoachWares",
+  "description": "Headings, metrics and buttons in the system serif.",
+  "typography": {
+    "display": "system-serif"
+  }
+}

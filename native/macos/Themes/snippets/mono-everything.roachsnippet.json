@@ -1,0 +1,11 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.mono-everything",
+  "name": "Mono everything",
+  "author": "RoachWares",
+  "description": "Monospaced type throughout, terminal style.",
+  "typography": {
+    "display": "system-mono",
+    "body": "system-mono"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.copper-wire",
+  "name": "Copper Wire",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Bare copper traces and verdigris on a dark board, with packets running the lines.",
+  "tags": [
+    "dark",
+    "warm",
+    "industrial"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#0D0A07",
+      "backgroundRaised": "#130F0B",
+      "panel": "#18130E",
+      "panelRaised": "#211A13",
+      "panelSoft": "#2C2219",
+      "text": "#F3E9DD",
+      "accent": "#E59A5C",
+      "accentSecondary": "#4FC1A6",
+      "accentTertiary": "#F0C674",
+      "accentInfo": "#6FA8DC"
+    },
+    "background": {
+      "style": "circuit",
+      "intensity": 1,
+      "speed": 0.8
+    }
+  }
+}

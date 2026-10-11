@@ -1,0 +1,54 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.graphite",
+  "name": "Graphite",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Neutral grays and a quiet blue. No glow, no motion: a work theme.",
+  "tags": [
+    "dark",
+    "light",
+    "calm",
+    "neutral"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#111214",
+      "backgroundRaised": "#141517",
+      "panel": "#18191C",
+      "panelRaised": "#1F2024",
+      "panelSoft": "#27292E",
+      "text": "#ECEDEF",
+      "accent": "#6CB6FF",
+      "accentSecondary": "#A5A8FF",
+      "accentTertiary": "#F0B95C",
+      "accentInfo": "#6FD0C0"
+    },
+    "background": {
+      "style": "solid",
+      "vignette": 0.3
+    }
+  },
+  "light": {
+    "palette": {
+      "background": "#EEF0F3",
+      "backgroundRaised": "#E5E8EC",
+      "panel": "#FFFFFF",
+      "panelRaised": "#F8F9FB",
+      "panelSoft": "#E4E7EC",
+      "text": "#16181D",
+      "accent": "#1F5FBF",
+      "accentSecondary": "#5B4BC4",
+      "accentTertiary": "#9A6200",
+      "accentInfo": "#0F7A73"
+    },
+    "background": {
+      "style": "solid",
+      "vignette": 0.08
+    }
+  },
+  "effects": {
+    "glass": 0.6,
+    "glow": 0.3
+  }
+}

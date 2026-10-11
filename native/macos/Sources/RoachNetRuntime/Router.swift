@@ -283,6 +283,7 @@ extension NativeRuntime {
             let payload = try body()
             return ok(try mutateRoachTailState(payload["action"], payload, headers: request.headers))
         case ("GET", "/api/companion/roachsync"): return ok(roachSyncState())
+        case ("GET", "/api/companion/theme"): return ok(companionTheme())
         case ("POST", "/api/companion/install"):
             let payload = try body()
             // A paired phone may queue catalog installs, but it must not turn the

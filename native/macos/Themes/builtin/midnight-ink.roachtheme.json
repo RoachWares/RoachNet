@@ -1,0 +1,39 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.midnight-ink",
+  "name": "Midnight Ink",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "A writer's desk after dark: blue-black ink, serif headings, nothing moving.",
+  "tags": [
+    "dark",
+    "calm",
+    "serif"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#0B0D12",
+      "backgroundRaised": "#0F1218",
+      "panel": "#12151C",
+      "panelRaised": "#181C25",
+      "panelSoft": "#20252F",
+      "text": "#E9ECF2",
+      "accent": "#8AB4FF",
+      "accentSecondary": "#B794F6",
+      "accentTertiary": "#F2C46D",
+      "accentInfo": "#6CD4C2"
+    },
+    "background": {
+      "style": "solid",
+      "vignette": 0.4
+    }
+  },
+  "typography": {
+    "display": "system-serif",
+    "body": "system",
+    "mono": "system-mono"
+  },
+  "effects": {
+    "glow": 0.5
+  }
+}

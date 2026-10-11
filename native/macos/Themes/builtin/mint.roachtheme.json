@@ -1,0 +1,32 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.mint",
+  "name": "Mint",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Cool mint and white with a soft green aurora. Fresh without being loud.",
+  "tags": [
+    "light",
+    "cool",
+    "calm"
+  ],
+  "light": {
+    "palette": {
+      "background": "#EDF6F1",
+      "backgroundRaised": "#E2EFE8",
+      "panel": "#FFFFFF",
+      "panelRaised": "#F7FCF9",
+      "panelSoft": "#DEEDE5",
+      "text": "#14261D",
+      "accent": "#0B7A50",
+      "accentSecondary": "#2D6CDF",
+      "accentTertiary": "#856300",
+      "accentInfo": "#007A87"
+    },
+    "background": {
+      "style": "aurora",
+      "intensity": 0.4,
+      "speed": 0.5
+    }
+  }
+}

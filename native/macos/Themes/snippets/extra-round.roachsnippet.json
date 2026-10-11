@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.extra-round",
+  "name": "Extra round",
+  "author": "RoachWares",
+  "description": "Softer, rounder corners everywhere.",
+  "shape": {
+    "radiusScale": 1.6
+  }
+}

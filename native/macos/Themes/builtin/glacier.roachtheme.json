@@ -1,0 +1,52 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.glacier",
+  "name": "Glacier",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Blue ice and cold air. An aurora on the dark side, frosted paper on the light side.",
+  "tags": [
+    "dark",
+    "light",
+    "cool",
+    "calm"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#061018",
+      "backgroundRaised": "#0A1520",
+      "panel": "#0D1A24",
+      "panelRaised": "#13232F",
+      "panelSoft": "#1B2E3C",
+      "text": "#E6F3FA",
+      "accent": "#5CD2FF",
+      "accentSecondary": "#8E9BFF",
+      "accentTertiary": "#B8F0E6",
+      "accentInfo": "#7FE7D9"
+    },
+    "background": {
+      "style": "aurora",
+      "intensity": 0.9,
+      "speed": 0.7
+    }
+  },
+  "light": {
+    "palette": {
+      "background": "#EDF4F8",
+      "backgroundRaised": "#E2ECF2",
+      "panel": "#FFFFFF",
+      "panelRaised": "#F7FBFD",
+      "panelSoft": "#E1ECF2",
+      "text": "#0D2433",
+      "accent": "#006C99",
+      "accentSecondary": "#4B4FC7",
+      "accentTertiary": "#00796B",
+      "accentInfo": "#2F6FB0"
+    },
+    "background": {
+      "style": "aurora",
+      "intensity": 0.45,
+      "speed": 0.6
+    }
+  }
+}

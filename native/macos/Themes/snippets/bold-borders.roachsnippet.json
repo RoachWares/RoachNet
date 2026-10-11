@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.bold-borders",
+  "name": "Bold borders",
+  "author": "RoachWares",
+  "description": "Thicker hairlines, so panels separate at a glance.",
+  "shape": {
+    "borderWidth": 1.8
+  }
+}

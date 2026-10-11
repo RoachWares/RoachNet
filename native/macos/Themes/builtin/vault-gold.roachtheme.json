@@ -1,0 +1,37 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.vault-gold",
+  "name": "Vault Gold",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Black lacquer and brass. Serif headings for the library and the vault.",
+  "tags": [
+    "dark",
+    "warm",
+    "serif"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#0A0907",
+      "backgroundRaised": "#100E0A",
+      "panel": "#15130D",
+      "panelRaised": "#1D1A12",
+      "panelSoft": "#272318",
+      "text": "#F4EEDC",
+      "accent": "#E8C25A",
+      "accentSecondary": "#C29A62",
+      "accentTertiary": "#F2E2A8",
+      "accentInfo": "#7FB6A6"
+    },
+    "background": {
+      "style": "grid",
+      "intensity": 0.45,
+      "speed": 0.4
+    }
+  },
+  "typography": {
+    "display": "system-serif",
+    "body": "system",
+    "mono": "system-mono"
+  }
+}

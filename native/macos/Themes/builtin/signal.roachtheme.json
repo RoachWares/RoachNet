@@ -1,0 +1,85 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.signal",
+  "name": "Signal",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "The RoachNet look: bunker black, signal green and violet, with the dither field running behind everything.",
+  "tags": [
+    "brand",
+    "dark",
+    "light",
+    "vivid"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#030304",
+      "backgroundRaised": "#070709",
+      "panel": "#0B0C0E",
+      "panelRaised": "#111315",
+      "panelSoft": "#1B1C20",
+      "glass": "rgba(255,255,255,0.045)",
+      "specular": "rgba(255,255,255,0.08)",
+      "border": "rgba(255,255,255,0.085)",
+      "borderStrong": "rgba(255,255,255,0.14)",
+      "text": "rgba(255,255,255,0.97)",
+      "muted": "rgba(255,255,255,0.68)",
+      "accent": "#3DFA8A",
+      "accentSecondary": "#9138D8",
+      "accentTertiary": "#FABD33",
+      "accentInfo": "#66D6FF",
+      "success": "#3DFA8A",
+      "warning": "#EDBA42",
+      "danger": "#FF5C6C",
+      "shadow": "rgba(0,0,0,0.24)",
+      "ink": "#FFFFFF",
+      "shade": "#000000",
+      "onAccent": "#050607"
+    },
+    "background": {
+      "style": "signal",
+      "intensity": 1,
+      "speed": 1,
+      "vignette": 0.48
+    }
+  },
+  "light": {
+    "palette": {
+      "background": "#F2F3EF",
+      "backgroundRaised": "#E7E9E3",
+      "panel": "#FFFFFF",
+      "panelRaised": "#FAFBF8",
+      "panelSoft": "#E8EAE4",
+      "text": "#0E1012",
+      "muted": "rgba(14,16,18,0.70)",
+      "accent": "#087A43",
+      "accentSecondary": "#7A2BC2",
+      "accentTertiary": "#9A6200",
+      "accentInfo": "#0B6E99",
+      "success": "#0F7A43",
+      "warning": "#8F5B00",
+      "danger": "#C2283A"
+    },
+    "background": {
+      "style": "signal",
+      "intensity": 0.55,
+      "speed": 0.8,
+      "vignette": 0.1
+    }
+  },
+  "typography": {
+    "display": "system-rounded",
+    "body": "system",
+    "mono": "system-mono",
+    "scale": 1
+  },
+  "shape": {
+    "radiusScale": 1,
+    "borderWidth": 1
+  },
+  "effects": {
+    "glass": 1,
+    "glow": 1,
+    "shadow": 1
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.deep-sea",
+  "name": "Deep Sea",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Bioluminescent teal in deep water, with bubbles rising past the glass.",
+  "tags": [
+    "dark",
+    "cool"
+  ],
+  "dark": {
+    "palette": {
+      "background": "#021014",
+      "backgroundRaised": "#04151A",
+      "panel": "#061A20",
+      "panelRaised": "#0A242C",
+      "panelSoft": "#0F2F39",
+      "text": "#DDF6F7",
+      "accent": "#2EE6C5",
+      "accentSecondary": "#3AA8FF",
+      "accentTertiary": "#FFC857",
+      "accentInfo": "#8BE8FF"
+    },
+    "background": {
+      "style": "particles",
+      "intensity": 0.7,
+      "speed": 0.6,
+      "rise": true
+    }
+  },
+  "shape": {
+    "radiusScale": 1.3
+  }
+}

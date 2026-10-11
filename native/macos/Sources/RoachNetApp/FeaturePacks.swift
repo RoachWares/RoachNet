@@ -329,11 +329,11 @@ struct FeaturePacksSettingsView: View {
                         ForEach(store.activeJobs) { job in
                             HStack(spacing: 10) {
                                 Text(store.pack(job.packID)?.name ?? job.packID)
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.roach(size: 13, weight: .semibold))
                                     .foregroundStyle(RoachPalette.text)
                                 Spacer(minLength: 0)
                                 Text("\(job.status) · \(job.progress)%")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.roach(size: 12, weight: .medium))
                                     .foregroundStyle(RoachPalette.muted)
                             }
                             ProgressView(value: Double(job.progress), total: 100)
@@ -360,7 +360,7 @@ struct FeaturePacksSettingsView: View {
             section("Resource packs", detail: "Models, voices, maps and knowledge bundles. Verified by checksum before anything moves; removal keeps your data unless you say otherwise.") {
                 if store.resourcePacks.isEmpty {
                     Text("Nothing installed yet. Voice packs, map collections and knowledge bundles will appear here.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -373,7 +373,7 @@ struct FeaturePacksSettingsView: View {
                         .disabled(store.isBusy || store.unsupported)
                         .accessibilityIdentifier("packs.openPackage")
                     Text("A folder with manifest.json and its files. Nothing is downloaded.")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }
             }
@@ -413,7 +413,7 @@ struct FeaturePacksSettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 RoachKicker(title)
                 Text(detail)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.roach(size: 12, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 content()
@@ -430,10 +430,10 @@ struct FeaturePacksSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(pack.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.roach(size: 13, weight: .semibold))
                             .foregroundStyle(RoachPalette.text)
                         Text(pack.installedVersion ?? pack.version)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .font(.roach(size: 11, weight: .medium, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                         if !pack.isCapability {
                             RoachTag(pack.kind, accent: RoachPalette.cyan)
@@ -441,7 +441,7 @@ struct FeaturePacksSettingsView: View {
                     }
                     if let summary = pack.summary, !summary.isEmpty {
                         Text(summary)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.roach(size: 12, weight: .medium))
                             .foregroundStyle(RoachPalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -454,7 +454,7 @@ struct FeaturePacksSettingsView: View {
                         HStack(spacing: 6) {
                             ProgressView().controlSize(.small)
                             Text("Downloading")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.roach(size: 12, weight: .semibold))
                                 .foregroundStyle(RoachPalette.muted)
                         }
                     } else {
@@ -521,10 +521,10 @@ struct FeaturePacksSettingsView: View {
     private func detailLine(_ title: String, _ value: String, accent: Color = RoachPalette.muted) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Text(title + ":")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.roach(size: 11, weight: .semibold))
                 .foregroundStyle(accent)
             Text(value)
-                .font(.system(size: 11, weight: .medium))
+                .font(.roach(size: 11, weight: .medium))
                 .foregroundStyle(RoachPalette.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -542,7 +542,11 @@ struct FeaturePacksSettingsView: View {
     }
 
     static func bytes(_ count: Int) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
+        // "0 KB", not "Zero KB".
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowsNonnumericFormatting = false
+        return formatter.string(fromByteCount: Int64(count))
     }
 
     static func capabilityLabel(_ raw: String) -> String {

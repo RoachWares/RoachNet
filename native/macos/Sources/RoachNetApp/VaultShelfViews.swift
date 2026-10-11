@@ -111,22 +111,22 @@ private struct VaultThumbnailView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             accent.opacity(isHovered ? 0.28 : 0.18),
-                            Color.black.opacity(0.08),
+                            RoachPalette.shade.opacity(0.08),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
 
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(accent.opacity(isHovered ? 0.55 : 0.28), lineWidth: 1.2)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(accent.opacity(isHovered ? 0.55 : 0.28), lineWidth: RoachMetrics.line(1.2))
 
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -152,15 +152,15 @@ private struct VaultThumbnailView: View {
                     .resizable()
                     .scaledToFill()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
                     .scaleEffect(isHovered ? 1.1 : 1.03)
                     .saturation(isHovered ? 1.05 : 0.96)
                     .overlay(
                         LinearGradient(
                             colors: [
-                                Color.black.opacity(0.0),
-                                Color.black.opacity(0.12),
-                                Color.black.opacity(0.22),
+                                RoachPalette.shade.opacity(0.0),
+                                RoachPalette.shade.opacity(0.12),
+                                RoachPalette.shade.opacity(0.22),
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -169,8 +169,8 @@ private struct VaultThumbnailView: View {
                     .overlay(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(idlePhase ? 0.14 : 0.04),
-                                Color.white.opacity(0.0),
+                                RoachPalette.ink.opacity(idlePhase ? 0.14 : 0.04),
+                                RoachPalette.ink.opacity(0.0),
                             ],
                             startPoint: .topLeading,
                             endPoint: .center
@@ -178,7 +178,7 @@ private struct VaultThumbnailView: View {
                     )
             } else {
                 Image(systemName: fallbackSystemName)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.roach(size: 30, weight: .bold))
                     .foregroundStyle(accent)
                     .rotationEffect(.degrees(isHovered ? -6 : (idlePhase ? -3 : 3)))
                     .scaleEffect(isHovered ? 1.1 : 1.0)
@@ -186,13 +186,13 @@ private struct VaultThumbnailView: View {
 
             LinearGradient(
                 colors: [
-                    Color.white.opacity(isHovered ? 0.20 : 0.12),
-                    Color.white.opacity(0.0),
+                    RoachPalette.ink.opacity(isHovered ? 0.20 : 0.12),
+                    RoachPalette.ink.opacity(0.0),
                 ],
                 startPoint: .topLeading,
                 endPoint: .center
             )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
 
             Capsule(style: .continuous)
                 .fill(accent.opacity(isHovered ? 0.24 : 0.14))
@@ -200,7 +200,7 @@ private struct VaultThumbnailView: View {
                 .blur(radius: isHovered ? 8 : 6)
                 .offset(y: 80)
         }
-        .shadow(color: accent.opacity(isHovered ? 0.28 : 0.13), radius: isHovered ? 15 : 9, y: 8)
+        .shadow(color: accent.opacity(RoachMetrics.glow(isHovered ? 0.28 : 0.13)), radius: isHovered ? 15 : 9, y: 8)
         .rotation3DEffect(.degrees(isHovered ? 2.2 : (idlePhase ? 0.9 : -0.9)), axis: (x: 1, y: 0, z: 0), perspective: 0.8)
         .rotationEffect(.degrees(isHovered ? -0.8 : (idlePhase ? -0.35 : 0.35)))
         .offset(y: isHovered ? -2 : (idlePhase ? -0.8 : 0.8))
@@ -217,22 +217,22 @@ private struct VaultGlyphTileView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
                             accent.opacity(isHovered ? 0.26 : 0.18),
-                            Color.black.opacity(0.08),
+                            RoachPalette.shade.opacity(0.08),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
 
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(accent.opacity(isHovered ? 0.55 : 0.28), lineWidth: 1.2)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous)
+                .stroke(accent.opacity(isHovered ? 0.55 : 0.28), lineWidth: RoachMetrics.line(1.2))
 
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(14), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -252,12 +252,12 @@ private struct VaultGlyphTileView: View {
                 .blur(radius: isHovered ? 26 : 18)
                 .scaleEffect(isHovered ? 1.12 : (idlePhase ? 1.04 : 0.98))
 
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RoachMetrics.radius(16), style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(idlePhase ? 0.12 : 0.04),
-                            Color.white.opacity(0.0),
+                            RoachPalette.ink.opacity(idlePhase ? 0.12 : 0.04),
+                            RoachPalette.ink.opacity(0.0),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -266,21 +266,21 @@ private struct VaultGlyphTileView: View {
                 .padding(12)
 
             Image(systemName: fallbackSystemName)
-                .font(.system(size: 34, weight: .bold))
+                .font(.roach(size: 34, weight: .bold))
                 .foregroundStyle(accent)
                 .rotationEffect(.degrees(isHovered ? -8 : (idlePhase ? -4 : 4)))
                 .scaleEffect(isHovered ? 1.12 : 1.0)
-                .shadow(color: accent.opacity(isHovered ? 0.44 : 0.22), radius: isHovered ? 18 : 10, y: 8)
+                .shadow(color: accent.opacity(RoachMetrics.glow(isHovered ? 0.44 : 0.22)), radius: isHovered ? 18 : 10, y: 8)
 
             LinearGradient(
                 colors: [
-                    Color.white.opacity(isHovered ? 0.18 : 0.10),
-                    Color.white.opacity(0.0),
+                    RoachPalette.ink.opacity(isHovered ? 0.18 : 0.10),
+                    RoachPalette.ink.opacity(0.0),
                 ],
                 startPoint: .topLeading,
                 endPoint: .center
             )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(18), style: .continuous))
 
             Capsule(style: .continuous)
                 .fill(accent.opacity(isHovered ? 0.22 : 0.12))
@@ -288,7 +288,7 @@ private struct VaultGlyphTileView: View {
                 .blur(radius: isHovered ? 8 : 6)
                 .offset(y: 80)
         }
-        .shadow(color: accent.opacity(isHovered ? 0.28 : 0.13), radius: isHovered ? 15 : 9, y: 8)
+        .shadow(color: accent.opacity(RoachMetrics.glow(isHovered ? 0.28 : 0.13)), radius: isHovered ? 15 : 9, y: 8)
         .rotation3DEffect(.degrees(isHovered ? 2.2 : (idlePhase ? 0.9 : -0.9)), axis: (x: 1, y: 0, z: 0), perspective: 0.8)
         .rotationEffect(.degrees(isHovered ? -0.8 : (idlePhase ? -0.35 : 0.35)))
         .offset(y: isHovered ? -2 : (idlePhase ? -0.8 : 0.8))
@@ -340,7 +340,7 @@ struct VaultShelfCard: View {
                     RoachTag(kindLabel, accent: accent)
                     Spacer(minLength: 8)
                     Text(actionLabel)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.roach(size: 10, weight: .bold, design: .monospaced))
                         .tracking(1.0)
                         .foregroundStyle(accent)
                         .lineLimit(1)
@@ -363,17 +363,17 @@ struct VaultShelfCard: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .font(.roach(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(2)
 
                     Text(detail)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(3)
 
                     Text(pathLabel)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(2)
                         .truncationMode(.middle)
@@ -385,7 +385,7 @@ struct VaultShelfCard: View {
         }
         .scaleEffect(isPressed ? 0.992 : (isHovered ? 1.012 : 1.0))
         .rotation3DEffect(.degrees(isPressed ? 2.4 : (isHovered ? 1.2 : 0)), axis: (x: 1, y: 0, z: 0), perspective: 0.9)
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous))
         .contextMenu {
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -433,7 +433,7 @@ struct VaultVirtualShelfCard: View {
                     RoachTag(kindLabel, accent: accent)
                     Spacer(minLength: 8)
                     Text(actionLabel)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.roach(size: 10, weight: .bold, design: .monospaced))
                         .tracking(1.0)
                         .foregroundStyle(accent)
                         .lineLimit(1)
@@ -455,17 +455,17 @@ struct VaultVirtualShelfCard: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .font(.roach(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(RoachPalette.text)
                         .lineLimit(2)
 
                     Text(detail)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.roach(size: 12, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(3)
 
                     Text(pathLabel)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.roach(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(2)
                         .truncationMode(.middle)
@@ -477,7 +477,7 @@ struct VaultVirtualShelfCard: View {
         }
         .scaleEffect(isPressed ? 0.992 : (isHovered ? 1.012 : 1.0))
         .rotation3DEffect(.degrees(isPressed ? 2.4 : (isHovered ? 1.2 : 0)), axis: (x: 1, y: 0, z: 0), perspective: 0.9)
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: RoachMetrics.radius(22), style: .continuous))
         .help(title)
         .onHover { hovered in
             withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {

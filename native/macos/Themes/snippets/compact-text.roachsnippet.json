@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.compact-text",
+  "name": "Compact text",
+  "author": "RoachWares",
+  "description": "Slightly smaller text, to fit more on a laptop screen.",
+  "typography": {
+    "scale": 0.92
+  }
+}

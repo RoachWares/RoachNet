@@ -1,0 +1,10 @@
+{
+  "schema": "org.roachnet.theme-snippet.v1",
+  "id": "roachnet.snippet.larger-text",
+  "name": "Larger text",
+  "author": "RoachWares",
+  "description": "Everything one step bigger.",
+  "typography": {
+    "scale": 1.12
+  }
+}

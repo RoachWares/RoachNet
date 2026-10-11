@@ -1,0 +1,42 @@
+{
+  "schema": "org.roachnet.theme.v1",
+  "id": "roachnet.archive-sepia",
+  "name": "Archive Sepia",
+  "author": "RoachWares",
+  "version": "1.1.0",
+  "description": "Aged paper from the stacks. Sepia, oxblood and serif headings.",
+  "tags": [
+    "light",
+    "warm",
+    "serif",
+    "retro"
+  ],
+  "light": {
+    "palette": {
+      "background": "#EEE3CD",
+      "backgroundRaised": "#E6D8BD",
+      "panel": "#F6EDDA",
+      "panelRaised": "#FBF5E7",
+      "panelSoft": "#E4D5B9",
+      "text": "#36291B",
+      "accent": "#8A3711",
+      "accentSecondary": "#5A4687",
+      "accentTertiary": "#6E5200",
+      "accentInfo": "#2A6670"
+    },
+    "background": {
+      "style": "paper",
+      "intensity": 1.2,
+      "vignette": 0.2
+    }
+  },
+  "typography": {
+    "display": "system-serif",
+    "body": "system-serif",
+    "mono": "system-mono"
+  },
+  "effects": {
+    "glass": 0.4,
+    "glow": 0.2
+  }
+}
