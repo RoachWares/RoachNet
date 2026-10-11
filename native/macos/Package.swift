@@ -81,7 +81,8 @@ targets += [
     .testTarget(
         name: "RoachNetAppTests",
         dependencies: ["RoachNetApp", "RoachNetCore", "RoachNetSetup"],
-        path: "Tests/RoachNetAppTests"
+        path: "Tests/RoachNetAppTests",
+        exclude: ["Fixtures"]
     ),
 ]
 #endif

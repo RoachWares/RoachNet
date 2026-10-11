@@ -27,6 +27,9 @@ final class DownloadJob {
     var resumedFrom: Int64?
     var lastError: String?
     var partialKept = false
+    /// Content (maps, ZIMs, packs) resumes and keeps partial bytes across failures. App updates
+    /// do not: a failed DMG is thrown away and the update is retried from the start.
+    var resumable: Bool { filetype != "dmg" }
 
     init(url: String, filepath: String, filetype: String, descriptorUrl: String?, expectedSha256: String?, parts: [JSON]) {
         self.url = url
@@ -226,7 +229,7 @@ extension NativeRuntime {
 
     /// A partial file is reused only for the same URL and the same expected checksum.
     func partialIsResumable(_ job: DownloadJob) -> Bool {
-        guard job.parts.isEmpty, Files.isFile(job.partialFilepath),
+        guard job.resumable, job.parts.isEmpty, Files.isFile(job.partialFilepath),
               let text = Files.readText(resumeMarkerPath(job)), let marker = try? JSON.parse(text) else { return false }
         return marker["url"].stringValue == job.url && marker["sha256"].stringValue == job.expectedSha256
     }
@@ -297,7 +300,7 @@ extension NativeRuntime {
                     try handle.truncate(atOffset: 0)
                     continue
                 }
-                guard isTransientDownloadError(error), attempt < config.downloadMaxAttempts else { throw error }
+                guard job.resumable, isTransientDownloadError(error), attempt < config.downloadMaxAttempts else { throw error }
                 let pause = min(30.0, pow(2.0, Double(attempt)))
                 log("download \(job.jobId) attempt \(attempt) failed (\(error)); resuming in \(Int(pause))s")
                 withState { job.lastError = "\(error)"; job.updatedAt = JS.isoNow() }
@@ -322,7 +325,7 @@ extension NativeRuntime {
         if !Files.exists(job.partialFilepath) {
             _ = FileManager.default.createFile(atPath: job.partialFilepath, contents: nil)
         }
-        if job.parts.isEmpty { writeResumeMarker(job) }
+        if job.parts.isEmpty && job.resumable { writeResumeMarker(job) }
         guard let handle = FileHandle(forWritingAtPath: job.partialFilepath) else {
             throw RuntimeError("Download from \(job.url) failed: unable to open \(job.partialFilepath)")
         }
@@ -367,7 +370,7 @@ extension NativeRuntime {
             closeHandle()
             let wasCancelled = withState { job.status == "cancelled" }
             // Keep what arrived when the network was the problem, so the next install resumes.
-            let keepPartial = !wasCancelled && job.parts.isEmpty && isTransientDownloadError(error)
+            let keepPartial = !wasCancelled && job.resumable && job.parts.isEmpty && isTransientDownloadError(error)
                 && fileSize(job.partialFilepath) > 0
             if !keepPartial {
                 Files.remove(job.partialFilepath)
@@ -717,6 +720,23 @@ extension NativeRuntime {
         return response
     }
 
+    /// The zoom 0-7 world overview every region draws over. Resolved off the request thread
+    /// (it needs the network); returns false when it is already installed.
+    func queueWorldAtlasInBackground() -> Bool {
+        let pmtiles = Path.join(storageRoot, "maps", "pmtiles")
+        let names = ["global-min_2026-10.pmtiles", "global-min_2025-12.pmtiles"]
+        if names.contains(where: { Files.exists(Path.join(pmtiles, $0)) }) { return false }
+        let descriptor = "\(JS.replace("/+$", in: config.appsDownloadsBaseUrl, with: ""))/maps/pmtiles/global-min_2026-10.json"
+        DispatchQueue.global(qos: .utility).async { [self] in
+            do {
+                _ = try queueResolvedDownload(JSON(descriptor), pmtiles, "pmtiles")
+            } catch {
+                log("world atlas not queued: \(error)")
+            }
+        }
+        return true
+    }
+
     func plural(_ count: Int, _ noun: String) -> String { "\(count) \(noun)\(count == 1 ? "" : "s")" }
 
     func handleCompanionInstall(_ body: JSON) throws -> JSON {
@@ -730,7 +750,8 @@ extension NativeRuntime {
         case "base-map-assets":
             try Files.mkdirp(pmtiles)
             try Files.mkdirp(Path.join(storageRoot, "maps", "basemaps-assets"))
-            return appStoreInstallResponse(action, [], "Base atlas folders are ready.", JSONObject([("success", true)]))
+            let queued = queueWorldAtlasInBackground()
+            return appStoreInstallResponse(action, [], queued ? "Base atlas folders are ready. The World Atlas download is starting." : "Base atlas folders are ready.", JSONObject([("success", true)]))
         case "map-collection":
             let slug = trimmed(body["slug"])
             if slug.isEmpty { throw requestError("Map collection slug is missing.", 400) }

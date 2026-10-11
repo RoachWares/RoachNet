@@ -499,6 +499,13 @@ public struct MapCuratedCollection: Decodable, Identifiable, Sendable {
         public let title: String
         public let size_mb: Int?
         public let description: String?
+        public let url: String?
+
+        /// The file name the runtime saves this pack under.
+        public var fileName: String {
+            if let url, let name = URL(string: url)?.lastPathComponent, name.hasSuffix(".pmtiles") { return name }
+            return "\(id).pmtiles"
+        }
     }
 
     public let slug: String

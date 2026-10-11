@@ -12054,11 +12054,26 @@ private struct RootWorkspaceView: View {
     }
 
     private func mapDisplayCollections(from collections: [MapCuratedCollection]) -> [RoachMapCollectionDisplay] {
-        collections.map { collection in
+        let mapsRoot = (model.storagePath as NSString).appendingPathComponent("maps/pmtiles")
+        let fileManager = FileManager.default
+        func installed(_ names: [String]) -> String? {
+            names.map { (mapsRoot as NSString).appendingPathComponent($0) }.first { fileManager.fileExists(atPath: $0) }
+        }
+        // The world overview goes under every region; 1.0.6 saved packs under their 2025-12 names.
+        let world = installed(["global-min_2026-10.pmtiles", "global-min_2025-12.pmtiles"])
+        // The atlas draws everything installed; the selected collection only decides where it opens.
+        var everything: [String] = world.map { [$0] } ?? []
+        for collection in collections {
+            for resource in collection.resources {
+                if let file = installed([resource.fileName, "\(resource.id)_2025-12.pmtiles"]), !everything.contains(file) { everything.append(file) }
+            }
+        }
+        return collections.map { collection in
             let resourceTitles = collection.resources.map(\.title)
             let installedCount = max(0, collection.installed_count ?? 0)
             let totalCount = max(collection.total_count ?? collection.resources.count, collection.resources.count)
-            return RoachMapCollectionDisplay(
+            let regionFiles = collection.resources.compactMap { installed([$0.fileName, "\($0.id)_2025-12.pmtiles"]) }
+            var display = RoachMapCollectionDisplay(
                 slug: collection.slug,
                 name: collection.name,
                 detail: collection.description ?? "Offline region pack.",
@@ -12067,6 +12082,9 @@ private struct RootWorkspaceView: View {
                 resourceCount: collection.resources.count,
                 resourceTitles: resourceTitles
             )
+            display.packFiles = everything
+            display.focusFiles = regionFiles
+            return display
         }
     }
 

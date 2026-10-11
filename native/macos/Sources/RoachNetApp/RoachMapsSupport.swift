@@ -41,6 +41,10 @@ struct RoachMapCollectionDisplay: Identifiable, Hashable {
     let totalCount: Int
     let resourceCount: Int
     let resourceTitles: [String]
+    /// Every installed `.pmtiles` file to draw, world overview first. Empty draws the placeholder atlas.
+    var packFiles: [String] = []
+    /// This collection's own installed packs, which the map frames when it is selected.
+    var focusFiles: [String] = []
 
     var id: String { slug }
     var isReady: Bool { totalCount > 0 && installedCount >= totalCount }
@@ -790,7 +794,18 @@ struct RoachNativeMapViewer: View {
         }
     }
 
+    private var hasPacks: Bool { !(collection?.packFiles.isEmpty ?? true) }
+
+    @ViewBuilder
     private var mapCanvas: some View {
+        if let files = collection?.packFiles, !files.isEmpty {
+            RoachTileMapView(files: files, focusFiles: collection?.focusFiles ?? [], accent: mode.accent, latestFix: latestFix, routeSamples: routeSamples)
+        } else {
+            placeholderCanvas
+        }
+    }
+
+    private var placeholderCanvas: some View {
         RoachMapCanvas(
             title: collection?.name ?? "RoachAtlas",
             subtitle: collection?.stateLabel ?? "No pack selected",
@@ -840,13 +855,20 @@ struct RoachNativeMapViewer: View {
                 RoachMapStat(label: "Step", value: snapshot.stepDistanceLabel)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("ZOOM")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .tracking(1.2)
+            if !hasPacks {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("ZOOM")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(RoachPalette.muted)
+                    Slider(value: $zoomLevel, in: 0.3...1.0)
+                        .tint(mode.accent)
+                }
+            } else {
+                Text("Drag to pan, pinch or double-click to zoom. Everything here is drawn from the packs on this Mac.")
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(RoachPalette.muted)
-                Slider(value: $zoomLevel, in: 0.3...1.0)
-                    .tint(mode.accent)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             ViewThatFits(in: .horizontal) {
@@ -959,7 +981,7 @@ private struct RoachMapCanvas: View {
                         )
                 }
 
-                Text("Data ready: © OpenStreetMap contributors | © OpenMapTiles")
+                Text("Install a map pack to draw the real map here.")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(RoachPalette.muted.opacity(0.78))
                     .lineLimit(1)

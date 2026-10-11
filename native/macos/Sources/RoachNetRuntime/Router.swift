@@ -186,7 +186,9 @@ extension NativeRuntime {
         case ("POST", "/api/maps/download-base-assets"):
             try Files.mkdirp(Path.join(storageRoot, "maps", "pmtiles"))
             try Files.mkdirp(Path.join(storageRoot, "maps", "basemaps-assets"))
-            return ok(["success": true, "ok": true, "message": "Base atlas folders are ready."])
+            let queued = queueWorldAtlasInBackground()
+            return ok(["success": true, "ok": true,
+                       "message": JSON(queued ? "Base atlas folders are ready. The World Atlas download is starting." : "Base atlas folders are ready.")])
         case ("POST", "/api/maps/download-collection"):
             let payload = try body()
             let jobs = try queueResources(resourcesForMapCollection(payload["slug"]), Path.join(storageRoot, "maps", "pmtiles"), "pmtiles")
