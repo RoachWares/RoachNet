@@ -51,6 +51,13 @@ var targets: [Target] = [
 ]
 
 #if os(macOS)
+// RoachNetApp and RoachNetSetup declare their entry point with @main inside a
+// file named main.swift. Swift 6.4's SwiftPM spots the @main and compiles them
+// with -parse-as-library; earlier toolchains (the macOS 15 CI runners) treat
+// main.swift as top-level code and reject @main. Saying it explicitly builds
+// the same on both.
+let parseAsLibrary: [SwiftSetting] = [.unsafeFlags(["-parse-as-library"])]
+
 products += [
     .executable(name: "RoachNetApp", targets: ["RoachNetApp"]),
     .executable(name: "RoachNetSetup", targets: ["RoachNetSetup"]),
@@ -71,12 +78,14 @@ targets += [
         path: "Sources/RoachNetApp",
         resources: [
             .process("Resources"),
-        ]
+        ],
+        swiftSettings: parseAsLibrary
     ),
     .executableTarget(
         name: "RoachNetSetup",
         dependencies: ["RoachNetCore", "RoachNetDesign"],
-        path: "Sources/RoachNetSetup"
+        path: "Sources/RoachNetSetup",
+        swiftSettings: parseAsLibrary
     ),
     .testTarget(
         name: "RoachNetAppTests",
