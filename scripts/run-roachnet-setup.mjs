@@ -27,6 +27,7 @@ import {
   redactSensitiveText,
 } from './lib/roachnet_process_security.mjs'
 import { getRoachNetLocalHostname } from './lib/roachtail_hostname.mjs'
+import { UnsupportedMediaTypeError, declaresJsonBody, loopbackRequestRejection } from './lib/roachnet_loopback_guard.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1274,8 +1275,9 @@ class RequestPayloadTooLargeError extends Error {
 
 function sendError(response, error, fallbackStatusCode = 500) {
   const statusCode = Number(error?.statusCode || fallbackStatusCode)
+  // Only an Error's message goes back; anything else thrown stays in the log.
   sendJson(response, {
-    error: error instanceof Error ? error.message : String(error),
+    error: error instanceof Error ? error.message : 'RoachNet Setup hit an unexpected error.',
   }, statusCode)
 }
 
@@ -1330,6 +1332,10 @@ async function parseJsonBody(request) {
 
   if (!raw) {
     return {}
+  }
+
+  if (!declaresJsonBody(request.headers)) {
+    throw new UnsupportedMediaTypeError()
   }
 
   return JSON.parse(raw)
@@ -4334,6 +4340,14 @@ async function handleLaunchRequest(request, response) {
 }
 
 async function requestHandler(request, response) {
+  // The setup service can rewrite the install root and launch what it installs,
+  // so it refuses DNS-rebound and cross-site requests (see roachnet_loopback_guard).
+  const rejection = loopbackRequestRejection(request, 'Setup')
+  if (rejection) {
+    sendJson(response, { error: rejection.error }, rejection.statusCode)
+    return
+  }
+
   const requestUrl = new URL(request.url || '/', 'http://localhost')
 
   if (request.method === 'GET' && requestUrl.pathname === '/api/state') {

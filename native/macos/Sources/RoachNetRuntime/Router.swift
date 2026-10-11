@@ -40,7 +40,31 @@ extension NativeRuntime {
         } else if let colon = host.lastIndex(of: ":"), host.filter({ $0 == ":" }).count == 1 {
             host = String(host[..<colon])
         }
-        return host == "127.0.0.1" || host == "localhost" || host == "::1" || host.hasPrefix("127.")
+        return isLoopbackHostname(host)
+    }
+
+    /// Loopback names and literals only. `127.example.net` is a DNS name a page
+    /// can rebind, so 127/8 must be a dotted-quad literal, not a prefix.
+    static func isLoopbackHostname(_ raw: String) -> Bool {
+        var host = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        if host.hasPrefix("[") && host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        if host == "localhost" || host == "::1" || host == "::ffff:127.0.0.1" { return true }
+        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard octets.count == 4, octets[0] == "127" else { return false }
+        return octets.allSatisfy { octet in
+            !octet.isEmpty && octet.count <= 3 && octet.allSatisfy { $0.isASCII && $0.isNumber } && (Int(octet) ?? 256) <= 255
+        }
+    }
+
+    /// Browsers send `Origin` on every cross-origin POST, including the
+    /// "simple" ones that skip the CORS preflight (an empty body, text/plain).
+    /// A request with no Origin is not from a page on another site; `null`
+    /// (sandboxed frames, files) is refused.
+    static func isTrustedLoopbackOrigin(_ raw: String?) -> Bool {
+        guard let raw else { return true }
+        guard let origin = WebURL(raw.trimmingCharacters(in: .whitespaces)),
+              origin.scheme == "http" || origin.scheme == "https" else { return false }
+        return isLoopbackHostname(origin.hostname)
     }
 
     /// Entry point for the loopback API (and the in-process companion proxy).
@@ -51,6 +75,9 @@ extension NativeRuntime {
             // a DNS-rebound page cannot read responses from this port.
             guard Self.isTrustedLoopbackHost(request.header("host")) else {
                 return .json(403, ["error": "Loopback API requests must use a loopback Host."])
+            }
+            guard Self.isTrustedLoopbackOrigin(request.header("origin")) else {
+                return .json(403, ["error": "Loopback API requests from other sites are refused."])
             }
             return try route(&request)
         } catch let error as RuntimeError {
