@@ -177,7 +177,12 @@ extension NativeRuntime {
             let workspace = config.env("OPENCLAW_WORKSPACE_PATH").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(storageRoot, "RoachClaw")
             return ok(["workspacePath": JSON(workspace), "skills": []])
         case ("GET", "/api/rag/files"): return ok(["files": jsonStrings(listVaultKnowledgeFiles(Path.join(storageRoot, "Vault")))])
-        case ("GET", "/api/maps/curated-collections"): return ok(.array(mapCollections()))
+        case ("GET", "/api/collections"):
+            refreshCollections(force: url.queryParameter("refresh") == "1")
+            return ok(["collections": collectionsStatus()])
+        case ("GET", "/api/maps/curated-collections"):
+            refreshCollections()
+            return ok(.array(mapCollections()))
         case ("POST", "/api/maps/download-base-assets"):
             try Files.mkdirp(Path.join(storageRoot, "maps", "pmtiles"))
             try Files.mkdirp(Path.join(storageRoot, "maps", "basemaps-assets"))
@@ -190,8 +195,12 @@ extension NativeRuntime {
             let payload = try body()
             let job = try queueResolvedDownload(payload["url"], Path.join(storageRoot, "maps", "pmtiles"), "pmtiles")
             return ok(["success": JSON(job != nil), "ok": JSON(job != nil), "message": JSON(job != nil ? "Remote map download queued." : "No map URL provided.")])
-        case ("GET", "/api/zim/curated-categories"): return ok(.array(educationCategories()))
-        case ("GET", "/api/zim/wikipedia"): return ok(wikipediaState())
+        case ("GET", "/api/zim/curated-categories"):
+            refreshCollections()
+            return ok(.array(educationCategories()))
+        case ("GET", "/api/zim/wikipedia"):
+            refreshCollections()
+            return ok(wikipediaState())
         case ("POST", "/api/zim/download-category-tier"):
             let payload = try body()
             let jobs = try queueResources(resourcesForEducationTier(payload["categorySlug"], payload["tierSlug"]), Path.join(storageRoot, "zim"), "zim")

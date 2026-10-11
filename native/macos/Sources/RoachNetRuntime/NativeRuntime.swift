@@ -7,6 +7,8 @@ public final class NativeRuntime {
     /// Serializes read-modify-write cycles on local state files and in-memory
     /// job tables (the previous runtime relied on a single-threaded loop).
     let stateLock = NSRecursiveLock()
+    /// One background fetch of the live content collections at a time.
+    var collectionsRefreshInFlight = false
 
     var benchmarkStatus: JSON = ["status": "idle", "benchmarkId": nil]
     var systemUpdateStatus: JSON

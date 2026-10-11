@@ -1083,10 +1083,10 @@ extension NativeRuntime {
     }
 
     func mapCollections() -> [JSON] {
-        let manifest = readJSONFile(["collections/maps.json", "website-apps-dist/collections/maps.json"], ["collections": []])
+        let manifest = loadCollection(.maps)
         let mapsRoot = Path.join(storageRoot, "maps", "pmtiles")
         return manifest["collections"].array.map { collection in
-            let resources: [JSON] = collection["resources"].array.map { resource in
+            let resources: [JSON] = collection["resources"].array.filter { !$0["unavailable"].truthy }.map { resource in
                 [
                     "id": resource["id"],
                     "title": resource["title"],
@@ -1099,12 +1099,15 @@ extension NativeRuntime {
             let installedCount = resources.filter { resource in
                 let fallback = "\(resource["id"].jsString).pmtiles"
                 let filename = resource["url"].truthy ? fileNameForUrl(resource["url"], fallback) : fallback
+                // 1.0.6 saved the same packs under their 2025-12 names.
                 return Files.exists(Path.join(mapsRoot, filename))
+                    || Files.exists(Path.join(mapsRoot, "\(resource["id"].jsString)_2025-12.pmtiles"))
             }.count
             return [
                 "slug": collection["slug"],
                 "name": collection["name"],
                 "description": collection["description"] ?? nil,
+                "minimumRoachNet": collection["minimumRoachNet"] ?? nil,
                 "installed_count": JSON(installedCount),
                 "total_count": JSON(resources.count),
                 "resources": .array(resources),
@@ -1113,7 +1116,7 @@ extension NativeRuntime {
     }
 
     func educationCategories() -> [JSON] {
-        let manifest = readJSONFile(["collections/kiwix-categories.json", "website-apps-dist/collections/kiwix-categories.json"], ["categories": []])
+        let manifest = loadCollection(.kiwix)
         let zimRoot = Path.join(storageRoot, "zim")
         return manifest["categories"].array.map { category in
             [
@@ -1156,7 +1159,7 @@ extension NativeRuntime {
     }
 
     func wikipediaOptions() -> [JSON] {
-        readJSONFile(["collections/wikipedia.json", "website-apps-dist/collections/wikipedia.json"], ["options": []])["options"].array
+        loadCollection(.wikipedia)["options"].array
             .filter { !$0["unavailable"].truthy }
     }
 

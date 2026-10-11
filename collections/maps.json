@@ -1,484 +1,601 @@
 {
-  "spec_version": "2026-02-11",
+  "spec_version": "2026-10-11",
+  "release": "maps-2026-10",
+  "source": "https://github.com/RoachWares/RoachNet-Maps/releases/tag/maps-2026-10",
+  "attribution": "© OpenStreetMap contributors (ODbL), tiles by Protomaps",
   "collections": [
     {
       "name": "Pacific Region",
       "slug": "pacific",
-      "description": "Map assets for the Pacific region, including Alaska, California, Hawaii, Oregon, and Washington.",
+      "description": "Street-level offline maps of Alaska, California, Hawaii, Oregon and Washington.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "alaska",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Alaska",
-          "description": "Topographic maps for the state of Alaska.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/alaska_2025-12.pmtiles",
-          "size_mb": 684
+          "description": "Street-level offline map of the state of Alaska, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/alaska_2026-10.pmtiles",
+          "size_mb": 726,
+          "sha256": "6fc574a68b9dd6bd82d4bdd6b54aafd196c35cd87be5646fa795188d37b94ea6"
         },
         {
           "id": "california",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "California",
-          "description": "Topographic maps for the state of California.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/california_2025-12.pmtiles",
-          "size_mb": 1100
+          "description": "Street-level offline map of the state of California, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/california_2026-10.pmtiles",
+          "size_mb": 1250,
+          "sha256": "2bbc2646487e71ecdf41a4e679ee1770cc83f6afcc4a3282c4c65ad56298eba4"
         },
         {
           "id": "hawaii",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Hawaii",
-          "description": "Topographic maps for the state of Hawaii.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/hawaii_2025-12.pmtiles",
-          "size_mb": 28
+          "description": "Street-level offline map of the state of Hawaii, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/hawaii_2026-10.pmtiles",
+          "size_mb": 32,
+          "sha256": "2df252081eacbd1fc101e1782d3c8fe0924bf4ee511761a505f79ddaf2bf4fba"
         },
         {
           "id": "oregon",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Oregon",
-          "description": "Topographic maps for the state of Oregon.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/oregon_2025-12.pmtiles",
-          "size_mb": 379
+          "description": "Street-level offline map of the state of Oregon, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/oregon_2026-10.pmtiles",
+          "size_mb": 421,
+          "sha256": "d17e7e80ef3ab6a5b9ed7f9f15135fbbb216669eb97c864637c79ea0a2224041"
         },
         {
           "id": "washington",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Washington",
-          "description": "Topographic maps for the state of Washington.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/washington_2025-12.pmtiles",
-          "size_mb": 466
+          "description": "Street-level offline map of the state of Washington, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/washington_2026-10.pmtiles",
+          "size_mb": 531,
+          "sha256": "6a1d7ddafda7e470c197b0964501f7af6e79a5c4009b323cfaca3ef550d15b31"
         }
       ]
     },
     {
       "name": "Mountain Region",
       "slug": "mountain",
-      "description": "Map assets for the Mountain region, including Arizona, Colorado, Idaho, Montana, Nevada, New Mexico, Utah, and Wyoming.",
+      "description": "Street-level offline maps of Arizona, Colorado, Idaho, Montana, Nevada, New Mexico, Utah and Wyoming.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "arizona",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Arizona",
-          "description": "Topographic maps for the state of Arizona.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/arizona_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Arizona, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/arizona_2026-10.pmtiles",
+          "size_mb": 460,
+          "sha256": "85c592afd51131b6d9fb67be0157ff732997e2f9b5a3898d54ba891f6132105c"
         },
         {
           "id": "colorado",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Colorado",
-          "description": "Topographic maps for the state of Colorado.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/colorado_2025-12.pmtiles",
-          "size_mb": 450
+          "description": "Street-level offline map of the state of Colorado, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/colorado_2026-10.pmtiles",
+          "size_mb": 516,
+          "sha256": "7a46112d87c51b3bdf870c3248b9c687e7247abac345ecddeccd77f70ee70aac"
         },
         {
           "id": "idaho",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Idaho",
-          "description": "Topographic maps for the state of Idaho.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/idaho_2025-12.pmtiles",
-          "size_mb": 220
+          "description": "Street-level offline map of the state of Idaho, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/idaho_2026-10.pmtiles",
+          "size_mb": 253,
+          "sha256": "de42416de024bca0f3de1c7de4b7ea40adbde2c798b8c591821c4b08ad41909c"
         },
         {
           "id": "montana",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Montana",
-          "description": "Topographic maps for the state of Montana.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/montana_2025-12.pmtiles",
-          "size_mb": 270
+          "description": "Street-level offline map of the state of Montana, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/montana_2026-10.pmtiles",
+          "size_mb": 294,
+          "sha256": "6e210a2f57371d222cf3b20637880be13836df13c47429deb6d6407a2aab4f40"
         },
         {
           "id": "nevada",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Nevada",
-          "description": "Topographic maps for the state of Nevada.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/nevada_2025-12.pmtiles",
-          "size_mb": 200
+          "description": "Street-level offline map of the state of Nevada, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/nevada_2026-10.pmtiles",
+          "size_mb": 223,
+          "sha256": "cb30718931a4782a599002074b3c904716a15333fb611bb56a39c8f4fe85bf56"
         },
         {
           "id": "new_mexico",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "New Mexico",
-          "description": "Topographic maps for the state of New Mexico.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/new_mexico_2025-12.pmtiles",
-          "size_mb": 230
+          "description": "Street-level offline map of the state of New Mexico, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/new_mexico_2026-10.pmtiles",
+          "size_mb": 260,
+          "sha256": "5a8b996149cebbbab6f80b221b67fcb649b5b10a0cbe5dea678f25312e26957a"
         },
         {
           "id": "utah",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Utah",
-          "description": "Topographic maps for the state of Utah.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/utah_2025-12.pmtiles",
-          "size_mb": 240
+          "description": "Street-level offline map of the state of Utah, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/utah_2026-10.pmtiles",
+          "size_mb": 279,
+          "sha256": "dfb8d2bf1ed8fe883b2f829be45200b5c94a156c3268e2a6a34325eaf6a07ee1"
         },
         {
           "id": "wyoming",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Wyoming",
-          "description": "Topographic maps for the state of Wyoming.",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/wyoming_2025-12.pmtiles",
-          "size_mb": 210
+          "description": "Street-level offline map of the state of Wyoming, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/wyoming_2026-10.pmtiles",
+          "size_mb": 238,
+          "sha256": "b3a5c1869073898e2ee49c6ee296b29e3ba63ddef2e3037dd5599a8b69d3c1bb"
         }
       ]
     },
     {
       "name": "West South Central",
       "slug": "west-south-central",
-      "description": "Map assets for the West South Central region, including Arkansas, Louisiana, Oklahoma, and Texas.",
+      "description": "Street-level offline maps of Arkansas, Oklahoma, Louisiana and Texas.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "arkansas",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Arkansas",
-          "description": "Topographic maps for the state of Arkansas",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/arkansas_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Arkansas, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/arkansas_2026-10.pmtiles",
+          "size_mb": 189,
+          "sha256": "b7c6b83dca74410b24add1f31f940a893b261a5f12190904d1f9e2292420ac4f"
         },
         {
           "id": "oklahoma",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Oklahoma",
-          "description": "Topographic maps for the state of Oklahoma",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/oklahoma_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Oklahoma, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/oklahoma_2026-10.pmtiles",
+          "size_mb": 236,
+          "sha256": "f1332ce9170d22b1b9fc56386c716fb1f03f859d530e07757455b505dcc0f56f"
         },
         {
           "id": "louisiana",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Louisiana",
-          "description": "Topographic maps for the state of Louisiana",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/louisiana_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Louisiana, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/louisiana_2026-10.pmtiles",
+          "size_mb": 222,
+          "sha256": "90117e2c1e19d8ecc20b99ecc299a0eedaf2cb1a3e9c55d044a6ee539356f549"
         },
         {
           "id": "texas",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Texas",
-          "description": "Topographic maps for the state of Texas",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/texas_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Texas, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/texas_2026-10.pmtiles",
+          "size_mb": 990,
+          "sha256": "254344a3c46848c9f030eab3cd7c3193b70542067d1d73706a81f938de406941"
         }
       ]
     },
     {
       "name": "East South Central",
       "slug": "east-south-central",
-      "description": "Map assets for the East South Central region, including Alabama, Kentucky, Mississippi, and Tennessee.",
+      "description": "Street-level offline maps of Alabama, Kentucky, Mississippi and Tennessee.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "alabama",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Alabama",
-          "description": "Topographic maps for the state of Alabama",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/alabama_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Alabama, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/alabama_2026-10.pmtiles",
+          "size_mb": 282,
+          "sha256": "65dc19a2f05bc95095499fb425b69e75dae9b913c6cca83209f5902c6c604377"
         },
         {
           "id": "kentucky",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Kentucky",
-          "description": "Topographic maps for the state of Kentucky",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/kentucky_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Kentucky, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/kentucky_2026-10.pmtiles",
+          "size_mb": 232,
+          "sha256": "6408cd2b06fa7a44936d99b7879379f5f50d123e4fbc65fea0ffdc9c4804b39c"
         },
         {
           "id": "mississippi",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Mississippi",
-          "description": "Topographic maps for the state of Mississippi",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/mississippi_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Mississippi, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/mississippi_2026-10.pmtiles",
+          "size_mb": 150,
+          "sha256": "8c597d5ca53ab875f167e5fde399ec78334e1da227367c86e19ac7a9c6203b1d"
         },
         {
           "id": "tennessee",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Tennessee",
-          "description": "Topographic maps for the state of Tennessee",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/tennessee_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Tennessee, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/tennessee_2026-10.pmtiles",
+          "size_mb": 271,
+          "sha256": "5203281e4fcc7fee2c71a5084c529a93f5df0e7aac8a151b37a03c5d8c9ed2f9"
         }
       ]
     },
     {
       "name": "South Atlantic",
       "slug": "south-atlantic",
-      "description": "Map assets for the South Atlantic region, including Delaware, Florida, Georgia, Maryland, North Carolina, South Carolina, Virginia, and West Virginia.",
+      "description": "Street-level offline maps of Delaware, District of Columbia, Florida, Georgia, Maryland, North Carolina, South Carolina, Virginia and West Virginia.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "delaware",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Delaware",
-          "description": "Topographic maps for the state of Delaware",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/delaware_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Delaware, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/delaware_2026-10.pmtiles",
+          "size_mb": 35,
+          "sha256": "f490b01ec318c4abb52b4b2f95654378c55095ae471da6a7cbcf2974f59a1281"
+        },
+        {
+          "id": "district_of_columbia",
+          "version": "2026-10",
+          "title": "District of Columbia",
+          "description": "Street-level offline map of the District of Columbia, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/district_of_columbia_2026-10.pmtiles",
+          "size_mb": 25,
+          "sha256": "f84fd665b4ca3448c320726de358f1eb1ac246934c7a68cf0fb263d1b135c385"
         },
         {
           "id": "florida",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Florida",
-          "description": "Topographic maps for the state of Florida",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/florida_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Florida, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/florida_2026-10.pmtiles",
+          "size_mb": 1104,
+          "sha256": "680c1396dc7b14354464a722fa345a1142950975bdd387933f47e08d7b41da18"
         },
         {
           "id": "georgia",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Georgia",
-          "description": "Topographic maps for the state of Georgia",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/georgia_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Georgia, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/georgia_2026-10.pmtiles",
+          "size_mb": 438,
+          "sha256": "f12e91ca9e573c0ab0e0786bf26632ef5b21a4882bb2f8b290345981ac3488ad"
         },
         {
           "id": "maryland",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Maryland",
-          "description": "Topographic maps for the state of Maryland",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/maryland_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Maryland, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/maryland_2026-10.pmtiles",
+          "size_mb": 256,
+          "sha256": "deb0b92b9c71462026aeea6abd88da4e4c98696cf0e77248010bf4ca178484b2"
         },
         {
           "id": "north_carolina",
-          "version": "2025-12",
-          "title": "North_Carolina",
-          "description": "Topographic maps for the state of North_Carolina",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/north_carolina_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "North Carolina",
+          "description": "Street-level offline map of the state of North Carolina, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/north_carolina_2026-10.pmtiles",
+          "size_mb": 514,
+          "sha256": "a2d0e9d0bcdb0c0ac3afd98f3f665df00015e6d471cb1baf1f1096fdce2f9ce6"
         },
         {
           "id": "south_carolina",
-          "version": "2025-12",
-          "title": "South_Carolina",
-          "description": "Topographic maps for the state of South_Carolina",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/south_carolina_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "South Carolina",
+          "description": "Street-level offline map of the state of South Carolina, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/south_carolina_2026-10.pmtiles",
+          "size_mb": 245,
+          "sha256": "bed853a180c58d46daf06cb2b601e446a0a4638909b3c2a6bb25381c19a7dcbf"
         },
         {
           "id": "virginia",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Virginia",
-          "description": "Topographic maps for the state of Virginia",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/virginia_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Virginia, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/virginia_2026-10.pmtiles",
+          "size_mb": 498,
+          "sha256": "cf9a097658797e11caa0e11af3284d76cb6dedd179af9308b935b18f485c0d88"
         },
         {
           "id": "west_virginia",
-          "version": "2025-12",
-          "title": "West_Virginia",
-          "description": "Topographic maps for the state of West_Virginia",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/west_virginia_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "West Virginia",
+          "description": "Street-level offline map of the state of West Virginia, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/west_virginia_2026-10.pmtiles",
+          "size_mb": 237,
+          "sha256": "f70cb7dce94a2457ebfef78dff4a3ffe762e03ffd2a302b0e94bdbcad473544e"
         }
       ]
     },
     {
       "name": "West North Central",
       "slug": "west-north-central",
-      "description": "Map assets for the West North Central region, including Iowa, Kansas, Minnesota, Missouri, Nebraska, North Dakota, and South Dakota.",
+      "description": "Street-level offline maps of Iowa, Kansas, Minnesota, Missouri, Nebraska, North Dakota and South Dakota.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "iowa",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Iowa",
-          "description": "Topographic maps for the state of Iowa",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/iowa_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Iowa, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/iowa_2026-10.pmtiles",
+          "size_mb": 243,
+          "sha256": "1049a6afefbf820b053adbbf6891a8af3567f89eaa96e041db48fd25afdc0118"
         },
         {
           "id": "kansas",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Kansas",
-          "description": "Topographic maps for the state of Kansas",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/kansas_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Kansas, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/kansas_2026-10.pmtiles",
+          "size_mb": 252,
+          "sha256": "ce13195c962e3599181cb4d795cd7a08109faabc9e193f941559c50522f7dd2d"
         },
         {
           "id": "minnesota",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Minnesota",
-          "description": "Topographic maps for the state of Minnesota",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/minnesota_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Minnesota, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/minnesota_2026-10.pmtiles",
+          "size_mb": 487,
+          "sha256": "7eb796fd9012c6fca8fb8e3554c8c17dd11e3f24f415649e7a1055bac12734fc"
         },
         {
           "id": "missouri",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Missouri",
-          "description": "Topographic maps for the state of Missouri",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/missouri_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Missouri, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/missouri_2026-10.pmtiles",
+          "size_mb": 358,
+          "sha256": "e3b6a1113c10bc0ed33b78091ce2059fdaa8a0effe8865993ea2f743d21d5f4f"
         },
         {
           "id": "nebraska",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Nebraska",
-          "description": "Topographic maps for the state of Nebraska",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/nebraska_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Nebraska, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/nebraska_2026-10.pmtiles",
+          "size_mb": 196,
+          "sha256": "1ff561426f32cff47ac2560bc79990e8bf047f84cebd857ad00a2e437a374938"
         },
         {
           "id": "north_dakota",
-          "version": "2025-12",
-          "title": "North_Dakota",
-          "description": "Topographic maps for the state of North_Dakota",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/north_dakota_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "North Dakota",
+          "description": "Street-level offline map of the state of North Dakota, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/north_dakota_2026-10.pmtiles",
+          "size_mb": 209,
+          "sha256": "74ef962c56ce43901c12d4f961eca9f142950a0178ab2ce16f056b8fb6c4bc72"
         },
         {
           "id": "south_dakota",
-          "version": "2025-12",
-          "title": "South_Dakota",
-          "description": "Topographic maps for the state of South_Dakota",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/south_dakota_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "South Dakota",
+          "description": "Street-level offline map of the state of South Dakota, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/south_dakota_2026-10.pmtiles",
+          "size_mb": 140,
+          "sha256": "18461f2e1ebddab25db82aa001d8dbbdf8779782db6a602ba592a11da73b8cdf"
         }
       ]
     },
     {
       "name": "East North Central",
       "slug": "east-north-central",
-      "description": "Map assets for the East North Central region, including Illinois, Indiana, Michigan, Ohio, and Wisconsin.",
+      "description": "Street-level offline maps of Illinois, Indiana, Michigan, Ohio and Wisconsin.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "illinois",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Illinois",
-          "description": "Topographic maps for the state of Illinois",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/illinois_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Illinois, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/illinois_2026-10.pmtiles",
+          "size_mb": 479,
+          "sha256": "440045fc17ad184d603d7889d9f715c20aed91f0c6c6e43ff263f24563061fdd"
         },
         {
           "id": "indiana",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Indiana",
-          "description": "Topographic maps for the state of Indiana",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/indiana_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Indiana, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/indiana_2026-10.pmtiles",
+          "size_mb": 299,
+          "sha256": "cedc7eebbd837ac9a1fbcd51daa1b828d0d66a532710d28a40802ee0835705df"
         },
         {
           "id": "michigan",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Michigan",
-          "description": "Topographic maps for the state of Michigan",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/michigan_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Michigan, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/michigan_2026-10.pmtiles",
+          "size_mb": 477,
+          "sha256": "653416e18e9ee0f2b4d95bc15d27458950a9304c865e350283cdea1f8d6d310b"
         },
         {
           "id": "ohio",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Ohio",
-          "description": "Topographic maps for the state of Ohio",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/ohio_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Ohio, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/ohio_2026-10.pmtiles",
+          "size_mb": 486,
+          "sha256": "825fbc292e6689148b10381efe9cf51c6f41787ec54cb484bac4daa65193bd49"
         },
         {
           "id": "wisconsin",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Wisconsin",
-          "description": "Topographic maps for the state of Wisconsin",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/wisconsin_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Wisconsin, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/wisconsin_2026-10.pmtiles",
+          "size_mb": 457,
+          "sha256": "a2aaa8ab735d1f04f08dd5e7a419c124a6ae8bd638f99fb97b94a02999c5e2a6"
         }
       ]
     },
     {
       "name": "Mid-Atlantic",
       "slug": "mid-atlantic",
-      "description": "Map assets for the Mid-Atlantic region, including New Jersey, New York, and Pennsylvania.",
+      "description": "Street-level offline maps of New Jersey, New York and Pennsylvania.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "new_jersey",
-          "version": "2025-12",
-          "title": "New_Jersey",
-          "description": "Topographic maps for the state of New_Jersey",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/new_jersey_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "New Jersey",
+          "description": "Street-level offline map of the state of New Jersey, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/new_jersey_2026-10.pmtiles",
+          "size_mb": 222,
+          "sha256": "151e72443663ebdf70ec76bc835ebd4aeb6126d00b531b8c0ed3079247388dde"
         },
         {
           "id": "new_york",
-          "version": "2025-12",
-          "title": "New_York",
-          "description": "Topographic maps for the state of New_York",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/new_york_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "New York",
+          "description": "Street-level offline map of the state of New York, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/new_york_2026-10.pmtiles",
+          "size_mb": 581,
+          "sha256": "14d3cf24210e4baafd272c99be5918b126b4741a14dcdc3e8b3c4fe0fd497a22"
         },
         {
           "id": "pennsylvania",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Pennsylvania",
-          "description": "Topographic maps for the state of Pennsylvania",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/pennsylvania_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Pennsylvania, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/pennsylvania_2026-10.pmtiles",
+          "size_mb": 487,
+          "sha256": "987fd8ac01b333550fdda5c2f6170c6c31a678bab28c6cdb087f7e20a74fff1e"
         }
       ]
     },
     {
       "name": "New England",
       "slug": "new-england",
-      "description": "Map assets for the New England region, including Connecticut, Maine, Massachusetts, New Hampshire, Rhode Island, and Vermont.",
+      "description": "Street-level offline maps of Connecticut, Maine, Massachusetts, New Hampshire, Rhode Island and Vermont.",
       "icon": "IconMap",
       "language": "en",
       "resources": [
         {
           "id": "connecticut",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Connecticut",
-          "description": "Topographic maps for the state of Connecticut",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/connecticut_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Connecticut, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/connecticut_2026-10.pmtiles",
+          "size_mb": 185,
+          "sha256": "56640843422308c59b6bc2381bac0afabbfd090939cf7e1e3c1a605a50223bef"
         },
         {
           "id": "maine",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Maine",
-          "description": "Topographic maps for the state of Maine",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/maine_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Maine, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/maine_2026-10.pmtiles",
+          "size_mb": 192,
+          "sha256": "039e658a4d6ad5fa94c9c9b28ba9ddd8ad4c0223ef4bdd352468de3aba29e75b"
         },
         {
           "id": "massachusetts",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Massachusetts",
-          "description": "Topographic maps for the state of Massachusetts",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/massachusetts_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Massachusetts, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/massachusetts_2026-10.pmtiles",
+          "size_mb": 295,
+          "sha256": "81f766db51c45b7103190a2a89acc2bb23a582eb2771cc2095478727dc6a85e7"
         },
         {
           "id": "new_hampshire",
-          "version": "2025-12",
-          "title": "New_Hampshire",
-          "description": "Topographic maps for the state of New_Hampshire",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/new_hampshire_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "New Hampshire",
+          "description": "Street-level offline map of the state of New Hampshire, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/new_hampshire_2026-10.pmtiles",
+          "size_mb": 110,
+          "sha256": "32434039c081680c6a9dd3668f51a1fad3ac406c5ddc1d6b62e15d6add4401ba"
         },
         {
           "id": "rhode_island",
-          "version": "2025-12",
-          "title": "Rhode_Island",
-          "description": "Topographic maps for the state of Rhode_Island",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/rhode_island_2025-12.pmtiles",
-          "size_mb": 400
+          "version": "2026-10",
+          "title": "Rhode Island",
+          "description": "Street-level offline map of the state of Rhode Island, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/rhode_island_2026-10.pmtiles",
+          "size_mb": 65,
+          "sha256": "232341d981f805669b5d4e6f429b658f6da96fd49e807e5ec08d11eb761cbd81"
         },
         {
           "id": "vermont",
-          "version": "2025-12",
+          "version": "2026-10",
           "title": "Vermont",
-          "description": "Topographic maps for the state of Vermont",
-          "url": "https://github.com/RoachWares/RoachNet-Maps/raw/refs/heads/master/pmtiles/vermont_2025-12.pmtiles",
-          "size_mb": 400
+          "description": "Street-level offline map of the state of Vermont, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/vermont_2026-10.pmtiles",
+          "size_mb": 83,
+          "sha256": "482929aed6aa3688fdba3e3094b3724e5eab32ee70c785a7d7c1e9da60e0427c"
+        }
+      ]
+    },
+    {
+      "name": "US Territories",
+      "slug": "us-territories",
+      "description": "Street-level offline maps of American Samoa, Commonwealth of the Northern Mariana Islands, Guam, Puerto Rico and United States Virgin Islands.",
+      "icon": "IconMap",
+      "language": "en",
+      "minimumRoachNet": "1.1.0",
+      "resources": [
+        {
+          "id": "american_samoa",
+          "version": "2026-10",
+          "title": "American Samoa",
+          "description": "Street-level offline map of American Samoa, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/american_samoa_2026-10.pmtiles",
+          "size_mb": 2,
+          "sha256": "eb94b009a3126df2ed904fc90c9c670edcbc81ae7d0586d1893485a21156bde4"
+        },
+        {
+          "id": "commonwealth_of_the_northern_mariana_islands",
+          "version": "2026-10",
+          "title": "Commonwealth of the Northern Mariana Islands",
+          "description": "Street-level offline map of Commonwealth of the Northern Mariana Islands, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/commonwealth_of_the_northern_mariana_islands_2026-10.pmtiles",
+          "size_mb": 2,
+          "sha256": "89f58d7d70ccdc84c36f9856e843bf8024a1aeeda96935a43116959a3294efdb"
+        },
+        {
+          "id": "guam",
+          "version": "2026-10",
+          "title": "Guam",
+          "description": "Street-level offline map of Guam, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/guam_2026-10.pmtiles",
+          "size_mb": 3,
+          "sha256": "43f1e0e5d8d9ec23c2550c2eded721fee249e486d9d467f018486243cc27f77c"
+        },
+        {
+          "id": "puerto_rico",
+          "version": "2026-10",
+          "title": "Puerto Rico",
+          "description": "Street-level offline map of Puerto Rico, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/puerto_rico_2026-10.pmtiles",
+          "size_mb": 70,
+          "sha256": "7637bfd46135509f9b0f8ebe9205e3d0a1381909053d283417013ef9d11f97a3"
+        },
+        {
+          "id": "united_states_virgin_islands",
+          "version": "2026-10",
+          "title": "United States Virgin Islands",
+          "description": "Street-level offline map of United States Virgin Islands, clipped to its real boundary.",
+          "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/united_states_virgin_islands_2026-10.pmtiles",
+          "size_mb": 4,
+          "sha256": "f90ee7f2be7557593be3ce61329dd7475ee1196795aa0a81c6ada18dc61bafca"
         }
       ]
     }
