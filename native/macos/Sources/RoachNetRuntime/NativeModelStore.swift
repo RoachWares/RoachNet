@@ -223,26 +223,46 @@ final class NativeModelStore {
         var cancelled = false
         if total == nil || offset < total! {
             guard let url = URL(string: source.url) else { throw requestError("Invalid model URL.", 400) }
-            let download = StreamingDownload(url: url, headers: offset > 0 ? ["Range": "bytes=\(offset)-"] : [:], maxBytes: 200 << 30) { data, state in
-                output.write(data)
-                hasher.update(data)
-                let now = Date()
-                if now.timeIntervalSince(lastReport) > 0.25 {
-                    lastReport = now
-                    let completed = offset + state.receivedBytes
-                    let expected = total ?? state.expectedBytes.map { $0 + offset }
-                    if !progress(["status": JSON("pulling \(String(digest.suffix(12)))"), "digest": JSON(digest),
-                                  "total": expected.map { JSON(Double($0)) } ?? nil, "completed": JSON(Double(completed))]) {
-                        cancelled = true
-                        throw RuntimeError("Pull cancelled.", statusCode: 499)
+            // Start the partial over: a server that ignored Range sends the whole
+            // file with a 200, which must not land after the bytes already there.
+            func restartPartial() throws {
+                try output.truncate(atOffset: 0)
+                hasher = SHA256Digest()
+                offset = 0
+            }
+            var restartedAfter416 = false
+            while true {
+                let download = StreamingDownload(url: url, headers: [:], maxBytes: 200 << 30, resumeFrom: offset, onResponse: { restart in
+                    if restart { try restartPartial() }
+                }) { data, state in
+                    output.write(data)
+                    hasher.update(data)
+                    let now = Date()
+                    if now.timeIntervalSince(lastReport) > 0.25 {
+                        lastReport = now
+                        // Both already count the resumed prefix.
+                        let completed = state.receivedBytes
+                        let expected = total ?? state.expectedBytes
+                        if !progress(["status": JSON("pulling \(String(digest.suffix(12)))"), "digest": JSON(digest),
+                                      "total": expected.map { JSON(Double($0)) } ?? nil, "completed": JSON(Double(completed))]) {
+                            cancelled = true
+                            throw RuntimeError("Pull cancelled.", statusCode: 499)
+                        }
                     }
                 }
-            }
-            do {
-                _ = try download.run(timeoutMs: 6 * 3600 * 1000)
-            } catch {
-                if cancelled { throw RuntimeError("Pull cancelled.", statusCode: 499) }
-                throw error
+                do {
+                    _ = try download.run(timeoutMs: 6 * 3600 * 1000)
+                    break
+                } catch {
+                    if cancelled { throw RuntimeError("Pull cancelled.", statusCode: 499) }
+                    // 416: the partial is as long as (or longer than) the file. Start over once.
+                    if let runtimeError = error as? RuntimeError, runtimeError.statusCode == 416, offset > 0, !restartedAfter416 {
+                        restartedAfter416 = true
+                        try restartPartial()
+                        continue
+                    }
+                    throw error
+                }
             }
         }
         try output.synchronize()

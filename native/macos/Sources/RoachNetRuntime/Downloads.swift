@@ -82,9 +82,19 @@ extension NativeRuntime {
         return parsed.description
     }
 
+    /// A download descriptor is a `.json` file under the Apps downloads base
+    /// (`ROACHNET_APPS_DOWNLOADS_BASE_URL`, default https://apps.roachnet.org/downloads).
+    /// Only those are opened and followed. Any other URL, `.json` or not, downloads
+    /// as the file it names, so a JSON file from elsewhere stays a file and no
+    /// other host can point a download somewhere else.
     func isAppsDownloadDescriptorUrl(_ raw: String) -> Bool {
-        guard let parsed = WebURL(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
-        return ["http", "https"].contains(parsed.scheme) && parsed.pathname.hasSuffix(".json")
+        guard let parsed = WebURL(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              ["http", "https"].contains(parsed.scheme), parsed.pathname.hasSuffix(".json"),
+              let base = WebURL(config.appsDownloadsBaseUrl.trimmingCharacters(in: .whitespacesAndNewlines)),
+              ["http", "https"].contains(base.scheme)
+        else { return false }
+        let prefix = JS.replace("/+$", in: base.pathname, with: "") + "/"
+        return parsed.origin == base.origin && parsed.pathname.hasPrefix(prefix)
     }
 
     private static let unusableSourcePattern = "(pending|required|blocked|failed)"

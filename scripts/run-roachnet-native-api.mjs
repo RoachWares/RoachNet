@@ -334,10 +334,20 @@ function parseDownloadUrl(rawUrl) {
   }
 }
 
+// A download descriptor is a .json file under the Apps downloads base
+// (ROACHNET_APPS_DOWNLOADS_BASE_URL). Any other URL, .json or not, downloads as
+// the file it names, so no other host can point a download somewhere else.
 function isAppsDownloadDescriptorUrl(rawUrl) {
   try {
     const parsed = new URL(String(rawUrl || '').trim())
-    return ['http:', 'https:'].includes(parsed.protocol) && parsed.pathname.endsWith('.json')
+    const base = new URL(appsDownloadsBaseUrl)
+    const prefix = `${base.pathname.replace(/\/+$/, '')}/`
+    return (
+      ['http:', 'https:'].includes(parsed.protocol) &&
+      parsed.pathname.endsWith('.json') &&
+      parsed.origin === base.origin &&
+      parsed.pathname.startsWith(prefix)
+    )
   } catch {
     return false
   }

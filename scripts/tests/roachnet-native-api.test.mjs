@@ -1195,6 +1195,7 @@ test('companion App Store installs route descriptor downloads into the native ap
     ...process.env,
     ROACHNET_STORAGE_PATH: storagePath,
     ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
+    ROACHNET_APPS_DOWNLOADS_BASE_URL: `http://127.0.0.1:${downloadPort}/downloads`,
     ROACHNET_COMPANION_ENABLED: '1',
     ROACHNET_COMPANION_HOST: '127.0.0.1',
     ROACHNET_COMPANION_PORT: String(companionPort),
@@ -1408,6 +1409,7 @@ test('native API resolves Apps download descriptors before installing RoachSpeec
     ...process.env,
     ROACHNET_STORAGE_PATH: storagePath,
     ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
+    ROACHNET_APPS_DOWNLOADS_BASE_URL: `http://127.0.0.1:${descriptorPort}/downloads`,
     HOST: '127.0.0.1',
     PORT: String(port),
   }
@@ -1492,6 +1494,7 @@ test('native API reassembles chunked Apps descriptors before installing RoachSpe
     ...process.env,
     ROACHNET_STORAGE_PATH: storagePath,
     ROACHNET_RUNTIME_STATE_ROOT: runtimeStateRoot,
+    ROACHNET_APPS_DOWNLOADS_BASE_URL: `http://127.0.0.1:${downloadPort}/downloads`,
     HOST: '127.0.0.1',
     PORT: String(port),
   }
