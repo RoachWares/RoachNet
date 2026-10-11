@@ -46,6 +46,7 @@ const siteRepoRoot = process.env.ROACHNET_SITE_REPO
   : path.resolve(repoRoot, '..', 'roachnet-org')
 const siteCatalogPath = path.join(siteRepoRoot, 'app-store-catalog.json')
 const siteMapsPath = path.join(siteRepoRoot, 'collections', 'maps.json')
+const sitePacksPath = path.join(siteRepoRoot, 'collections', 'packs.json')
 const keepTempArtifacts = process.env.ROACHNET_SMOKE_KEEP_TEMP === '1' || process.env.ROACHNET_KEEP_SMOKE_ARTIFACTS === '1'
 const smokeWorkRoot = process.env.ROACHNET_SMOKE_TMPDIR
   ? path.resolve(process.env.ROACHNET_SMOKE_TMPDIR)
@@ -62,6 +63,7 @@ const supportedInstallActions = new Set([
   'roachspeech-pack',
   'roachvoice-pack',
   'direct-download',
+  'pack',
 ])
 
 function assert(condition, message) {
@@ -585,6 +587,11 @@ function validateAppsCatalogContract() {
   const catalog = JSON.parse(readFileSync(siteCatalogPath, 'utf8'))
   const mapsManifest = JSON.parse(readFileSync(siteMapsPath, 'utf8'))
   const mapSlugs = new Set((mapsManifest.collections || []).map((collection) => collection.slug))
+  // 1.1 catalog packs install by id from the published pack catalog, so every
+  // pack item must name a pack that catalog actually lists.
+  const packIds = existsSync(sitePacksPath)
+    ? new Set((JSON.parse(readFileSync(sitePacksPath, 'utf8')).packs || []).map((pack) => pack.id))
+    : new Set()
 
   assert(Array.isArray(catalog.items) && catalog.items.length > 0, 'Apps catalog is empty.')
 
@@ -638,6 +645,10 @@ function validateAppsCatalogContract() {
         assert(typeof intent.pack === 'string' && intent.pack.length > 0, `RoachSpeech pack ${item.id} is missing a pack id.`)
         assert(typeof intent.url === 'string' && intent.url.startsWith('http'), `RoachSpeech pack ${item.id} is missing a valid URL.`)
         modelPackCount += 1
+        break
+      case 'pack':
+        assert(typeof intent.pack === 'string' && intent.pack.length > 0, `Pack ${item.id} is missing a pack id.`)
+        assert(packIds.has(intent.pack), `Pack ${item.id} points at ${intent.pack}, which collections/packs.json does not list.`)
         break
       default:
         break

@@ -817,6 +817,20 @@ extension NativeRuntime {
                     : "No RoachSpeech pack URL provided.",
                 JSONObject([("packID", JSON(queued.packID)), ("kind", JSON(queued.kind))])
             )
+        case "pack":
+            // A pack from the published catalog, by id. Only the id is read: the
+            // runtime's own pack catalog decides what gets downloaded and checks it,
+            // so a paired phone can't point the Mac at anything else.
+            let id = trimmed(body["pack"] || body["id"] || body["packID"])
+            if id.isEmpty { throw requestError("Pack id is missing.", 400) }
+            let result = try installPack(["id": JSON(id)])
+            let installed = result["status"].jsString == "installed"
+            return appStoreInstallResponse(
+                action,
+                [],
+                installed ? "\(id) is already installed." : "\(id) pack queued. Settings › Packs on the Mac shows its progress.",
+                JSONObject([("success", true), ("packID", JSON(id)), ("status", result["status"])])
+            )
         default:
             throw requestError("Unsupported App Store install action: \(action).", 400)
         }

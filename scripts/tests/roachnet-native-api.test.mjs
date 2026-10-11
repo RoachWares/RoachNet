@@ -1785,6 +1785,27 @@ test('native API rejects non-loopback Host headers and non-JSON bodies', swiftOn
   })
 })
 
+test('native companion install accepts catalog packs by id and nothing else', swiftOnly, async () => {
+  await withNativeApi({ ROACHNET_PACK_CATALOG_URL: '' }, async ({ port }) => {
+    const post = async (body) => {
+      const response = await requestHttp(`http://127.0.0.1:${port}/api/companion/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        timeoutMs: 5_000,
+      })
+      return { status: response.status, payload: JSON.parse(await response.text()) }
+    }
+    const missing = await post({ action: 'pack' })
+    assert.equal(missing.status, 400)
+    assert.match(missing.payload.error, /Pack id is missing/)
+    // The id is looked up in the runtime's own catalog; a URL in the body is ignored.
+    const unknown = await post({ action: 'pack', pack: 'no-such-pack', url: 'https://example.com/evil.json' })
+    assert.equal(unknown.status, 404)
+    assert.match(unknown.payload.error, /no pack named no-such-pack/)
+  })
+})
+
 test('native RoachTail join codes pair exactly once and retire after repeated wrong guesses', swiftOnly, async () => {
   const companionPort = await resolveAvailablePort()
   await withNativeApi(
