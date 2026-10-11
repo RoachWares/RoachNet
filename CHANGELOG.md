@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.1.0 - 2026-10-12
+## v1.1.0 - 2026-10-11
 
 Feature release. Includes every fix in 1.0.6 and 1.0.7. Ad-hoc signed, not Apple-notarized.
 
