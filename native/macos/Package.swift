@@ -28,6 +28,8 @@ var targets: [Target] = [
         name: "RoachInferenceTests",
         dependencies: ["RoachInference"],
         path: "Tests/RoachInferenceTests",
+        // The parity fixtures are read from disk by path, not bundled.
+        exclude: ["Fixtures"],
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .target(

@@ -14,6 +14,10 @@ extension NativeRuntime {
 
     func isReachable(_ url: String) -> Bool { (try? runtimeReachabilityCache.get(url)) ?? false }
 
+    /// What answers on the Ollama-compatible port, in words for status lines:
+    /// RoachInference unless ROACHNET_INFERENCE_ENGINE=ollama picked a runner.
+    var modelServerName: String { usesNativeEngine ? "The RoachInference model server" : "Ollama" }
+
     /// Makes the local model lane reachable. The native RoachInference server is the
     /// default; an external Ollama runner is only used when explicitly opted into with
     /// ROACHNET_INFERENCE_ENGINE=ollama and one is already installed on the system.
@@ -528,7 +532,7 @@ extension NativeRuntime {
         let draftRecords = editorDrafts["drafts"].array
         let readinessChecks = readiness["checks"].object
         let serviceItems = serviceHealth["services"].array
-        let warnings: [JSON] = (ollama["available"].truthy ? [] : ["Ollama is not reachable yet; local chat wakes up when the runner starts."])
+        let warnings: [JSON] = (ollama["available"].truthy ? [] : [JSON("\(modelServerName) is not reachable yet; local chat wakes up when it starts.")])
             + (modelNames.isEmpty ? ["No local model packs are installed yet."] : [])
 
         return [
@@ -537,7 +541,7 @@ extension NativeRuntime {
             "diagnostics": [
                 "status": JSON(ollama["available"].truthy ? "ready" : "needs-runtime"),
                 "probes": [
-                    ["id": "ollama", "label": "Ollama", "available": JSON(ollama["available"].truthy), "detail": ollama["error"] || "Local model runner probe."],
+                    ["id": "ollama", "label": JSON(usesNativeEngine ? "RoachInference model server" : "Ollama"), "available": JSON(ollama["available"].truthy), "detail": ollama["error"] || "Local model server probe."],
                     ["id": "openclaw", "label": "OpenClaw compatibility lane", "available": JSON(openclaw["available"].truthy), "detail": openclaw["error"] || "Compatibility probe only; RoachClaw is native-first."],
                     ["id": "roachclaw-native-agent", "label": "RoachClaw native agent", "available": true, "detail": JSON("\((agent["runtime"] || "native agent").jsString) is available without a WebUI bridge.")],
                 ],
@@ -938,7 +942,7 @@ extension NativeRuntime {
         [
             ["service_name": "roachnet_kiwix_serve", "friendly_name": "RoachNet Library", "description": "Offline encyclopedias, field manuals, and reference archives staged inside RoachNet.", "icon": "IconBooks", "powered_by": "Kiwix", "ui_location": "8090", "display_order": 1],
             ["service_name": "roachnet_kolibri", "friendly_name": "RoachNet Academy", "description": "Structured offline education content and coursework surfaced through RoachNet.", "icon": "IconSchool", "powered_by": "Kolibri", "ui_location": "8300", "display_order": 2],
-            ["service_name": "roachnet_ollama", "friendly_name": "RoachNet Chat", "description": "Local AI chat and model tooling managed from the RoachNet command grid.", "icon": "IconWand", "powered_by": "Ollama", "ui_location": "/chat", "display_order": 3],
+            ["service_name": "roachnet_ollama", "friendly_name": "RoachNet Chat", "description": "Local AI chat and model tooling managed from the RoachNet command grid.", "icon": "IconWand", "powered_by": JSON(usesNativeEngine ? "RoachInference" : "Ollama"), "ui_location": "/chat", "display_order": 3],
             ["service_name": "roachnet_roachsync", "friendly_name": "RoachSync", "description": "Private sync for the RoachNet vault, settings, and future shared installs.", "icon": "IconArrowsExchange", "powered_by": "Native companion bridge", "ui_location": "8384", "display_order": 4],
             ["service_name": "roachnet_flatnotes", "friendly_name": "RoachNet Notes", "description": "Fast local notes for fragments, checklists, and working references on the same machine.", "icon": "IconNotes", "powered_by": "Flat file vault", "ui_location": "/vault", "display_order": 10],
             ["service_name": "roachnet_cyberchef", "friendly_name": "RoachNet Data Lab", "description": "Encoding, decoding, and analysis tools adapted for RoachNet field workflows.", "icon": "IconChefHat", "powered_by": "Native utilities", "ui_location": "/dev", "display_order": 11],
@@ -981,7 +985,7 @@ extension NativeRuntime {
             : .array(status["installedModels"].array.map { ["name": $0, "size": nil] })
         var issues: [JSON] = []
         if !status["ollama"]["available"].truthy {
-            issues.append(["path": "/api/ollama", "error": "Ollama is not reachable yet; local chat will warm up after the runner starts."])
+            issues.append(["path": "/api/ollama", "error": JSON("\(modelServerName) is not reachable yet; local chat will warm up after it starts.")])
         }
         if models.array.isEmpty {
             issues.append(["path": "/api/ollama/installed-models", "error": "No local model packs are installed yet."])
