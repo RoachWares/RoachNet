@@ -26,6 +26,24 @@ public final class NativeRuntime {
         (config.env("ROACHNET_INFERENCE_ENGINE") ?? "native").lowercased() != "ollama"
     }
 
+    /// RoachTrace: local traces of Org runs, chats and model-server requests
+    /// (`<storage>/state/traces`, owner-only). The server touches it at start
+    /// so it is never first created from two threads at once.
+    lazy var tracer: Tracer = {
+        let store = TraceStore(root: Path.join(config.storageRoot, "state", "traces"))
+        let tracer = Tracer(store: store)
+        let exporter = TraceExporter(store: store, version: config.version)
+        tracer.onTraceEnded = { trace, observations in exporter.enqueue(trace, observations) }
+        exporter.start()
+        traceExporterStorage = exporter
+        return tracer
+    }()
+    private var traceExporterStorage: TraceExporter?
+    var traceExporter: TraceExporter {
+        _ = tracer
+        return traceExporterStorage!
+    }
+
     /// RoachClaw Org (native multi-agent company runtime). Created on first use.
     lazy var orgService: OrgService = {
         let service = OrgService(runtime: self)

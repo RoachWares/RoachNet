@@ -12,6 +12,8 @@ final class OrgRunIO {
     unowned let engine: OrgEngine
     let context: OrgRunContext
     let actor: OrgActor
+    /// The run's root observation in RoachTrace (nil when tracing is off).
+    var trace: ObservationHandle?
 
     init(service: OrgService, engine: OrgEngine, context: OrgRunContext) {
         self.service = service
@@ -30,8 +32,22 @@ final class OrgRunIO {
 
     func secret(_ reference: String?) -> String? {
         guard let reference, !reference.isEmpty else { return nil }
-        if reference.hasPrefix("secret:") { return service.store.readSecret(companyId: context.company.id, key: String(reference.dropFirst(7))) }
-        return service.store.readSecret(companyId: context.company.id, key: reference)
+        let key = reference.hasPrefix("secret:") ? String(reference.dropFirst(7)) : reference
+        let value = service.store.readSecret(companyId: context.company.id, key: key)
+        // Whatever an adapter reads stays out of traces.
+        service.runtime.tracer.redactor.register(value)
+        return value
+    }
+
+    /// Price for one call, for the trace: local is free, a configured rate is an
+    /// estimate, the person's pricing table comes next, else unpriced.
+    func traceCost(_ usage: OrgUsage, billingType: String, centsPerMillion: (input: Int, output: Int)?) -> TraceCost {
+        if billingType == "local" { return .local }
+        if let rate = centsPerMillion {
+            let cents = Double(usage.inputTokens * rate.input + usage.outputTokens * rate.output) / 1_000_000
+            return TraceCost(totalUsd: cents / 100, status: "estimated", billingType: billingType)
+        }
+        return service.runtime.tracer.price(model: usage.model, usage: usage.traceUsage, billingType: billingType)
     }
 }
 
@@ -103,9 +119,19 @@ struct OrgAgentLoopAdapter: OrgAdapter {
             if io.isCancelled { var result = OrgRunResult(); result.status = "cancelled"; result.usage = usage; return result }
             if io.timedOut { var result = OrgRunResult.failure("The run hit its time limit.", code: "timeout"); result.status = "timed_out"; result.usage = usage; return result }
             let turn: ChatTurn
+            let generation = io.trace?.child(.generation, "step \(step + 1)", input: .array(messages), model: model, provider: usage.provider,
+                                             modelParameters: ["temperature": JSON(config.raw["temperature"].numberValue ?? 0.2)])
+            var callHeaders = headers
+            if let generation { callHeaders["traceparent"] = generation.traceparent }
             do {
-                turn = try chat(baseURL: baseURL, headers: headers, model: model, messages: messages, config: config, timeoutMs: io.remainingMs)
+                turn = try chat(baseURL: baseURL, headers: callHeaders, model: model, messages: messages, config: config, timeoutMs: io.remainingMs)
+                var stepUsage = turn.usage
+                stepUsage.model = model
+                let rate = config.int("inputCentsPerMillion").flatMap { input in config.int("outputCentsPerMillion").map { (input, $0) } }
+                generation?.end(output: JSON(turn.content), usage: stepUsage.traceUsage,
+                                cost: io.traceCost(stepUsage, billingType: mode == .roachClawLocal ? "local" : "metered_api", centsPerMillion: rate))
             } catch {
+                generation?.end(level: .error, statusMessage: "Model call failed: \(error)")
                 io.log("error", "model call failed: \(error)")
                 var result = OrgRunResult.failure("Model call failed: \(error)", code: "model_error")
                 result.usage = usage
@@ -130,7 +156,10 @@ struct OrgAgentLoopAdapter: OrgAdapter {
                 }
                 break
             }
+            let tool = io.trace?.child(.tool, name, input: action)
             let outcome = perform(name, action, context, io, &currentIssue)
+            tool?.end(output: outcome, level: outcome["ok"].boolValue == false ? .warning : nil,
+                      statusMessage: outcome["ok"].boolValue == false ? outcome["error"].stringValue : nil)
             io.log("tool", "\(name): \(outcome.serialized())")
             messages.append(["role": "user", "content": JSON("Result of \(name): \(outcome.serialized())\n\nReply with your next JSON action (step \(step + 2) of \(maxSteps)).")])
         }
@@ -316,6 +345,9 @@ struct OrgHTTPAdapter: OrgAdapter {
             "sessionState": context.agent.sessionState ?? .null,
         ]
         io.log("system", "POST \(url)")
+        let span = io.trace?.child(.span, "POST \(WebURL(url)?.bareHostname ?? "agent service")", metadata: JSONObject([("url", JSON(url))]))
+        if let span { headers["traceparent"] = span.traceparent }
+        defer { span?.end() }
         do {
             let response = try HTTPClient.request(url, method: "POST", headers: headers, body: body.serializedData(), timeoutMs: io.remainingMs, maxResponseBytes: 4 << 20)
             let json = (try? JSON.parse(response.body)) ?? .object(JSONObject())
@@ -380,6 +412,9 @@ struct OrgProcessAdapter: OrgAdapter {
         environment["ROACHNET_ORG_WAKE_REASON"] = context.wakeReasons.first ?? ""
         environment["ROACHNET_ORG_WAKE_PAYLOAD_JSON"] = context.payload.serialized()
         environment["AGENT_HOME"] = home
+        let span = io.trace?.child(.span, "process \(Path.basename(command))", input: ["command": JSON(command), "args": JSON(arguments), "cwd": JSON(cwd)])
+        // W3C's environment carrier: a process agent can nest its own model calls.
+        if let span { environment["TRACEPARENT"] = span.traceparent }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: command)
@@ -405,6 +440,7 @@ struct OrgProcessAdapter: OrgAdapter {
         do {
             try process.run()
         } catch {
+            span?.end(level: .error, statusMessage: "Could not start \(command): \(error.localizedDescription)")
             return .failure("Could not start \(command): \(error.localizedDescription)", code: "spawn_failed")
         }
         var outcome = "succeeded"
@@ -420,6 +456,9 @@ struct OrgProcessAdapter: OrgAdapter {
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         }
         process.waitUntilExit()
+        span?.end(output: JSON(lastLine.value.isEmpty ? nil : String(lastLine.value.prefix(2_000))), level: process.terminationStatus == 0 && outcome == "succeeded" ? nil : .error,
+                  statusMessage: outcome != "succeeded" ? outcome : (process.terminationStatus == 0 ? nil : "exit \(process.terminationStatus)"),
+                  metadata: JSONObject([("exitCode", JSON(Int(process.terminationStatus))), ("outcome", JSON(outcome))]))
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
         var result: OrgRunResult

@@ -189,6 +189,20 @@ extension NativeRuntime {
         case ("PATCH", "budgets", 2): return ok(try org.saveBudget(actor, cid, id, try body()))
         case ("POST", "budget-incidents", 3) where tail == "resolve": return ok(try org.resolveIncident(actor, cid, id, try body()))
         case ("GET", "costs", 1): return ok(try org.costSummary(actor, cid, query))
+
+        // RoachTrace, scoped to this company: any member (or agent of it) may read.
+        case ("GET", "traces", 1):
+            try org.requireRead(try org.company(cid), actor)
+            return ok(listTraces(url, companyId: cid))
+        case ("GET", "traces", 2) where id == "metrics":
+            try org.requireRead(try org.company(cid), actor)
+            return ok(traceMetrics(url, companyId: cid))
+        case ("GET", "traces", 2):
+            try org.requireRead(try org.company(cid), actor)
+            return ok(try traceDetail(id, companyId: cid))
+        case ("POST", "traces", 3) where tail == "scores":
+            try org.requireRead(try org.company(cid), actor)
+            return ok(try addTraceScore(id, try body().raw, authorId: actor.userId ?? actor.agentId, companyId: cid), 201)
         case ("POST", "cost-events", 1): return ok(try org.reportCost(actor, cid, try body()), 201)
 
         case ("GET", "routines", 1): return ok(try org.listRoutines(actor, cid))

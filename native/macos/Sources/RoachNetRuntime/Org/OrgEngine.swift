@@ -258,6 +258,12 @@ final class OrgEngine {
             return
         }
         let io = OrgRunIO(service: service, engine: self, context: context)
+        let tracer = service.runtime.tracer
+        tracer.redactor.register(context.runToken)
+        let trace = startTrace(tracer, context)
+        io.trace = trace?.observation(.agent, context.agent.name, input: ["wakeReasons": JSON(context.wakeReasons), "issue": JSON(context.issue?.identifier)],
+                                      metadata: JSONObject([("adapterType", JSON(context.agent.adapterType)), ("role", JSON(context.agent.role))]),
+                                      model: OrgBody(context.agent.adapterConfig).string("model"))
         var result: OrgRunResult
         if isCancelled(runId) {
             result = OrgRunResult(); result.status = "cancelled"
@@ -266,7 +272,41 @@ final class OrgEngine {
             result = adapter.run(context, io)
         }
         if isCancelled(runId) && result.status == "succeeded" { result.status = "cancelled" }
+        endTrace(trace, io.trace, result)
         finalize(companyId: companyId, runId: runId, result: result)
+    }
+
+    // MARK: RoachTrace
+
+    private func startTrace(_ tracer: Tracer, _ context: OrgRunContext) -> TraceHandle? {
+        let subject = context.issue.map { "\($0.identifier) \($0.title)" } ?? (context.wakeReasons.first ?? "run")
+        var input: JSONObject = JSONObject([("wakeReasons", JSON(context.wakeReasons))])
+        if let issue = context.issue {
+            input["issue"] = ["identifier": JSON(issue.identifier), "title": JSON(issue.title), "status": JSON(issue.status)]
+        }
+        if let payload = context.payload.objectValue, !payload.isEmpty { input["payload"] = .object(payload) }
+        return tracer.startTrace(kind: "org_run", name: "\(context.agent.name): \(subject)", companyId: context.company.id, agentId: context.agent.id,
+                                 issueId: context.issue?.id, runId: context.run.id, sessionId: context.issue?.id ?? "agent:\(context.agent.id)",
+                                 tags: [context.agent.adapterType] + context.wakeReasons, input: .object(input),
+                                 metadata: JSONObject([("company", JSON(context.company.name)), ("invocationSource", JSON(context.run.invocationSource))]))
+    }
+
+    private func endTrace(_ trace: TraceHandle?, _ root: ObservationHandle?, _ result: OrgRunResult) {
+        guard let trace else { return }
+        // Adapters that report usage only for the whole run (process, http,
+        // CLI agents without a per-turn stream) still get a generation.
+        let generations = trace.tracer.store.observations(trace.traceId).filter { $0.type == .generation }
+        if generations.isEmpty, let usage = result.usage, !usage.traceUsage.isEmpty || result.costCents > 0 {
+            let cost = result.billingType == "local" ? TraceCost.local
+                : (result.costCents > 0 ? TraceCost(totalUsd: Double(result.costCents) / 100, status: result.costStatus, billingType: result.billingType)
+                    : trace.tracer.price(model: usage.model, usage: usage.traceUsage, billingType: result.billingType))
+            let generation = root?.child(.generation, "reported usage", model: usage.model, provider: usage.provider)
+            generation?.end(usage: usage.traceUsage, cost: cost, metadata: JSONObject([("source", "adapter result")]))
+        }
+        let failed = result.status == "failed" || result.status == "timed_out"
+        root?.end(output: ["status": JSON(result.status), "summary": JSON(result.summary)], level: failed ? .error : nil,
+                  statusMessage: result.error, metadata: JSONObject([("errorCode", JSON(result.errorCode)), ("exitCode", JSON(result.exitCode))]))
+        trace.end(status: failed ? "error" : (result.status == "cancelled" ? "cancelled" : "ok"), output: JSON(result.summary), message: result.error)
     }
 
     private func finalize(companyId: String, runId: String, result: OrgRunResult) {

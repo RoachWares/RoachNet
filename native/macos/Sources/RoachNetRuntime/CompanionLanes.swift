@@ -111,7 +111,7 @@ extension NativeRuntime {
             last["images"] = JSON(Array(images))
             outbound.append(last)
         }
-        let reply = handleChat(["model": JSON(model), "messages": .array(outbound), "stream": false])
+        let reply = handleChat(["model": JSON(model), "messages": .array(outbound), "stream": false], sessionId: sessionId.stringValue, source: "companion")
         let assistantContent = (reply["message"]["content"].stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if assistantContent.isEmpty || assistantContent.hasPrefix("Local model route is not ready") {
             throw requestError("RoachClaw can't reach a local model right now. Start it from Runtime on your Mac; everything else still works.", 503)

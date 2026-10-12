@@ -75,6 +75,7 @@ public final class RuntimeServer {
         let portNumber = JSCoercion.number(fromString: config.env("PORT") ?? "0")
         let port = UInt16(clamping: JSCoercion.isSafeInteger(portNumber) && portNumber > 0 ? Int(portNumber) : 0)
         let runtime = self.runtime
+        _ = runtime.tracer
         let server = LoopbackHTTPServer(host: host, port: port, maxBodyBytes: config.maxRequestBodyBytes) { request in
             runtime.handle(&request)
         }

@@ -863,11 +863,26 @@ extension NativeRuntime {
 
     // MARK: Models
 
-    func handleChat(_ body: JSON) -> JSON {
+    /// A RoachClaw chat turn through the local model lane, traced as a `chat`
+    /// trace whose generation the model server fills in (TTFT, speed, tokens).
+    func handleChat(_ body: JSON, sessionId: String? = nil, source: String = "app") -> JSON {
         ensureOllama()
+        let model = body["model"].stringValue ?? defaultModel
+        let trace = tracer.startTrace(kind: "chat", name: "RoachClaw chat · \(model)", sessionId: sessionId, tags: ["roachclaw", source],
+                                      input: body["messages"], metadata: JSONObject([("source", JSON(source))]))
+        let generation = trace?.observation(.generation, model, input: body["messages"], model: model,
+                                            provider: usesNativeEngine ? "roachinference" : "ollama")
+        var headers: [String: String] = [:]
+        if let generation { headers["traceparent"] = generation.traceparent }
         do {
-            return try HTTPClient.fetchJSON(urlJoin("/api/chat", config.ollamaBaseUrl), method: "POST", body: body.serializedData(), timeoutMs: 120_000)
+            let reply = try HTTPClient.fetchJSON(urlJoin("/api/chat", config.ollamaBaseUrl), method: "POST", headers: headers, body: body.serializedData(), timeoutMs: 120_000)
+            let usage = TraceUsage(inputTokens: Int(reply["prompt_eval_count"].numberValue ?? 0), outputTokens: Int(reply["eval_count"].numberValue ?? 0))
+            generation?.end(output: reply["message"]["content"], usage: usage, cost: .local)
+            trace?.end(status: "ok", output: reply["message"]["content"])
+            return reply
         } catch {
+            generation?.end(level: .error, statusMessage: "\(error)")
+            trace?.end(status: "error", message: "Local model route is not ready: \(error)")
             return ["message": ["role": "assistant", "content": JSON("Local model route is not ready: \(error)")]]
         }
     }

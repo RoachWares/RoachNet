@@ -384,6 +384,10 @@ struct OrgUsage: Codable {
     var costUsd: Double?
 }
 
+extension OrgUsage {
+    var traceUsage: TraceUsage { TraceUsage(inputTokens: inputTokens, outputTokens: outputTokens, cachedInputTokens: cachedInputTokens) }
+}
+
 struct OrgRun: Codable {
     var id: String
     var companyId: String
