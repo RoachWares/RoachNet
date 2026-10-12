@@ -40,15 +40,17 @@ extension NativeModelServer {
     func makeRoom(for name: String, footprint wanted: ModelFootprint, budget: Int) throws -> ModelFootprint {
         var footprint = wanted
         let floor = min(2_048, wanted.context)
-        func resident() -> Int { loaded.values.reduce(0) { $0 + ($1.footprint?.total ?? 0) } }
+        func resident() -> Int { loaded.values.reduce(0) { $0 + $1.resident } }
+        // Idle extra request slots go first; they only hold caches.
+        if resident() + footprint.total > budget {
+            var trimmed = false
+            for item in loaded.values where item.trimSlots(idleSince: .distantFuture) { trimmed = true }
+            if trimmed { refreshResident() }
+        }
         // Unload idle models, oldest first, until this one fits beside the rest.
         while resident() + footprint.total > budget {
             let oldestFirst = loaded.values.filter { $0.name != name }.sorted { $0.lastUsed < $1.lastUsed }
-            guard let idle = oldestFirst.first(where: { item in
-                guard item.lock.try() else { return false }
-                item.lock.unlock()
-                return true
-            }) else { break }
+            guard let idle = oldestFirst.first(where: { !$0.isBusy }) else { break }
             loaded[idle.name] = nil
             RuntimeLog.write("native engine unloaded \(idle.name) to make room for \(name)")
         }

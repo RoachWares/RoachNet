@@ -23,24 +23,174 @@ final class NativeModelServer {
             return false
             #endif
         }
+        /// The first slot's engine; every slot shares its weights, tokenizer and template.
         let engine: InferenceEngine
         let contextLength: Int
         var requestedContext = 0
-        let lock = NSLock()
         var lastUsed = Date()
         var expiresAt: Date
+
+        /// One request at a time runs in a slot; each slot keeps its own KV
+        /// cache, so a conversation keeps its prefix while others run beside it.
+        final class Slot {
+            let engine: InferenceEngine
+            var busy = false
+            var lastUsed = Date()
+            /// Tokens in the prompt it ran last; its next turn starts with them.
+            var lastPrompt = 0
+            init(engine: InferenceEngine) { self.engine = engine }
+        }
+        private var slots: [Slot]
+        private var growing = 0
+        private let condition = NSCondition()
+        /// Most slots this model may grow to (`ROACHNET_MODEL_SLOTS`, default 4).
+        var maxSlots = 1
+        /// Slots beyond the first, each holding `footprint.cache + scratch` more.
+        private(set) var extraSlots = 0
+        /// What the model holds in memory now, every slot included.
+        var resident: Int { (footprint?.total ?? 0) + extraSlots * slotBytes }
+        var slotBytes: Int { footprint.map { $0.cache + $0.scratch } ?? 0 }
+
         init(name: String, engine: InferenceEngine, contextLength: Int, keepAlive: TimeInterval) {
             self.name = name
             self.engine = engine
             self.contextLength = contextLength
+            slots = [Slot(engine: engine)]
             expiresAt = Date().addingTimeInterval(keepAlive)
+        }
+
+        var isBusy: Bool {
+            condition.lock()
+            defer { condition.unlock() }
+            return growing > 0 || slots.contains { $0.busy }
+        }
+
+        var slotCount: Int {
+            condition.lock()
+            defer { condition.unlock() }
+            return slots.count
+        }
+
+        static func shared(_ a: [Int32], _ b: [Int32]) -> Int {
+            var count = 0
+            while count < min(a.count, b.count), a[count] == b[count] { count += 1 }
+            return count
+        }
+
+        /// Shared prefixes at least this long are copied into a new slot
+        /// instead of being evaluated again.
+        static let forkMinimum = 32
+
+        /// The slot for a prompt, so that every conversation keeps its cache:
+        ///  1. an idle slot already holding this conversation (the prompt it
+        ///     ran last is all here: the next turn, or a retry);
+        ///  2. an empty slot, or a new one while memory allows (`grow`); either
+        ///     starts from a copy of the longest prefix another idle slot holds
+        ///     (a shared system prompt), so that slot keeps its own conversation;
+        ///  3. the idle slot sharing the most, or the one used longest ago;
+        ///  4. otherwise it waits for a slot to free up.
+        /// Embeddings (an empty prompt) never grow a slot.
+        func acquire(for prompt: [Int32], grow: () -> InferenceEngine?) -> Slot {
+            condition.lock()
+            defer { condition.unlock() }
+            func take(_ slot: Slot) -> Slot {
+                slot.busy = true
+                slot.lastPrompt = prompt.count
+                return slot
+            }
+            while true {
+                let idle = slots.filter { !$0.busy }
+                let scored = idle.map { ($0, LoadedModel.shared($0.engine.session.cachedTokens, prompt)) }
+                let best = scored.max { $0.1 < $1.1 }
+                // Its next turn or a retry: the slot's last prompt is (nearly) all
+                // here. A few tokens of slack cover templates that render a
+                // past reply differently from the prompt that produced it.
+                let continuing = scored.filter { slot, shared in shared > 0 && shared + 8 >= slot.lastPrompt }
+                if let (slot, _) = continuing.max(by: { $0.1 < $1.1 }) { return take(slot) }
+                let source = best.flatMap { $0.1 >= LoadedModel.forkMinimum ? $0 : nil }
+                if let empty = idle.first(where: { $0.engine.session.cachedTokens.isEmpty }) {
+                    if let (from, shared) = source { empty.engine.session.adoptPrefix(of: from.engine.session, count: shared) }
+                    return take(empty)
+                }
+                if !prompt.isEmpty, slots.count + growing < maxSlots {
+                    // The source stays reserved while its prefix is copied.
+                    source?.0.busy = true
+                    growing += 1
+                    condition.unlock()
+                    let engine = grow()
+                    if let engine, let (from, shared) = source { engine.session.adoptPrefix(of: from.engine.session, count: shared) }
+                    condition.lock()
+                    growing -= 1
+                    if let from = source?.0 {
+                        from.busy = false
+                        condition.broadcast()
+                    }
+                    if let engine {
+                        let slot = Slot(engine: engine)
+                        slots.append(slot)
+                        extraSlots = slots.count - 1
+                        return take(slot)
+                    }
+                    maxSlots = slots.count
+                    continue
+                }
+                if let (slot, _) = source { return take(slot) }
+                if let oldest = idle.min(by: { $0.lastUsed < $1.lastUsed }) { return take(oldest) }
+                condition.wait()
+            }
+        }
+
+        func release(_ slot: Slot) {
+            condition.lock()
+            slot.busy = false
+            slot.lastUsed = Date()
+            lastUsed = slot.lastUsed
+            condition.broadcast()
+            condition.unlock()
+        }
+
+        /// Gives back the memory of extra slots nobody has used since `cutoff`.
+        /// Returns true when any were dropped.
+        func trimSlots(idleSince cutoff: Date) -> Bool {
+            condition.lock()
+            defer { condition.unlock() }
+            let before = slots.count
+            slots = [slots[0]] + slots.dropFirst().filter { $0.busy || $0.lastUsed >= cutoff }
+            extraSlots = slots.count - 1
+            return slots.count != before
         }
     }
 
     let store: NativeModelStore
     private let lock = NSLock()
     var loaded: [String: LoadedModel] = [:] {
-        didSet { residentTotal = loaded.values.reduce(0) { $0 + ($1.footprint?.total ?? 0) } }
+        didSet { refreshResident() }
+    }
+    func refreshResident() { residentTotal = loaded.values.reduce(0) { $0 + $1.resident } }
+    /// Most parallel slots per model (`ROACHNET_MODEL_SLOTS`, default 4; 1 serializes requests).
+    let slotsPerModel: Int = {
+        let value = Int(ProcessInfo.processInfo.environment["ROACHNET_MODEL_SLOTS"] ?? "") ?? 4
+        return max(1, min(16, value))
+    }()
+
+    /// Another slot for `item` when there is memory for its KV cache beside
+    /// everything else loaded.
+    func growSlot(_ item: LoadedModel) -> InferenceEngine? {
+        lock.lock()
+        defer { lock.unlock() }
+        let extra = item.slotBytes
+        guard extra > 0, residentTotal + extra <= SystemMemory.modelBudget, extra * 2 < SystemMemory.available() else { return nil }
+        guard let engine = item.engine.sibling() else { return nil }
+        residentTotal += extra
+        RuntimeLog.write("native engine: \(item.name) gets another request slot (\(SystemMemory.gigabytes(extra)))")
+        return engine
+    }
+
+    /// Runs `body` in a slot of `item` chosen for `prompt`.
+    func withSlot<T>(_ item: LoadedModel, prompt: [Int32], _ body: (InferenceEngine) throws -> T) rethrows -> T {
+        let slot = item.acquire(for: prompt) { growSlot(item) }
+        defer { item.release(slot) }
+        return try body(slot.engine)
     }
     /// What the loaded models hold, kept current so other threads can read it without the lock.
     private(set) var residentTotal = 0
@@ -298,7 +448,7 @@ final class NativeModelServer {
         let wantedFootprint = try ModelFootprint(file: file, contextLength: wanted)
         #if canImport(CryptoKit) && canImport(Metal)
         if let cluster, cluster.isActive, cluster.spreadsEveryModel || wantedFootprint.total > SystemMemory.modelBudget {
-            let others = loaded.values.reduce(0) { $0 + ($1.footprint?.total ?? 0) }
+            let others = loaded.values.reduce(0) { $0 + $1.resident }
             if let plan = try cluster.plan(file: file, footprint: wantedFootprint, budget: SystemMemory.modelBudget - others,
                                            spread: cluster.spreadsEveryModel) {
                 return try loadAcrossCluster(name, entry: entry, file: file, footprint: wantedFootprint, plan: plan, cluster: cluster,
@@ -313,6 +463,7 @@ final class NativeModelServer {
         item.requestedContext = wanted
         item.fileKey = fileKey
         item.footprint = footprint
+        item.maxSlots = slotsPerModel
         loaded[name] = item
         RuntimeLog.write("native engine loaded \(name) (ctx \(item.contextLength))")
         return item
@@ -333,10 +484,13 @@ final class NativeModelServer {
     private func unloadExpired() {
         lock.lock()
         let now = Date()
-        for (name, item) in loaded where item.expiresAt < now && item.lock.try() {
-            item.lock.unlock()
+        for (name, item) in loaded where item.expiresAt < now && !item.isBusy {
             loaded[name] = nil
         }
+        // Extra slots idle for five minutes hand their KV cache back.
+        var trimmed = false
+        for item in loaded.values where item.trimSlots(idleSince: now.addingTimeInterval(-300)) { trimmed = true }
+        if trimmed { refreshResident() }
         lock.unlock()
     }
 
@@ -349,9 +503,10 @@ final class NativeModelServer {
             return ["name": JSON(item.name), "model": JSON(item.name),
                     "digest": manifest["sha256"] || "", "details": details(manifest),
                     "expires_at": JSON(item.expiresAt == .distantFuture || item.expiresAt.timeIntervalSinceNow > 1e9 ? "2318-01-01T00:00:00Z" : JS.iso(item.expiresAt)),
-                    "size": JSON(item.footprint?.total ?? Int(manifest["size"].numberValue ?? 0)),
-                    "size_vram": JSON(item.engine.session.backend is CPUBackend ? 0 : item.footprint?.total ?? 0),
-                    "context_length": JSON(item.contextLength), "backend": JSON(item.engine.session.backend.name)]
+                    "size": JSON(item.footprint == nil ? Int(manifest["size"].numberValue ?? 0) : item.resident),
+                    "size_vram": JSON(item.engine.session.backend is CPUBackend ? 0 : item.resident),
+                    "context_length": JSON(item.contextLength), "backend": JSON(item.engine.session.backend.name),
+                    "slots": JSON(item.slotCount)]
         }
     }
 
@@ -407,21 +562,18 @@ final class NativeModelServer {
     func run(_ prepared: Prepared, writer: HTTPStreamWriter?, onText: @escaping (String) -> Void) throws -> GenerationResult {
         let trace = beginTrace(prepared)
         var sawFirstToken = false
-        prepared.item.lock.lock()
-        defer {
-            prepared.item.lastUsed = Date()
-            prepared.item.lock.unlock()
-        }
         do {
-            let result = try prepared.item.engine.generate(
-                tokens: prepared.tokens,
-                options: prepared.options,
-                cancelled: { writer?.isClosed ?? false },
-                onText: { piece in
-                    if !sawFirstToken { sawFirstToken = true; trace?.observation.markFirstToken() }
-                    onText(piece)
-                }
-            )
+            let result = try withSlot(prepared.item, prompt: prepared.tokens) { engine in
+                try engine.generate(
+                    tokens: prepared.tokens,
+                    options: prepared.options,
+                    cancelled: { writer?.isClosed ?? false },
+                    onText: { piece in
+                        if !sawFirstToken { sawFirstToken = true; trace?.observation.markFirstToken() }
+                        onText(piece)
+                    }
+                )
+            }
             endTrace(trace, prepared, result: result, error: nil)
             return result
         } catch {

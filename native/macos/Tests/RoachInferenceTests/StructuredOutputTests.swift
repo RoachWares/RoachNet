@@ -108,6 +108,8 @@ final class FootprintTests: XCTestCase {
         XCTAssertEqual(footprint.cache, footprint.cachePerToken * 128)
         XCTAssertGreaterThan(footprint.scratch, 0)
         XCTAssertEqual(footprint.with(context: 64).cache * 2, footprint.cache)
+        XCTAssertEqual(try ModelFootprint(file: file, contextLength: 128, cacheType: .f32).cache,
+                       try ModelFootprint(file: file, contextLength: 128, cacheType: .f16).cache * 2, "a half cache takes half the memory")
         XCTAssertEqual(try ModelFootprint(file: file, contextLength: 1 << 20).context, footprint.trainedContext, "never past the trained context")
     }
 }

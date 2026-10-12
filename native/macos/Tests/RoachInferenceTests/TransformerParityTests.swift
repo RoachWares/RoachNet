@@ -17,23 +17,30 @@ final class TransformerParityTests: XCTestCase {
     func testPromptLogitsAndGreedyContinuationsMatchReference() throws {
         let fixture = try JSONDecoder().decode(Fixture.self, from: TestModels.fixture("forward-expected.json"))
         var ran = 0
-        for item in fixture.cases {
-            guard let path = try? TestModels.path(item.model) else { continue }
-            let engine = try InferenceEngine(modelPath: path, contextLength: 256)
-            let prompt = engine.tokenizer.encode(item.prompt)
-            let logits = try engine.session.prefill(prompt)
-            let best = logits.indices.max { logits[$0] < logits[$1] }!
-            XCTAssertEqual(Int32(best), item.top, "\(item.model) top token for \(item.prompt.debugDescription)")
-            XCTAssertEqual(logits[best], item.topLogit, accuracy: 0.002, "\(item.model) top logit vs float64 reference")
+        // FP32 keys and values match the float64 reference to 0.002; the
+        // default half cache stays within FP16 rounding of it and gives the
+        // same greedy continuations.
+        for cache in [KVCacheType.f32, .f16] {
+            setenv("ROACHNET_KV_CACHE", cache.rawValue, 1)
+            defer { unsetenv("ROACHNET_KV_CACHE") }
+            for item in fixture.cases {
+                guard let path = try? TestModels.path(item.model) else { continue }
+                let engine = try InferenceEngine(modelPath: path, contextLength: 256)
+                let prompt = engine.tokenizer.encode(item.prompt)
+                let logits = try engine.session.prefill(prompt)
+                let best = logits.indices.max { logits[$0] < logits[$1] }!
+                XCTAssertEqual(Int32(best), item.top, "\(item.model) \(cache) top token for \(item.prompt.debugDescription)")
+                XCTAssertEqual(logits[best], item.topLogit, accuracy: cache == .f32 ? 0.002 : 0.02, "\(item.model) \(cache) top logit vs float64 reference")
 
-            var options = GenerationOptions()
-            options.sampling = .greedy
-            options.maxTokens = item.greedy.count + (item.endsWithEOG == true ? 1 : 0)
-            engine.session.reset()
-            let result = try engine.generate(tokens: prompt, options: options)
-            XCTAssertEqual(Array(result.tokens.prefix(item.agree)), Array(item.greedy.prefix(item.agree)), "\(item.model) greedy continuation")
-            if item.endsWithEOG == true { XCTAssertEqual(result.stopReason, .endOfGeneration) }
-            ran += 1
+                var options = GenerationOptions()
+                options.sampling = .greedy
+                options.maxTokens = item.greedy.count + (item.endsWithEOG == true ? 1 : 0)
+                engine.session.reset()
+                let result = try engine.generate(tokens: prompt, options: options)
+                XCTAssertEqual(Array(result.tokens.prefix(item.agree)), Array(item.greedy.prefix(item.agree)), "\(item.model) \(cache) greedy continuation")
+                if item.endsWithEOG == true { XCTAssertEqual(result.stopReason, .endOfGeneration) }
+                ran += 1
+            }
         }
         if ran == 0 { throw XCTSkip("Set ROACHNET_TEST_MODELS to run model-backed tests.") }
     }

@@ -3,7 +3,9 @@
 // Performance Shaders, Accelerate, Core ML or third-party kernels are used.
 // Each kernel mirrors a CPU reference in Quantization.swift / InferenceSession.swift.
 enum MetalKernelSource {
-    static let source = #"""
+    // The cache kernels (MetalCacheKernels.swift) come in float and half.
+    static let source = base + cacheKernels("float", "") + cacheKernels("half", "_h")
+    static let base = #"""
 #include <metal_stdlib>
 #include <metal_simdgroup_matrix>
 using namespace metal;
@@ -679,65 +681,6 @@ kernel void attn_softmax(device float* s [[buffer(0)]], constant AttnArgs& a [[b
     for (uint t = tid; t < a.span; t += threads) row[t] *= inverse;
 }
 
-// Fused decode attention, one threadgroup per head: scores, softmax and the
-// weighted value sum in a single dispatch. Same arithmetic as attn_scores,
-// attn_softmax and attn_values.
-kernel void attn_fused(device const float* q [[buffer(0)]], device const float* K [[buffer(1)]],
-                       device const float* V [[buffer(2)]], device float* s [[buffer(3)]],
-                       device float* out [[buffer(4)]], constant AttnArgs& a [[buffer(5)]],
-                       uint h [[threadgroup_position_in_grid]], uint tid [[thread_position_in_threadgroup]],
-                       uint threads [[threads_per_threadgroup]], uint sg [[simdgroup_index_in_threadgroup]],
-                       uint lane [[thread_index_in_simdgroup]]) {
-    threadgroup float partial[32];
-    uint kvh = h / a.group;
-    uint groups = (threads + 31) / 32;
-    device const float* qh = q + ulong(h) * a.headDim;
-    device float* row = s + ulong(h) * a.context;
-    float m = -INFINITY;
-    for (uint t = tid; t < a.span; t += threads) {
-        device const float* kt = K + ulong(t) * a.keyWidth + ulong(kvh) * a.headDim;
-        float acc = 0;
-        for (uint d = 0; d < a.headDim; ++d) acc += qh[d] * kt[d];
-        float score = acc * a.scale;
-        row[t] = score;
-        m = max(m, score);
-    }
-    m = simd_max(m);
-    if (lane == 0) partial[sg] = m;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (sg == 0) {
-        float v = lane < groups ? partial[lane] : -INFINITY;
-        v = simd_max(v);
-        if (lane == 0) partial[0] = v;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    float maximum = partial[0];
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    float sum = 0;
-    for (uint t = tid; t < a.span; t += threads) {
-        float e = exp(row[t] - maximum);
-        row[t] = e;
-        sum += e;
-    }
-    sum = simd_sum(sum);
-    if (lane == 0) partial[sg] = sum;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (sg == 0) {
-        float v = lane < groups ? partial[lane] : 0;
-        v = simd_sum(v);
-        if (lane == 0) partial[0] = v;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);
-    float inverse = 1.0f / partial[0];
-    for (uint t = tid; t < a.span; t += threads) row[t] *= inverse;
-    threadgroup_barrier(mem_flags::mem_device);
-    for (uint d = tid; d < a.valueDim; d += threads) {
-        float acc = 0;
-        for (uint t = 0; t < a.span; ++t) acc += row[t] * V[ulong(t) * a.valueWidth + ulong(kvh) * a.valueDim + d];
-        out[ulong(h) * a.valueDim + d] = acc;
-    }
-}
-
 // out[h][d] = Σ_t p[h][t] · V[t][kvh][d]
 kernel void attn_values(device const float* s [[buffer(0)]], device const float* V [[buffer(1)]],
                         device float* out [[buffer(2)]], constant AttnArgs& a [[buffer(3)]],
@@ -875,74 +818,7 @@ kernel void rope4(device float4* v [[buffer(0)]], device const float* inv [[buff
 
 struct KVStoreArgs { uint width; uint count; };
 
-// Unpacks four tokens' keys or values into consecutive cache rows.
-kernel void kv_store4(device const float4* src [[buffer(0)]], device float* cache [[buffer(1)]],
-                      constant KVStoreArgs& a [[buffer(2)]], uint2 gid [[thread_position_in_grid]]) {
-    uint i = gid.x, g = gid.y;
-    if (i >= a.width) return;
-    float4 v = src[ulong(g) * a.width + i];
-    for (uint c = 0; c < 4; ++c) {
-        uint t = 4 * g + c;
-        if (t < a.count) cache[ulong(t) * a.width + i] = v[c];
-    }
-}
-
 struct Attn4Args { uint headDim; uint valueDim; uint keyWidth; uint valueWidth; uint group; uint heads; uint start; uint count; float scale; };
-
-// Causal attention for four tokens and one head per threadgroup (128
-// threads): keys in chunks of 128 with a running maximum and sum (online
-// softmax), so no score buffer is needed. Token 4g + c sees keys up to its
-// own position. Head and value widths are at most 256.
-kernel void attn4(device const float4* q [[buffer(0)]], device const float* K [[buffer(1)]],
-                  device const float* V [[buffer(2)]], device float4* out [[buffer(3)]],
-                  constant Attn4Args& a [[buffer(4)]],
-                  uint2 tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
-                  uint sg [[simdgroup_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]]) {
-    threadgroup float4 qs[256];
-    threadgroup float4 ps[128];
-    threadgroup float4 partial[4];
-    uint h = tg.x, g = tg.y;
-    uint kvh = h / a.group;
-    for (uint d = tid; d < a.headDim; d += 128) qs[d] = q[(ulong(g) * a.heads + h) * a.headDim + d];
-    uint first = a.start + 4 * g;
-    float4 limit = float4(float(first), float(first + 1), float(first + 2), float(first + 3));
-    uint span = min(first + 4, a.start + a.count);
-    float4 m = float4(-INFINITY), l = float4(0), o0 = float4(0), o1 = float4(0);
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint base = 0; base < span; base += 128) {
-        uint t = base + tid;
-        float4 score = float4(-INFINITY);
-        if (t < span) {
-            device const float* kt = K + ulong(t) * a.keyWidth + ulong(kvh) * a.headDim;
-            float4 acc = float4(0);
-            for (uint d = 0; d < a.headDim; ++d) acc += qs[d] * kt[d];
-            score = select(acc * a.scale, float4(-INFINITY), float4(float(t)) > limit);
-        }
-        float4 chunk = simd_max(score);
-        if (lane == 0) partial[sg] = chunk;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        float4 top = max(m, max(max(partial[0], partial[1]), max(partial[2], partial[3])));
-        ps[tid] = exp(score - top);
-        float4 factor = exp(m - top);
-        m = top;
-        l *= factor;
-        o0 *= factor;
-        o1 *= factor;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        uint keys = min(128u, span - base);
-        for (uint k = 0; k < keys; ++k) {
-            float4 p = ps[k];
-            l += p;
-            device const float* vt = V + ulong(base + k) * a.valueWidth + ulong(kvh) * a.valueDim;
-            if (tid < a.valueDim) o0 += p * vt[tid];
-            if (tid + 128 < a.valueDim) o1 += p * vt[tid + 128];
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-    device float4* o = out + (ulong(g) * a.heads + h) * a.valueDim;
-    if (tid < a.valueDim) o[tid] = o0 / l;
-    if (tid + 128 < a.valueDim) o[tid + 128] = o1 / l;
-}
 
 // One token's row out of a packed group (the last prompt token's state).
 kernel void take4(device const float4* src [[buffer(0)]], device float* dst [[buffer(1)]],
@@ -1111,65 +987,6 @@ MATMUL_SG(matmul_sg_q8_K, dq_q8_K)
 // and value row is read once for all of them, and long contexts spread over
 // many threadgroups. attn_merge combines the chunks' partial softmaxes.
 struct AttnSplitArgs { uint headDim; uint valueDim; uint keyWidth; uint valueWidth; uint group; uint heads; uint span; uint chunk; float scale; };
-
-kernel void attn_split(device const float* q [[buffer(0)]], device const float* K [[buffer(1)]],
-                       device const float* V [[buffer(2)]], device float* part [[buffer(3)]],
-                       constant AttnSplitArgs& a [[buffer(4)]],
-                       uint3 tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
-                       uint sg [[simdgroup_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]]) {
-    threadgroup float4 qs[256];
-    threadgroup float4 ps[128];
-    threadgroup float4 partial[4];
-    uint kvh = tg.x, quad = tg.y, c = tg.z;
-    uint h0 = kvh * a.group + quad * 4;
-    uint nh = min(4u, a.group - quad * 4);
-    for (uint d = tid; d < a.headDim; d += 128) {
-        float4 v = float4(0);
-        for (uint i = 0; i < nh; ++i) v[i] = q[ulong(h0 + i) * a.headDim + d];
-        qs[d] = v;
-    }
-    uint start = c * a.chunk, end = min(start + a.chunk, a.span);
-    float4 m = float4(-INFINITY), l = float4(0), o0 = float4(0), o1 = float4(0);
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint base = start; base < end; base += 128) {
-        uint t = base + tid;
-        float4 score = float4(-INFINITY);
-        if (t < end) {
-            device const float* kt = K + ulong(t) * a.keyWidth + ulong(kvh) * a.headDim;
-            float4 acc = float4(0);
-            for (uint d = 0; d < a.headDim; ++d) acc += qs[d] * kt[d];
-            score = acc * a.scale;
-        }
-        float4 chunkMax = simd_max(score);
-        if (lane == 0) partial[sg] = chunkMax;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        float4 top = max(m, max(max(partial[0], partial[1]), max(partial[2], partial[3])));
-        ps[tid] = exp(score - top);
-        float4 factor = exp(m - top);
-        m = top;
-        l *= factor;
-        o0 *= factor;
-        o1 *= factor;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        uint keys = min(128u, end - base);
-        for (uint k = 0; k < keys; ++k) {
-            float4 p = ps[k];
-            l += p;
-            device const float* vt = V + ulong(base + k) * a.valueWidth + ulong(kvh) * a.valueDim;
-            if (tid < a.valueDim) o0 += p * vt[tid];
-            if (tid + 128 < a.valueDim) o1 += p * vt[tid + 128];
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-    uint chunks = (a.span + a.chunk - 1) / a.chunk;
-    uint stride = 2 + a.valueDim;
-    for (uint i = 0; i < nh; ++i) {
-        device float* p = part + (ulong(h0 + i) * chunks + c) * stride;
-        if (tid == 0) { p[0] = m[i]; p[1] = l[i]; }
-        if (tid < a.valueDim) p[2 + tid] = o0[i];
-        if (tid + 128 < a.valueDim) p[2 + tid + 128] = o1[i];
-    }
-}
 
 // out[h] = the chunks' partial results combined, one threadgroup per query head.
 kernel void attn_merge(device const float* part [[buffer(0)]], device float* out [[buffer(1)]],

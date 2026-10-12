@@ -55,6 +55,11 @@ public final class InferenceEngine {
         supportsThinking = InferenceEngine.thinks(templateSource: source)
     }
 
+    /// Another engine over the same weights with its own KV cache (a parallel request slot).
+    public func sibling() -> InferenceEngine? {
+        session.sibling().map(InferenceEngine.init(session:))
+    }
+
     public static func thinks(templateSource: String?) -> Bool {
         guard let source = templateSource else { return false }
         return source.contains("enable_thinking") || source.contains("</think>")

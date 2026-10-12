@@ -302,3 +302,98 @@ test('models are fitted into memory: a shorter context first, then a clear refus
     }
   }
 })
+
+test('requests run side by side in slots, and each conversation keeps its cache', needsModel, async () => {
+  const own = await start()
+  try {
+    const options = { ...greedy, num_ctx: 2048, num_predict: 48 }
+    const ask = (content, extra = {}) => ({ model: MODEL, stream: false, think: false, options, messages: [{ role: 'user', content }], ...extra })
+    const call = async (body, base = own.base) => {
+      const response = await fetch(`${base}/api/chat`, { method: 'POST', body: JSON.stringify(body) })
+      const value = await response.json()
+      assert.equal(response.status, 200, JSON.stringify(value))
+      return value
+    }
+    const a = ask('Count from one to forty in words, separated by commas.')
+    const b = ask('List the planets of the solar system, one per line.')
+    const firstA = await call(a)
+    const firstB = await call(b)
+
+    // Both again at once: each lands in the slot that already holds it.
+    const timeline = []
+    const watch = async (label, body) => {
+      const response = await fetch(`${own.base}/api/chat`, { method: 'POST', body: JSON.stringify({ ...body, stream: true }) })
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffered = ''
+      let text = ''
+      let last
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffered += decoder.decode(value, { stream: true })
+        let newline
+        while ((newline = buffered.indexOf('\n')) >= 0) {
+          const line = buffered.slice(0, newline)
+          buffered = buffered.slice(newline + 1)
+          if (!line.trim()) continue
+          last = JSON.parse(line)
+          if (last.message?.content) {
+            text += last.message.content
+            timeline.push([label, performance.now()])
+          }
+        }
+      }
+      return { text, last }
+    }
+    const [againA, againB] = await Promise.all([watch('a', a), watch('b', b)])
+    assert.equal(againA.text, firstA.message.content, 'a slot gives the same greedy answer')
+    assert.equal(againB.text, firstB.message.content)
+    assert.equal(againA.last.prompt_eval_count, 1, "conversation A's prompt was already cached in its slot")
+    assert.equal(againB.last.prompt_eval_count, 1, "and B's in its own")
+    const endA = Math.max(...timeline.filter(([label]) => label === 'a').map(([, at]) => at))
+    const endB = Math.max(...timeline.filter(([label]) => label === 'b').map(([, at]) => at))
+    const startA = Math.min(...timeline.filter(([label]) => label === 'a').map(([, at]) => at))
+    const startB = Math.min(...timeline.filter(([label]) => label === 'b').map(([, at]) => at))
+    assert.ok(startB < endA && startA < endB, 'the two replies streamed at the same time')
+
+    const ps = await (await fetch(`${own.base}/api/ps`)).json()
+    assert.equal(ps.models.length, 1)
+    assert.equal(ps.models[0].slots, 2)
+
+    // A follow-up to A goes to A's slot and reuses what still matches (Qwen3
+    // renders a past reply without its empty think block, so not all of it).
+    const followUp = await call({
+      ...a,
+      messages: [...a.messages, { role: 'assistant', content: firstA.message.content }, { role: 'user', content: 'Now in French.' }],
+    })
+    assert.ok(followUp.prompt_eval_count < firstA.prompt_eval_count + firstA.eval_count,
+      `the cached start of the conversation was reused (${followUp.prompt_eval_count} tokens evaluated)`)
+    assert.equal((await (await fetch(`${own.base}/api/ps`)).json()).models[0].slots, 2, 'no new slot for the next turn')
+
+    // A second agent with the same long system prompt starts from a copy of
+    // it in a new slot, and the first agent keeps its own conversation.
+    const system = 'You are a careful assistant for the RoachNet project. '.repeat(8)
+    const c = { ...a, messages: [{ role: 'system', content: system }, { role: 'user', content: 'Say hi.' }] }
+    const d = { ...a, messages: [{ role: 'system', content: system }, { role: 'user', content: 'Say bye in Spanish.' }] }
+    const firstC = await call(c)
+    const forked = await call(d)
+    assert.ok(forked.prompt_eval_count * 3 < firstC.prompt_eval_count, `the shared system prompt was copied (${forked.prompt_eval_count} evaluated)`)
+    assert.equal((await call(c)).prompt_eval_count, 1, 'the first agent kept its conversation')
+
+    // The copied prefix answers exactly as a computed one; one slot serializes.
+    const serial = await start({ ROACHNET_MODEL_SLOTS: '1' })
+    try {
+      assert.equal((await call(d, serial.base)).message.content, forked.message.content)
+      await call(a, serial.base)
+      const one = await (await fetch(`${serial.base}/api/ps`)).json()
+      assert.equal(one.models[0].slots, 1)
+    } finally {
+      serial.child.kill('SIGTERM')
+      await rm(serial.root, { recursive: true, force: true })
+    }
+  } finally {
+    own.child.kill('SIGTERM')
+    await rm(own.root, { recursive: true, force: true })
+  }
+})

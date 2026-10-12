@@ -35,15 +35,12 @@ extension NativeModelServer {
         var tokens = 0
         let evalStart = Date()
         do {
-            item.lock.lock()
-            defer {
-                item.lastUsed = Date()
-                item.lock.unlock()
-            }
-            for text in inputs {
-                let (vector, count) = try item.engine.embed(text, truncate: truncate, normalize: api != .ollamaLegacy)
-                vectors.append(dimensions.map { NativeModelServer.shortened(vector, to: $0) } ?? vector)
-                tokens += count
+            try withSlot(item, prompt: []) { engine in
+                for text in inputs {
+                    let (vector, count) = try engine.embed(text, truncate: truncate, normalize: api != .ollamaLegacy)
+                    vectors.append(dimensions.map { NativeModelServer.shortened(vector, to: $0) } ?? vector)
+                    tokens += count
+                }
             }
         } catch {
             let message = (error as? InferenceError).map { "\($0)" } ?? "\(error)"

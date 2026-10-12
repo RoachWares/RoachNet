@@ -26,6 +26,32 @@ public final class InferenceSession {
 
     public var vocabularySize: Int { model.vocabularyRows }
 
+    /// Another session over the same weights with its own KV cache, for
+    /// requests that run side by side. Metal shares kernels and weights with
+    /// this session; nil when the backend can't be duplicated (a model split
+    /// across Macs).
+    public func sibling() -> InferenceSession? {
+        #if canImport(Metal)
+        if let metal = backend as? MetalBackend {
+            return (try? metal.sibling()).map { InferenceSession(model: model, backend: $0) }
+        }
+        #endif
+        if backend is CPUBackend { return InferenceSession(model: model, backend: CPUBackend(model: model, contextLength: contextLength)) }
+        return nil
+    }
+
+    /// Starts this session from the first `count` cached tokens of `other`, a
+    /// session over the same model: their keys and values are copied, not
+    /// computed again. False (and nothing changes) when the backends differ.
+    @discardableResult
+    public func adoptPrefix(of other: InferenceSession, count: Int) -> Bool {
+        let count = min(count, other.cachedTokens.count, contextLength)
+        guard count > 0, other.model === model, let copier = backend as? CacheCopying,
+              copier.copyCache(from: other.backend, count: count) else { return false }
+        cachedTokens = Array(other.cachedTokens.prefix(count))
+        return true
+    }
+
     /// Surfaces a failure the backend could not throw (a stage on another Mac went away).
     private func checkBackend() throws {
         if let failure = (backend as? FallibleBackend)?.takeFailure() {
@@ -149,6 +175,18 @@ public enum BackendPreference: String {
     case automatic, cpu, metal
 }
 
+/// How the GPU backend stores keys and values: half precision by default,
+/// which holds twice the context in the same memory and halves what decode
+/// attention reads; `ROACHNET_KV_CACHE=f32` keeps full precision. The CPU
+/// reference always uses FP32.
+public enum KVCacheType: String {
+    case f16, f32
+    public var bytes: Int { self == .f16 ? 2 : 4 }
+    public static var preferred: KVCacheType {
+        ProcessInfo.processInfo.environment["ROACHNET_KV_CACHE"].flatMap(KVCacheType.init(rawValue:)) ?? .f16
+    }
+}
+
 enum BackendSelector {
     static func make(model: TransformerModel, contextLength: Int, preference: BackendPreference) -> TransformerBackend {
         let forced = ProcessInfo.processInfo.environment["ROACHNET_INFERENCE_BACKEND"].flatMap(BackendPreference.init(rawValue:))
@@ -200,6 +238,13 @@ public protocol StageBatchForwarding: BatchForwarding {
     func batchResiduals(count: Int) -> [Float]
 }
 
+/// A backend whose KV cache can be filled from another backend over the same model.
+public protocol CacheCopying: AnyObject {
+    /// Copies the keys and values of positions `0..<count` from `other`;
+    /// false when `other` is a different kind or shape of backend.
+    func copyCache(from other: TransformerBackend, count: Int) -> Bool
+}
+
 /// A backend whose forward pass can fail, such as a stage on another Mac.
 public protocol FallibleBackend: AnyObject {
     /// The failure since the last call, if any; reading it clears it.
@@ -223,7 +268,7 @@ extension TransformerBackend {
 }
 
 /// CPU reference backend: plain Swift with SIMD and multithreaded matvecs.
-public final class CPUBackend: TransformerBackend, StageBackend {
+public final class CPUBackend: TransformerBackend, StageBackend, CacheCopying {
     public let model: TransformerModel
     public let contextLength: Int
     public var name: String { "cpu" }
@@ -275,6 +320,15 @@ public final class CPUBackend: TransformerBackend, StageBackend {
         for pointer in [keyCache, valueCache, x, normed, projected, query, attention, hidden, hiddenUp, scores, logitsBuffer] {
             pointer.deallocate()
         }
+    }
+
+    public func copyCache(from other: TransformerBackend, count: Int) -> Bool {
+        guard let other = other as? CPUBackend, other.model === model, other.contextLength == contextLength, count <= contextLength else { return false }
+        for layer in 0..<model.layers.count {
+            (keyCache + layer * layerKeyStride).update(from: other.keyCache + layer * layerKeyStride, count: count * kvKeyWidth)
+            (valueCache + layer * layerValueStride).update(from: other.valueCache + layer * layerValueStride, count: count * kvValueWidth)
+        }
+        return true
     }
 
     public var logits: UnsafeBufferPointer<Float> {

@@ -95,22 +95,26 @@ A prompt runs through the model in passes of up to 512 tokens, instead of one to
 
 | Model | Batched | One token at a time | Speed-up |
 | --- | --- | --- | --- |
-| qwen3 0.6B Q8_0 | 1,671 tok/s | 108 tok/s | 15.5× |
+| qwen3 0.6B Q8_0 | 1,945 tok/s | 118 tok/s | 16.4× |
 | qwen2.5 0.5B Q4_K_M | 2,432 tok/s | 151 tok/s | 16.1× |
 | qwen2.5-coder 1.5B Q4_K_M | 795 tok/s | 76 tok/s | 10.5× |
-| llama3.2 3B Q4_K_M | 375 tok/s | 44 tok/s | 8.5× |
+| llama3.2 3B Q4_K_M | 398 tok/s | 51 tok/s | 7.7× |
+
+The qwen3 0.6B and llama3.2 3B rows were measured again after prompt attention moved to whole-simdgroup key reads (they were 1,671 and 375 tok/s); the other two rows predate it.
 
 The batched pass leaves the same KV cache as token-by-token passes. On every device, the first batched pass is checked against token-by-token passes; if they differ, prompts run a token at a time. `ROACHNET_METAL_BATCH=0` turns batching off, and a number sets the batch size. `ROACHNET_METAL_MATMUL=simple` uses the plain four-token kernels instead of the simdgroup-matrix GEMM. Q2_K and Q3_K models still prefill a token at a time.
 
 ### Long contexts
 
-Decode attention is split across chunks of 128 keys. Each threadgroup handles one KV head and a chunk, and packs the query heads that share the KV head as `float4`, so each key and value row is read once for all of them. A second kernel merges the chunks' partial softmaxes. Contexts shorter than one chunk use the single fused kernel. `ROACHNET_METAL_ATTENTION=fused` turns the split off. Measured with `roachnet-infer bench <model.gguf> --context N`:
+Decode attention is split across chunks of 128 keys. Each threadgroup handles one KV head and a chunk, and packs the query heads that share the KV head as `float4`, so each key and value row is read once for all of them. Its four simdgroups each read whole key rows together, one lane per dimension, and sum across lanes, so key reads are contiguous. A second kernel merges the chunks' partial softmaxes. Contexts shorter than one chunk use the single fused kernel; `ROACHNET_METAL_ATTENTION=fused` turns the split off (measured before the change to key reads, at 2,000 tokens the split was 1.6× faster than the fused kernel on qwen3 8B and 2.6× on qwen3 0.6B). Prompt attention reads keys the same way.
 
-| Model, context | Fused kernel | Split across keys |
+Measured with `roachnet-infer bench <model.gguf> --context N` (wall time per token):
+
+| Model, context | FP32 cache, a key per thread | FP16 cache, keys read by whole simdgroups |
 | --- | --- | --- |
-| qwen3 8B Q4_K_M, 700 tokens | 16.0 tok/s | 19.2 tok/s |
-| qwen3 8B Q4_K_M, 2,000 tokens | 10.5 tok/s | 17.3 tok/s |
-| qwen3 0.6B Q8_0, 2,000 tokens | 27.3 tok/s | 72.1 tok/s |
+| qwen3 8B Q4_K_M, 2,000 tokens | 17.2 tok/s | 18.9 tok/s |
+| qwen3 8B Q4_K_M, 4,000 tokens | 13.2 tok/s | 16.4 tok/s |
+| qwen3 0.6B Q8_0, 2,000 tokens | 72.1 tok/s | 90.8 tok/s |
 
 ### Against Ollama
 
@@ -125,13 +129,27 @@ At a short context, decode is level with Ollama (21.4 tok/s). Prompt evaluation 
 
 ### Memory
 
-Before loading, the runtime works out what the model will hold from its GGUF metadata alone: the mapped weights, the FP32 KV cache for the requested context, and the working buffers. Loaded models may use 80% of the Mac's memory together (`ROACHNET_MODEL_MEMORY_GB` overrides this). If a model doesn't fit:
+Before loading, the runtime works out what the model will hold from its GGUF metadata alone: the mapped weights, the KV cache for the requested context, and the working buffers. Loaded models may use 80% of the Mac's memory together (`ROACHNET_MODEL_MEMORY_GB` overrides this). If a model doesn't fit:
 
 1. Idle models are unloaded, oldest first.
 2. The context is halved until it fits, but never below 2,048 tokens. The log says so.
 3. If it still doesn't fit, the request fails with a 507 that names the sizes, rather than the Mac paging itself to a halt.
 
-`/api/ps` reports each model's real footprint and backend. `ROACHNET_MAX_LOADED_MODELS` sets how many models stay loaded at once (2 by default).
+`/api/ps` reports each model's real footprint, backend and request slots. `ROACHNET_MAX_LOADED_MODELS` sets how many models stay loaded at once (2 by default).
+
+On the GPU, keys and values are stored in half precision. That holds twice the context in the same memory and halves what decode attention reads per token; the arithmetic stays in FP32. `ROACHNET_KV_CACHE=f32` keeps full precision. The parity tests check both caches against the CPU and float64 references: FP32 to 0.002 on the top logit, the half cache to 0.02 with the same greedy continuations. Where the reference scores two tokens as a near-tie, FP16 rounding can pick the other one; that is the only kind of difference the tests allow.
+
+### Parallel requests
+
+A loaded model serves several requests at once from request slots. Every slot shares the model's mapped weights and compiled kernels and has its own KV cache, so a slot costs only its cache and working buffers. Slots are added when they're needed and while memory allows, up to `ROACHNET_MODEL_SLOTS` (4 by default; 1 runs requests one after another). Extra slots that sit idle for five minutes give their memory back, and they are the first thing released when another model needs room.
+
+Each request goes to the slot that keeps the most work:
+
+1. **The same conversation.** A slot whose last prompt is all in this one gets it, so the next turn of a chat, or an agent's next step, only evaluates what's new.
+2. **A shared beginning.** A new conversation that starts like another (several agents with one long system prompt) gets an empty or new slot that begins with a copy of that prefix's keys and values, instead of evaluating it again or overwriting the other conversation.
+3. **Otherwise** it gets the idle slot that shares the most with it, or the one used longest ago, and waits only when every slot is busy.
+
+With two conversations on qwen3 0.6B, asking each again evaluates 1 token instead of 24. A second agent sharing a 117-token system prompt evaluates 14 tokens instead of 117, and both agents keep their own caches.
 
 ## How correctness is verified
 

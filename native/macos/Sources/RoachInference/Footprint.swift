@@ -5,7 +5,7 @@ import Foundation
 public struct ModelFootprint: Equatable {
     /// The mapped weights (the GGUF file).
     public let weights: Int
-    /// Keys and values for every layer, in FP32, for `context` tokens.
+    /// Keys and values for every layer, for `context` tokens (FP16 on the GPU unless `ROACHNET_KV_CACHE=f32`).
     public let cache: Int
     /// Activations, scores, logits and the batched-prefill buffers.
     public let scratch: Int
@@ -19,14 +19,14 @@ public struct ModelFootprint: Equatable {
     public let cachePerToken: Int
 
     /// `stage`: one part of a model split across Macs (the whole model when nil).
-    public init(file: GGUFFile, contextLength: Int, stage: ModelStage? = nil) throws {
+    public init(file: GGUFFile, contextLength: Int, stage: ModelStage? = nil, cacheType: KVCacheType = .preferred) throws {
         let vocabulary = file.tensors["token_embd.weight"]?.shape.last ?? 32_000
         let hp = try ModelHyperparameters(gguf: file, vocabularySize: vocabulary)
         trainedContext = hp.contextLength
         context = max(16, min(contextLength, hp.contextLength))
         let keyValueWidth = hp.headCountKV * (hp.headDimension + hp.valueDimension)
         let stage = stage ?? .whole(hp.blockCount)
-        cachePerToken = stage.layers.count * keyValueWidth * 4
+        cachePerToken = stage.layers.count * keyValueWidth * cacheType.bytes
         cache = cachePerToken * context
         let width = max(hp.embeddingLength, hp.headCount * hp.valueDimension)
         let decode = 4 * (hp.embeddingLength + 2 * width + hp.headCount * (hp.headDimension + hp.valueDimension)

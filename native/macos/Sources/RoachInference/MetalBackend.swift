@@ -5,7 +5,7 @@ import Metal
 /// GPU backend for Apple Silicon built only on our own Metal kernels
 /// (`MetalKernelSource`). Weights stay quantized and are read in place from the
 /// memory-mapped GGUF file; activations and the KV cache live in shared buffers.
-public final class MetalBackend: TransformerBackend, StageBatchForwarding, StageBackend {
+public final class MetalBackend: TransformerBackend, StageBatchForwarding, StageBackend, CacheCopying {
     public let model: TransformerModel
     public let contextLength: Int
     public var name: String { "metal (\(device.name))" }
@@ -32,6 +32,13 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
     let x: MTLBuffer, normed: MTLBuffer, projected: MTLBuffer, query: MTLBuffer
     let attention: MTLBuffer, hidden: MTLBuffer, hiddenUp: MTLBuffer, scores: MTLBuffer, logitsBuffer: MTLBuffer
     let keyCache: MTLBuffer, valueCache: MTLBuffer
+    /// One token's key and value in FP32, before a half cache stores them.
+    let keyStage: MTLBuffer, valueStage: MTLBuffer
+    /// How keys and values are stored.
+    public let cacheType: KVCacheType
+    var cacheBytes: Int { cacheType.bytes }
+    /// Names the half-cache variant of a cache kernel.
+    var cacheSuffix: String { cacheType == .f16 ? "_h" : "" }
     /// Partial softmax results of decode attention split across keys.
     let attentionParts: MTLBuffer
     static let attentionChunk = 128
@@ -103,12 +110,13 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
         }
     }
 
-    public init(model: TransformerModel, contextLength: Int) throws {
+    public init(model: TransformerModel, contextLength: Int, cacheType: KVCacheType = .preferred) throws {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
             throw InferenceError.invalid("No Metal device.")
         }
         self.model = model
         self.contextLength = contextLength
+        self.cacheType = cacheType
         self.device = device
         self.queue = queue
         let hp = model.hyperparameters
@@ -162,13 +170,6 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
             }
             return buffer
         }
-        func scratch(_ count: Int) throws -> MTLBuffer {
-            guard let buffer = device.makeBuffer(length: max(4, count * 4), options: .storageModeShared) else {
-                throw InferenceError.invalid("Metal allocation failed.")
-            }
-            memset(buffer.contents(), 0, buffer.length)
-            return buffer
-        }
         layerBuffers = try model.layers.map { layer in
             LayerBuffers(
                 attentionNorm: try floats(layer.attentionNorm),
@@ -184,20 +185,90 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
         inverseFrequencies = try floats(model.ropeInverseFrequencies)
         kvKeyWidth = hp.headCountKV * hp.headDimension
         kvValueWidth = hp.headCountKV * hp.valueDimension
-        let width = max(hp.embeddingLength, hp.headCount * hp.valueDimension)
-        x = try scratch(hp.embeddingLength)
-        normed = try scratch(width)
-        projected = try scratch(width)
-        query = try scratch(hp.headCount * hp.headDimension)
-        attention = try scratch(hp.headCount * hp.valueDimension)
-        hidden = try scratch(hp.feedForwardLength)
-        hiddenUp = try scratch(hp.feedForwardLength)
-        scores = try scratch(hp.headCount * contextLength)
-        logitsBuffer = try scratch(model.vocabularyRows)
-        keyCache = try scratch(model.layers.count * contextLength * kvKeyWidth)
-        valueCache = try scratch(model.layers.count * contextLength * kvValueWidth)
-        attentionParts = try scratch(hp.headCount * ((contextLength + MetalBackend.attentionChunk - 1) / MetalBackend.attentionChunk) * (2 + hp.valueDimension))
+        let s = try Scratch(device: device, model: model, contextLength: contextLength, cacheBytes: cacheType.bytes)
+        x = s.x; normed = s.normed; projected = s.projected; query = s.query; attention = s.attention
+        hidden = s.hidden; hiddenUp = s.hiddenUp; scores = s.scores; logitsBuffer = s.logits
+        keyCache = s.keyCache; valueCache = s.valueCache; attentionParts = s.attentionParts
+        keyStage = s.keyStage; valueStage = s.valueStage
         maxBatch = min(MetalBackend.batchSize(for: model), contextLength / 4 * 4)
+    }
+
+    /// One slot's working memory: activations, the KV cache and attention partials.
+    private struct Scratch {
+        let x, normed, projected, query, attention, hidden, hiddenUp, scores, logits, keyCache, valueCache, attentionParts: MTLBuffer
+        let keyStage, valueStage: MTLBuffer
+
+        init(device: MTLDevice, model: TransformerModel, contextLength: Int, cacheBytes: Int) throws {
+            func scratch(_ count: Int, bytes: Int = 4) throws -> MTLBuffer {
+                guard let buffer = device.makeBuffer(length: max(4, count * bytes), options: .storageModeShared) else {
+                    throw InferenceError.invalid("Metal allocation failed.")
+                }
+                memset(buffer.contents(), 0, buffer.length)
+                return buffer
+            }
+            let hp = model.hyperparameters
+            let width = max(hp.embeddingLength, hp.headCount * hp.valueDimension)
+            x = try scratch(hp.embeddingLength)
+            normed = try scratch(width)
+            projected = try scratch(width)
+            query = try scratch(hp.headCount * hp.headDimension)
+            attention = try scratch(hp.headCount * hp.valueDimension)
+            hidden = try scratch(hp.feedForwardLength)
+            hiddenUp = try scratch(hp.feedForwardLength)
+            scores = try scratch(hp.headCount * contextLength)
+            logits = try scratch(model.vocabularyRows)
+            keyCache = try scratch(model.layers.count * contextLength * hp.headCountKV * hp.headDimension, bytes: cacheBytes)
+            valueCache = try scratch(model.layers.count * contextLength * hp.headCountKV * hp.valueDimension, bytes: cacheBytes)
+            keyStage = try scratch(hp.headCountKV * hp.headDimension)
+            valueStage = try scratch(hp.headCountKV * hp.valueDimension)
+            attentionParts = try scratch(hp.headCount * ((contextLength + MetalBackend.attentionChunk - 1) / MetalBackend.attentionChunk) * (2 + hp.valueDimension))
+        }
+    }
+
+    /// Another backend over the same weights and kernels with its own KV cache
+    /// and working memory, for a parallel request slot. Nothing is compiled or
+    /// checked again: it runs exactly the kernels this backend verified.
+    public func sibling() throws -> MetalBackend {
+        try MetalBackend(sharing: self)
+    }
+
+    private init(sharing other: MetalBackend) throws {
+        guard let queue = other.device.makeCommandQueue() else { throw InferenceError.invalid("No Metal command queue.") }
+        model = other.model
+        contextLength = other.contextLength
+        cacheType = other.cacheType
+        device = other.device
+        self.queue = queue
+        pipelines = other.pipelines
+        weights = other.weights
+        weightsBase = other.weightsBase
+        layerBuffers = other.layerBuffers
+        outputNorm = other.outputNorm
+        inverseFrequencies = other.inverseFrequencies
+        kvKeyWidth = other.kvKeyWidth
+        kvValueWidth = other.kvValueWidth
+        let s = try Scratch(device: other.device, model: other.model, contextLength: other.contextLength, cacheBytes: other.cacheType.bytes)
+        x = s.x; normed = s.normed; projected = s.projected; query = s.query; attention = s.attention
+        hidden = s.hidden; hiddenUp = s.hiddenUp; scores = s.scores; logitsBuffer = s.logits
+        keyCache = s.keyCache; valueCache = s.valueCache; attentionParts = s.attentionParts
+        keyStage = s.keyStage; valueStage = s.valueStage
+        splitAttention = other.splitAttention
+        maxBatch = other.maxBatch
+    }
+
+    /// Copies another slot's keys and values for positions `0..<count` (a
+    /// shared prompt prefix). Both caches are shared memory and neither slot
+    /// has GPU work in flight, so a plain copy is enough.
+    public func copyCache(from other: TransformerBackend, count: Int) -> Bool {
+        guard let other = other as? MetalBackend, other !== self, other.model === model, other.cacheType == cacheType,
+              other.contextLength == contextLength, count <= contextLength else { return false }
+        for index in 0..<model.layers.count {
+            let keyLayer = index * contextLength * kvKeyWidth * cacheBytes
+            let valueLayer = index * contextLength * kvValueWidth * cacheBytes
+            memcpy(keyCache.contents() + keyLayer, other.keyCache.contents() + keyLayer, count * kvKeyWidth * cacheBytes)
+            memcpy(valueCache.contents() + valueLayer, other.valueCache.contents() + valueLayer, count * kvValueWidth * cacheBytes)
+        }
+        return true
     }
 
     public var logits: UnsafeBufferPointer<Float> {
@@ -355,34 +426,53 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
                               heads: UInt32(heads), span: UInt32(position + 1), chunk: UInt32(MetalBackend.attentionChunk),
                               scale: 1 / sqrtf(Float(hp.headDimension)))
 
+        let half = cacheType == .f16
+        let suffix = cacheSuffix
+        var storeWidths = SIMD2<UInt32>(UInt32(kvKeyWidth), UInt32(kvValueWidth))
+
         for (index, layer) in model.layers.enumerated() {
             let buffers = layerBuffers[index]
-            let keyLayer = index * contextLength * kvKeyWidth * 4
-            let valueLayer = index * contextLength * kvValueWidth * 4
-            let keyRow = keyLayer + position * kvKeyWidth * 4
-            let valueRow = valueLayer + position * kvValueWidth * 4
+            let keyLayer = index * contextLength * kvKeyWidth * cacheBytes
+            let valueLayer = index * contextLength * kvValueWidth * cacheBytes
+            let keyRow = keyLayer + position * kvKeyWidth * cacheBytes
+            let valueRow = valueLayer + position * kvValueWidth * cacheBytes
+            // An FP32 cache takes the new key and value in place; a half cache
+            // gets them from the staging rows once they are normalized and rotated.
+            let (keyTarget, keyOffset) = half ? (keyStage, 0) : (keyCache, keyRow)
+            let (valueTarget, valueOffset) = half ? (valueStage, 0) : (valueCache, valueRow)
 
             rmsNorm(encoder, x, buffers.attentionNorm, normed, count: dim)
             barrier()
             matvec(encoder, layer.query, normed, query, bias: buffers.queryBias)
-            matvec(encoder, layer.key, normed, keyCache, outputOffset: keyRow, bias: buffers.keyBias)
-            matvec(encoder, layer.value, normed, valueCache, outputOffset: valueRow, bias: buffers.valueBias)
+            matvec(encoder, layer.key, normed, keyTarget, outputOffset: keyOffset, bias: buffers.keyBias)
+            matvec(encoder, layer.value, normed, valueTarget, outputOffset: valueOffset, bias: buffers.valueBias)
             barrier()
             if let norm = buffers.queryNorm {
                 rmsNorm(encoder, query, norm, query, count: hp.headDimension, rows: heads)
             }
             if let norm = buffers.keyNorm {
-                rmsNorm(encoder, keyCache, inputOffset: keyRow, norm, keyCache, outputOffset: keyRow, count: hp.headDimension, rows: hp.headCountKV)
+                rmsNorm(encoder, keyTarget, inputOffset: keyOffset, norm, keyTarget, outputOffset: keyOffset, count: hp.headDimension, rows: hp.headCountKV)
             }
             if buffers.queryNorm != nil || buffers.keyNorm != nil { barrier() }
             rope(encoder, query, offset: 0, heads: heads, position: position)
-            rope(encoder, keyCache, offset: keyRow, heads: hp.headCountKV, position: position)
+            rope(encoder, keyTarget, offset: keyOffset, heads: hp.headCountKV, position: position)
             barrier()
+            if half {
+                encoder.setComputePipelineState(pipeline("kv_store_h"))
+                encoder.setBuffer(keyStage, offset: 0, index: 0)
+                encoder.setBuffer(valueStage, offset: 0, index: 1)
+                encoder.setBuffer(keyCache, offset: keyRow, index: 2)
+                encoder.setBuffer(valueCache, offset: valueRow, index: 3)
+                encoder.setBytes(&storeWidths, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 4)
+                let width = max(kvKeyWidth, kvValueWidth)
+                encoder.dispatchThreads(MTLSize(width: width, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: min(256, width), height: 1, depth: 1))
+                barrier()
+            }
 
             // Short contexts are one chunk: the single fused kernel is quicker there.
             if splitAttention && position >= MetalBackend.attentionChunk {
                 let group = heads / hp.headCountKV
-                encoder.setComputePipelineState(pipeline("attn_split"))
+                encoder.setComputePipelineState(pipeline("attn_split" + suffix))
                 encoder.setBuffer(query, offset: 0, index: 0)
                 encoder.setBuffer(keyCache, offset: keyLayer, index: 1)
                 encoder.setBuffer(valueCache, offset: valueLayer, index: 2)
@@ -397,7 +487,7 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
                 encoder.setBytes(&split, length: MemoryLayout<SplitArgs>.stride, index: 2)
                 encoder.dispatchThreadgroups(MTLSize(width: heads, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
             } else {
-                encoder.setComputePipelineState(pipeline("attn_fused"))
+                encoder.setComputePipelineState(pipeline("attn_fused" + suffix))
                 encoder.setBuffer(query, offset: 0, index: 0)
                 encoder.setBuffer(keyCache, offset: keyLayer, index: 1)
                 encoder.setBuffer(valueCache, offset: valueLayer, index: 2)
@@ -531,7 +621,7 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
     private func store4(_ encoder: MTLComputeCommandEncoder, _ source: MTLBuffer, into cache: MTLBuffer, offset: Int, width: Int, groups: Int, count: Int) {
         struct Args { var width: UInt32; var count: UInt32 }
         var args = Args(width: UInt32(width), count: UInt32(count))
-        encoder.setComputePipelineState(pipeline("kv_store4"))
+        encoder.setComputePipelineState(pipeline("kv_store4" + cacheSuffix))
         encoder.setBuffer(source, offset: 0, index: 0)
         encoder.setBuffer(cache, offset: offset, index: 1)
         encoder.setBytes(&args, length: MemoryLayout<Args>.stride, index: 2)
@@ -611,8 +701,8 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
 
         for (index, layer) in model.layers.enumerated() {
             let buffers = layerBuffers[index]
-            let keyLayer = index * contextLength * kvKeyWidth * 4
-            let valueLayer = index * contextLength * kvValueWidth * 4
+            let keyLayer = index * contextLength * kvKeyWidth * cacheBytes
+            let valueLayer = index * contextLength * kvValueWidth * cacheBytes
 
             rmsNorm4(encoder, b.x, buffers.attentionNorm, b.normed, count: dim, rows: groups)
             barrier()
@@ -626,11 +716,11 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
             rope4(encoder, b.query, heads: heads, groups: groups, start: position)
             rope4(encoder, b.key, heads: kvHeads, groups: groups, start: position)
             barrier()
-            store4(encoder, b.key, into: keyCache, offset: keyLayer + position * kvKeyWidth * 4, width: kvKeyWidth, groups: groups, count: count)
-            store4(encoder, b.value, into: valueCache, offset: valueLayer + position * kvValueWidth * 4, width: kvValueWidth, groups: groups, count: count)
+            store4(encoder, b.key, into: keyCache, offset: keyLayer + position * kvKeyWidth * cacheBytes, width: kvKeyWidth, groups: groups, count: count)
+            store4(encoder, b.value, into: valueCache, offset: valueLayer + position * kvValueWidth * cacheBytes, width: kvValueWidth, groups: groups, count: count)
             barrier()
 
-            encoder.setComputePipelineState(pipeline("attn4"))
+            encoder.setComputePipelineState(pipeline("attn4" + cacheSuffix))
             encoder.setBuffer(b.query, offset: 0, index: 0)
             encoder.setBuffer(keyCache, offset: keyLayer, index: 1)
             encoder.setBuffer(valueCache, offset: valueLayer, index: 2)
