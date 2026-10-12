@@ -44,12 +44,34 @@ extension NativeRuntime {
     }
 
     func traceFilter(_ url: WebURL, companyId: String?) -> (TraceRecord) -> Bool {
+        Self.traceFilter(url, companyId: companyId)
+    }
+
+    /// Non-negative numbers only; anything else means "no limit".
+    static func traceBound(_ raw: String?) -> Double? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespaces), let value = Double(raw), value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
+    /// The `/api/traces` query: `kind`, `agentId`, `issueId`, `sessionId`,
+    /// `runId`, `status`, `tag`, `from`, `to`, `q`, plus `minLatencyMs`,
+    /// `maxLatencyMs` and `minCostUsd` for finding slow or expensive ones (a
+    /// trace still running has no latency yet, so a latency bound skips it).
+    static func traceFilter(_ url: WebURL, companyId: String?) -> (TraceRecord) -> Bool {
         let kind = url.queryParameter("kind"), agent = url.queryParameter("agentId"), issue = url.queryParameter("issueId")
         let session = url.queryParameter("sessionId"), status = url.queryParameter("status"), run = url.queryParameter("runId")
         let tag = url.queryParameter("tag")
         let query = url.queryParameter("q")?.lowercased().trimmingCharacters(in: .whitespaces)
         let from = Self.traceMillis(url.queryParameter("from")), to = Self.traceMillis(url.queryParameter("to"))
+        let minLatency = traceBound(url.queryParameter("minLatencyMs")), maxLatency = traceBound(url.queryParameter("maxLatencyMs"))
+        let minCost = traceBound(url.queryParameter("minCostUsd"))
         return { trace in
+            if minLatency != nil || maxLatency != nil {
+                guard let latency = trace.latencyMs.map(Double.init) else { return false }
+                if let minLatency, latency < minLatency { return false }
+                if let maxLatency, latency > maxLatency { return false }
+            }
+            if let minCost, trace.costUsd < minCost { return false }
             if let companyId, trace.companyId != companyId { return false }
             if let kind, !kind.isEmpty, trace.kind != kind { return false }
             if let agent, !agent.isEmpty, trace.agentId != agent { return false }

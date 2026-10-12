@@ -74,6 +74,17 @@ async function call(base, method, route, body) {
   return { status: response.status, json, text }
 }
 
+// A trace is finished just after its reply goes out, so give it a moment.
+async function tracesTagged(node, tag, atLeast) {
+  let traces = []
+  for (let i = 0; i < 40; i += 1) {
+    traces = (await call(node.api, 'GET', `/api/traces?tag=${tag}&kind=model`)).json?.traces ?? []
+    if (traces.length >= atLeast && traces.every((trace) => trace.status !== 'running')) break
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return traces
+}
+
 const MODEL = 'qwen3:0.6b'
 const prompts = [
   { prompt: 'The capital of France is', raw: true },
@@ -121,6 +132,9 @@ test('a model split across two Macs answers exactly as one Mac does', needs, asy
     assert.ok(stages[1].stats.round_trips > 0, 'each hop counts its round trips')
     assert.ok(stages[1].stats.sent_bytes > 0 && stages[1].stats.received_bytes === stages[1].stats.sent_bytes,
       'residuals go out and come back at the same size')
+    const split = await tracesTagged(coordinator, 'cluster', prompts.length)
+    assert.ok(split.length >= prompts.length, 'each split reply is tagged cluster in its trace')
+    assert.ok(split.every((trace) => trace.tags.includes('model-server') && !trace.tags.includes('cluster-fallback')))
     const ps = (await call(coordinator.models, 'GET', '/api/ps')).json.models[0]
     assert.match(ps.backend, /^cluster: Laptop 0–\d+, Studio \d+–28$/)
     const hosted = (await call(worker.api, 'GET', '/api/cluster')).json.stages
@@ -144,6 +158,8 @@ test('a model split across two Macs answers exactly as one Mac does', needs, asy
     assert.equal(alone.status, 200, alone.text)
     assert.equal(alone.json.response, reference[0])
     assert.doesNotMatch((await call(coordinator.models, 'GET', '/api/ps')).json.models[0].backend, /cluster/)
+    const [rescued] = await tracesTagged(coordinator, 'cluster-fallback', 1)
+    assert.ok(rescued, 'the reply answered without the worker is tagged cluster-fallback, so it can be found')
     const after = (await call(coordinator.api, 'GET', '/api/cluster?refresh=1')).json
     assert.equal(after.peers[0].reachable, false, 'the status shows the worker as gone')
     assert.equal(after.models.length, 0, 'no split model is left behind')

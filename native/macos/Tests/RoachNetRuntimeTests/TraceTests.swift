@@ -104,6 +104,38 @@ final class TraceTests: XCTestCase {
         XCTAssertNil(third.next)
     }
 
+    func testFiltersFindSlowExpensiveAndTaggedTraces() throws {
+        let tracer = Tracer(store: TraceStore(root: root))
+        let base = TraceClock.nowMs() - 60_000
+        func add(_ name: String, latency: Int64?, cost: Double = 0) -> String {
+            var record = TraceRecord(id: TraceIDs.trace(), kind: "model", name: name, status: latency == nil ? "running" : "ok",
+                                     startMs: base, endMs: latency.map { base + $0 })
+            record.costUsd = cost
+            tracer.store.upsert(record)
+            return record.id
+        }
+        let quick = add("quick", latency: 40)
+        _ = add("slow", latency: 4_000, cost: 0.02)
+        _ = add("running", latency: nil)
+        let split = add("split", latency: 900)
+
+        tracer.tag(split, ["cluster", " cluster-fallback ", "cluster", ""])
+        XCTAssertEqual(tracer.store.trace(split)?.tags, ["cluster", "cluster-fallback"], "tags are trimmed, deduplicated and blanks dropped")
+        tracer.tag(quick, (0..<40).map { "t\($0)" })
+        XCTAssertEqual(tracer.store.trace(quick)?.tags.count, 32)
+
+        func names(_ query: String) throws -> [String] {
+            let url = try XCTUnwrap(WebURL("http://127.0.0.1/api/traces?\(query)"))
+            return tracer.store.list(limit: 50, cursor: nil, matching: NativeRuntime.traceFilter(url, companyId: nil)).items.map(\.name).sorted()
+        }
+        XCTAssertEqual(try names("minLatencyMs=500"), ["slow", "split"])
+        XCTAssertEqual(try names("maxLatencyMs=1000"), ["quick", "split"], "a running trace has no latency, so a bound skips it")
+        XCTAssertEqual(try names("minLatencyMs=500&maxLatencyMs=1000"), ["split"])
+        XCTAssertEqual(try names("minCostUsd=0.01"), ["slow"])
+        XCTAssertEqual(try names("tag=cluster-fallback"), ["split"])
+        XCTAssertEqual(try names("minLatencyMs=-5&minCostUsd=nan"), ["quick", "running", "slow", "split"], "bad bounds mean no bound")
+    }
+
     func testRetentionRemovesOldDayFiles() throws {
         let old = Path.join(root, "2020-01-01.jsonl")
         try Files.write("{\"k\":\"d\",\"id\":\"x\"}\n", to: old)

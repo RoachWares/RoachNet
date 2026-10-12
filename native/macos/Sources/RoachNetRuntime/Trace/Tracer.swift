@@ -99,6 +99,21 @@ public final class Tracer {
         return TraceCost(totalUsd: total, status: "estimated", billingType: billingType)
     }
 
+    /// Adds labels to a trace, so `/api/traces?tag=` finds it (a reply that
+    /// ran across several Macs, say). Tags are trimmed to 60 characters and a
+    /// trace keeps at most 32.
+    public func tag(_ traceId: String, _ tags: [String]) {
+        guard var trace = store.trace(traceId) else { return }
+        var changed = false
+        for tag in tags {
+            let clean = String(tag.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+            guard !clean.isEmpty, !trace.tags.contains(clean), trace.tags.count < 32 else { continue }
+            trace.tags.append(clean)
+            changed = true
+        }
+        if changed { store.upsert(trace) }
+    }
+
     /// Recomputes a trace's totals from its generations and embeddings.
     func rollUp(_ traceId: String) {
         guard var trace = store.trace(traceId) else { return }

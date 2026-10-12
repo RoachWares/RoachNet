@@ -642,6 +642,12 @@ final class NativeModelServer {
                   clusterBefore: [ClusterHopCounters] = []) {
         guard let trace else { return }
         let hops = clusterTraceDetail(prepared.item, since: clusterBefore)
+        // Tagged on the trace too, so `?tag=cluster` or `?tag=cluster-fallback`
+        // finds these replies without opening every trace.
+        var labels: [String] = []
+        if hops != nil { labels.append("cluster") }
+        if prepared.clusterFallback { labels.append("cluster-fallback") }
+        if !labels.isEmpty { trace.observation.tracer.tag(trace.observation.traceId, labels) }
         guard let result else {
             let message = (error as? RuntimeError)?.message ?? error.map { "\($0)" } ?? "generation failed"
             var detail = JSONObject()

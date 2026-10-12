@@ -9,8 +9,12 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 - When a Mac in a split model drops before any of a reply is sent, the same request is planned again without it (on this Mac alone when the model fits) instead of failing with 502. A drop after part of the reply was sent still fails that request.
 - **Find Macs Nearby** matches Macs by the node ID each proves at the handshake, so a Mac added by IP no longer shows as not added when Bonjour lists it by name.
 - The status in Settings tries once more after a connect timeout, so a Mac that was idle on Wi-Fi isn't shown as unreachable. A refused connection still fails at once.
-- Each hop counts round trips, tokens, time and bytes each way. `GET /api/cluster` shows the totals, and each trace carries that request's figures (`cluster_hops`) and marks a fallback reply (`cluster_fallback`).
+- Each hop counts round trips, tokens, time and bytes each way. `GET /api/cluster` shows the totals, and each trace carries that request's figures (`cluster_hops`) and marks a fallback reply (`cluster_fallback`). These traces are also tagged `cluster` or `cluster-fallback`.
 - What another Mac sends is checked: stage and shard digests must be 64 hex characters, positions, counts, offsets and context lengths must be in range, and shard pieces are refused when the volume would drop below 4 GB free. Before this, a paired Mac could name a path outside the shard folder.
+
+### RoachTrace
+
+- `GET /api/traces` (and `/api/traces/metrics`) take `minLatencyMs`, `maxLatencyMs` and `minCostUsd` for finding slow or expensive traces. A trace still running has no latency yet, so a latency bound leaves it out. Bounds that aren't non-negative numbers are ignored.
 
 ### Model server
 

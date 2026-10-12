@@ -62,6 +62,7 @@ Each hop of a split model counts its round trips, tokens, time (the network plus
 
 - `GET /api/cluster` shows the totals per hop under each placement's `stats`: `round_trips`, `tokens`, `ms`, `ms_per_round_trip`, `sent_bytes` and `received_bytes`.
 - Each generation's trace carries that request's figures per hop as `cluster_hops`.
+- Traces of split replies are tagged `cluster`, and replies answered without a Mac that dropped are tagged `cluster-fallback`. To list them, use `GET /api/traces?tag=cluster-fallback`. Add `minLatencyMs=` to find the slow ones.
 
 ## API
 
