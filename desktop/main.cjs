@@ -17,7 +17,6 @@ const setupUrlRegex = /RoachNet Setup is available at (http:\/\/\S+)/i
 const appUrlRegex = /(RoachNet is already running at|Web UI:)\s+(http:\/\/\S+)/i
 const releasesUrl = 'https://github.com/RoachWares/RoachNet/releases'
 const mlxDocsUrl = 'https://ml-explore.github.io/mlx/build/html/index.html'
-const exoRepoUrl = 'https://github.com/exo-explore/exo'
 const HEALTH_TIMEOUT_MS = 3_500
 const PROBE_TIMEOUT_MS = 4_000
 
@@ -644,16 +643,6 @@ async function getAccelerationState(config, desktopState) {
           error: null,
         }
 
-  const exoProbe =
-    config.distributedInferenceBackend === 'exo'
-      ? await probeHttpStatus(config.exoBaseUrl, ['/', '/v1/models', '/api/tags'])
-      : {
-          reachable: false,
-          path: null,
-          status: null,
-          error: null,
-        }
-
   const recommendations = []
 
   if (isAppleSilicon) {
@@ -677,18 +666,6 @@ async function getAccelerationState(config, desktopState) {
   if (config.appleAccelerationBackend === 'mlx' && mlxCore?.installed && !mlxServerProbe.reachable) {
     recommendations.push(
       'MLX is selected, but no reachable local MLX server endpoint was detected. RoachNet will fall back to Ollama until an MLX-compatible local server is running.'
-    )
-  }
-
-  if (config.distributedInferenceBackend === 'disabled') {
-    recommendations.push(
-      'Distributed inference is disabled, so RoachNet stays on the single-machine path and avoids exo cluster overhead.'
-    )
-  }
-
-  if (config.distributedInferenceBackend === 'exo') {
-    recommendations.push(
-      'exo is enabled, but it should only be used when you actually want multi-device execution. Keep it disabled for the best single-machine latency and token efficiency.'
     )
   }
 
@@ -723,22 +700,12 @@ async function getAccelerationState(config, desktopState) {
       },
     },
     distributed: {
-      backend: config.distributedInferenceBackend,
-      exo: {
-        enabled: config.distributedInferenceBackend === 'exo',
-        baseUrl: config.exoBaseUrl,
-        nodeRole: config.exoNodeRole,
-        autoStart: Boolean(config.exoAutoStart),
-        reachable: exoProbe.reachable,
-        path: exoProbe.path,
-        status: exoProbe.status,
-        error: exoProbe.error,
-      },
+      backend: 'roachnet-cluster',
+      detail: 'Multi-Mac inference is RoachNet Cluster, set up in the native app under Settings > Models.',
     },
     recommendations,
     docs: {
       mlx: mlxDocsUrl,
-      exo: exoRepoUrl,
     },
   }
 }
@@ -811,18 +778,6 @@ async function resolveChatExecutionRoute() {
       },
     },
   })
-
-  if (
-    config.distributedInferenceBackend === 'exo' &&
-    acceleration.distributed?.exo?.reachable
-  ) {
-    return {
-      route: 'exo',
-      baseUrl: config.exoBaseUrl,
-      model: config.exoModelId || null,
-      acceleration,
-    }
-  }
 
   if (
     config.appleAccelerationBackend === 'mlx' &&
@@ -1390,11 +1345,6 @@ function registerIpcHandlers() {
     return { ok: true }
   })
 
-  ipcMain.handle('roachnet:open-exo-docs', async () => {
-    await shell.openExternal(exoRepoUrl)
-    return { ok: true }
-  })
-
   ipcMain.handle('roachnet:get-ai-state', async () => {
     return getAIWorkbenchState()
   })
@@ -1514,11 +1464,9 @@ function registerIpcHandlers() {
 
     const routeInfo = await resolveChatExecutionRoute()
     const model =
-      routeInfo.route === 'exo'
+      routeInfo.route === 'mlx'
         ? routeInfo.model || requestedModel
-        : routeInfo.route === 'mlx'
-          ? routeInfo.model || requestedModel
-          : requestedModel
+        : requestedModel
 
     if (!model) {
       throw new Error('A model is required for chat.')
@@ -1544,7 +1492,7 @@ function registerIpcHandlers() {
       content: message.content,
     }))
 
-    if (routeInfo.route === 'exo' || routeInfo.route === 'mlx') {
+    if (routeInfo.route === 'mlx') {
       await updateSessionModel(sessionId, existingSession.title || content.slice(0, 60) || 'New Chat', model)
       await appendSessionMessage(sessionId, 'user', content)
 

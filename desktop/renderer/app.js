@@ -215,10 +215,6 @@ function getSelectedChatModel() {
   const roachClaw = getRoachClawStatus()
   const firstInstalled = getInstalledModels()[0]?.name || ''
 
-  if (config.distributedInferenceBackend === 'exo' && config.exoModelId) {
-    return config.exoModelId
-  }
-
   if (config.appleAccelerationBackend === 'mlx' && config.mlxModelId) {
     return config.mlxModelId
   }
@@ -229,10 +225,6 @@ function getSelectedChatModel() {
 function getPreferredChatRouteLabel() {
   const config = getEffectiveConfig()
   const acceleration = getAccelerationData()
-
-  if (config.distributedInferenceBackend === 'exo' && acceleration?.distributed?.exo?.reachable) {
-    return 'exo cluster'
-  }
 
   if (config.appleAccelerationBackend === 'mlx' && acceleration?.apple?.server?.reachable) {
     return 'mlx server'
@@ -427,15 +419,6 @@ function getRoachCastCommands() {
       keywords: 'mlx docs apple silicon',
       hint: 'Enter',
     },
-    {
-      id: 'open-exo-docs',
-      title: 'Open exo Repo',
-      subtitle: 'Review the distributed local inference project.',
-      detail: 'Opens the exo repository reference in the default browser.',
-      group: 'Acceleration',
-      keywords: 'exo repo distributed cluster inference',
-      hint: 'Enter',
-    },
   ]
 
   for (const model of installedModels.slice(0, 8)) {
@@ -599,9 +582,6 @@ async function runRoachCastCommand(commandId) {
         break
       case 'open-mlx-docs':
         await desktop.openMlxDocs()
-        break
-      case 'open-exo-docs':
-        await desktop.openExoDocs()
         break
       default:
         break
@@ -1910,7 +1890,6 @@ function renderAccelerationStudio(desktopState) {
 
   const config = getEffectiveConfig()
   const apple = acceleration.apple || {}
-  const exo = acceleration.distributed?.exo || {}
   const recommendationLines = Array.isArray(acceleration.recommendations)
     ? acceleration.recommendations
     : []
@@ -1919,8 +1898,8 @@ function renderAccelerationStudio(desktopState) {
     <section class="panel">
       <div class="panel-header">
         <div>
-          <h2>Acceleration And Cluster Runtime</h2>
-          <p>Apple devices can be steered toward MLX-backed inference, and multi-device clusters can be staged for exo-style execution when it makes sense.</p>
+          <h2>Acceleration</h2>
+          <p>Apple devices can be steered toward MLX-backed inference. Running one model across several Macs is RoachNet Cluster, in the native app under Settings &gt; Models.</p>
         </div>
         ${statusPill(apple.supported ? 'apple ready' : 'generic host')}
       </div>
@@ -1981,83 +1960,6 @@ function renderAccelerationStudio(desktopState) {
             </div>
           </article>
 
-          <article class="log-card">
-            <h3 class="section-title">Distributed Inference</h3>
-            <div class="metric-detail" style="margin-bottom: 14px;">
-              Keep this disabled for single-machine operation. Enable exo only when you want to spread inference across multiple devices.
-            </div>
-            <div class="field-grid">
-              <label class="field">
-                <span class="field-label">Cluster Backend</span>
-                <select data-config-field name="distributedInferenceBackend">
-                  ${['disabled', 'exo']
-                    .map(
-                      (mode) =>
-                        `<option value="${mode}"${config.distributedInferenceBackend === mode ? ' selected' : ''}>${escapeHtml(mode.toUpperCase())}</option>`
-                    )
-                    .join('')}
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">exo Node Role</span>
-                <select data-config-field name="exoNodeRole">
-                  ${['auto', 'coordinator', 'worker', 'hybrid']
-                    .map(
-                      (mode) =>
-                        `<option value="${mode}"${config.exoNodeRole === mode ? ' selected' : ''}>${escapeHtml(mode.toUpperCase())}</option>`
-                    )
-                    .join('')}
-                </select>
-              </label>
-              <label class="field wide">
-                <span class="field-label">exo Base URL</span>
-                <input data-config-field name="exoBaseUrl" value="${escapeHtml(config.exoBaseUrl || '')}" placeholder="http://RoachNet:52415" />
-              </label>
-              <label class="field wide">
-                <span class="field-label">exo Model ID</span>
-                <input data-config-field name="exoModelId" value="${escapeHtml(config.exoModelId || '')}" placeholder="llama-3.2-3b or another exo-exposed model id" />
-              </label>
-            </div>
-            <div class="toggle-grid single-column" style="margin-top: 14px;">
-              ${renderToggle('exoAutoStart', 'Auto-start exo helper when implemented', config.exoAutoStart)}
-            </div>
-            <div class="list-stack" style="margin-top: 14px;">
-              <div class="list-item">
-                <div>
-                  <strong>Cluster Endpoint</strong>
-                  <div class="metric-detail">${escapeHtml(exo.baseUrl || 'Not configured')}</div>
-                </div>
-                ${statusPill(
-                  config.distributedInferenceBackend === 'disabled'
-                    ? 'disabled'
-                    : exo.reachable
-                      ? 'reachable'
-                      : 'pending'
-                )}
-              </div>
-              <div class="list-item">
-                <div>
-                  <strong>Cluster Overhead Mode</strong>
-                  <div class="metric-detail">${escapeHtml(
-                    config.distributedInferenceBackend === 'disabled'
-                      ? 'No exo probing or cluster coordination will run in single-machine mode.'
-                      : exo.error || (exo.path ? `${exo.path} | HTTP ${exo.status}` : 'No probe executed')
-                  )}</div>
-                </div>
-                ${statusPill(
-                  config.distributedInferenceBackend === 'disabled'
-                    ? 'single-device'
-                    : exo.reachable
-                      ? 'available'
-                      : 'standby'
-                )}
-              </div>
-            </div>
-            <div class="action-row" style="margin-top: 14px;">
-              <button class="rn-button secondary" data-action="save-config">Save Cluster Profile</button>
-              <button class="rn-button ghost" data-action="open-exo-docs">exo Repo</button>
-            </div>
-          </article>
         </div>
 
         <div class="log-scroll" style="margin-top: 18px;">
@@ -2501,11 +2403,6 @@ function bindActions() {
         case 'open-mlx-docs':
           await withBusy('open-mlx-docs', async () => {
             await desktop.openMlxDocs()
-          })
-          break
-        case 'open-exo-docs':
-          await withBusy('open-exo-docs', async () => {
-            await desktop.openExoDocs()
           })
           break
         case 'refresh-ai':

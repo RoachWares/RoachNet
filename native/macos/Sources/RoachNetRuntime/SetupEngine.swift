@@ -225,9 +225,6 @@ public final class SetupEngine {
             "autoDownloadUpdates": JSON(persisted["autoDownloadUpdates"].truthy),
             "launchAtLogin": bool("launchAtLogin", false),
             "dryRun": bool("dryRun", false),
-            "distributedInferenceBackend": string("distributedInferenceBackend", "disabled"),
-            "exoBaseUrl": string("exoBaseUrl", "http://127.0.0.1:52415"),
-            "exoModelId": overrides["exoModelId"] || persisted["exoModelId"] || "",
             "bootstrapPending": JSON(persisted["bootstrapPending"].truthy),
             "bootstrapFailureCount": JSON((persisted["bootstrapFailureCount"] || 0).jsNumber),
             "lastRuntimeHealthAt": persisted["lastRuntimeHealthAt"] || nil,
@@ -318,8 +315,7 @@ public final class SetupEngine {
     func overrides(from url: WebURL) -> JSON {
         var object = JSONObject()
         let strings = ["installPath", "installedAppPath", "storagePath", "installProfile", "roachClawDefaultModel", "companionHost",
-                       "companionToken", "companionAdvertisedURL", "releaseChannel", "updateBaseUrl", "distributedInferenceBackend",
-                       "exoBaseUrl", "exoModelId"]
+                       "companionToken", "companionAdvertisedURL", "releaseChannel", "updateBaseUrl"]
         for key in strings { if let value = url.queryParameter(key), !value.isEmpty { object[key] = JSON(value) } }
         for key in ["autoInstallDependencies", "useDockerContainerization", "installRoachClaw", "companionEnabled", "autoLaunch",
                     "autoCheckUpdates", "launchAtLogin", "dryRun"] {

@@ -13,9 +13,6 @@ public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
     public var companionToken: String
     public var companionAdvertisedURL: String
     public var roachClawDefaultModel: String
-    public var distributedInferenceBackend: String
-    public var exoBaseUrl: String
-    public var exoModelId: String
     public var autoInstallDependencies: Bool
     public var autoLaunch: Bool
     public var releaseChannel: String
@@ -39,9 +36,6 @@ public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
         companionToken: String = RoachNetInstallerConfig.generateCompanionToken(),
         companionAdvertisedURL: String = "",
         roachClawDefaultModel: String = "qwen2.5-coder:1.5b",
-        distributedInferenceBackend: String = "disabled",
-        exoBaseUrl: String = "http://127.0.0.1:52415",
-        exoModelId: String = "",
         autoInstallDependencies: Bool = true,
         autoLaunch: Bool = true,
         releaseChannel: String = "stable",
@@ -66,9 +60,6 @@ public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
             : companionToken
         self.companionAdvertisedURL = companionAdvertisedURL
         self.roachClawDefaultModel = roachClawDefaultModel
-        self.distributedInferenceBackend = distributedInferenceBackend
-        self.exoBaseUrl = exoBaseUrl
-        self.exoModelId = exoModelId
         self.autoInstallDependencies = autoInstallDependencies
         self.autoLaunch = autoLaunch
         self.releaseChannel = releaseChannel
@@ -93,9 +84,6 @@ public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
         case companionToken
         case companionAdvertisedURL
         case roachClawDefaultModel
-        case distributedInferenceBackend
-        case exoBaseUrl
-        case exoModelId
         case autoInstallDependencies
         case autoLaunch
         case releaseChannel
@@ -136,9 +124,6 @@ public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
             companionToken: try container.decodeIfPresent(String.self, forKey: .companionToken) ?? RoachNetInstallerConfig.generateCompanionToken(),
             companionAdvertisedURL: try container.decodeIfPresent(String.self, forKey: .companionAdvertisedURL) ?? "",
             roachClawDefaultModel: try container.decodeIfPresent(String.self, forKey: .roachClawDefaultModel) ?? "qwen2.5-coder:1.5b",
-            distributedInferenceBackend: try container.decodeIfPresent(String.self, forKey: .distributedInferenceBackend) ?? "disabled",
-            exoBaseUrl: try container.decodeIfPresent(String.self, forKey: .exoBaseUrl) ?? "http://127.0.0.1:52415",
-            exoModelId: try container.decodeIfPresent(String.self, forKey: .exoModelId) ?? "",
             autoInstallDependencies: try container.decodeIfPresent(Bool.self, forKey: .autoInstallDependencies) ?? true,
             autoLaunch: try container.decodeIfPresent(Bool.self, forKey: .autoLaunch) ?? true,
             releaseChannel: try container.decodeIfPresent(String.self, forKey: .releaseChannel) ?? "stable",
@@ -165,9 +150,6 @@ public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
         try container.encode(companionToken, forKey: .companionToken)
         try container.encode(companionAdvertisedURL, forKey: .companionAdvertisedURL)
         try container.encode(roachClawDefaultModel, forKey: .roachClawDefaultModel)
-        try container.encode(distributedInferenceBackend, forKey: .distributedInferenceBackend)
-        try container.encode(exoBaseUrl, forKey: .exoBaseUrl)
-        try container.encode(exoModelId, forKey: .exoModelId)
         try container.encode(autoInstallDependencies, forKey: .autoInstallDependencies)
         try container.encode(autoLaunch, forKey: .autoLaunch)
         try container.encode(releaseChannel, forKey: .releaseChannel)

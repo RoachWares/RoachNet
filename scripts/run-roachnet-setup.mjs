@@ -2337,14 +2337,6 @@ function getDefaultConfig(overrides = {}) {
     appleAccelerationBackend: persistedConfig.appleAccelerationBackend || 'auto',
     mlxBaseUrl: persistedConfig.mlxBaseUrl || 'http://127.0.0.1:8080',
     mlxModelId: persistedConfig.mlxModelId || '',
-    distributedInferenceBackend:
-      overrides.distributedInferenceBackend ||
-      persistedConfig.distributedInferenceBackend ||
-      'disabled',
-    exoBaseUrl: overrides.exoBaseUrl || persistedConfig.exoBaseUrl || 'http://127.0.0.1:52415',
-    exoModelId: overrides.exoModelId || persistedConfig.exoModelId || '',
-    exoNodeRole: persistedConfig.exoNodeRole || 'auto',
-    exoAutoStart: Boolean(persistedConfig.exoAutoStart),
     bootstrapPending: Boolean(persistedConfig.bootstrapPending),
     bootstrapFailureCount: Number(persistedConfig.bootstrapFailureCount || 0),
     lastRuntimeHealthAt: persistedConfig.lastRuntimeHealthAt || null,

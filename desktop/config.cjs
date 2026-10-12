@@ -3,8 +3,6 @@ const path = require('node:path')
 
 const RELEASE_CHANNELS = ['stable', 'beta', 'alpha']
 const APPLE_ACCELERATION_BACKENDS = ['auto', 'ollama', 'mlx']
-const DISTRIBUTED_INFERENCE_BACKENDS = ['disabled', 'exo']
-const EXO_NODE_ROLES = ['auto', 'coordinator', 'worker', 'hybrid']
 
 const DEFAULT_CONFIG = {
   installPath: '',
@@ -27,11 +25,6 @@ const DEFAULT_CONFIG = {
   appleAccelerationBackend: 'auto',
   mlxBaseUrl: 'http://127.0.0.1:8080',
   mlxModelId: '',
-  distributedInferenceBackend: 'disabled',
-  exoBaseUrl: 'http://127.0.0.1:52415',
-  exoModelId: '',
-  exoNodeRole: 'auto',
-  exoAutoStart: false,
   installedAppPath: '',
   setupCompletedAt: null,
   pendingLaunchIntro: false,
@@ -79,18 +72,11 @@ function normalizeConfig(value = {}) {
     releaseChannel: normalizeChannel(value.releaseChannel),
     updateBaseUrl: normalizeUrl(value.updateBaseUrl),
     mlxBaseUrl: normalizeUrl(value.mlxBaseUrl || DEFAULT_CONFIG.mlxBaseUrl),
-    exoBaseUrl: normalizeUrl(value.exoBaseUrl || DEFAULT_CONFIG.exoBaseUrl),
     appleAccelerationBackend: normalizeEnum(
       value.appleAccelerationBackend,
       APPLE_ACCELERATION_BACKENDS,
       DEFAULT_CONFIG.appleAccelerationBackend
     ),
-    distributedInferenceBackend: normalizeEnum(
-      value.distributedInferenceBackend,
-      DISTRIBUTED_INFERENCE_BACKENDS,
-      DEFAULT_CONFIG.distributedInferenceBackend
-    ),
-    exoNodeRole: normalizeEnum(value.exoNodeRole, EXO_NODE_ROLES, DEFAULT_CONFIG.exoNodeRole),
     autoInstallDependencies:
       value.autoInstallDependencies === undefined
         ? DEFAULT_CONFIG.autoInstallDependencies
@@ -112,8 +98,6 @@ function normalizeConfig(value = {}) {
         : Boolean(value.autoCheckUpdates),
     autoDownloadUpdates: Boolean(value.autoDownloadUpdates),
     launchAtLogin: Boolean(value.launchAtLogin),
-    exoModelId: typeof value.exoModelId === 'string' ? value.exoModelId.trim() : '',
-    exoAutoStart: Boolean(value.exoAutoStart),
     installedAppPath: typeof value.installedAppPath === 'string' ? value.installedAppPath.trim() : '',
     pendingLaunchIntro: Boolean(value.pendingLaunchIntro),
     pendingRoachClawSetup: Boolean(value.pendingRoachClawSetup),
@@ -151,8 +135,6 @@ function writeConfig(app, updates = {}) {
 module.exports = {
   APPLE_ACCELERATION_BACKENDS,
   DEFAULT_CONFIG,
-  DISTRIBUTED_INFERENCE_BACKENDS,
-  EXO_NODE_ROLES,
   RELEASE_CHANNELS,
   getConfigPath,
   normalizeConfig,

@@ -39,6 +39,5 @@ contextBridge.exposeInMainWorld('roachnetDesktop', {
   openInstallFolder: () => ipcRenderer.invoke('roachnet:open-install-folder'),
   openReleaseDownloads: () => ipcRenderer.invoke('roachnet:open-release-downloads'),
   openMlxDocs: () => ipcRenderer.invoke('roachnet:open-mlx-docs'),
-  openExoDocs: () => ipcRenderer.invoke('roachnet:open-exo-docs'),
   onStateChange: (callback) => subscribe('roachnet:state', callback),
 })

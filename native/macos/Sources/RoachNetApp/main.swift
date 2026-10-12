@@ -4351,8 +4351,6 @@ final class WorkspaceModel: ObservableObject {
         var updatedConfig = config
         updatedConfig.storagePath = updatedConfig.storagePath.trimmingCharacters(in: .whitespacesAndNewlines)
         updatedConfig.roachClawDefaultModel = updatedConfig.roachClawDefaultModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        updatedConfig.exoBaseUrl = updatedConfig.exoBaseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        updatedConfig.exoModelId = updatedConfig.exoModelId.trimmingCharacters(in: .whitespacesAndNewlines)
         updatedConfig.releaseChannel = updatedConfig.releaseChannel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "stable"
             : updatedConfig.releaseChannel.trimmingCharacters(in: .whitespacesAndNewlines)

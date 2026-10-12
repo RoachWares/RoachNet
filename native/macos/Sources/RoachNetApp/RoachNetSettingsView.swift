@@ -828,6 +828,8 @@ struct RoachNetSettingsView: View {
                 }
             }
 
+            RoachClusterSection(config: model.config)
+
             if !installedModels.isEmpty {
                 RoachInsetPanel {
                     VStack(alignment: .leading, spacing: 10) {

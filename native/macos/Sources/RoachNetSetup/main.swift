@@ -441,9 +441,6 @@ final class SetupController: ObservableObject {
             URLQueryItem(name: "companionAdvertisedURL", value: config.companionAdvertisedURL),
             URLQueryItem(name: "autoLaunch", value: config.autoLaunch ? "true" : "false"),
             URLQueryItem(name: "releaseChannel", value: config.releaseChannel),
-            URLQueryItem(name: "distributedInferenceBackend", value: config.distributedInferenceBackend),
-            URLQueryItem(name: "exoBaseUrl", value: config.exoBaseUrl),
-            URLQueryItem(name: "exoModelId", value: config.exoModelId),
         ]
     }
 
