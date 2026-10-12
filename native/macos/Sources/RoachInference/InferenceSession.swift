@@ -28,7 +28,8 @@ public final class InferenceSession {
 
     /// Reuses the longest cached prefix of `tokens`, evaluates the rest, and
     /// returns the logits for the final token. At least one token is always
-    /// re-evaluated so logits are fresh.
+    /// re-evaluated so logits are fresh. Only the last token pays for the
+    /// vocabulary projection.
     public func prefill(_ tokens: [Int32], cancelled: () -> Bool = { false }) throws -> [Float] {
         guard !tokens.isEmpty else { throw InferenceError.invalid("Prompt is empty.") }
         guard tokens.count <= contextLength else {
@@ -37,19 +38,53 @@ public final class InferenceSession {
         var common = 0
         while common < min(tokens.count - 1, cachedTokens.count), tokens[common] == cachedTokens[common] { common += 1 }
         truncate(to: common)
-        for token in tokens[common...] {
+        let last = tokens.count - 1
+        for index in common..<tokens.count {
             if cancelled() { throw InferenceError.cancelled }
-            try step(token)
+            try step(tokens[index], output: index == last ? .logits : .none)
         }
         return logits()
     }
 
     /// Appends one token and runs the forward pass for it.
-    public func step(_ token: Int32) throws {
+    public func step(_ token: Int32, output: ForwardOutput = .logits) throws {
         guard cachedTokens.count < contextLength else { throw InferenceError.invalid("The context window is full.") }
         guard token >= 0, Int(token) < model.tokenEmbedding.rows else { throw InferenceError.invalid("Token \(token) is out of range.") }
-        backend.forward(token: Int(token), position: cachedTokens.count)
+        backend.forward(token: Int(token), position: cachedTokens.count, output: output)
         cachedTokens.append(token)
+    }
+
+    /// How an embedding is pooled from per-token hidden states (GGUF `pooling_type`).
+    public enum Pooling: Int { case mean = 1, cls = 2, last = 3 }
+
+    /// One embedding for `tokens`, from a cleared cache. The cache is left
+    /// holding these tokens, so a chat on this session starts fresh after it.
+    public func embed(_ tokens: [Int32], pooling: Pooling, normalize: Bool = true) throws -> [Float] {
+        guard !tokens.isEmpty else { throw InferenceError.invalid("Input is empty.") }
+        guard tokens.count <= contextLength else {
+            throw InferenceError.invalid("Input is \(tokens.count) tokens; the context holds \(contextLength).")
+        }
+        reset()
+        let width = model.hyperparameters.embeddingLength
+        var sum = [Float](repeating: 0, count: width)
+        var chosen: [Float] = []
+        for (index, token) in tokens.enumerated() {
+            let wanted = pooling == .mean || (pooling == .cls && index == 0) || (pooling == .last && index == tokens.count - 1)
+            try step(token, output: wanted ? .hidden : .none)
+            guard wanted else { continue }
+            let hidden = backend.hiddenState
+            if pooling == .mean {
+                for d in 0..<width { sum[d] += hidden[d] }
+            } else {
+                chosen = Array(hidden)
+            }
+        }
+        var vector = pooling == .mean ? sum.map { $0 / Float(tokens.count) } : chosen
+        if normalize {
+            let norm = vector.reduce(0) { $0 + $1 * $1 }.squareRoot()
+            if norm > 0 { vector = vector.map { $0 / norm } }
+        }
+        return vector
     }
 
     public func logits() -> [Float] { Array(backend.logits) }
@@ -72,14 +107,30 @@ enum BackendSelector {
     }
 }
 
+/// What a forward pass leaves behind besides the KV cache.
+public enum ForwardOutput {
+    /// Logits over the vocabulary (and the final hidden state).
+    case logits
+    /// Only the final normalized hidden state (embeddings).
+    case hidden
+    /// Nothing: a prompt token whose output nobody reads.
+    case none
+}
+
 /// A device that runs the transformer forward pass and owns its KV cache.
 public protocol TransformerBackend: AnyObject {
     var name: String { get }
     var contextLength: Int { get }
     /// Runs one token at `position`, writing its keys/values into the cache.
-    func forward(token: Int, position: Int)
-    /// Logits produced by the most recent `forward`.
+    func forward(token: Int, position: Int, output: ForwardOutput)
+    /// Logits produced by the most recent `.logits` forward.
     var logits: UnsafeBufferPointer<Float> { get }
+    /// The final normalized hidden state from the most recent `.logits` or `.hidden` forward.
+    var hiddenState: UnsafeBufferPointer<Float> { get }
+}
+
+extension TransformerBackend {
+    public func forward(token: Int, position: Int) { forward(token: token, position: position, output: .logits) }
 }
 
 /// CPU reference backend: plain Swift with SIMD and multithreaded matvecs.
@@ -141,9 +192,13 @@ public final class CPUBackend: TransformerBackend {
         UnsafeBufferPointer(start: logitsBuffer, count: model.outputProjection.rows)
     }
 
+    public var hiddenState: UnsafeBufferPointer<Float> {
+        UnsafeBufferPointer(start: normed, count: model.hyperparameters.embeddingLength)
+    }
+
     // MARK: Forward pass
 
-    public func forward(token: Int, position: Int) {
+    public func forward(token: Int, position: Int, output: ForwardOutput) {
         let hp = model.hyperparameters
         let dim = hp.embeddingLength
         let headDim = hp.headDimension
@@ -220,8 +275,9 @@ public final class CPUBackend: TransformerBackend {
             Kernels.add(x, projected, dim)
         }
 
+        guard output != .none else { return }
         Kernels.rmsNorm(x, model.outputNorm, dim, hp.rmsEpsilon, into: normed)
-        model.outputProjection.multiply(normed, into: logitsBuffer)
+        if output == .logits { model.outputProjection.multiply(normed, into: logitsBuffer) }
     }
 }
 

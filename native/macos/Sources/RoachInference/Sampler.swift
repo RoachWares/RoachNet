@@ -60,6 +60,38 @@ public struct Sampler {
             candidates = logits.indices.map { (id: Int32($0), logit: logits[$0]) }
             candidates.sort { $0.logit > $1.logit || ($0.logit == $1.logit && $0.id < $1.id) }
         }
+        return draw(candidates)
+    }
+
+    /// Samples among the tokens `allowed` lets through (constrained output).
+    /// The best candidates are screened first, then a wider set, then the
+    /// whole vocabulary. nil when no token is allowed.
+    public mutating func sample(_ logits: [Float], history: [Int32], allowed: (Int32) -> Bool) -> Int32? {
+        var logits = logits
+        applyPenalties(&logits, history: history)
+        var screened = 0
+        for window in [64, 1_024, logits.count] {
+            let top: [(id: Int32, logit: Float)]
+            if window >= logits.count {
+                var all = logits.indices.map { (id: Int32($0), logit: logits[$0]) }
+                all.sort { $0.logit > $1.logit || ($0.logit == $1.logit && $0.id < $1.id) }
+                top = all
+            } else {
+                top = Sampler.topK(logits, window)
+            }
+            let permitted = top[screened...].filter { allowed($0.id) }
+            screened = top.count
+            guard !permitted.isEmpty else { continue }
+            if options.temperature <= 0 { return permitted[0].id }
+            let limited = options.topK > 0 ? Array(permitted.prefix(options.topK)) : permitted
+            return draw(limited)
+        }
+        return nil
+    }
+
+    /// top-p → min-p → temperature → draw, over candidates sorted best first.
+    private mutating func draw(_ sorted: [(id: Int32, logit: Float)]) -> Int32 {
+        var candidates = sorted
         // Probabilities at temperature 1 for the nucleus/min-p filters.
         func softmax(_ items: [(id: Int32, logit: Float)], temperature: Float) -> [Float] {
             let maximum = items.first?.logit ?? 0

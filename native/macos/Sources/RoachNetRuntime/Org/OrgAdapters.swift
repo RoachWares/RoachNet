@@ -191,8 +191,11 @@ struct OrgAgentLoopAdapter: OrgAdapter {
         let temperature = config.raw["temperature"].numberValue ?? 0.2
         switch mode {
         case .roachClawLocal:
-            let body: JSON = ["model": JSON(model), "messages": .array(messages), "stream": false,
-                              "options": ["temperature": JSON(temperature), "num_ctx": JSON(config.int("contextLength") ?? 4_096)]]
+            // The engine holds each reply to one well-formed action, so a small
+            // local model can't wander into prose or broken JSON.
+            let body: JSON = ["model": JSON(model), "messages": .array(messages), "stream": false, "format": OrgAgentLoopAdapter.actionSchema,
+                              "options": ["temperature": JSON(temperature), "num_ctx": JSON(config.int("contextLength") ?? 4_096),
+                                          "num_predict": JSON(config.int("maxOutputTokens") ?? 1_024)]]
             let response = try HTTPClient.request(baseURL + "/api/chat", method: "POST", headers: headers, body: body.serializedData(), timeoutMs: timeoutMs, maxResponseBytes: 8 << 20)
             guard (200..<300).contains(response.status) else { throw RuntimeError("model server returned \(response.status)") }
             let json = try JSON.parse(response.body)
@@ -207,6 +210,21 @@ struct OrgAgentLoopAdapter: OrgAdapter {
                             usage: OrgUsage(inputTokens: Int(json["usage"]["prompt_tokens"].numberValue ?? 0), outputTokens: Int(json["usage"]["completion_tokens"].numberValue ?? 0)))
         }
     }
+
+    /// Every action the loop performs, as a JSON Schema for structured output.
+    static let actionSchema: JSON = [
+        "type": "object",
+        "properties": [
+            "action": ["enum": ["checkout", "comment", "set_status", "create_issue", "write_document", "request_approval", "hire_agent", "finish"]],
+            "issue": ["type": "string"], "body": ["type": "string"],
+            "status": ["enum": ["todo", "in_progress", "in_review", "done", "blocked"]],
+            "comment": ["type": ["string", "boolean"]], "title": ["type": "string"], "description": ["type": "string"],
+            "assignee": ["type": "string"], "priority": ["enum": ["critical", "high", "medium", "low"]],
+            "key": ["type": "string"], "changeSummary": ["type": "string"], "summary": ["type": "string"],
+            "name": ["type": "string"], "role": ["type": "string"], "instructions": ["type": "string"], "reason": ["type": "string"],
+        ],
+        "required": ["action"],
+    ]
 
     /// Finds the first balanced JSON object in model output (fenced or not).
     static func extractAction(_ text: String) -> JSON? {

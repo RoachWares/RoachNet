@@ -90,7 +90,9 @@ test('native model server speaks the Ollama API without any external runner', ne
     assert.equal(unknown.status, 404)
     const insecure = await post(runtime.base, '/api/pull', { model: 'x:1', url: 'http://example.com/m.gguf', stream: false })
     assert.equal(insecure.status, 400)
-    assert.equal((await post(runtime.base, '/api/embed', { model: 'x', input: 'hi' })).status, 501)
+    assert.equal((await post(runtime.base, '/api/embed', { model: 'x', input: 'hi' })).status, 404)
+    const anthropic = await post(runtime.base, '/v1/messages', { model: 'nope:1b', max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] })
+    assert.equal((await anthropic.json()).error.type, 'not_found_error')
   } finally {
     await stop(runtime)
   }

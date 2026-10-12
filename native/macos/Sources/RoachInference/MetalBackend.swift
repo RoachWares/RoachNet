@@ -175,6 +175,10 @@ public final class MetalBackend: TransformerBackend {
         UnsafeBufferPointer(start: logitsBuffer.contents().assumingMemoryBound(to: Float.self), count: model.outputProjection.rows)
     }
 
+    public var hiddenState: UnsafeBufferPointer<Float> {
+        UnsafeBufferPointer(start: normed.contents().assumingMemoryBound(to: Float.self), count: model.hyperparameters.embeddingLength)
+    }
+
     // MARK: Encoding helpers
 
     private func pipeline(_ name: String) -> MTLComputePipelineState {
@@ -257,7 +261,7 @@ public final class MetalBackend: TransformerBackend {
 
     // MARK: Forward
 
-    public func forward(token: Int, position: Int) {
+    public func forward(token: Int, position: Int, output: ForwardOutput) {
         let hp = model.hyperparameters
         let dim = hp.embeddingLength
         let heads = hp.headCount
@@ -326,9 +330,11 @@ public final class MetalBackend: TransformerBackend {
             barrier()
         }
 
-        rmsNorm(encoder, x, outputNorm, normed, count: dim)
-        barrier()
-        matvec(encoder, model.outputProjection, normed, logitsBuffer)
+        if output != .none {
+            rmsNorm(encoder, x, outputNorm, normed, count: dim)
+            barrier()
+            if output == .logits { matvec(encoder, model.outputProjection, normed, logitsBuffer) }
+        }
         encoder.endEncoding()
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()

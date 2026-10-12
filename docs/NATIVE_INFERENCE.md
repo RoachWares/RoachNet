@@ -25,8 +25,37 @@ No Ollama, llama.cpp, MLX, Core ML, Metal Performance Shaders, Accelerate or thi
 | KV-cache prefix reuse, stop sequences, streamed UTF-8 output | Done |
 | CPU backend: Swift SIMD, multithreaded | Done |
 | Metal backend: hand-written MSL, weights read in place from the mapped file | Done; verified on Apple Silicon (M2 Pro) |
-| Ollama-compatible API in `roachnet-runtime` | Done; see `NativeModelServer.swift` |
-| Embeddings, batched prefill, more architectures (gemma, phi3, MoE), Jinja templates | Planned |
+| Model APIs in `roachnet-runtime`: Ollama, OpenAI (chat, completions, responses, embeddings) and Anthropic messages | Done; see "Model APIs" below |
+| Tool calling, structured output held while sampling (JSON and JSON Schema), thinking split and switch | Done |
+| Embeddings (mean, CLS and last-token pooling, read from the GGUF) | Done |
+| Made models (`/api/create`, Modelfile) sharing the base model's weights and engine | Done |
+| Batched prefill, speculative decoding, f16 KV cache, more architectures (gemma, phi3, MoE), Jinja templates | Planned |
+
+## Model APIs
+
+The model server answers every API below from one executor (`ModelReplies.swift`). Tools, formats, thinking, made-model settings and tracing behave the same whichever API a client speaks. Plan models (`claude:…`, `codex:…`) answer on all of them too.
+
+| Route | Notes |
+| --- | --- |
+| `POST /api/chat`, `/api/generate` | `tools` and `tool_calls` (arguments as objects), `format` (`"json"` or a JSON Schema), `think` with `message.thinking`, `raw`, streamed NDJSON |
+| `POST /api/embed`, `/api/embeddings` | Lists of inputs, `truncate`, `dimensions`; `/api/embeddings` returns the older unnormalized form |
+| `POST /api/create` | `from`, `system`, `parameters`, `messages`, or a Modelfile (`FROM`, `SYSTEM`, `PARAMETER`, `MESSAGE`). `from` may be an installed model or the path of a `.gguf` file on this Mac |
+| `POST /api/copy` | Links the weights instead of copying them |
+| `POST /v1/chat/completions` | `tools`, `tool_choice` (`auto`, `none`, `required`, a named function), `response_format` (`json_object`, `json_schema`), `reasoning_effort`, `stream_options.include_usage`. Thinking comes back as `reasoning_content` |
+| `POST /v1/completions` | Raw prompt completion |
+| `POST /v1/responses` | String or item input (`function_call`, `function_call_output`), function tools, `text.format`, `reasoning.effort`, and the full numbered event stream |
+| `POST /v1/embeddings` | `dimensions`, `encoding_format: "base64"` |
+| `POST /v1/messages`, `/v1/messages/count_tokens` | Anthropic's API: system blocks, `tool_use` and `tool_result`, `tool_choice` (`auto`, `any`, `tool`, `none`), `thinking`, and the content-block event stream |
+
+How the pieces work:
+
+- **Structured output is enforced, not requested.** `JSONConstraint` is a character-level pushdown automaton. While sampling, each candidate token's text is checked against it: the top 64, then 1,024, then the whole vocabulary. The reply is valid JSON that matches the schema: required keys, enums, integer versus number, array bounds, `$ref` into `$defs`, and `anyOf`. Generation stops as soon as the value is complete. A thinking model that is asked to think first reasons freely, and the format applies after `</think>`.
+- **Forced tool calls** (`required`, a named tool, Anthropic `any` or `tool`) hold the reply to `{"name": …, "arguments": …}` with the tool's own parameter schema, so the call always parses.
+- **Tool calls use each family's own format.** Qwen's `<tool_call>` blocks, Llama 3's JSON reply and Mistral's `[TOOL_CALLS]` list are rendered into the prompt and parsed back out. Streaming holds back anything that could be the start of a call, so a client never sees half a call as text.
+- **Thinking** is split from content as it streams. `think: false`, `reasoning_effort: "none"` or Anthropic's `thinking.disabled` closes Qwen3's thinking block in the prompt, so the model answers straight away.
+- **Long conversations** drop their oldest turns until the prompt fits and leaves room to answer. The system prompt is never dropped.
+- **Errors come back in each API's shape.** A missing model is a 404 before a stream starts.
+- **The Org's RoachClaw agents** send their action schema as the format, so even a small local model always replies with one well-formed action.
 
 ## Metal performance
 

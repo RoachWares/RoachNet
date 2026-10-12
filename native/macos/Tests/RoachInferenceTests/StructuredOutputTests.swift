@@ -1,0 +1,100 @@
+import Foundation
+import XCTest
+@testable import RoachInference
+
+/// The constrained-sampling grammar, tool-call parsing and thinking split.
+final class StructuredOutputTests: XCTestCase {
+    private func accepts(_ constraint: JSONConstraint, _ text: String) -> Bool {
+        for character in text {
+            let piece = String(character)
+            guard constraint.allows(piece) else { return false }
+            constraint.accept(piece)
+        }
+        return true
+    }
+
+    func testAnyJSONAcceptsValidAndRefusesInvalid() {
+        XCTAssertTrue(accepts(JSONConstraint(), #"{"a": [1, -2.5e3, true, null, "x\"y"]}"#))
+        XCTAssertFalse(accepts(JSONConstraint(), #"{"a" 1}"#))
+        XCTAssertFalse(accepts(JSONConstraint(), #"[1,,2]"#))
+        XCTAssertFalse(accepts(JSONConstraint(), "tru e"))
+    }
+
+    func testObjectModeRequiresAnObject() {
+        XCTAssertFalse(accepts(JSONConstraint(requireObject: true), "[1]"))
+        let constraint = JSONConstraint(requireObject: true)
+        XCTAssertTrue(accepts(constraint, #"{"ok": true}"#))
+        XCTAssertTrue(constraint.isComplete)
+    }
+
+    func testSchemaHoldsKeysTypesAndRequiredFields() {
+        let schema = JSONSchemaNode.object(properties: ["name": .string, "age": .number(integer: true), "tag": .literals([#""a""#, #""b""#])],
+                                           order: ["name", "age", "tag"], required: ["name", "age"], additional: false)
+        XCTAssertTrue(accepts(JSONConstraint(schema: schema), #"{"name": "Ro", "age": 3, "tag": "b"}"#))
+        XCTAssertFalse(accepts(JSONConstraint(schema: schema), #"{"nope": 1}"#), "unknown keys are refused")
+        XCTAssertFalse(accepts(JSONConstraint(schema: schema), #"{"name": "Ro", "age": 3.5}"#), "integers have no fraction")
+        XCTAssertFalse(accepts(JSONConstraint(schema: schema), #"{"name": "Ro", "tag": "c"}"#), "enums hold")
+        XCTAssertFalse(accepts(JSONConstraint(schema: schema), #"{"name": "Ro"}"#), "required keys must come before the end")
+        let arrays = JSONSchemaNode.array(items: .boolean, minItems: 1, maxItems: 2)
+        XCTAssertFalse(accepts(JSONConstraint(schema: arrays), "[]"))
+        XCTAssertFalse(accepts(JSONConstraint(schema: arrays), "[true, false, true]"))
+        XCTAssertTrue(accepts(JSONConstraint(schema: arrays), "[true, false]"))
+    }
+
+    func testCompleteValueEndsGeneration() {
+        let constraint = JSONConstraint(schema: .number(integer: true))
+        XCTAssertTrue(accepts(constraint, "42"))
+        XCTAssertFalse(constraint.isComplete, "a number can go on")
+        XCTAssertTrue(constraint.canEnd)
+    }
+
+    func testToolCallsParseInEachFamilysFormat() {
+        let qwen = ChatTools.parse("Let me check.\n<tool_call>\n{\"name\": \"weather\", \"arguments\": {\"city\": \"Oslo\"}}\n</tool_call>", known: ["weather"])
+        XCTAssertEqual(qwen.content, "Let me check.")
+        XCTAssertEqual(qwen.calls.map(\.name), ["weather"])
+        XCTAssertEqual(qwen.calls.first?.arguments, #"{"city":"Oslo"}"#)
+
+        let llama = ChatTools.parse(#"{"name": "weather", "parameters": {"city": "Rome"}}"#, known: ["weather"])
+        XCTAssertEqual(llama.content, "")
+        XCTAssertEqual(llama.calls.first?.arguments, #"{"city":"Rome"}"#)
+
+        let mistral = ChatTools.parse(#"[TOOL_CALLS] [{"name": "a", "arguments": {}}, {"name": "b", "arguments": {"x": 1}}]"#, known: [])
+        XCTAssertEqual(mistral.calls.map(\.name), ["a", "b"])
+        let bare = ChatTools.parse(#"[{"name": "a", "arguments": {}}]"#, known: ["a"])
+        XCTAssertEqual(bare.calls.map(\.name), ["a"], "Mistral's control token renders as nothing")
+
+        let unknown = ChatTools.parse("<tool_call>{\"name\": \"rm\", \"arguments\": {}}</tool_call>", known: ["weather"])
+        XCTAssertTrue(unknown.calls.isEmpty, "only the tools the client offered")
+        let plainJSON = ChatTools.parse(#"{"answer": 4}"#, known: ["weather"])
+        XCTAssertTrue(plainJSON.calls.isEmpty)
+        XCTAssertEqual(plainJSON.content, #"{"answer": 4}"#)
+    }
+
+    func testThinkingSplitsAcrossPieces() {
+        var splitter = ThinkingSplitter()
+        var parts: [ThinkingSplitter.Part] = []
+        for piece in ["<thi", "nk>\nHmm", " ok</th", "ink>\n\nHello", " there"] { parts += splitter.feed(piece) }
+        parts += splitter.finish()
+        let thinking = parts.compactMap { if case .thinking(let t) = $0 { return t } else { return nil } }.joined()
+        let content = parts.compactMap { if case .content(let t) = $0 { return t } else { return nil } }.joined()
+        XCTAssertEqual(thinking, "\nHmm ok")
+        XCTAssertEqual(content, "Hello there")
+
+        var plain = ThinkingSplitter()
+        XCTAssertEqual(plain.feed("Hi") + plain.finish(), [.content("Hi")])
+    }
+
+    func testChatMLToolsAndThinkingSwitch() {
+        let tools = [ToolSpec(name: "weather", description: "Weather now", parameters: #"{"type":"object","properties":{"city":{"type":"string"}}}"#)]
+        let messages = [RichMessage(role: .user, content: "Oslo?"),
+                        RichMessage(role: .assistant, content: "", toolCalls: [ToolCall(id: "c1", name: "weather", arguments: #"{"city":"Oslo"}"#)]),
+                        RichMessage(role: .tool, content: "4C", toolName: "weather")]
+        let prompt = ChatTools.render(.chatML, messages: messages, tools: tools, defaultSystem: nil, think: false, supportsThinking: true)
+        XCTAssertTrue(prompt.contains("<tools>\n{\"type\": \"function\""))
+        XCTAssertTrue(prompt.contains("<tool_call>\n{\"name\": \"weather\", \"arguments\": {\"city\":\"Oslo\"}}\n</tool_call>"))
+        XCTAssertTrue(prompt.contains("<tool_response>\n4C\n</tool_response>"))
+        XCTAssertTrue(prompt.hasSuffix("<think>\n\n</think>\n\n"))
+        XCTAssertTrue(InferenceEngine.thinks(templateSource: "{%- if enable_thinking is defined %}"))
+        XCTAssertFalse(InferenceEngine.thinks(templateSource: "{{ messages }}"))
+    }
+}

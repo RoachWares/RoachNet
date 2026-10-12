@@ -11,6 +11,8 @@ final class NativeModelServer {
 
     final class LoadedModel {
         let name: String
+        /// The weights on disk; models linked to the same file share this engine.
+        var fileKey = ""
         let engine: InferenceEngine
         let contextLength: Int
         var requestedContext = 0
@@ -105,34 +107,62 @@ final class NativeModelServer {
             case ("POST", "/api/copy"):
                 return try copy(readJSON(&request))
             case ("POST", "/api/generate"):
-                let body = try readJSON(&request)
-                if let plan = try subscriptionResponse(body, endpoint: .generate, traceparent: traceparent) { return plan }
-                return try generate(body, traceparent: traceparent)
+                return try answerOllama(readJSON(&request), chat: false, traceparent: traceparent)
             case ("POST", "/api/chat"):
-                let body = try readJSON(&request)
-                if let plan = try subscriptionResponse(body, endpoint: .chat, traceparent: traceparent) { return plan }
-                return try chat(body, traceparent: traceparent)
-            case ("POST", "/api/embed"), ("POST", "/api/embeddings"), ("POST", "/v1/embeddings"):
-                return .json(501, ["error": "Embeddings are not available in the native engine yet."])
+                return try answerOllama(readJSON(&request), chat: true, traceparent: traceparent)
+            case ("POST", "/api/create"):
+                return try createModel(readJSON(&request))
+            case ("POST", "/api/embed"):
+                return try answerEmbeddings(readJSON(&request), api: .ollama, traceparent: traceparent)
+            case ("POST", "/api/embeddings"):
+                return try answerEmbeddings(readJSON(&request), api: .ollamaLegacy, traceparent: traceparent)
+            case ("POST", "/v1/embeddings"):
+                return try answerEmbeddings(readJSON(&request), api: .openAI, traceparent: traceparent)
             case ("GET", "/v1/models"):
                 return .json(200, ["object": "list", "data": .array(store.list().map {
                     ["id": JSON($0.name), "object": "model", "created": JSON(Double(Int(Date().timeIntervalSince1970))), "owned_by": "roachnet"]
                 } + subscriptionOpenAIModels())])
+            case ("GET", _) where path.hasPrefix("/v1/models/"):
+                let id = String(path.dropFirst("/v1/models/".count)).removingPercentEncoding ?? ""
+                guard store.entry(id) != nil || subscriptionOpenAIModels().contains(where: { $0["id"].stringValue == id }) else {
+                    throw requestError("The model '\(id)' does not exist", 404)
+                }
+                return .json(200, ["id": JSON(id), "object": "model", "created": NativeModelServer.created(), "owned_by": "roachnet"])
             case ("POST", "/v1/chat/completions"):
-                let body = try readJSON(&request)
-                if let plan = try subscriptionResponse(body, endpoint: .openAI, traceparent: traceparent) { return plan }
-                return try openAIChat(body, traceparent: traceparent)
+                return try answerOpenAIChat(readJSON(&request), traceparent: traceparent)
+            case ("POST", "/v1/completions"):
+                return try answerCompletions(readJSON(&request), traceparent: traceparent)
+            case ("POST", "/v1/responses"):
+                return try answerResponses(readJSON(&request), traceparent: traceparent)
+            case ("POST", "/v1/messages"):
+                return try answerAnthropic(readJSON(&request), traceparent: traceparent)
+            case ("POST", "/v1/messages/count_tokens"):
+                return try countAnthropicTokens(readJSON(&request))
             default:
                 return .json(404, ["error": "404 page not found"])
             }
         } catch let error as RuntimeError {
-            return .json(error.statusCode, ["error": JSON(error.message)])
+            return NativeModelServer.failure(path, status: error.statusCode, message: error.message)
         } catch {
-            return .json(500, ["error": JSON("\(error)")])
+            return NativeModelServer.failure(path, status: 500, message: "\(error)")
         }
     }
 
-    private func readJSON(_ request: inout HTTPRequest) throws -> JSON {
+    /// Errors in each API's own shape: Anthropic's on /v1/messages, OpenAI's on
+    /// the rest of /v1, and Ollama's plain string everywhere else.
+    static func failure(_ path: String, status: Int, message: String) -> HTTPResponse {
+        if path.hasPrefix("/v1/messages") {
+            let kind = status == 404 ? "not_found_error" : status < 500 ? "invalid_request_error" : "api_error"
+            return .json(status, ["type": "error", "error": ["type": JSON(kind), "message": JSON(message)]])
+        }
+        if path.hasPrefix("/v1/") {
+            let kind = status < 500 ? "invalid_request_error" : "api_error"
+            return .json(status, ["error": ["message": JSON(message), "type": JSON(kind), "param": .null, "code": status == 404 ? "model_not_found" : .null]])
+        }
+        return .json(status, ["error": JSON(message)])
+    }
+
+    func readJSON(_ request: inout HTTPRequest) throws -> JSON {
         let data = try request.body()
         let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return .object(JSONObject()) }
@@ -141,13 +171,13 @@ final class NativeModelServer {
 
     // MARK: Models
 
-    private func details(_ manifest: JSON) -> JSON {
+    func details(_ manifest: JSON) -> JSON {
         let family = manifest["family"].stringValue ?? manifest["architecture"].stringValue ?? ""
-        return ["parent_model": "", "format": "gguf", "family": JSON(family), "families": .array([JSON(family)]),
+        return ["parent_model": manifest["derivedFrom"] || "", "format": "gguf", "family": JSON(family), "families": .array([JSON(family)]),
                 "parameter_size": manifest["parameterSize"] || "", "quantization_level": manifest["quantization"] || ""]
     }
 
-    private func tagJSON(_ entry: NativeModelStore.Entry) -> JSON {
+    func tagJSON(_ entry: NativeModelStore.Entry) -> JSON {
         ["name": JSON(entry.name), "model": JSON(entry.name), "modified_at": entry.manifest["modifiedAt"] || JSON(JS.isoNow()),
          "size": entry.manifest["size"] || 0, "digest": entry.manifest["sha256"] || "", "details": details(entry.manifest)]
     }
@@ -166,15 +196,24 @@ final class NativeModelServer {
             }
         }
         let template = file["tokenizer.chat_template"]?.stringValue ?? ""
-        return .json(200, ["modelfile": JSON("# RoachNet native model\nFROM \(entry.name)\n"), "parameters": "", "template": JSON(template),
-                           "details": details(entry.manifest), "model_info": .object(info),
-                           "capabilities": ["completion"], "modified_at": entry.manifest["modifiedAt"] || ""])
+        let made = Modelfile.text(for: entry)
+        // Embedding models declare how they pool; everything else chats, with tools.
+        let embedding = file["\(file.architecture).pooling_type"] != nil
+        var capabilities: [JSON] = embedding ? ["embedding"] : ["completion", "tools"]
+        if InferenceEngine.thinks(templateSource: template) { capabilities.append("thinking") }
+        var out = JSONObject([("modelfile", JSON(made.modelfile)), ("parameters", JSON(made.parameters)), ("template", JSON(template)),
+                              ("details", details(entry.manifest)), ("model_info", .object(info)), ("capabilities", .array(capabilities)),
+                              ("modified_at", entry.manifest["modifiedAt"] || "")])
+        if !made.system.isEmpty { out["system"] = JSON(made.system) }
+        let opening = entry.manifest["profile"]["messages"]
+        if !opening.array.isEmpty { out["messages"] = opening }
+        return .json(200, .object(out))
     }
 
     private func copy(_ body: JSON) throws -> HTTPResponse {
         guard let source = body["source"].stringValue, let destination = body["destination"].stringValue,
               let entry = store.entry(source) else { throw requestError("model not found", 404) }
-        _ = try store.importFile(entry.modelPath, as: destination)
+        _ = try store.copy(entry, as: destination)
         return .json(200, [:])
     }
 
@@ -201,7 +240,7 @@ final class NativeModelServer {
 
     // MARK: Loading
 
-    private func keepAlive(_ value: JSON) -> TimeInterval {
+    func keepAlive(_ value: JSON) -> TimeInterval {
         if let seconds = value.numberValue { return seconds < 0 ? .infinity : seconds }
         guard let text = value.stringValue, !text.isEmpty else { return 300 }
         if text.hasPrefix("-") { return .infinity }
@@ -218,8 +257,11 @@ final class NativeModelServer {
         lock.lock()
         defer { lock.unlock() }
         let wanted = contextLength ?? 4096
-        if let existing = loaded[name], existing.requestedContext == wanted || existing.contextLength == wanted {
-            existing.expiresAt = Date().addingTimeInterval(seconds)
+        let fileKey = NativeModelStore.fileIdentity(entry.modelPath)
+        func fits(_ item: LoadedModel) -> Bool { item.requestedContext == wanted || item.contextLength == wanted }
+        if let existing = loaded[name].flatMap({ fits($0) && $0.fileKey == fileKey ? $0 : nil })
+            ?? loaded.values.first(where: { $0.fileKey == fileKey && fits($0) }) {
+            existing.expiresAt = max(existing.expiresAt, Date().addingTimeInterval(seconds))
             existing.lastUsed = Date()
             return existing
         }
@@ -230,14 +272,21 @@ final class NativeModelServer {
         let engine = InferenceEngine(model: model, contextLength: wanted)
         let item = LoadedModel(name: name, engine: engine, contextLength: engine.session.contextLength, keepAlive: seconds)
         item.requestedContext = wanted
+        item.fileKey = fileKey
         loaded[name] = item
         RuntimeLog.write("native engine loaded \(name) (ctx \(item.contextLength))")
         return item
     }
 
     func unload(_ name: String) {
+        let fileKey = store.entry(name).map { NativeModelStore.fileIdentity($0.modelPath) }
         lock.lock()
-        loaded[name] = nil
+        if loaded[name] != nil {
+            loaded[name] = nil
+        } else if let fileKey {
+            // A made or copied model runs on its base's engine.
+            for (key, item) in loaded where item.fileKey == fileKey { loaded[key] = nil }
+        }
         lock.unlock()
     }
 
@@ -283,7 +332,7 @@ final class NativeModelServer {
         return options
     }
 
-    private func timings(_ result: GenerationResult, load: TimeInterval, started: Date) -> JSONObject {
+    func timings(_ result: GenerationResult, load: TimeInterval, started: Date) -> JSONObject {
         var object = JSONObject()
         object["total_duration"] = JSON(Double(Int(Date().timeIntervalSince(started) * 1e9)))
         object["load_duration"] = JSON(Double(Int(load * 1e9)))
@@ -294,7 +343,7 @@ final class NativeModelServer {
         return object
     }
 
-    private func doneReason(_ result: GenerationResult) -> String {
+    func doneReason(_ result: GenerationResult) -> String {
         switch result.stopReason {
         case .length: return "length"
         case .cancelled: return "cancelled"
@@ -302,7 +351,7 @@ final class NativeModelServer {
         }
     }
 
-    private struct Prepared {
+    struct Prepared {
         let item: LoadedModel
         let tokens: [Int32]
         let options: GenerationOptions
@@ -313,46 +362,7 @@ final class NativeModelServer {
         var traceparent: String?
     }
 
-    private func prepare(_ body: JSON, messages: [ChatMessage]?, prompt: String?, endpoint: String = "", traceparent: String? = nil) throws -> Prepared {
-        let started = Date()
-        let name = body["model"].stringValue ?? ""
-        let num = body["options"]["num_ctx"].numberValue.map { Int($0) }
-        let item = try load(name, contextLength: num, keepAlive: keepAlive(body["keep_alive"]))
-        let loadDuration = Date().timeIntervalSince(started)
-        let engine = item.engine
-        let text: String
-        if let messages {
-            text = engine.renderChat(messages)
-        } else if body["raw"].truthy {
-            text = prompt ?? ""
-        } else {
-            var turn: [ChatMessage] = []
-            if let system = body["system"].stringValue, !system.isEmpty { turn.append(ChatMessage(role: .system, content: system)) }
-            turn.append(ChatMessage(role: .user, content: prompt ?? ""))
-            text = engine.renderChat(turn)
-        }
-        var tokens = engine.tokenizer.encode(text, addSpecial: true, parseSpecial: true)
-        if tokens.count > item.contextLength - 8 {
-            // Keep the most recent context, as the reference runtime does.
-            tokens = Array(tokens.suffix(max(1, item.contextLength / 2)))
-        }
-        var options = NativeModelServer.options(body["options"])
-        let remaining = item.contextLength - tokens.count
-        if options.maxTokens < 0 || options.maxTokens > remaining { options.maxTokens = max(1, remaining) }
-        let input: JSON = messages.map { list in .array(list.map { ["role": JSON($0.role.rawValue), "content": JSON($0.content)] }) } ?? JSON(prompt ?? "")
-        return Prepared(item: item, tokens: tokens, options: options, loadDuration: loadDuration, started: started,
-                        endpoint: endpoint, traceInput: input, traceparent: traceparent)
-    }
-
-    static func messages(_ value: JSON) -> [ChatMessage] {
-        value.array.compactMap { message in
-            guard let content = message["content"].stringValue ?? (message["content"].isUndefined ? nil : message["content"].jsString) else { return nil }
-            let role = ChatMessage.Role(rawValue: message["role"].stringValue ?? "user") ?? .user
-            return ChatMessage(role: role, content: content)
-        }
-    }
-
-    private func run(_ prepared: Prepared, writer: HTTPStreamWriter?, onText: @escaping (String) -> Void) throws -> GenerationResult {
+    func run(_ prepared: Prepared, writer: HTTPStreamWriter?, onText: @escaping (String) -> Void) throws -> GenerationResult {
         let trace = beginTrace(prepared)
         var sawFirstToken = false
         prepared.item.lock.lock()
@@ -380,7 +390,7 @@ final class NativeModelServer {
 
     // MARK: Tracing
 
-    private struct GenerationTrace {
+    struct GenerationTrace {
         let observation: ObservationHandle
         /// Set when this request started the trace (no usable `traceparent`).
         let ownTrace: TraceHandle?
@@ -388,7 +398,7 @@ final class NativeModelServer {
         let enrichesParent: Bool
     }
 
-    private func beginTrace(_ prepared: Prepared) -> GenerationTrace? {
+    func beginTrace(_ prepared: Prepared) -> GenerationTrace? {
         guard let tracer else { return nil }
         let parameters: JSON = [
             "temperature": JSON(Double(prepared.options.sampling.temperature)), "top_k": JSON(prepared.options.sampling.topK),
@@ -418,7 +428,7 @@ final class NativeModelServer {
         return GenerationTrace(observation: observation, ownTrace: handle, enrichesParent: false)
     }
 
-    private func endTrace(_ trace: GenerationTrace?, _ prepared: Prepared, result: GenerationResult?, error: Error?) {
+    func endTrace(_ trace: GenerationTrace?, _ prepared: Prepared, result: GenerationResult?, error: Error?) {
         guard let trace else { return }
         guard let result else {
             let message = (error as? RuntimeError)?.message ?? error.map { "\($0)" } ?? "generation failed"
@@ -445,115 +455,7 @@ final class NativeModelServer {
         trace.ownTrace?.end(status: result.stopReason == .cancelled ? "cancelled" : "ok", output: JSON(result.text))
     }
 
-    private func line(_ value: JSON) -> Data { Data((value.serialized() + "\n").utf8) }
+    func line(_ value: JSON) -> Data { Data((value.serialized() + "\n").utf8) }
 
-    private func generate(_ body: JSON, traceparent: String? = nil) throws -> HTTPResponse {
-        let model = body["model"].stringValue ?? ""
-        let prompt = body["prompt"].stringValue ?? ""
-        if prompt.isEmpty && body["images"].isUndefined {
-            // Load (or unload with keep_alive 0) only.
-            if keepAlive(body["keep_alive"]) == 0 { unload((try? NativeModelStore.normalize(model).name) ?? model) }
-            else { _ = try load(model, contextLength: nil, keepAlive: keepAlive(body["keep_alive"])) }
-            return .json(200, ["model": JSON(model), "created_at": JSON(JS.isoNow()), "response": "", "done": true, "done_reason": "load"])
-        }
-        let prepared = try prepare(body, messages: nil, prompt: prompt, endpoint: "generate", traceparent: traceparent)
-        let stream = body["stream"].isUndefined ? true : body["stream"].truthy
-        if !stream {
-            let result = try run(prepared, writer: nil) { _ in }
-            var out = JSONObject()
-            out["model"] = JSON(model); out["created_at"] = JSON(JS.isoNow()); out["response"] = JSON(result.text)
-            out["done"] = true; out["done_reason"] = JSON(doneReason(result))
-            for (k, v) in timings(result, load: prepared.loadDuration, started: prepared.started) { out[k] = v }
-            return .json(200, .object(out))
-        }
-        return .ndjsonStream { [self] writer in
-            do {
-                let result = try self.run(prepared, writer: writer) { piece in
-                    writer.write(self.line(["model": JSON(model), "created_at": JSON(JS.isoNow()), "response": JSON(piece), "done": false]))
-                }
-                var out = JSONObject()
-                out["model"] = JSON(model); out["created_at"] = JSON(JS.isoNow()); out["response"] = ""
-                out["done"] = true; out["done_reason"] = JSON(self.doneReason(result))
-                for (k, v) in self.timings(result, load: prepared.loadDuration, started: prepared.started) { out[k] = v }
-                writer.write(self.line(.object(out)))
-            } catch {
-                writer.write(self.line(["error": JSON("\(error)")]))
-            }
-        }
-    }
 
-    private func chat(_ body: JSON, traceparent: String? = nil) throws -> HTTPResponse {
-        let model = body["model"].stringValue ?? ""
-        let messages = NativeModelServer.messages(body["messages"])
-        if messages.isEmpty {
-            _ = try load(model, contextLength: nil, keepAlive: keepAlive(body["keep_alive"]))
-            return .json(200, ["model": JSON(model), "created_at": JSON(JS.isoNow()), "message": ["role": "assistant", "content": ""], "done": true, "done_reason": "load"])
-        }
-        let prepared = try prepare(body, messages: messages, prompt: nil, endpoint: "chat", traceparent: traceparent)
-        let stream = body["stream"].isUndefined ? true : body["stream"].truthy
-        if !stream {
-            let result = try run(prepared, writer: nil) { _ in }
-            var out = JSONObject()
-            out["model"] = JSON(model); out["created_at"] = JSON(JS.isoNow())
-            out["message"] = ["role": "assistant", "content": JSON(result.text)]
-            out["done"] = true; out["done_reason"] = JSON(doneReason(result))
-            for (k, v) in timings(result, load: prepared.loadDuration, started: prepared.started) { out[k] = v }
-            return .json(200, .object(out))
-        }
-        return .ndjsonStream { [self] writer in
-            do {
-                let result = try self.run(prepared, writer: writer) { piece in
-                    writer.write(self.line(["model": JSON(model), "created_at": JSON(JS.isoNow()),
-                                            "message": ["role": "assistant", "content": JSON(piece)], "done": false]))
-                }
-                var out = JSONObject()
-                out["model"] = JSON(model); out["created_at"] = JSON(JS.isoNow())
-                out["message"] = ["role": "assistant", "content": ""]
-                out["done"] = true; out["done_reason"] = JSON(self.doneReason(result))
-                for (k, v) in self.timings(result, load: prepared.loadDuration, started: prepared.started) { out[k] = v }
-                writer.write(self.line(.object(out)))
-            } catch {
-                writer.write(self.line(["error": JSON("\(error)")]))
-            }
-        }
-    }
-
-    private func openAIChat(_ body: JSON, traceparent: String? = nil) throws -> HTTPResponse {
-        var translated = body
-        var options = JSONObject()
-        if let v = body["temperature"].numberValue { options["temperature"] = JSON(v) }
-        if let v = body["top_p"].numberValue { options["top_p"] = JSON(v) }
-        if let v = body["max_tokens"].numberValue ?? body["max_completion_tokens"].numberValue { options["num_predict"] = JSON(v) }
-        if let v = body["seed"].numberValue { options["seed"] = JSON(v) }
-        if let stop = body["stop"].stringValue { options["stop"] = .array([JSON(stop)]) } else if !body["stop"].array.isEmpty { options["stop"] = body["stop"] }
-        translated["options"] = .object(options)
-        let model = body["model"].stringValue ?? ""
-        let prepared = try prepare(translated, messages: NativeModelServer.messages(body["messages"]), prompt: nil, endpoint: "v1/chat/completions", traceparent: traceparent)
-        let id = "chatcmpl-" + JS.randomHex(12)
-        let created = JSON(Double(Int(Date().timeIntervalSince1970)))
-        if !body["stream"].truthy {
-            let result = try run(prepared, writer: nil) { _ in }
-            return .json(200, ["id": JSON(id), "object": "chat.completion", "created": created, "model": JSON(model),
-                               "choices": [["index": 0, "message": ["role": "assistant", "content": JSON(result.text)],
-                                            "finish_reason": JSON(result.stopReason == .length ? "length" : "stop")]],
-                               "usage": ["prompt_tokens": JSON(result.promptTokenCount), "completion_tokens": JSON(result.tokens.count),
-                                         "total_tokens": JSON(result.promptTokenCount + result.tokens.count)]])
-        }
-        var response = HTTPResponse(status: 200, headers: [("content-type", "text/event-stream"), ("cache-control", "no-store")])
-        response.stream = { [self] writer in
-            func event(_ value: JSON) { writer.write(Data(("data: " + value.serialized() + "\n\n").utf8)) }
-            do {
-                let result = try self.run(prepared, writer: writer) { piece in
-                    event(["id": JSON(id), "object": "chat.completion.chunk", "created": created, "model": JSON(model),
-                           "choices": [["index": 0, "delta": ["role": "assistant", "content": JSON(piece)], "finish_reason": nil]]])
-                }
-                event(["id": JSON(id), "object": "chat.completion.chunk", "created": created, "model": JSON(model),
-                       "choices": [["index": 0, "delta": [:], "finish_reason": JSON(result.stopReason == .length ? "length" : "stop")]]])
-            } catch {
-                event(["error": ["message": JSON("\(error)")]])
-            }
-            writer.write(Data("data: [DONE]\n\n".utf8))
-        }
-        return response
-    }
 }

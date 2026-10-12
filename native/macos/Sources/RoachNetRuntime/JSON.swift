@@ -82,6 +82,10 @@ extension JSON: ExpressibleByNilLiteral, ExpressibleByBooleanLiteral, Expressibl
     public init(dictionaryLiteral elements: (String, JSON)...) { self = .object(JSONObject(elements)) }
 }
 
+extension JSONObject: ExpressibleByDictionaryLiteral {
+    public init(dictionaryLiteral elements: (String, JSON)...) { self.init(elements) }
+}
+
 // MARK: - Conversions
 
 extension JSON {

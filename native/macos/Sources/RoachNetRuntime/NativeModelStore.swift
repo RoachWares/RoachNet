@@ -74,9 +74,93 @@ final class NativeModelStore {
 
     private func nativeEntry(_ name: String) -> Entry? {
         guard let directory = try? directory(for: name),
-              Files.exists(Path.join(directory, "model.gguf")),
               let manifest = JSON.read(contentsOf: Path.join(directory, "manifest.json")) else { return nil }
-        return Entry(name: manifest["name"].stringValue ?? name, directory: directory, manifest: manifest)
+        return NativeModelStore.entry(directory: directory, manifest: manifest, fallbackName: name)
+    }
+
+    /// A model is its folder's model.gguf, or, for one made with /api/create,
+    /// the base model's file named in the manifest (read in place, never copied).
+    static func entry(directory: String, manifest: JSON, fallbackName: String) -> Entry? {
+        let name = manifest["name"].stringValue ?? fallbackName
+        if Files.exists(Path.join(directory, "model.gguf")) { return Entry(name: name, directory: directory, manifest: manifest) }
+        if let file = manifest["modelFile"].stringValue, Files.exists(file) {
+            return Entry(name: name, directory: directory, manifest: manifest, externalModelPath: file)
+        }
+        return nil
+    }
+
+    /// Ollama's /api/create: a new name over an existing model with its own
+    /// system prompt, default parameters and opening messages.
+    func createDerived(_ rawName: String, from base: Entry, profile: JSON) throws -> Entry {
+        let name = try NativeModelStore.normalize(rawName).name
+        guard name != base.name else { throw requestError("A model can't be created from itself.", 400) }
+        if let existing = nativeEntry(name), existing.manifest["derivedFrom"].isUndefined {
+            throw requestError("\(name) is a downloaded model; pick another name.", 409)
+        }
+        let directory = try directory(for: name)
+        try Files.mkdirp(directory)
+        var manifest = base.manifest.object
+        manifest["name"] = JSON(name)
+        manifest["source"] = "create"
+        manifest["derivedFrom"] = JSON(base.manifest["derivedFrom"].stringValue ?? base.name)
+        manifest.remove("modelFile")
+        // A model made from a made model keeps the base's settings under its own.
+        var merged = base.manifest["profile"].object
+        for (key, value) in profile.object { merged[key] = value }
+        manifest["profile"] = .object(merged)
+        manifest["modifiedAt"] = JSON(JS.isoNow())
+        // A hard link shares the weights on disk and outlives the base model;
+        // across volumes the base file is read in place instead.
+        let destination = Path.join(directory, "model.gguf")
+        try? FileManager.default.removeItem(atPath: destination)
+        var external: String? = nil
+        if (try? FileManager.default.linkItem(atPath: base.modelPath, toPath: destination)) == nil {
+            manifest["modelFile"] = JSON(base.modelPath)
+            external = base.modelPath
+        }
+        try Files.writePrettyJSON(.object(manifest), to: Path.join(directory, "manifest.json"))
+        return Entry(name: name, directory: directory, manifest: .object(manifest), externalModelPath: external)
+    }
+
+    /// Settings layered onto a model in place (an imported file made with /api/create).
+    func setProfile(_ entry: Entry, _ profile: JSON) throws -> Entry {
+        var manifest = entry.manifest.object
+        var merged = manifest["profile"].object
+        for (key, value) in profile.object { merged[key] = value }
+        manifest["profile"] = .object(merged)
+        manifest["modifiedAt"] = JSON(JS.isoNow())
+        try Files.writePrettyJSON(.object(manifest), to: Path.join(entry.directory, "manifest.json"))
+        return Entry(name: entry.name, directory: entry.directory, manifest: .object(manifest), externalModelPath: entry.externalModelPath)
+    }
+
+    /// `/api/copy`: a second name for the same weights, linked rather than copied.
+    func copy(_ entry: Entry, as rawName: String) throws -> Entry {
+        let name = try NativeModelStore.normalize(rawName).name
+        guard name != entry.name else { throw requestError("A model can't be copied onto itself.", 400) }
+        if entry.isExternal || !entry.manifest["derivedFrom"].isUndefined {
+            return try createDerived(name, from: entry, profile: .object(JSONObject()))
+        }
+        let directory = try directory(for: name)
+        try Files.mkdirp(directory)
+        let destination = Path.join(directory, "model.gguf")
+        try? FileManager.default.removeItem(atPath: destination)
+        if (try? FileManager.default.linkItem(atPath: entry.modelPath, toPath: destination)) == nil {
+            try FileManager.default.copyItem(atPath: entry.modelPath, toPath: destination)
+        }
+        var manifest = entry.manifest.object
+        manifest["name"] = JSON(name)
+        manifest["modifiedAt"] = JSON(JS.isoNow())
+        try Files.writePrettyJSON(.object(manifest), to: Path.join(directory, "manifest.json"))
+        return Entry(name: name, directory: directory, manifest: .object(manifest))
+    }
+
+    /// The file on disk behind a model path (device and inode), so models that
+    /// share weights through links share one loaded engine too.
+    static func fileIdentity(_ path: String) -> String {
+        let resolved = (path as NSString).resolvingSymlinksInPath
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: resolved),
+              let device = attributes[.systemNumber] as? NSNumber, let inode = attributes[.systemFileNumber] as? NSNumber else { return resolved }
+        return "\(device.int64Value):\(inode.int64Value)"
     }
 
     func list() -> [Entry] {
@@ -90,8 +174,8 @@ final class NativeModelStore {
             let directory = Path.dirname(Path.join(root, relative))
             if let manifest = JSON.read(contentsOf: Path.join(directory, "manifest.json")),
                let name = manifest["name"].stringValue,
-               Files.exists(Path.join(directory, "model.gguf")) {
-                entries.append(Entry(name: name, directory: directory, manifest: manifest))
+               let entry = NativeModelStore.entry(directory: directory, manifest: manifest, fallbackName: name) {
+                entries.append(entry)
             }
         }
         let native = Set(entries.map(\.name))
@@ -333,7 +417,10 @@ final class NativeModelStore {
         try Files.mkdirp(directory)
         let destination = Path.join(directory, "model.gguf")
         try? FileManager.default.removeItem(atPath: destination)
-        try FileManager.default.copyItem(atPath: path, toPath: destination)
+        // Linked when the file is on the same volume: no second copy of the weights.
+        if (try? FileManager.default.linkItem(atPath: path, toPath: destination)) == nil {
+            try FileManager.default.copyItem(atPath: path, toPath: destination)
+        }
         let size = (try? FileManager.default.attributesOfItem(atPath: destination)[.size] as? NSNumber)?.int64Value ?? 0
         let manifest: JSON = [
             "name": JSON(name), "source": JSON("file"), "sha256": JSON(try SHA256Digest.hexOfFile(atPath: destination)),

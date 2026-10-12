@@ -6,6 +6,9 @@ public struct GenerationOptions {
     public var maxTokens = 512
     /// Text that ends generation; it is not included in the output.
     public var stop: [String] = []
+    /// Limits what may be generated (JSON, a JSON Schema). Generation ends
+    /// as soon as the constrained output is complete.
+    public var constraint: GenerationConstraint?
 
     public init() {}
 }
@@ -32,6 +35,10 @@ public final class InferenceEngine {
     public let session: InferenceSession
     public let chatTemplate: ChatTemplate
     public let defaultSystemPrompt: String?
+    /// The model reasons in a `<think>` block first (Qwen3, DeepSeek R1 and
+    /// others trained that way), so a reply can be split into thinking and
+    /// content, and thinking can be switched off.
+    public let supportsThinking: Bool
 
     public init(model: TransformerModel, contextLength: Int? = nil) {
         self.model = model
@@ -39,6 +46,12 @@ public final class InferenceEngine {
         let source = model.file["tokenizer.chat_template"]?.stringValue
         chatTemplate = ChatTemplate.detect(templateSource: source, tokenizer: model.tokenizer)
         defaultSystemPrompt = chatTemplate == .chatML ? ChatTemplate.defaultSystemPrompt(in: source) : nil
+        supportsThinking = InferenceEngine.thinks(templateSource: source)
+    }
+
+    public static func thinks(templateSource: String?) -> Bool {
+        guard let source = templateSource else { return false }
+        return source.contains("enable_thinking") || source.contains("</think>")
     }
 
     public convenience init(modelPath: String, contextLength: Int? = nil) throws {
@@ -46,6 +59,24 @@ public final class InferenceEngine {
     }
 
     public var tokenizer: Tokenizer { model.tokenizer }
+
+    /// How this model pools embeddings: GGUF `<arch>.pooling_type`, else mean.
+    public var pooling: InferenceSession.Pooling {
+        let value = model.file["\(model.hyperparameters.architecture).pooling_type"]?.doubleValue.map { Int($0) }
+        return value.flatMap(InferenceSession.Pooling.init(rawValue:)) ?? .mean
+    }
+
+    /// An L2-normalized embedding of `text`, truncated to the context when `truncate`.
+    public func embed(_ text: String, truncate: Bool = true, normalize: Bool = true) throws -> (vector: [Float], tokens: Int) {
+        var tokens = tokenizer.encode(text, addSpecial: true, parseSpecial: false)
+        // Last-token pooling reads the end-of-text token's state (Qwen3 embedding models).
+        if pooling == .last, let eos = tokenizer.eos, tokens.last != eos { tokens.append(eos) }
+        if tokens.count > session.contextLength {
+            guard truncate else { throw InferenceError.invalid("Input is \(tokens.count) tokens; the context holds \(session.contextLength).") }
+            tokens = Array(tokens.prefix(session.contextLength))
+        }
+        return (try session.embed(tokens, pooling: pooling, normalize: normalize), tokens.count)
+    }
 
     public func renderChat(_ messages: [ChatMessage]) -> String {
         chatTemplate.render(messages, defaultSystem: defaultSystemPrompt)
@@ -105,15 +136,44 @@ public final class InferenceEngine {
             }
         }
 
+        let constraint = options.constraint
         generation: while generated.count < limit {
             if cancelled() { reason = .cancelled; break }
-            let token = sampler.sample(logits, history: session.cachedTokens)
+            let token: Int32
+            if let constraint {
+                let tokenizer = self.tokenizer
+                let current = decoder
+                guard let chosen = sampler.sample(logits, history: session.cachedTokens, allowed: { id in
+                    if tokenizer.isEndOfGeneration(id) { return constraint.canEnd }
+                    let bytes = tokenizer.piece(id)
+                    guard !bytes.isEmpty else { return false }
+                    var probe = current
+                    let piece = probe.append(bytes)
+                    if piece.isEmpty { return constraint.insideFreeText }
+                    return constraint.allows(piece)
+                }) else {
+                    reason = .endOfGeneration
+                    break
+                }
+                token = chosen
+            } else {
+                token = sampler.sample(logits, history: session.cachedTokens)
+            }
             if tokenizer.isEndOfGeneration(token) {
                 reason = .endOfGeneration
                 break
             }
             generated.append(token)
-            text += decoder.append(tokenizer.piece(token))
+            let piece = decoder.append(tokenizer.piece(token))
+            text += piece
+            if let constraint, !piece.isEmpty {
+                constraint.accept(piece)
+                if constraint.isComplete {
+                    flushReady(final: true)
+                    reason = .endOfGeneration
+                    break generation
+                }
+            }
             for stop in stops {
                 if let range = text.range(of: stop) {
                     text = String(text[..<range.lowerBound])

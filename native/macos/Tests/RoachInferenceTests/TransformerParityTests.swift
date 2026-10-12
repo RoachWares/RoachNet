@@ -56,7 +56,7 @@ final class TransformerParityTests: XCTestCase {
         options.maxTokens = 40
         options.stop = ["Lily"]
         var streamed = ""
-        let result = try engine.generate(prompt: "Once upon a time", options: options) { streamed += $0 }
+        let result = try engine.generate(prompt: "Once upon a time", options: options, onText: { streamed += $0 })
         XCTAssertEqual(result.stopReason, .stopSequence)
         XCTAssertEqual(result.text, ", there was a little girl named ")
         XCTAssertEqual(streamed, result.text)
