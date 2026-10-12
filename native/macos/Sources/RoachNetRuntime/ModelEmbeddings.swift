@@ -19,7 +19,7 @@ extension NativeModelServer {
             }
             inputs = input.array.compactMap(\.stringValue)
         }
-        let item = try load(model, contextLength: body["options"]["num_ctx"].numberValue.map { Int($0) }, keepAlive: keepAlive(body["keep_alive"]))
+        let item = try load(model, contextLength: body["options"]["num_ctx"].clampedInt(), keepAlive: keepAlive(body["keep_alive"]))
         let loadDuration = Date().timeIntervalSince(started)
         if inputs.isEmpty {
             // Ollama loads the model and answers with nothing for an empty input.
@@ -27,7 +27,7 @@ extension NativeModelServer {
                 : .json(200, ["model": JSON(model), "embeddings": []])
         }
         let truncate = body["truncate"].isUndefined ? true : body["truncate"].truthy
-        let dimensions = body["dimensions"].numberValue.map { Int($0) }
+        let dimensions = body["dimensions"].clampedInt()
         if let dimensions, dimensions < 1 { throw requestError("dimensions must be at least 1.", 400) }
 
         let trace = embeddingTrace(model: item.name, inputs: inputs, traceparent: traceparent)

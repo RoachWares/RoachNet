@@ -503,7 +503,7 @@ final class NativeModelServer {
             return ["name": JSON(item.name), "model": JSON(item.name),
                     "digest": manifest["sha256"] || "", "details": details(manifest),
                     "expires_at": JSON(item.expiresAt == .distantFuture || item.expiresAt.timeIntervalSinceNow > 1e9 ? "2318-01-01T00:00:00Z" : JS.iso(item.expiresAt)),
-                    "size": JSON(item.footprint == nil ? Int(manifest["size"].numberValue ?? 0) : item.resident),
+                    "size": JSON(item.footprint == nil ? (manifest["size"].clampedInt(0...(1 << 50)) ?? 0) : item.resident),
                     "size_vram": JSON(item.engine.session.backend is CPUBackend ? 0 : item.resident),
                     "context_length": JSON(item.contextLength), "backend": JSON(item.engine.session.backend.name),
                     "slots": JSON(item.slotCount)]
@@ -516,15 +516,16 @@ final class NativeModelServer {
         var options = GenerationOptions()
         let o = value
         if let v = o["temperature"].numberValue { options.sampling.temperature = Float(v) }
-        if let v = o["top_k"].numberValue { options.sampling.topK = Int(v) }
+        if let v = o["top_k"].clampedInt() { options.sampling.topK = v }
         if let v = o["top_p"].numberValue { options.sampling.topP = Float(v) }
         if let v = o["min_p"].numberValue { options.sampling.minP = Float(v) }
         if let v = o["repeat_penalty"].numberValue { options.sampling.repeatPenalty = Float(v) }
-        if let v = o["repeat_last_n"].numberValue { options.sampling.repeatLastN = Int(v) }
+        if let v = o["repeat_last_n"].clampedInt() { options.sampling.repeatLastN = v }
         if let v = o["presence_penalty"].numberValue { options.sampling.presencePenalty = Float(v) }
         if let v = o["frequency_penalty"].numberValue { options.sampling.frequencyPenalty = Float(v) }
-        if let v = o["seed"].numberValue, v >= 0 { options.sampling.seed = UInt64(v) }
-        if let v = o["num_predict"].numberValue { options.maxTokens = Int(v) }
+        // UInt64(Double) traps at 2^64 and past it too; a seed that large wraps into range instead.
+        if let v = o["seed"].numberValue, v >= 0, v.isFinite { options.sampling.seed = UInt64(v < 0x1p64 ? v : v.truncatingRemainder(dividingBy: 0x1p64)) }
+        if let v = o["num_predict"].clampedInt() { options.maxTokens = v }
         options.stop = o["stop"].array.compactMap(\.stringValue)
         return options
     }

@@ -151,8 +151,8 @@ extension NativeRuntime {
         _ = try tracer.store.updateSettings { settings in
             if let value = body["enabled"].boolValue { settings.enabled = value }
             if let value = body["captureContent"].boolValue { settings.captureContent = value }
-            if let value = body["maxContentChars"].numberValue { settings.maxContentChars = Int(value) }
-            if let value = body["retentionDays"].numberValue { settings.retentionDays = Int(value) }
+            if let value = body["maxContentChars"].clampedInt() { settings.maxContentChars = value }
+            if let value = body["retentionDays"].clampedInt() { settings.retentionDays = value }
             if let value = body["traceModelServer"].boolValue { settings.traceModelServer = value }
             let export = body["export"]
             if let value = export["enabled"].boolValue { settings.export.enabled = value }

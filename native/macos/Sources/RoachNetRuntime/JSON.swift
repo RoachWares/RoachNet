@@ -114,6 +114,16 @@ extension JSON {
     public var stringValue: String? { if case .string(let value) = self { return value }; return nil }
     public var boolValue: Bool? { if case .bool(let value) = self { return value }; return nil }
     public var numberValue: Double? { if case .number(let value) = self { return value }; return nil }
+    /// The number rounded toward zero and held inside `range`; nil when it
+    /// isn't a number or is NaN. `Int(Double)` traps on NaN, infinities and
+    /// values past Int's range, so numbers from a request body go through
+    /// this instead of `Int(numberValue)`.
+    public func clampedInt(_ range: ClosedRange<Int> = Int(Int32.min)...Int(Int32.max)) -> Int? {
+        guard case .number(let value) = self, !value.isNaN else { return nil }
+        if value <= Double(range.lowerBound) { return range.lowerBound }
+        if value >= Double(range.upperBound) { return range.upperBound }
+        return Int(value.rounded(.towardZero))
+    }
     public var arrayValue: [JSON]? { if case .array(let value) = self { return value }; return nil }
     public var objectValue: JSONObject? { if case .object(let value) = self { return value }; return nil }
     public var isArray: Bool { arrayValue != nil }

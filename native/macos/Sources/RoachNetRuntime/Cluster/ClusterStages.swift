@@ -4,6 +4,25 @@ import RoachInference
 
 /// The serving side: stages this Mac runs for the Mac that asked.
 extension ClusterNode {
+    /// A model or shard SHA-256 as the other Mac sends it: 64 lowercase or
+    /// uppercase ASCII hex digits. It becomes part of a file name under the
+    /// shard folder, so nothing else (no separators, no dots) gets through.
+    static func isSHA256Hex(_ value: String) -> Bool {
+        value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }
+    }
+
+    /// A whole number from a request header, or nil when it is missing, not
+    /// whole, or outside `range`. `Int(Double)` traps on huge or NaN values,
+    /// so peer-supplied numbers never go through it unchecked.
+    static func integer(_ value: JSON, in range: ClosedRange<Int>) -> Int? {
+        guard let number = value.numberValue, number.isFinite, number.rounded() == number,
+              number >= Double(range.lowerBound), number <= Double(range.upperBound) else { return nil }
+        return Int(number)
+    }
+
+    /// Room left on the shard volume after a write, so a long transfer can't fill the disk.
+    static let shardDiskReserve: Int64 = 4 << 30
+
     /// Finds the weights for a stage: the whole model already on this Mac
     /// (matched by its SHA-256), or a shard sent earlier. Loads it when found;
     /// otherwise asks for the shard, from where a cut-off transfer stopped.
@@ -12,10 +31,13 @@ extension ClusterNode {
               let stage = header["layers"].stringValue.flatMap(ModelStage.init), let model = header["model"].stringValue else {
             throw ClusterError.protocolError("A stage request is missing its details.")
         }
+        guard ClusterNode.isSHA256Hex(digest) else { throw ClusterError.protocolError("A stage request's model digest isn't a SHA-256.") }
         if let existing = lock.withLock({ hosted[id] }) {
             return ["ok": true, "backend": JSON(existing.backend.name), "maxBatch": JSON(existing.backend.maxBatch)]
         }
-        let context = Int(header["context"].numberValue ?? 4_096)
+        guard let context = header["context"].isUndefined ? 4_096 : ClusterNode.integer(header["context"], in: 1...1_048_576) else {
+            throw ClusterError.protocolError("A stage request's context length is out of range.")
+        }
         let shardPath = Path.join(shardRoot, "\(digest)-\(stage.description).gguf")
         var source: (path: String, stage: ModelStage?)?
         if let whole = store.list().first(where: { $0.manifest["sha256"].stringValue == digest }) {
@@ -52,11 +74,16 @@ extension ClusterNode {
         guard let digest = header["digest"].stringValue, let stage = header["layers"].stringValue.flatMap(ModelStage.init) else {
             throw ClusterError.protocolError("A shard piece is missing its details.")
         }
-        guard digest.allSatisfy({ $0.isHexDigit }) else { throw ClusterError.protocolError("A shard digest isn't hex.") }
+        guard ClusterNode.isSHA256Hex(digest) else { throw ClusterError.protocolError("A shard digest isn't a SHA-256.") }
         try Files.mkdirp(shardRoot)
         let shardPath = Path.join(shardRoot, "\(digest)-\(stage.description).gguf")
         let partial = shardPath + ".part"
-        let offset = Int(header["offset"].numberValue ?? 0)
+        guard let offset = header["offset"].isUndefined ? 0 : ClusterNode.integer(header["offset"], in: 0...(1 << 40)) else {
+            throw ClusterError.protocolError("A shard piece's offset is out of range.")
+        }
+        guard SetupPlatform.availableBytes(at: shardRoot) - Int64(payload.count) >= ClusterNode.shardDiskReserve else {
+            throw requestError("\(settings.name) hasn't enough free disk for the shard; it keeps \(SystemMemory.gigabytes(Int(ClusterNode.shardDiskReserve))) free.", 507)
+        }
         if offset == 0 { FileManager.default.createFile(atPath: partial, contents: nil) }
         guard let handle = FileHandle(forWritingAtPath: partial) else { throw ClusterError.protocolError("Couldn't write the shard.") }
         let size = try handle.seekToEnd()
@@ -82,10 +109,11 @@ extension ClusterNode {
         guard let stage = lock.withLock({ hosted[header["stage"].stringValue ?? ""] }) else {
             throw ClusterError.remote("\(settings.name) is no longer running that stage.")
         }
-        let position = Int(header["position"].numberValue ?? 0)
-        let count = Int(header["count"].numberValue ?? 1)
+        let context = stage.backend.contextLength
         let width = stage.backend.model.hyperparameters.embeddingLength
-        guard count >= 1, payload.count == count * width * 4, position + count <= stage.backend.contextLength else {
+        guard let position = header["position"].isUndefined ? 0 : ClusterNode.integer(header["position"], in: 0...context),
+              let count = header["count"].isUndefined ? 1 : ClusterNode.integer(header["count"], in: 1...context),
+              payload.count == count * width * 4, position + count <= context else {
             throw ClusterError.protocolError("A forward request doesn't fit the stage.")
         }
         stage.lock.lock()

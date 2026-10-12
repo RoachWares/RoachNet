@@ -200,14 +200,14 @@ struct OrgAgentLoopAdapter: OrgAdapter {
             guard (200..<300).contains(response.status) else { throw RuntimeError("model server returned \(response.status)") }
             let json = try JSON.parse(response.body)
             return ChatTurn(content: json["message"]["content"].stringValue ?? "",
-                            usage: OrgUsage(inputTokens: Int(json["prompt_eval_count"].numberValue ?? 0), outputTokens: Int(json["eval_count"].numberValue ?? 0)))
+                            usage: OrgUsage(inputTokens: (json["prompt_eval_count"].clampedInt(0...(1 << 50)) ?? 0), outputTokens: (json["eval_count"].clampedInt(0...(1 << 50)) ?? 0)))
         case .openAICompatible:
             let body: JSON = ["model": JSON(model), "messages": .array(messages), "temperature": JSON(temperature)]
             let response = try HTTPClient.request(baseURL + "/v1/chat/completions", method: "POST", headers: headers, body: body.serializedData(), timeoutMs: timeoutMs, maxResponseBytes: 8 << 20)
             guard (200..<300).contains(response.status) else { throw RuntimeError("provider returned \(response.status)") }
             let json = try JSON.parse(response.body)
             return ChatTurn(content: json["choices"][0]["message"]["content"].stringValue ?? "",
-                            usage: OrgUsage(inputTokens: Int(json["usage"]["prompt_tokens"].numberValue ?? 0), outputTokens: Int(json["usage"]["completion_tokens"].numberValue ?? 0)))
+                            usage: OrgUsage(inputTokens: (json["usage"]["prompt_tokens"].clampedInt(0...(1 << 50)) ?? 0), outputTokens: (json["usage"]["completion_tokens"].clampedInt(0...(1 << 50)) ?? 0)))
         }
     }
 
@@ -391,11 +391,11 @@ struct OrgHTTPAdapter: OrgAdapter {
         result.error = json["error"].stringValue
         if json["usage"].isObject {
             let usage = json["usage"]
-            result.usage = OrgUsage(inputTokens: Int(usage["inputTokens"].numberValue ?? 0), outputTokens: Int(usage["outputTokens"].numberValue ?? 0),
-                                    cachedInputTokens: Int(usage["cachedInputTokens"].numberValue ?? 0), provider: usage["provider"].stringValue ?? defaultProvider, model: usage["model"].stringValue)
+            result.usage = OrgUsage(inputTokens: (usage["inputTokens"].clampedInt(0...(1 << 50)) ?? 0), outputTokens: (usage["outputTokens"].clampedInt(0...(1 << 50)) ?? 0),
+                                    cachedInputTokens: (usage["cachedInputTokens"].clampedInt(0...(1 << 50)) ?? 0), provider: usage["provider"].stringValue ?? defaultProvider, model: usage["model"].stringValue)
         }
-        if let cents = json["costCents"].numberValue {
-            result.costCents = max(0, Int(cents)); result.costStatus = "reported"; result.billingType = json["billingType"].stringValue ?? "metered_api"
+        if let cents = json["costCents"].clampedInt(0...(1 << 50)) {
+            result.costCents = cents; result.costStatus = "reported"; result.billingType = json["billingType"].stringValue ?? "metered_api"
         } else if result.usage != nil {
             result.costStatus = "unpriced"; result.billingType = json["billingType"].stringValue ?? "unknown"
         }

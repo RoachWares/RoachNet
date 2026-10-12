@@ -169,9 +169,32 @@ extension NativeModelServer {
         if let (provider, model) = SubscriptionModels.parse(request.model) {
             return try executePlan(request, provider: provider, model: model, endpoint: endpoint, traceparent: traceparent, onDelta: onDelta)
         }
+        var replied = false
+        do {
+            return try executeNative(request, endpoint: endpoint, traceparent: traceparent, writer: writer) { delta in
+                replied = true
+                onDelta(delta)
+            }
+        } catch let error as RuntimeError where error.statusCode == 502 && !replied && splitModelBroke(request.model) {
+            // A Mac in the cluster went away before any of the reply was sent.
+            // The next load plans the model again without it (on this Mac
+            // alone when it fits), so answer this same request that way.
+            RuntimeLog.write("cluster: \(request.model) lost a Mac before replying; loading it again without that Mac")
+            return try executeNative(request, endpoint: endpoint, traceparent: traceparent, writer: writer, onDelta: onDelta)
+        }
+    }
+
+    /// True when the model's loaded copy is split across the cluster and one of its Macs failed.
+    func splitModelBroke(_ rawName: String) -> Bool {
+        guard let name = try? NativeModelStore.normalize(rawName).name else { return false }
+        return lockedLoaded { $0[name]?.isBroken ?? false }
+    }
+
+    private func executeNative(_ request: ModelRequest, endpoint: String, traceparent: String?, writer: HTTPStreamWriter?,
+                               onDelta: @escaping (ModelDelta) -> Void) throws -> ModelReply {
         let started = Date()
         let (values, profile) = settings(request)
-        let item = try load(request.model, contextLength: values["num_ctx"].numberValue.map { Int($0) }, keepAlive: keepAlive(request.keepAlive))
+        let item = try load(request.model, contextLength: values["num_ctx"].clampedInt(), keepAlive: keepAlive(request.keepAlive))
         let loadDuration = Date().timeIntervalSince(started)
         let engine = item.engine
         var options = NativeModelServer.options(.object(values))
@@ -303,7 +326,7 @@ extension NativeModelServer {
     func preflight(_ request: ModelRequest) throws {
         guard SubscriptionModels.parse(request.model) == nil else { return }
         let values = settings(request).values
-        _ = try load(request.model, contextLength: values["num_ctx"].numberValue.map { Int($0) }, keepAlive: keepAlive(request.keepAlive))
+        _ = try load(request.model, contextLength: values["num_ctx"].clampedInt(), keepAlive: keepAlive(request.keepAlive))
     }
 
     /// `{"name": …, "arguments": …}` for the tools a reply must call; with

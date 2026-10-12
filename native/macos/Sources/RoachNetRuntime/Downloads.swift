@@ -876,7 +876,7 @@ extension NativeRuntime {
         if let generation { headers["traceparent"] = generation.traceparent }
         do {
             let reply = try HTTPClient.fetchJSON(urlJoin("/api/chat", config.ollamaBaseUrl), method: "POST", headers: headers, body: body.serializedData(), timeoutMs: 120_000)
-            let usage = TraceUsage(inputTokens: Int(reply["prompt_eval_count"].numberValue ?? 0), outputTokens: Int(reply["eval_count"].numberValue ?? 0))
+            let usage = TraceUsage(inputTokens: (reply["prompt_eval_count"].clampedInt(0...(1 << 50)) ?? 0), outputTokens: (reply["eval_count"].clampedInt(0...(1 << 50)) ?? 0))
             generation?.end(output: reply["message"]["content"], usage: usage, cost: .local)
             trace?.end(status: "ok", output: reply["message"]["content"])
             return reply

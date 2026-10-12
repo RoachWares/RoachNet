@@ -120,10 +120,10 @@ final class OrgCLIStream {
             }
             let tokens = message["usage"]
             if tokens.isObject {
-                let read = Int(tokens["cache_read_input_tokens"].numberValue ?? 0)
-                let created = Int(tokens["cache_creation_input_tokens"].numberValue ?? 0)
-                generationUsage = TraceUsage(inputTokens: Int(tokens["input_tokens"].numberValue ?? 0) + read + created,
-                                             outputTokens: Int(tokens["output_tokens"].numberValue ?? 0), cachedInputTokens: read)
+                let read = (tokens["cache_read_input_tokens"].clampedInt(0...(1 << 50)) ?? 0)
+                let created = (tokens["cache_creation_input_tokens"].clampedInt(0...(1 << 50)) ?? 0)
+                generationUsage = TraceUsage(inputTokens: (tokens["input_tokens"].clampedInt(0...(1 << 50)) ?? 0) + read + created,
+                                             outputTokens: (tokens["output_tokens"].clampedInt(0...(1 << 50)) ?? 0), cachedInputTokens: read)
             }
         case "user":
             for block in event["message"]["content"].array where block["type"].stringValue == "tool_result" {
@@ -139,13 +139,13 @@ final class OrgCLIStream {
             sessionId = event["session_id"].stringValue ?? sessionId
             finalText = event["result"].stringValue ?? finalText
             costUsd = event["total_cost_usd"].numberValue ?? costUsd
-            turns = Int(event["num_turns"].numberValue ?? Double(turns))
+            turns = event["num_turns"].clampedInt(0...(1 << 50)) ?? turns
             let tokens = event["usage"]
             if tokens.isObject {
-                let read = Int(tokens["cache_read_input_tokens"].numberValue ?? 0)
-                let created = Int(tokens["cache_creation_input_tokens"].numberValue ?? 0)
-                usage = TraceUsage(inputTokens: Int(tokens["input_tokens"].numberValue ?? 0) + read + created,
-                                   outputTokens: Int(tokens["output_tokens"].numberValue ?? 0), cachedInputTokens: read)
+                let read = (tokens["cache_read_input_tokens"].clampedInt(0...(1 << 50)) ?? 0)
+                let created = (tokens["cache_creation_input_tokens"].clampedInt(0...(1 << 50)) ?? 0)
+                usage = TraceUsage(inputTokens: (tokens["input_tokens"].clampedInt(0...(1 << 50)) ?? 0) + read + created,
+                                   outputTokens: (tokens["output_tokens"].clampedInt(0...(1 << 50)) ?? 0), cachedInputTokens: read)
             }
             if event["is_error"].boolValue == true || (event["subtype"].stringValue.map { $0 != "success" } ?? false) {
                 reportedFailure = true
@@ -233,8 +233,8 @@ final class OrgCLIStream {
             }
         case "turn.completed":
             let tokens = event["usage"]
-            let turn = TraceUsage(inputTokens: Int(tokens["input_tokens"].numberValue ?? 0), outputTokens: Int(tokens["output_tokens"].numberValue ?? 0),
-                                  cachedInputTokens: Int(tokens["cached_input_tokens"].numberValue ?? 0))
+            let turn = TraceUsage(inputTokens: (tokens["input_tokens"].clampedInt(0...(1 << 50)) ?? 0), outputTokens: (tokens["output_tokens"].clampedInt(0...(1 << 50)) ?? 0),
+                                  cachedInputTokens: (tokens["cached_input_tokens"].clampedInt(0...(1 << 50)) ?? 0))
             generationUsage = turn
             usage = usage + turn
             endGeneration()
@@ -284,9 +284,9 @@ final class OrgCLIStream {
         case "result":
             sawResult = true
             let stats = event["stats"]
-            usage = TraceUsage(inputTokens: Int(stats["input_tokens"].numberValue ?? stats["prompt_tokens"].numberValue ?? 0),
-                               outputTokens: Int(stats["output_tokens"].numberValue ?? stats["candidates_tokens"].numberValue ?? 0),
-                               cachedInputTokens: Int(stats["cached"].numberValue ?? stats["cached_tokens"].numberValue ?? 0))
+            usage = TraceUsage(inputTokens: (stats["input_tokens"].clampedInt(0...(1 << 50)) ?? stats["prompt_tokens"].clampedInt(0...(1 << 50)) ?? 0),
+                               outputTokens: (stats["output_tokens"].clampedInt(0...(1 << 50)) ?? stats["candidates_tokens"].clampedInt(0...(1 << 50)) ?? 0),
+                               cachedInputTokens: (stats["cached"].clampedInt(0...(1 << 50)) ?? stats["cached_tokens"].clampedInt(0...(1 << 50)) ?? 0))
             generationUsage = usage
             costUsd = stats["total_cost_usd"].numberValue ?? costUsd
             if let status = event["status"].stringValue, status != "success" {
@@ -319,9 +319,9 @@ final class OrgCLIStream {
             endTool(id: id, output: failed ? state["error"] : state["output"], failed: failed)
         case "step_finish":
             let tokens = part["tokens"]
-            let step = TraceUsage(inputTokens: Int(tokens["input"].numberValue ?? 0) + Int(tokens["cache"]["read"].numberValue ?? 0),
-                                  outputTokens: Int(tokens["output"].numberValue ?? 0) + Int(tokens["reasoning"].numberValue ?? 0),
-                                  cachedInputTokens: Int(tokens["cache"]["read"].numberValue ?? 0))
+            let step = TraceUsage(inputTokens: (tokens["input"].clampedInt(0...(1 << 50)) ?? 0) + (tokens["cache"]["read"].clampedInt(0...(1 << 50)) ?? 0),
+                                  outputTokens: (tokens["output"].clampedInt(0...(1 << 50)) ?? 0) + (tokens["reasoning"].clampedInt(0...(1 << 50)) ?? 0),
+                                  cachedInputTokens: (tokens["cache"]["read"].clampedInt(0...(1 << 50)) ?? 0))
             generationUsage = step
             usage = usage + step
             if let cost = part["cost"].numberValue { costUsd = (costUsd ?? 0) + cost; stepCost = cost }

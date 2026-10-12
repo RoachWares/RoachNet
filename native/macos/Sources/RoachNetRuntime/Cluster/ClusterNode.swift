@@ -35,6 +35,10 @@ final class ClusterNode {
     private(set) var listeningPort: UInt16?
     var hosted: [String: HostedStage] = [:]
     var digests: [String: String] = [:]
+    /// The node ID each added address answered with, learned at the handshake.
+    /// Bonjour names a Mac by host name while it may have been added by IP
+    /// address, so "already added" is decided by node ID.
+    var peerIDs: [String: String] = [:]
     private var reaper: DispatchSourceTimer?
     #if canImport(dnssd)
     private let bonjour = ClusterBonjour()
@@ -103,6 +107,11 @@ final class ClusterNode {
             next.secret = ClusterKey.random().bytes.base64EncodedString()
         }
         let restart = next.enabled != settings.enabled || next.secret != settings.secret || next.port != settings.port
+        if next.secret != settings.secret {
+            peerIDs.removeAll()
+        } else {
+            peerIDs = peerIDs.filter { next.peers.contains($0.key) }
+        }
         settings = next
         save()
         lock.unlock()
@@ -214,15 +223,34 @@ final class ClusterNode {
     /// Macs advertising RoachNet Cluster on this network, besides this one.
     func nearby() -> [JSON] {
         #if canImport(dnssd)
-        let (me, peers, fingerprint) = lock.withLock { (settings.nodeID, Set(settings.peers), key?.fingerprint) }
-        return ClusterBonjour.browse().filter { $0.id != me }.map { found in
+        let (me, peers, fingerprint, known) = lock.withLock { (settings.nodeID, settings.peers, key?.fingerprint, peerIDs) }
+        let found = ClusterBonjour.browse().filter { $0.id != me }
+        // An added Mac this one hasn't talked to yet: ask it who it is (short
+        // timeout, in parallel), but only when one of the Macs found isn't matched yet.
+        let addresses = Set(peers.map { $0.lowercased() })
+        let unmatched = found.contains { !addresses.contains($0.address.lowercased()) && !known.values.contains($0.id) }
+        let unknown = peers.filter { known[$0] == nil }
+        if unmatched, fingerprint != nil, !unknown.isEmpty {
+            DispatchQueue.concurrentPerform(iterations: unknown.count) { index in
+                (try? open(unknown[index], timeout: 2))?.close()
+            }
+        }
+        let ids = lock.withLock { Set(peers.compactMap { peerIDs[$0] }) }
+        return found.map { found in
             ["name": JSON(found.name), "address": JSON(found.address), "sameCluster": JSON(fingerprint != nil && found.fingerprint == fingerprint),
-             "added": JSON(peers.contains(found.address))]
+             "added": JSON(ClusterNode.isAdded(found, addresses: addresses, ids: ids))]
         }
         #else
         return []
         #endif
     }
+
+    #if canImport(dnssd)
+    /// Added when its address was added as it is, or when an added address answered with its node ID.
+    static func isAdded(_ found: ClusterBonjour.Found, addresses: Set<String>, ids: Set<String>) -> Bool {
+        addresses.contains(found.address.lowercased()) || (!found.id.isEmpty && ids.contains(found.id.lowercased()))
+    }
+    #endif
 
     // MARK: Connections
 
@@ -236,6 +264,8 @@ final class ClusterNode {
             link.close()
             throw error
         }
+        let peer = link.peerID
+        lock.withLock { if settings.peers.contains(address) { peerIDs[address] = peer } }
         return link
     }
 

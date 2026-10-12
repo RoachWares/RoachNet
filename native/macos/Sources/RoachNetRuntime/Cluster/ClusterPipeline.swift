@@ -196,7 +196,7 @@ extension ClusterNode {
             guard let link = try? open(address, timeout: 3) else { return nil }
             defer { link.close() }
             guard let status = try? link.request(["op": "status"], timeout: 5).0 else { return nil }
-            return ClusterPlanner.Node(address: address, name: status["name"].stringValue ?? address, free: Int(status["memory"]["free"].numberValue ?? 0))
+            return ClusterPlanner.Node(address: address, name: status["name"].stringValue ?? address, free: (status["memory"]["free"].clampedInt(0...(1 << 50)) ?? 0))
         }
         guard !peers.isEmpty else { return nil }
         let sizes = ModelFootprint.layerBytes(file)
@@ -220,7 +220,7 @@ extension ClusterNode {
             var (reply, _) = try link.request(header, timeout: 300)
             if reply["need"].stringValue == "shard" {
                 reply = try sendShard(over: link, header: header, file: file, digest: digest, stage: placement.stage,
-                                      from: Int(reply["offset"].numberValue ?? 0))
+                                      from: (reply["offset"].clampedInt(0...(1 << 50)) ?? 0))
             }
             guard reply["ok"].truthy else { throw ClusterError.remote("\(placement.name) couldn't start its stage.") }
             RuntimeLog.write("cluster: \(placement.name) runs layers \(placement.stage) of \(name) (\(reply["backend"].stringValue ?? "?"))")

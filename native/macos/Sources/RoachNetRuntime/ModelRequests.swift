@@ -337,7 +337,7 @@ struct ModelRequest {
             return .object(properties: properties, order: order, required: required, additional: additional)
         case "array":
             let items = value["items"].isObject ? node(value["items"], root: root, depth: depth + 1) : .any
-            return .array(items: items, minItems: Int(value["minItems"].numberValue ?? 0), maxItems: value["maxItems"].numberValue.map { Int($0) })
+            return .array(items: items, minItems: value["minItems"].clampedInt(0...Int(Int32.max)) ?? 0, maxItems: value["maxItems"].clampedInt(0...Int(Int32.max)))
         case "string": return .string
         case "integer": return .number(integer: true)
         case "number": return .number(integer: false)

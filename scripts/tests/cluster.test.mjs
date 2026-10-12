@@ -133,15 +133,17 @@ test('a model split across two Macs answers exactly as one Mac does', needs, asy
     assert.match(refused.error, /different cluster/)
     await call(coordinator.api, 'PUT', '/api/cluster', { code: started.json.code })
 
-    // The worker goes away: the reply in flight fails clearly, then one Mac carries on alone.
+    // The worker goes away before the next request: nothing has been sent back
+    // yet, so that same request is planned again without it and one Mac answers.
     worker.child.kill('SIGKILL')
     await new Promise((resolve) => setTimeout(resolve, 300))
-    const failed = await generate(coordinator, prompts[0])
-    assert.equal(failed.status, 502, failed.text)
     const alone = await generate(coordinator, prompts[0])
     assert.equal(alone.status, 200, alone.text)
     assert.equal(alone.json.response, reference[0])
     assert.doesNotMatch((await call(coordinator.models, 'GET', '/api/ps')).json.models[0].backend, /cluster/)
+    const after = (await call(coordinator.api, 'GET', '/api/cluster?refresh=1')).json
+    assert.equal(after.peers[0].reachable, false, 'the status shows the worker as gone')
+    assert.equal(after.models.length, 0, 'no split model is left behind')
   } finally {
     for (const node of [coordinator, worker]) {
       node.child.kill('SIGTERM')

@@ -15,7 +15,7 @@ extension NativeModelServer {
             if keepAlive(request.keepAlive) == 0 {
                 unload((try? NativeModelStore.normalize(request.model).name) ?? request.model)
             } else {
-                _ = try load(request.model, contextLength: request.options["num_ctx"].numberValue.map { Int($0) }, keepAlive: keepAlive(request.keepAlive))
+                _ = try load(request.model, contextLength: request.options["num_ctx"].clampedInt(), keepAlive: keepAlive(request.keepAlive))
             }
         }
         var out = JSONObject([("model", JSON(request.model)), ("created_at", JSON(JS.isoNow()))])
