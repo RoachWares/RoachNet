@@ -10,7 +10,8 @@
 #   1. pairing   roachnet://pair link, "Pair with RoachTail", desktop lists a connected peer
 #   2. chat      a RoachClaw message reaches the model lane and the reply shows on the phone
 #   3. org join  (desktop 1.1+) an Org invite link, "Ask to join", owner approves the join
-#   4. org ok    (desktop 1.1+) the phone approves a pending board approval
+#   4. org ok    (desktop 1.1+) the phone approves a pending board approval, answering the
+#                Face ID prompt (iOS 0.3.0+) with a matching face on the enrolled simulator
 # Phases a companion build doesn't support (no identifiers yet) are reported as skipped.
 # The simulator, runtime and build output are removed afterwards; logs and screenshots
 # stay in the work directory. Nothing touches real RoachNet storage or existing simulators.
@@ -26,9 +27,10 @@ W=${ROACHNET_SIM_WORKDIR:-$(mktemp -d -t roachnet-sim-pairing)}
 [ -d "$IOS/RoachNetCompanion.xcodeproj" ] || { echo "RoachNet-iOS not found: $IOS (set ROACHNET_IOS_REPO)"; exit 2; }
 mkdir -p $W/home/tmp $W/storage
 step() { echo "[sim-pairing] $1"; }
-RPID=""; LPID=""; SIM=""; FAILED=0
+RPID=""; LPID=""; FPID=""; SIM=""; FAILED=0
 API=http://127.0.0.1:$RT_PORT
 cleanup() {
+  [ -n "$FPID" ] && kill $FPID 2>/dev/null
   [ -n "$SIM" ] && { xcrun simctl shutdown $SIM >/dev/null 2>&1; xcrun simctl delete $SIM >/dev/null 2>&1; }
   [ -n "$RPID" ] && { kill $RPID 2>/dev/null; sleep 1; kill -9 $RPID 2>/dev/null; }
   [ -n "$LPID" ] && kill $LPID 2>/dev/null
@@ -58,6 +60,10 @@ JOIN=$(curl -sS $API/api/companion/roachtail | json "d.get('joinCode')")
 SIM=$(xcrun simctl create "RoachNet Pairing $$" "$DEVICE" "$RUNTIME_ID") || exit 1
 step "simulator $DEVICE ($RUNTIME_ID) $SIM"
 xcrun simctl boot $SIM && xcrun simctl bootstatus $SIM -b >/dev/null
+# iOS 0.3.0+ asks for Face ID or the passcode before an Org decision. Enroll Face ID on this
+# throwaway simulator so phase 4 can answer with a matching face.
+xcrun simctl spawn $SIM notifyutil -s com.apple.BiometricKit.enrollmentChanged 1 >/dev/null 2>&1
+xcrun simctl spawn $SIM notifyutil -p com.apple.BiometricKit.enrollmentChanged >/dev/null 2>&1
 step "building RoachNet-iOS and the UI tests"
 xcodebuild -project $IOS/RoachNetCompanion.xcodeproj -scheme RoachNetCompanion -configuration Debug -sdk iphonesimulator \
   -destination "id=$SIM" -derivedDataPath $W/dd-app SYMROOT=$W/dd-app/sym OBJROOT=$W/dd-app/obj CODE_SIGNING_ALLOWED=NO build \
@@ -105,7 +111,14 @@ if [ "$(curl -s -o /dev/null -w '%{http_code}' $API/api/org/me)" = 200 ]; then
     curl -sS -X POST $API/api/org/companies/$CID/join-requests/$JR/approve -H 'Content-Type: application/json' -d '{}' >/dev/null
     AID=$(curl -sS -X POST $API/api/org/companies/$CID/approvals -H 'Content-Type: application/json' \
       -d '{"type":"request_board_approval","payload":{"title":"Simulator check approval","reason":"Proves approvals work from the phone."}}' | json "d['approval']['id']")
+    # A matching face every second answers the unlock prompt whenever the phone shows it.
+    ( for i in {1..180}; do sleep 1; xcrun simctl spawn $SIM notifyutil -p com.apple.BiometricKit_Sim.pearl.match >/dev/null 2>&1; done ) &
+    FPID=$!
     R=$(phase 4-org-approve test4ApproveOrgRequest "ORG_APPROVAL_ID=$AID")
+    kill $FPID 2>/dev/null; FPID=""
+    xcrun simctl spawn $SIM log show --last 5m --style compact --predicate \
+      'process CONTAINS[c] "biometric" OR subsystem CONTAINS[c] "BiometricKit" OR subsystem CONTAINS[c] "LocalAuthentication"' \
+      > $W/4-org-approve-faceid.log 2>&1
     DECIDED=$(curl -sS "$API/api/org/companies/$CID/approvals" | json "next((a['status']+'|'+(a.get('decisionNote') or '') for a in d['approvals'] if a['id']=='$AID'), '')")
     if [ "$R" = passed ] && [[ "$DECIDED" != approved* ]]; then R=failed; fi
     report "org approval ($AID: ${DECIDED:-missing})" $R

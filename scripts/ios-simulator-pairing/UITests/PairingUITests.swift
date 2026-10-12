@@ -73,11 +73,15 @@ final class PairingUITests: XCTestCase {
         sleep(2) // let the tab transition finish so the composer isn't rebuilt mid-query
 
         let query = app.descendants(matching: .any).matching(identifier: "chat.composer")
-        guard query.firstMatch.waitForExistence(timeout: 10) else { throw XCTSkip("This companion build has no chat.composer identifier") }
+        if !query.firstMatch.waitForExistence(timeout: 15) {
+            // Seen once on 0.3.0: the tab opened without its composer. Capture it and try the tab again.
+            attach("chat-no-composer")
+            chatTab.tap()
+            sleep(2)
+            guard query.firstMatch.waitForExistence(timeout: 10) else { throw XCTSkip("This companion build has no chat.composer identifier") }
+        }
         let composer = query.element(boundBy: query.count - 1)
-        composer.tap()
-        sleep(1)
-        composer.typeText(prompt)
+        type(prompt, into: composer)
         app.buttons["chat.send"].firstMatch.tap()
 
         let reply = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", expected)).firstMatch
@@ -95,8 +99,7 @@ final class PairingUITests: XCTestCase {
         let name = app.textFields["org.join.name"].firstMatch
         guard name.waitForExistence(timeout: 15) else { throw XCTSkip("This companion build has no Org join form") }
         attach("org-join")
-        name.tap()
-        name.typeText("Simulator Phone")
+        type("Simulator Phone", into: name)
         app.buttons["org.join.submit"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Waiting on'")).firstMatch.waitForExistence(timeout: 20),
                       "The join request was not acknowledged")
@@ -118,13 +121,30 @@ final class PairingUITests: XCTestCase {
         }
         attach("org-approval")
         let note = app.textFields["org.note.\(approvalID)"].firstMatch
-        if note.exists {
-            note.tap()
-            note.typeText("Approved from the simulator check.")
-        }
+        if note.exists { type("Approved from the simulator check.", into: note) }
         approve.tap()
-        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: approve)
-        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 20), .completed, "Approval card did not clear")
+        // 0.3.0+ asks for Face ID or the passcode before an Org decision (finding I8). run.sh
+        // enrolled Face ID on this throwaway simulator and sends a matching face during this
+        // phase, so the test only answers the one-time "use Face ID?" alert and waits.
+        let deadline = Date().addingTimeInterval(30)
+        var allowed = false, captured = false
+        while approve.exists && Date() < deadline {
+            if !allowed, let button = faceIDPermissionButton() {
+                attach("org-faceid-permission")
+                button.tap()
+                allowed = true
+            } else if !captured {
+                attach("org-unlock")
+                captured = true
+            }
+            if app.staticTexts["Nothing was sent. Unlock to decide."].exists {
+                attach("org-unlock-refused")
+                XCTFail("The phone refused the unlock, so the approval was not sent")
+                return
+            }
+            usleep(300_000)
+        }
+        XCTAssertFalse(approve.exists, "Approval card did not clear")
         attach("org-approved")
     }
 
@@ -136,6 +156,29 @@ final class PairingUITests: XCTestCase {
         if openButton.waitForExistence(timeout: 8) { openButton.tap() }
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         sleep(2)
+    }
+
+    /// Taps a text field until it has keyboard focus, then types. A tap that lands while the
+    /// sheet is still animating in can leave the field without focus.
+    private func type(_ text: String, into field: XCUIElement) {
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        for _ in 0..<4 {
+            field.tap()
+            let wait = XCTNSPredicateExpectation(predicate: focused, object: field)
+            if XCTWaiter().wait(for: [wait], timeout: 3) == .completed { break }
+        }
+        field.typeText(text)
+    }
+
+    /// The button that allows Face ID in the one-time permission alert, wherever iOS shows it.
+    private func faceIDPermissionButton() -> XCUIElement? {
+        for scope in [springboard, app] {
+            for label in ["OK", "Allow"] {
+                let button = scope.alerts.buttons[label].firstMatch
+                if button.exists { return button }
+            }
+        }
+        return nil
     }
 
     private func attach(_ name: String) {
