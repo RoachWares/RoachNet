@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Extract and validate URLs
         run: |
@@ -28,8 +28,10 @@ jobs:
           CHECKED=0
           FAILED_URLS=""
 
-          # Recursively extract all non-null string URLs from every JSON file in collections/
-          URLS=$(find collections -type f -name '*.json' -print0 | xargs -0 jq -r '.. | .url? | select(type == "string")' | sort -u)
+          # Recursively extract all non-null string URLs from every JSON file in collections/.
+          # Entries marked "unavailable" are titles the publisher withdrew; RoachNet hides
+          # them and never downloads them, so their dead links are expected.
+          URLS=$(find collections -type f -name '*.json' -print0 | xargs -0 jq -r '.. | objects | select(.unavailable != true) | .url? | select(type == "string")' | sort -u)
 
           while IFS= read -r url; do
             [ -z "$url" ] && continue
