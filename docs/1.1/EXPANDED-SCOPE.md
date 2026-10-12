@@ -10,6 +10,18 @@ Brennan held 1.1 on 2026-10-11, after its first full Mac gate passed, to add fiv
 
 1.1 ships once all five are in and a fresh Mac gate passes. The gated candidate from `46f97b1` (DMG `90a286c1…4c09`) is a reference build only.
 
+**Status, 2026-10-12:** all five are in on `release/v1.1`.
+
+| Piece | Linear | Commits |
+| --- | --- | --- |
+| RoachTrace | ROA-50 | `ef8d8d3`, `768c8b0`, `c6af7c5` |
+| Bring-your-own agents | ROA-51 | `22d340a` |
+| Subscription plans as models | ROA-52 | `22d340a` |
+| RoachInference past Ollama | ROA-53 | `f0666ac`, `8e72936`, `4b83bfb`, `e08e7e5`, `b935ffc` |
+| RoachNet Cluster | ROA-54 | `07100f2`, `1faf4ee`, `d39edc3` |
+
+Two parts of §4 moved to ROA-55 (1.1.x): speculative decoding, and decode at or past Ollama on qwen3 8B. Speculative decoding needs a small-batch kernel first. Where RoachInference stands against Ollama is in `docs/NATIVE_INFERENCE.md`.
+
 Ground rules carry over: offline first, nothing leaves the Mac unless the person turns it on, hand-written Metal only for inference (no MLX, MPS, Core ML or llama.cpp code), no new runtime dependencies.
 
 ## 1. RoachTrace: tracing and observation

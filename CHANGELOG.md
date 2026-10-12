@@ -1,15 +1,30 @@
 # Changelog
 
-## v1.1.0 - 2026-10-11
+## v1.1.0 - 2026-10-12
 
 Feature release. Includes every fix in 1.0.6 and 1.0.7. Ad-hoc signed, not Apple-notarized.
 
 ### RoachClaw and local models
 
-- RoachNet no longer bundles or installs Ollama. RoachClaw runs on RoachInference, a native GGUF engine with hand-written Metal kernels, served by `roachnet-runtime` on the same Ollama-compatible loopback API. Models in an existing Ollama folder are read in place; `ROACHNET_INFERENCE_ENGINE=ollama` keeps using a runner you installed yourself.
-- On an M2 Pro, Metal decode runs at about 91% of Ollama's speed on 1.5B and 3B models and faster on 0.5B. CPU and Metal produce identical tokens on six reference models.
+- RoachNet no longer bundles or installs Ollama. RoachClaw runs on RoachInference, a native GGUF engine with hand-written Metal kernels, served by `roachnet-runtime` on the loopback API. Models in an existing Ollama folder are read in place; `ROACHNET_INFERENCE_ENGINE=ollama` keeps using a runner you installed yourself.
+- The model server answers the Ollama API (`/api/chat`, `/api/generate`, `/api/embed`, `/api/embeddings`, `/api/create`, `/api/show`, `/api/copy`, `/api/delete`, `/api/pull`, `/api/ps`, `/api/tags`), the OpenAI API (`/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/models`) and the Anthropic API (`/v1/messages`, `/v1/messages/count_tokens`), streamed or not, with each API's own error shape.
+- Tool calls, JSON mode and JSON Schema output (enforced while sampling), thinking on or off, and Modelfiles that make new models over the same weights.
+- Up to four requests per model run at once (`ROACHNET_MODEL_SLOTS`), each in a slot with its own KV cache. A request goes to the slot already holding its conversation, and a new conversation that shares a long beginning with another starts from a copy of that prefix.
+- Loads are planned against memory: idle models are unloaded, then the context is shortened, then the load is refused with a 507 that names the sizes. Keys and values are stored in FP16 on the GPU (`ROACHNET_KV_CACHE=f32` keeps FP32).
+- Batched prompt evaluation on the simdgroup matrix units with half-precision weight tiles, decode attention split across key chunks with coalesced key reads. On an M2 Pro with Ollama's own qwen3 8B file: prompt 181 tok/s (Ollama 0.33.2: 267), decode 18.7 tok/s (22.0). Earlier, against Ollama 0.40.1, decode ran at about 91% of Ollama's speed on 1.5B and 3B models and faster on 0.5B. CPU and Metal produce identical tokens on the reference models.
+- A failed GPU pass or a NaN in the logits ends the request with an error instead of a garbled reply.
 - Model pulls resume where they stopped, retry on their own after a 90-second stall (up to six tries, like the download lane), restart cleanly when a server ignores the resume request, and are checked by SHA-256 before install. The model catalog adds verified Qwen2 models.
 - The Ollama-compatible model server takes Ollama's own Host and Origin stance: loopback, plus app, file, tauri and vscode-webview origins.
+
+### RoachNet Cluster
+
+- One model split across several Macs: each runs a range of layers, paired with a code (Settings › Models › RoachNet Cluster), with links authenticated by the pairing key and encrypted, Bonjour discovery, shard transfer checked by SHA-256 and resumable, and fallback when a Mac drops out. `/api/cluster` reports and changes it.
+
+### Agents, plans and tracing
+
+- Bring your own agents: Claude Code, Codex, Gemini CLI, OpenCode and Cursor CLI join an Org and work with its other agents through issues, comments, @mentions and sub-issues, running your own signed-in CLI.
+- Claude and ChatGPT plans as models (`claude:…`, `codex:…`) in RoachClaw chat, for Org agents and on the OpenAI and Ollama APIs, through your own Claude Code or Codex CLI. Off until turned on in Settings › RoachClaw › Subscriptions.
+- RoachTrace traces every Org run, chat and model call (tokens with cache reuse, cost, latency, time to first token, speed, scores), scrubs secrets, keeps traces owner-only on disk, and can export to Langfuse or an OpenTelemetry collector. Org › Traces and Settings › RoachClaw › Tracing.
 
 ### Org
 
