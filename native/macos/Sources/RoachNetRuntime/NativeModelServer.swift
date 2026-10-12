@@ -42,6 +42,8 @@ final class NativeModelServer {
         }
         private var slots: [Slot]
         private var growing = 0
+        /// After a refused growth (no memory, or macOS under pressure), no new slot is tried until then.
+        private var growthPausedUntil = Date.distantPast
         private let condition = NSCondition()
         /// Most slots this model may grow to (`ROACHNET_MODEL_SLOTS`, default 4).
         var maxSlots = 1
@@ -112,7 +114,7 @@ final class NativeModelServer {
                     if let (from, shared) = source { empty.engine.session.adoptPrefix(of: from.engine.session, count: shared) }
                     return take(empty)
                 }
-                if !prompt.isEmpty, slots.count + growing < maxSlots {
+                if !prompt.isEmpty, slots.count + growing < maxSlots, growthPausedUntil < Date() {
                     // The source stays reserved while its prefix is copied.
                     source?.0.busy = true
                     growing += 1
@@ -131,7 +133,8 @@ final class NativeModelServer {
                         extraSlots = slots.count - 1
                         return take(slot)
                     }
-                    maxSlots = slots.count
+                    // Memory may come back (another app quits, a model unloads), so pause instead of capping for good.
+                    growthPausedUntil = Date().addingTimeInterval(60)
                     continue
                 }
                 if let (slot, _) = source { return take(slot) }
@@ -179,7 +182,15 @@ final class NativeModelServer {
         lock.lock()
         defer { lock.unlock() }
         let extra = item.slotBytes
-        guard extra > 0, residentTotal + extra <= SystemMemory.modelBudget, extra * 2 < SystemMemory.available() else { return nil }
+        // A new slot is a fresh KV cache. Allocating one while macOS is short of
+        // memory pushes the Mac into swap and makes every request slower, so the
+        // request takes an existing slot instead (losing only its cached prefix).
+        // Under the kernel's warning level the room asked for doubles; at
+        // critical, no new slot at all. (Warning comes and goes on a busy Mac,
+        // so it only raises the bar.)
+        let pressure = SystemMemory.pressureLevel()
+        let margin = pressure >= 2 ? 4 : 2
+        guard extra > 0, pressure < 4, residentTotal + extra <= SystemMemory.modelBudget, extra * margin < SystemMemory.available() else { return nil }
         guard let engine = item.engine.sibling() else { return nil }
         residentTotal += extra
         RuntimeLog.write("native engine: \(item.name) gets another request slot (\(SystemMemory.gigabytes(extra)))")
@@ -487,9 +498,10 @@ final class NativeModelServer {
         for (name, item) in loaded where item.expiresAt < now && !item.isBusy {
             loaded[name] = nil
         }
-        // Extra slots idle for five minutes hand their KV cache back.
+        // Extra slots idle for five minutes hand their KV cache back; after 30 seconds when macOS is short of memory.
         var trimmed = false
-        for item in loaded.values where item.trimSlots(idleSince: now.addingTimeInterval(-300)) { trimmed = true }
+        let idle: TimeInterval = SystemMemory.underPressure ? 30 : 300
+        for item in loaded.values where item.trimSlots(idleSince: now.addingTimeInterval(-idle)) { trimmed = true }
         if trimmed { refreshResident() }
         lock.unlock()
     }
@@ -558,10 +570,13 @@ final class NativeModelServer {
         var endpoint = ""
         var traceInput: JSON = .null
         var traceparent: String?
+        /// Set on the retry after a Mac in a split model dropped (see `execute`).
+        var clusterFallback = false
     }
 
     func run(_ prepared: Prepared, writer: HTTPStreamWriter?, onText: @escaping (String) -> Void) throws -> GenerationResult {
         let trace = beginTrace(prepared)
+        let clusterBefore = clusterCounters(prepared.item)
         var sawFirstToken = false
         do {
             let result = try withSlot(prepared.item, prompt: prepared.tokens) { engine in
@@ -575,10 +590,10 @@ final class NativeModelServer {
                     }
                 )
             }
-            endTrace(trace, prepared, result: result, error: nil)
+            endTrace(trace, prepared, result: result, error: nil, clusterBefore: clusterBefore)
             return result
         } catch {
-            endTrace(trace, prepared, result: nil, error: error)
+            endTrace(trace, prepared, result: nil, error: error, clusterBefore: clusterBefore)
             throw error
         }
     }
@@ -623,22 +638,28 @@ final class NativeModelServer {
         return GenerationTrace(observation: observation, ownTrace: handle, enrichesParent: false)
     }
 
-    func endTrace(_ trace: GenerationTrace?, _ prepared: Prepared, result: GenerationResult?, error: Error?) {
+    func endTrace(_ trace: GenerationTrace?, _ prepared: Prepared, result: GenerationResult?, error: Error?,
+                  clusterBefore: [ClusterHopCounters] = []) {
         guard let trace else { return }
+        let hops = clusterTraceDetail(prepared.item, since: clusterBefore)
         guard let result else {
             let message = (error as? RuntimeError)?.message ?? error.map { "\($0)" } ?? "generation failed"
-            trace.observation.end(level: .error, statusMessage: message)
+            var detail = JSONObject()
+            if let hops { detail["cluster_hops"] = hops }
+            trace.observation.end(level: .error, statusMessage: message, metadata: detail.isEmpty ? nil : detail)
             trace.ownTrace?.end(status: "error", message: message)
             return
         }
         let usage = TraceUsage(inputTokens: result.promptTokenCount, outputTokens: result.tokens.count, cachedInputTokens: result.reusedPromptTokens)
         let evaluated = result.promptTokenCount - result.reusedPromptTokens
-        let engine: JSONObject = JSONObject([
+        var engine: JSONObject = JSONObject([
             ("engine", "roachinference"), ("backend", JSON(prepared.item.engine.session.backend.name)),
             ("context_length", JSON(prepared.item.contextLength)), ("load_ms", JSON(Int(prepared.loadDuration * 1_000))),
             ("prompt_eval_ms", JSON(Int(result.promptDuration * 1_000))), ("eval_ms", JSON(Int(result.generationDuration * 1_000))),
             ("reused_prompt_tokens", JSON(result.reusedPromptTokens)), ("done_reason", JSON(doneReason(result))),
         ])
+        if let hops { engine["cluster_hops"] = hops }
+        if prepared.clusterFallback { engine["cluster_fallback"] = "A Mac in the split model dropped before this reply started; it was answered without that Mac." }
         trace.observation.update { record in
             record.promptTokensPerSecond = result.promptDuration > 0 && evaluated > 0 ? Double(evaluated) / result.promptDuration : nil
             record.outputTokensPerSecond = result.tokensPerSecond > 0 ? result.tokensPerSecond : nil

@@ -29,6 +29,17 @@ enum SystemMemory {
     }
 
     static func gigabytes(_ bytes: Int) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }
+
+    /// The kernel's memory pressure level: 1 normal, 2 warning, 4 critical; 0 when it can't be read.
+    static func pressureLevel() -> Int {
+        var level: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else { return 0 }
+        return Int(level)
+    }
+
+    /// macOS is short of memory (warning or worse): idle request slots hand their caches back sooner.
+    static var underPressure: Bool { pressureLevel() >= 2 }
 }
 
 extension NativeModelServer {

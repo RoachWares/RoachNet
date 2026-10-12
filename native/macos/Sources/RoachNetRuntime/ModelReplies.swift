@@ -180,7 +180,7 @@ extension NativeModelServer {
             // The next load plans the model again without it (on this Mac
             // alone when it fits), so answer this same request that way.
             RuntimeLog.write("cluster: \(request.model) lost a Mac before replying; loading it again without that Mac")
-            return try executeNative(request, endpoint: endpoint, traceparent: traceparent, writer: writer, onDelta: onDelta)
+            return try executeNative(request, endpoint: endpoint, traceparent: traceparent, writer: writer, clusterFallback: true, onDelta: onDelta)
         }
     }
 
@@ -191,7 +191,7 @@ extension NativeModelServer {
     }
 
     private func executeNative(_ request: ModelRequest, endpoint: String, traceparent: String?, writer: HTTPStreamWriter?,
-                               onDelta: @escaping (ModelDelta) -> Void) throws -> ModelReply {
+                               clusterFallback: Bool = false, onDelta: @escaping (ModelDelta) -> Void) throws -> ModelReply {
         let started = Date()
         let (values, profile) = settings(request)
         let item = try load(request.model, contextLength: values["num_ctx"].clampedInt(), keepAlive: keepAlive(request.keepAlive))
@@ -268,8 +268,9 @@ extension NativeModelServer {
         if options.maxTokens < 0 || options.maxTokens > remaining { options.maxTokens = max(1, remaining) }
 
         let input: JSON = request.rawPrompt.map { JSON($0) } ?? .array(messages.map { ["role": JSON($0.role.rawValue), "content": JSON($0.content)] })
-        let prepared = Prepared(item: item, tokens: tokens, options: options, loadDuration: loadDuration, started: started,
+        var prepared = Prepared(item: item, tokens: tokens, options: options, loadDuration: loadDuration, started: started,
                                 endpoint: endpoint, traceInput: input, traceparent: traceparent)
+        prepared.clusterFallback = clusterFallback
         let collector = ReplyCollector(gate: ToolGate(active: !tools.isEmpty, template: engine.chatTemplate),
                                        splitThinking: splitThinking, keepThinking: think != false, streamContent: forced.isEmpty, onDelta: onDelta)
         let result = try run(prepared, writer: writer) { piece in collector.feed(piece) }

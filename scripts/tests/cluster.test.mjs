@@ -118,6 +118,9 @@ test('a model split across two Macs answers exactly as one Mac does', needs, asy
     assert.equal(stages.length, 2)
     assert.equal(stages[1].name, 'Studio')
     assert.equal(stages[0].layers.split(',')[0].split('-')[1], stages[1].layers.split('-')[0], 'the stages meet')
+    assert.ok(stages[1].stats.round_trips > 0, 'each hop counts its round trips')
+    assert.ok(stages[1].stats.sent_bytes > 0 && stages[1].stats.received_bytes === stages[1].stats.sent_bytes,
+      'residuals go out and come back at the same size')
     const ps = (await call(coordinator.models, 'GET', '/api/ps')).json.models[0]
     assert.match(ps.backend, /^cluster: Laptop 0–\d+, Studio \d+–28$/)
     const hosted = (await call(worker.api, 'GET', '/api/cluster')).json.stages

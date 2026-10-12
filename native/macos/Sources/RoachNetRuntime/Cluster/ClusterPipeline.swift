@@ -98,10 +98,25 @@ final class ClusterBackend: TransformerBackend, BatchForwarding, FallibleBackend
             self.link = link; self.stageID = stageID; self.name = name; self.stage = stage
         }
 
+        /// Round trips to this Mac since the stage opened: how many, the time
+        /// they took (network plus the other Mac's layers) and the bytes each way.
+        private let statsLock = NSLock()
+        private var counters = ClusterHopCounters()
+        var stats: ClusterHopCounters { statsLock.withLock { counters } }
+
         func forward(_ residuals: [Float], count: Int, position: Int) throws -> [Float] {
             let payload = residuals.withUnsafeBufferPointer { Data(buffer: $0) }
+            let started = DispatchTime.now().uptimeNanoseconds
             let (_, data) = try link.request(["op": "forward", "stage": JSON(stageID), "position": JSON(position), "count": JSON(count)],
                                             payload, timeout: 120)
+            let took = DispatchTime.now().uptimeNanoseconds - started
+            statsLock.withLock {
+                counters.calls += 1
+                counters.tokens += count
+                counters.nanoseconds += took
+                counters.sentBytes += payload.count
+                counters.receivedBytes += data.count
+            }
             guard data.count == residuals.count * 4 else { throw ClusterError.protocolError("\(name) sent back the wrong amount of data.") }
             return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         }

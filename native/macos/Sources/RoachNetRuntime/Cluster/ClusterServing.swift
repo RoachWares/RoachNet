@@ -1,7 +1,52 @@
 import Foundation
 import RoachInference
 
+/// Counters for one hop of a split model (see ClusterBackend.Hop).
+struct ClusterHopCounters: Equatable {
+    var calls = 0
+    var tokens = 0
+    var nanoseconds: UInt64 = 0
+    var sentBytes = 0
+    var receivedBytes = 0
+
+    static func - (after: ClusterHopCounters, before: ClusterHopCounters) -> ClusterHopCounters {
+        ClusterHopCounters(calls: after.calls - before.calls, tokens: after.tokens - before.tokens,
+                           nanoseconds: after.nanoseconds &- before.nanoseconds, sentBytes: after.sentBytes - before.sentBytes,
+                           receivedBytes: after.receivedBytes - before.receivedBytes)
+    }
+
+    var json: JSON {
+        ["round_trips": JSON(calls), "tokens": JSON(tokens), "ms": JSON(Double(nanoseconds) / 1e6),
+         "ms_per_round_trip": JSON(calls > 0 ? Double(nanoseconds) / 1e6 / Double(calls) : 0),
+         "sent_bytes": JSON(sentBytes), "received_bytes": JSON(receivedBytes)]
+    }
+}
+
 extension NativeModelServer {
+    /// Each hop's counters for a split model, by position; empty for a model on one Mac.
+    func clusterCounters(_ item: LoadedModel) -> [ClusterHopCounters] {
+        #if canImport(CryptoKit) && canImport(Metal)
+        return (item.engine.session.backend as? ClusterBackend)?.hops.map(\.stats) ?? []
+        #else
+        return []
+        #endif
+    }
+
+    /// Per-hop figures for one request, for its trace: the change in each hop's counters.
+    func clusterTraceDetail(_ item: LoadedModel, since before: [ClusterHopCounters]) -> JSON? {
+        #if canImport(CryptoKit) && canImport(Metal)
+        guard let backend = item.engine.session.backend as? ClusterBackend, backend.hops.count == before.count else { return nil }
+        return .array(zip(backend.hops, before).map { hop, earlier in
+            var entry = (hop.stats - earlier).json.object
+            entry["mac"] = JSON(hop.name)
+            entry["layers"] = JSON(hop.stage.description)
+            return .object(entry)
+        })
+        #else
+        return nil
+        #endif
+    }
+
     /// Memory the loaded models hold now.
     func residentBytes() -> Int { residentTotal }
 
@@ -12,7 +57,9 @@ extension NativeModelServer {
             loaded.values.compactMap { item in
                 guard let backend = item.engine.session.backend as? ClusterBackend else { return nil }
                 let local: JSON = ["name": JSON(backend.localName), "layers": JSON(backend.local.model.stage.description), "local": true]
-                let hops: [JSON] = backend.hops.map { ["name": JSON($0.name), "layers": JSON($0.stage.description), "address": JSON($0.link.remote)] }
+                let hops: [JSON] = backend.hops.map {
+                    ["name": JSON($0.name), "layers": JSON($0.stage.description), "address": JSON($0.link.remote), "stats": $0.stats.json]
+                }
                 return ["model": JSON(item.name), "contextLength": JSON(item.contextLength), "broken": JSON(backend.isBroken),
                         "stages": .array([local] + hops)]
             }
