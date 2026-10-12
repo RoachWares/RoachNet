@@ -12,6 +12,7 @@ enum OrgBoardSection: String, CaseIterable, Identifiable {
     case chart = "Org chart"
     case routines = "Routines"
     case budgets = "Budgets"
+    case traces = "Traces"
 
     var id: String { rawValue }
 }
@@ -195,6 +196,8 @@ final class OrgBoardStore: ObservableObject {
                 let list: List = try await request("GET", "/api/org/companies/\(cid)/budgets", nil, config)
                 budgets = list.policies
                 incidents = list.incidents
+            case .traces:
+                break // OrgTraceStore loads its own data.
             }
             errorMessage = nil
         } catch {

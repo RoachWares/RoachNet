@@ -290,6 +290,7 @@ struct OrgWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     @StateObject private var store = OrgDeskStore()
     @StateObject private var board = OrgBoardStore()
+    @StateObject private var traceStore = OrgTraceStore()
     @State private var section: OrgBoardSection = .desk
     @State private var newCompanyName = ""
     @State private var inviteRole = "operator"
@@ -357,6 +358,10 @@ struct OrgWorkspaceView: View {
 
     private func loadBoard() async {
         guard section != .desk, let cid = store.selectedCompanyID else { return }
+        if section == .traces {
+            await traceStore.load(company: cid, using: model.config)
+            return
+        }
         await board.load(section, company: cid, using: model.config)
     }
 
@@ -366,7 +371,7 @@ struct OrgWorkspaceView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(maxWidth: 560)
+        .frame(maxWidth: 660)
         .accessibilityIdentifier("org.section")
     }
 
@@ -395,6 +400,8 @@ struct OrgWorkspaceView: View {
                 OrgRoutinesBoard(store: board, companyID: cid, agents: store.agents, config: model.config)
             case .budgets:
                 OrgBudgetsBoard(store: board, companyID: cid, agents: store.agents, config: model.config)
+            case .traces:
+                OrgTracesBoard(store: traceStore, companyID: cid, agents: store.agents, config: model.config)
             }
         }
     }

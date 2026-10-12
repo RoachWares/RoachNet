@@ -204,7 +204,11 @@ public final class ObservationHandle {
         let extra = metadata.map { tracer.redactor.scrub(.object($0), maxChars: 2_000) }
         update { record in
             if !content.isNull { record.output = content }
-            if let usage, !usage.isEmpty || record.usage == nil { record.usage = usage }
+            // The engine's own account (full prompt, reused prefix, output) wins over a
+            // caller's: Ollama-style replies count only the prompt tokens they evaluated.
+            let engineReported = !record.metadata["engine"].isUndefined && !(record.usage?.isEmpty ?? true)
+            if let usage, !engineReported || extra.map({ !$0["engine"].isUndefined }) == true,
+               !usage.isEmpty || record.usage == nil { record.usage = usage }
             if let cost { record.cost = cost }
             if let level { record.level = level }
             if let message { record.statusMessage = message }

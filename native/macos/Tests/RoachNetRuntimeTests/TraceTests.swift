@@ -38,6 +38,29 @@ final class TraceTests: XCTestCase {
         XCTAssertEqual(generations.first { $0.name == "step 1" }?.parentId, agent.id)
     }
 
+    func testEngineUsageOutlastsTheCallersOllamaCount() throws {
+        let tracer = Tracer(store: TraceStore(root: root))
+        let trace = try XCTUnwrap(tracer.startTrace(kind: "org_run", name: "Ada: work"))
+        let step = trace.observation(.generation, "step 2", model: "qwen3:0.6b")
+        // The model server enriches the caller's generation first: 300 prompt tokens, 267 of them reused.
+        let parent = try XCTUnwrap(tracer.attach(traceparent: step.traceparent))
+        ObservationHandle(tracer: tracer, traceId: parent.0.traceId, id: parent.1.id)
+            .end(usage: TraceUsage(inputTokens: 300, outputTokens: 40, cachedInputTokens: 267), cost: .local, metadata: JSONObject([("engine", "roachinference")]))
+        // Then the agent loop ends it with prompt_eval_count, which counts only the 33 it evaluated.
+        step.end(output: "reply", usage: TraceUsage(inputTokens: 33, outputTokens: 40))
+        trace.end(status: "ok")
+
+        let stored = try XCTUnwrap(tracer.store.observation(trace.traceId, step.id))
+        XCTAssertEqual(stored.usage, TraceUsage(inputTokens: 300, outputTokens: 40, cachedInputTokens: 267))
+        XCTAssertEqual(tracer.store.trace(trace.traceId)?.usage.cachedInputTokens, 267)
+
+        // Without an engine report the caller's count stands.
+        let other = try XCTUnwrap(tracer.startTrace(kind: "chat", name: "remote"))
+        let call = other.observation(.generation, "g")
+        call.end(usage: TraceUsage(inputTokens: 33, outputTokens: 40))
+        XCTAssertEqual(tracer.store.observation(other.traceId, call.id)?.usage?.inputTokens, 33)
+    }
+
     func testStoreReloadsFromDiskAndClosesOrphanedTraces() throws {
         let traceId: String
         do {

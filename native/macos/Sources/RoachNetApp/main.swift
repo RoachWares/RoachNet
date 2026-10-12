@@ -13981,7 +13981,7 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         {
             RoachSettingsWindow.open(pane)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                self?.captureWindowSnapshot(into: directory)
+                self?.captureWindowSnapshot(into: directory, preferSettings: true)
             }
             return
         }
@@ -13995,6 +13995,23 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         {
             model.selectedPane = pane
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+    /// The biggest scroll view in the window whose content overflows it.
+    private static func mainScrollView(in root: NSView) -> NSScrollView? {
+        var best: NSScrollView?
+        var bestArea: CGFloat = 0
+        var pending: [NSView] = [root]
+        while let view = pending.popLast() {
+            if let scrollView = view as? NSScrollView, let documentView = scrollView.documentView,
+               documentView.frame.height > scrollView.contentView.bounds.height + 1
+            {
+                let area = scrollView.frame.width * scrollView.frame.height
+                if area > bestArea { best = scrollView; bestArea = area }
+            }
+            pending.append(contentsOf: view.subviews)
+        }
+        return best
+    }
+
                 self?.captureWindowSnapshot(into: directory)
             }
             return
@@ -14020,8 +14037,33 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         return create(.null, CGWindowListOption.optionIncludingWindow.rawValue, windowID, options)?.takeRetainedValue()
     }
 
-    private func captureWindowSnapshot(into directory: URL) {
-        guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }),
+        // An optional `scroll.txt` ("0" to "1", or "bottom") scrolls the window's
+        // main scroll view first, so a gate can capture what sits below the fold.
+        if !scrolled,
+           let raw = try? String(contentsOf: directory.appendingPathComponent("scroll.txt"), encoding: .utf8),
+           case let text = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           let fraction = text == "bottom" ? 1.0 : Double(text),
+           let scrollView = Self.mainScrollView(in: contentView),
+           let documentView = scrollView.documentView
+        {
+            let clip = scrollView.contentView
+            let travel = max(0, documentView.frame.height - clip.bounds.height)
+            let share = min(max(fraction, 0), 1)
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: documentView.isFlipped ? travel * share : travel * (1 - share)))
+            scrollView.reflectScrolledClipView(clip)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.captureWindowSnapshot(into: directory, preferSettings: preferSettings, scrolled: true)
+            }
+            return
+        }
+
+    private func captureWindowSnapshot(into directory: URL, preferSettings: Bool = false, scrolled: Bool = false) {
+        // macOS may refuse to activate RoachNet while someone works in another app,
+        // so the Settings window can be open without being key: look it up by its scene id.
+        let settingsWindow = preferSettings
+            ? NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") ?? false) }
+            : nil
+        guard let window = settingsWindow ?? NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }),
               let contentView = window.contentView
         else {
             NSLog("[RoachNet snapshot] No visible window to capture.")
