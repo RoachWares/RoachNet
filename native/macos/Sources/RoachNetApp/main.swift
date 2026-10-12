@@ -13995,6 +13995,19 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         {
             model.selectedPane = pane
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.captureWindowSnapshot(into: directory)
+            }
+            return
+        }
+        if themeChanged || orgSection != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (orgSection != nil ? 2.0 : 0.8)) { [weak self] in
+                self?.captureWindowSnapshot(into: directory)
+            }
+            return
+        }
+        captureWindowSnapshot(into: directory)
+    }
+
     /// The biggest scroll view in the window whose content overflows it.
     private static func mainScrollView(in root: NSView) -> NSScrollView? {
         var best: NSScrollView?
@@ -14012,19 +14025,6 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         return best
     }
 
-                self?.captureWindowSnapshot(into: directory)
-            }
-            return
-        }
-        if themeChanged || orgSection != nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + (orgSection != nil ? 2.0 : 0.8)) { [weak self] in
-                self?.captureWindowSnapshot(into: directory)
-            }
-            return
-        }
-        captureWindowSnapshot(into: directory)
-    }
-
     private typealias WindowImageFunction = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
 
     /// `CGWindowListCreateImage` looked up at run time: it is deprecated in
@@ -14036,6 +14036,19 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         let options = CGWindowImageOption([.boundsIgnoreFraming, .bestResolution]).rawValue
         return create(.null, CGWindowListOption.optionIncludingWindow.rawValue, windowID, options)?.takeRetainedValue()
     }
+
+    private func captureWindowSnapshot(into directory: URL, preferSettings: Bool = false, scrolled: Bool = false) {
+        // macOS may refuse to activate RoachNet while someone works in another app,
+        // so the Settings window can be open without being key: look it up by its scene id.
+        let settingsWindow = preferSettings
+            ? NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") ?? false) }
+            : nil
+        guard let window = settingsWindow ?? NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }),
+              let contentView = window.contentView
+        else {
+            NSLog("[RoachNet snapshot] No visible window to capture.")
+            return
+        }
 
         // An optional `scroll.txt` ("0" to "1", or "bottom") scrolls the window's
         // main scroll view first, so a gate can capture what sits below the fold.
@@ -14054,19 +14067,6 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.captureWindowSnapshot(into: directory, preferSettings: preferSettings, scrolled: true)
             }
-            return
-        }
-
-    private func captureWindowSnapshot(into directory: URL, preferSettings: Bool = false, scrolled: Bool = false) {
-        // macOS may refuse to activate RoachNet while someone works in another app,
-        // so the Settings window can be open without being key: look it up by its scene id.
-        let settingsWindow = preferSettings
-            ? NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") ?? false) }
-            : nil
-        guard let window = settingsWindow ?? NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }),
-              let contentView = window.contentView
-        else {
-            NSLog("[RoachNet snapshot] No visible window to capture.")
             return
         }
 

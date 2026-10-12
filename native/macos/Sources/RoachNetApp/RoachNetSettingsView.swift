@@ -504,7 +504,6 @@ struct RoachNetSettingsView: View {
 
                     HStack(spacing: 10) {
                         Button("Allow All") {
-            RoachTraceSettingsSection(config: model.config)
                             model.setAllRoachClawContext(enabled: true)
                         }
                         .buttonStyle(RoachSecondaryButtonStyle())
@@ -518,6 +517,7 @@ struct RoachNetSettingsView: View {
             }
 
             RoachAPITokensSection(config: model.config)
+            RoachTraceSettingsSection(config: model.config)
         }
     }
 
