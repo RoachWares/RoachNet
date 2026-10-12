@@ -15,6 +15,14 @@ final class NativeModelServer {
         var fileKey = ""
         /// What it holds in memory (weights, cache and buffers).
         var footprint: ModelFootprint?
+        /// A split model whose other Macs went away; the next load plans it again.
+        var isBroken: Bool {
+            #if canImport(CryptoKit) && canImport(Metal)
+            return (engine.session.backend as? ClusterBackend)?.isBroken ?? false
+            #else
+            return false
+            #endif
+        }
         let engine: InferenceEngine
         let contextLength: Int
         var requestedContext = 0
@@ -31,7 +39,17 @@ final class NativeModelServer {
 
     let store: NativeModelStore
     private let lock = NSLock()
-    var loaded: [String: LoadedModel] = [:]
+    var loaded: [String: LoadedModel] = [:] {
+        didSet { residentTotal = loaded.values.reduce(0) { $0 + ($1.footprint?.total ?? 0) } }
+    }
+    /// What the loaded models hold, kept current so other threads can read it without the lock.
+    private(set) var residentTotal = 0
+
+    func lockedLoaded<T>(_ body: ([String: LoadedModel]) -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(loaded)
+    }
     private let maxLoadedModels: Int
     private var reaper: DispatchSourceTimer?
     var server: LoopbackHTTPServer?
@@ -40,6 +58,10 @@ final class NativeModelServer {
     var tracer: Tracer?
     /// Claude and ChatGPT plan models (`claude:…`, `codex:…`); set by the runtime.
     var subscriptions: SubscriptionModels?
+    #if canImport(CryptoKit) && canImport(Metal)
+    /// RoachNet Cluster; set by the runtime. Splits models too big for this Mac.
+    var cluster: ClusterNode?
+    #endif
 
     init(store: NativeModelStore, maxLoadedModels: Int = 2) {
         self.store = store
@@ -262,8 +284,9 @@ final class NativeModelServer {
         let wanted = contextLength ?? 4096
         let fileKey = NativeModelStore.fileIdentity(entry.modelPath)
         func fits(_ item: LoadedModel) -> Bool { item.requestedContext == wanted || item.contextLength == wanted }
+        if let broken = loaded[name], broken.isBroken { loaded[name] = nil }
         if let existing = loaded[name].flatMap({ fits($0) && $0.fileKey == fileKey ? $0 : nil })
-            ?? loaded.values.first(where: { $0.fileKey == fileKey && fits($0) }) {
+            ?? loaded.values.first(where: { $0.fileKey == fileKey && fits($0) && !$0.isBroken }) {
             existing.expiresAt = max(existing.expiresAt, Date().addingTimeInterval(seconds))
             existing.lastUsed = Date()
             return existing
@@ -271,8 +294,19 @@ final class NativeModelServer {
         if loaded.count >= maxLoadedModels, let oldest = loaded.values.min(by: { $0.lastUsed < $1.lastUsed }) {
             loaded[oldest.name] = nil
         }
-        let footprint = try makeRoom(for: name, footprint: ModelFootprint(file: GGUFFile(path: entry.modelPath), contextLength: wanted),
-                                     budget: SystemMemory.modelBudget)
+        let file = try GGUFFile(path: entry.modelPath)
+        let wantedFootprint = try ModelFootprint(file: file, contextLength: wanted)
+        #if canImport(CryptoKit) && canImport(Metal)
+        if let cluster, cluster.isActive, cluster.spreadsEveryModel || wantedFootprint.total > SystemMemory.modelBudget {
+            let others = loaded.values.reduce(0) { $0 + ($1.footprint?.total ?? 0) }
+            if let plan = try cluster.plan(file: file, footprint: wantedFootprint, budget: SystemMemory.modelBudget - others,
+                                           spread: cluster.spreadsEveryModel) {
+                return try loadAcrossCluster(name, entry: entry, file: file, footprint: wantedFootprint, plan: plan, cluster: cluster,
+                                             keepAlive: seconds, fileKey: fileKey, requested: wanted)
+            }
+        }
+        #endif
+        let footprint = try makeRoom(for: name, footprint: wantedFootprint, budget: SystemMemory.modelBudget)
         let model = try TransformerModel(path: entry.modelPath)
         let engine = InferenceEngine(model: model, contextLength: footprint.context)
         let item = LoadedModel(name: name, engine: engine, contextLength: engine.session.contextLength, keepAlive: seconds)

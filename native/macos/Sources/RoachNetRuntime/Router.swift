@@ -126,6 +126,7 @@ extension NativeRuntime {
 
         if pathname == "/api/org" || pathname.hasPrefix("/api/org/") { return try routeOrg(&request, url: url) }
         if pathname == "/api/traces" || pathname.hasPrefix("/api/traces/") { return try routeTraces(&request, url: url) }
+        if pathname == "/api/cluster" || pathname.hasPrefix("/api/cluster/") { return try routeCluster(&request, url: url) }
 
         switch (method, pathname) {
         case ("GET", "/api/health"): return ok(["status": "ok"])

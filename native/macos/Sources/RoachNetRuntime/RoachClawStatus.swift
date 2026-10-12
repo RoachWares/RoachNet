@@ -68,6 +68,11 @@ extension NativeRuntime {
             do {
                 try server.start(host: host == "localhost" ? "127.0.0.1" : host, port: port)
                 nativeModelServer = server
+                #if canImport(CryptoKit) && canImport(Metal)
+                cluster.server = server
+                server.cluster = cluster
+                cluster.start()
+                #endif
                 runtimeReachabilityCache.invalidate(urlJoin("/api/version", config.ollamaBaseUrl))
                 installedModelsCache.invalidate(config.ollamaBaseUrl)
                 return true

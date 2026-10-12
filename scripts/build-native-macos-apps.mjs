@@ -1676,6 +1676,12 @@ ${sourceCommit ? `  <key>RoachNetSourceCommit</key>\n  <string>${sourceCommit}</
   <string>RoachNet uses Bluetooth only to receive RoachPhone GPS packets for local in-app map tracking.</string>
   <key>NSBluetoothPeripheralUsageDescription</key>
   <string>RoachNet uses Bluetooth only to receive RoachPhone GPS packets for local in-app map tracking.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>RoachNet Cluster connects to your other Macs on this network, when you turn it on, so they can run a model together.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_roachnet-cluster._tcp</string>
+  </array>
   ${iconPath ? '<key>CFBundleIconFile</key>\n  <string>RoachNet</string>' : ''}
   ${urlSchemesPlist}
 </dict>

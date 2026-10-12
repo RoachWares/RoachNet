@@ -32,6 +32,12 @@ public final class NativeRuntime {
     /// Claude and ChatGPT plans as models, off until the person turns them on.
     lazy var subscriptionModels = SubscriptionModels(root: Path.join(config.storageRoot, "state"))
 
+    #if canImport(CryptoKit) && canImport(Metal)
+    /// RoachNet Cluster: off until the person turns it on and pairs another Mac.
+    lazy var cluster = ClusterNode(stateRoot: Path.join(config.storageRoot, "state"), storageRoot: config.storageRoot,
+                                   store: nativeModelStore, version: config.version)
+    #endif
+
     lazy var tracer: Tracer = {
         let store = TraceStore(root: Path.join(config.storageRoot, "state", "traces"))
         let tracer = Tracer(store: store)
