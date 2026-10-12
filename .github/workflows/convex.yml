@@ -26,8 +26,10 @@ jobs:
   convex:
     name: Validate Convex functions
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    # The deploy key reaches only the deploy step, never npm ci or the
+    # typecheck, so a pull request's dependency scripts can't read it.
     env:
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      HAS_CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
 
     steps:
       - name: Checkout
@@ -47,9 +49,11 @@ jobs:
         run: npm run convex:typecheck
 
       - name: Deploy Convex production
-        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.CONVEX_DEPLOY_KEY != '' }}
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.HAS_CONVEX_DEPLOY_KEY == 'true' }}
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
         run: npm run convex:deploy
 
       - name: Skip Convex deployment
-        if: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' || env.CONVEX_DEPLOY_KEY == '' }}
+        if: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' || env.HAS_CONVEX_DEPLOY_KEY != 'true' }}
         run: echo "Convex deploy skipped. Add CONVEX_DEPLOY_KEY to RoachWares secrets when the production deployment is ready."
