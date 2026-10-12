@@ -10,7 +10,7 @@ In the RoachNet app, open **Settings › Models › RoachNet Cluster**.
 
 1. **On the first Mac:** turn **Cluster** on. RoachNet makes a pairing code, such as `GQ1M-5Y3Z-V868-3T7H-7FVC-PV8R-VG`.
 2. **On each other Mac:** turn **Cluster** on. Under **Join a cluster**, enter the first Mac's code.
-3. **On the Mac that will run models:** add the other Macs. Click **Find Macs Nearby**, or type an address such as `studio.local` or `192.168.1.20`. Each one shows its chip and how much memory it can give to models.
+3. **On the Mac that will run models:** add the other Macs. Click **Find Macs Nearby**, or type an address such as `studio.local` or `192.0.2.20`. Each one shows its chip and how much memory it can give to models. In 1.1.1, a Mac you added by IP address also shows as added when Bonjour lists it by name, because Macs are matched by the node ID each one proves at the handshake.
 4. **Choose how to split:**
    - **Only models too big for this Mac** (the default): a model is split only when this Mac can't hold it alone. Anything that fits stays on one Mac, which is faster.
    - **Every model**: every model is spread across the cluster in proportion to each Mac's free memory.
@@ -38,13 +38,30 @@ Prompts move from stage to stage as batched residual streams, so each Mac evalua
 - **Every message after the handshake is sealed.** Messages use ChaCha20-Poly1305 under keys derived (HKDF-SHA256) for that connection alone, with counter nonces, so a message can't be read, forged, replayed or reordered.
 - **Discovery is not trust.** Macs advertise themselves over Bonjour as `_roachnet-cluster._tcp` so they can be found. Being listed gives a Mac nothing; it still needs the pairing code.
 - **Shards are checked.** A shard is verified against its SHA-256 before it is used. A damaged transfer is discarded and sent again. A transfer that is cut off resumes where it stopped.
+- **What another Mac sends is checked.** Stage and shard digests must be 64 hex characters, positions, counts, offsets and context lengths must be in range, and a shard is refused when it would leave less than 4 GB free on the volume (1.1.1).
 - **Starting over is one click.** **New Code** makes a new secret. The other Macs then stop trusting this one until they join again.
 
 macOS asks once for permission to use the local network the first time Cluster connects to another Mac.
 
 ## When a Mac goes away
 
-If a Mac drops out while a reply is being written, that reply fails with a 502. The split model is marked broken, and the next request plans it again across the Macs that answer. If none answer, the model runs on this Mac alone. Stages that a Mac runs for others are released when the other Mac unloads the model, or after 30 idle minutes.
+What happens depends on how far the reply got:
+
+- **Before any of the reply was sent (1.1.1):** the same request is planned again without that Mac, on this Mac alone when the model fits, and the reply comes back as usual. The trace marks it `cluster_fallback`.
+- **After part of the reply was sent:** that reply fails with a 502, since the part already sent can't be taken back. The split model is marked broken, and the next request plans it again across the Macs that answer.
+
+In 1.1.0, a drop at any point failed that request with a 502 and only the next request was re-planned.
+
+If none of the other Macs answer, the model runs on this Mac alone. Stages that a Mac runs for others are released when the other Mac unloads the model, or after 30 idle minutes.
+
+On Wi-Fi, the first packet to a Mac that has been idle can take a few seconds. The status in Settings tries once more after a timeout (1.1.1), so a working Mac isn't shown as unreachable; a refused connection still fails at once.
+
+## Watching it work (1.1.1)
+
+Each hop of a split model counts its round trips, tokens, time (the network plus the other Mac's layers) and bytes each way.
+
+- `GET /api/cluster` shows the totals per hop under each placement's `stats`: `round_trips`, `tokens`, `ms`, `ms_per_round_trip`, `sent_bytes` and `received_bytes`.
+- Each generation's trace carries that request's figures per hop as `cluster_hops`.
 
 ## API
 
@@ -73,14 +90,18 @@ Settings live in `<storage>/state/cluster.json` (mode 0600). Shards live in `<st
 - **Apple silicon Macs only.** Every stage runs on the Metal backend.
 - **Activations travel in FP32,** so stages compute exactly what one Mac would.
 - **A model's architecture must be supported** by RoachInference (llama, mistral, qwen2, qwen3).
+- **Speed depends on the network.** On two Macs over a home network, decode pays one round trip per token per extra Mac. Splitting is for models that don't fit on one Mac; a model that fits runs faster on one.
 
 ## How it is tested
 
-- **`scripts/tests/cluster.test.mjs`** runs two runtimes on one Mac, standing in for two Macs, with qwen3 0.6B. It checks four things:
+- **`scripts/tests/cluster.test.mjs`** runs two runtimes on one Mac, standing in for two Macs, with qwen3 0.6B. It checks that:
   - pairing works;
   - the second runtime is sent its shard;
   - replies are identical to one Mac's;
-  - a runtime with another code is refused, and when the second runtime is killed, the cluster falls back to one Mac.
+  - a runtime with another code is refused;
+  - when the second runtime is killed, the same request is answered on one Mac (1.1.1);
+  - the per-hop counters show round trips and matching bytes each way (1.1.1).
+- **Two physical Macs** (Apple silicon, one wired and one on Wi-Fi, same network) were used for 1.1.1: pairing, Find Macs Nearby, a split model, stopping one Mac's runtime mid-session, the in-request fallback, and recovery. The fixes in 1.1.1 came from that run.
 - **`ModelStageTests`** cuts a model into shard files and chains the stages, batched and decoding, against the whole model.
 - **`ClusterTests`** covers pairing codes, the sealed channel (replay, tampering, a wrong key), the planner, and address parsing.
 

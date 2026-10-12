@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased (1.1.1)
+
+Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships until the 1.1.1 gate passes.
+
+### RoachNet Cluster
+
+- When a Mac in a split model drops before any of a reply is sent, the same request is planned again without it (on this Mac alone when the model fits) instead of failing with 502. A drop after part of the reply was sent still fails that request.
+- **Find Macs Nearby** matches Macs by the node ID each proves at the handshake, so a Mac added by IP no longer shows as not added when Bonjour lists it by name.
+- The status in Settings tries once more after a connect timeout, so a Mac that was idle on Wi-Fi isn't shown as unreachable. A refused connection still fails at once.
+- Each hop counts round trips, tokens, time and bytes each way. `GET /api/cluster` shows the totals, and each trace carries that request's figures (`cluster_hops`) and marks a fallback reply (`cluster_fallback`).
+- What another Mac sends is checked: stage and shard digests must be 64 hex characters, positions, counts, offsets and context lengths must be in range, and shard pieces are refused when the volume would drop below 4 GB free. Before this, a paired Mac could name a path outside the shard folder.
+
+### Model server
+
+- Numbers from request bodies and CLI output (`num_predict`, `top_k`, `repeat_last_n`, `seed`, `num_ctx`, embedding dimensions, schema item counts, trace settings, usage counts) are clamped, so NaN, infinity or out-of-range values can't crash the runtime.
+- A new request slot needs twice its size free normally and four times while macOS reports memory pressure, and isn't made at critical pressure. A refused slot pauses growth for a minute instead of capping the model for good, and idle extra slots hand back their memory after 30 seconds under pressure (5 minutes otherwise).
+
+### Vault
+
+- Optional encryption at rest (Settings › Vault › Encryption), off unless you turn it on. The Vault moves into an AES-256 encrypted disk image made by macOS, with a recovery key shown once, an optional Keychain copy, checked copies both ways and a move that survives being cut off. See `docs/VAULT_ENCRYPTION.md`.
+- A locked Vault is reported as locked by `/api/rag/files` (`vaultLocked`), `/api/companion/vault` (`locked`) and the readiness check.
+
+### Release builds
+
+- The apps no longer carry the build Mac's file paths: dSYMs are kept out of the bundle, executables are stripped of their debug map before signing, and `scripts/audit-release-privacy.mjs` fails the build if a built file names the build Mac's folders, host names or network addresses.
+
 ## v1.1.0 - 2026-10-12
 
 Feature release. Includes every fix in 1.0.6 and 1.0.7. Ad-hoc signed, not Apple-notarized.
