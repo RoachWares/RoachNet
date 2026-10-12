@@ -194,7 +194,7 @@ final class ClusterNode {
         if probe {
             peers = current.peers.map { address in
                 do {
-                    let link = try open(address, timeout: 3)
+                    let link = try openRetryingOnce(address, timeout: 3)
                     defer { link.close() }
                     var status = try link.request(["op": "status"], timeout: 5).0.object
                     status["address"] = JSON(address)
@@ -267,6 +267,19 @@ final class ClusterNode {
         let peer = link.peerID
         lock.withLock { if settings.peers.contains(address) { peerIDs[address] = peer } }
         return link
+    }
+
+    /// For the status the app shows: a connect that timed out (rather than
+    /// being refused) gets one more try. On Wi-Fi the first packet to a Mac
+    /// that has been idle can take a few seconds, and a single miss would
+    /// show a working Mac as gone. Planning doesn't retry; it stays fast.
+    func openRetryingOnce(_ address: String, timeout: TimeInterval) throws -> ClusterLink {
+        let started = Date()
+        do {
+            return try open(address, timeout: timeout)
+        } catch ClusterError.unreachable(_) where Date().timeIntervalSince(started) >= timeout * 0.8 {
+            return try open(address, timeout: timeout)
+        }
     }
 
     private func serve(_ link: ClusterLink) {
