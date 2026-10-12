@@ -50,6 +50,8 @@ public final class NativeRuntime {
             catalogPath: Path.join(config.repoRoot, "collections", "native-models.json")
         )
         store.ollamaRoot = config.env("OLLAMA_MODELS").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(config.storageRoot, "models", "ollama")
+        store.stallTimeoutMs = config.downloadStallTimeoutMs
+        store.maxAttempts = config.downloadMaxAttempts
         return store
     }()
 

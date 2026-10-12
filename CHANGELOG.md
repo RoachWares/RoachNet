@@ -8,7 +8,7 @@ Feature release. Includes every fix in 1.0.6 and 1.0.7. Ad-hoc signed, not Apple
 
 - RoachNet no longer bundles or installs Ollama. RoachClaw runs on RoachInference, a native GGUF engine with hand-written Metal kernels, served by `roachnet-runtime` on the same Ollama-compatible loopback API. Models in an existing Ollama folder are read in place; `ROACHNET_INFERENCE_ENGINE=ollama` keeps using a runner you installed yourself.
 - On an M2 Pro, Metal decode runs at about 91% of Ollama's speed on 1.5B and 3B models and faster on 0.5B. CPU and Metal produce identical tokens on six reference models.
-- Model pulls resume where they stopped, restart cleanly when a server ignores the resume request, and are checked by SHA-256 before install. The model catalog adds verified Qwen2 models.
+- Model pulls resume where they stopped, retry on their own after a 90-second stall (up to six tries, like the download lane), restart cleanly when a server ignores the resume request, and are checked by SHA-256 before install. The model catalog adds verified Qwen2 models.
 - The Ollama-compatible model server takes Ollama's own Host and Origin stance: loopback, plus app, file, tauri and vscode-webview origins.
 
 ### Org

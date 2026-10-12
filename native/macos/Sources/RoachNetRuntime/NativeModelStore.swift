@@ -30,6 +30,15 @@ final class NativeModelStore {
     let catalogPath: String
     private let lock = NSLock()
     private var activePulls: Set<String> = []
+    /// How long a pull waits for bytes before it gives up on the connection and
+    /// resumes with `Range` (the runtime passes the download lane's setting).
+    var stallTimeoutMs = 90_000
+    /// Tries per pull, counting the first.
+    var maxAttempts = 6
+    /// Seconds to wait before attempt `n + 1`.
+    var retryPause: (Int) -> Double = { attempt in min(30, pow(2, Double(attempt))) }
+    /// Answers worth another try: timeouts, rate limits, a dropped or stalled connection.
+    static let transientStatuses: Set<Int> = [408, 425, 429, 500, 502, 503, 504]
 
     init(root: String, catalogPath: String) {
         self.root = root
@@ -231,12 +240,16 @@ final class NativeModelStore {
                 offset = 0
             }
             var restartedAfter416 = false
+            var attempt = 0
             while true {
+                attempt += 1
                 let download = StreamingDownload(url: url, headers: [:], maxBytes: 200 << 30, resumeFrom: offset, onResponse: { restart in
                     if restart { try restartPartial() }
                 }) { data, state in
                     output.write(data)
                     hasher.update(data)
+                    // A retry after a stall resumes from here.
+                    offset = state.receivedBytes
                     let now = Date()
                     if now.timeIntervalSince(lastReport) > 0.25 {
                         lastReport = now
@@ -251,7 +264,9 @@ final class NativeModelStore {
                     }
                 }
                 do {
-                    _ = try download.run(timeoutMs: 6 * 3600 * 1000)
+                    // No bytes for `stallTimeoutMs` ends this attempt; the pull then
+                    // resumes from what it has instead of waiting out the 6-hour clock.
+                    _ = try download.run(stallTimeoutMs: stallTimeoutMs, totalTimeoutMs: 6 * 3600 * 1000)
                     break
                 } catch {
                     if cancelled { throw RuntimeError("Pull cancelled.", statusCode: 499) }
@@ -261,7 +276,14 @@ final class NativeModelStore {
                         try restartPartial()
                         continue
                     }
-                    throw error
+                    guard let runtimeError = error as? RuntimeError, NativeModelStore.transientStatuses.contains(runtimeError.statusCode),
+                          attempt < maxAttempts else { throw error }
+                    let pause = retryPause(attempt)
+                    if !progress(["status": JSON("retrying (attempt \(attempt + 1) of \(maxAttempts)): \(runtimeError.message)"),
+                                  "digest": JSON(digest), "total": total.map { JSON(Double($0)) } ?? nil, "completed": JSON(Double(offset))]) {
+                        throw RuntimeError("Pull cancelled.", statusCode: 499)
+                    }
+                    if pause > 0 { Thread.sleep(forTimeInterval: pause) }
                 }
             }
         }

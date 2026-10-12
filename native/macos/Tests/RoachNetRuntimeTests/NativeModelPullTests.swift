@@ -49,12 +49,18 @@ final class NativeModelPullTests: XCTestCase {
 
     /// `honorRange`: answer `Range` with 206 + Content-Range (416 past the end);
     /// otherwise always send the whole file with a 200.
-    private func startServer(honorRange: Bool) throws -> String {
+    /// `firstStatus`: answer the first request with this status and no body.
+    /// `firstDelay`: hold the first request this long before answering (a stall).
+    private func startServer(honorRange: Bool, firstStatus: Int? = nil, firstDelay: TimeInterval = 0) throws -> String {
         let body = payload
         let log = requests
         let server = LoopbackHTTPServer(host: "127.0.0.1", port: 0, maxBodyBytes: 1024) { request in
             let range = request.headers["range"]
             log.value.append(range ?? "full")
+            if log.value.count == 1 {
+                if firstDelay > 0 { Thread.sleep(forTimeInterval: firstDelay) }
+                if let firstStatus { return HTTPResponse(status: firstStatus, headers: [("content-length", "0")]) }
+            }
             if honorRange, let range, range.hasPrefix("bytes="), let start = Int(range.dropFirst(6).split(separator: "-").first ?? "") {
                 if start >= body.count {
                     return HTTPResponse(status: 416, headers: [("content-range", "bytes */\(body.count)")])
@@ -90,9 +96,11 @@ final class NativeModelPullTests: XCTestCase {
         FileManager.default.contents(atPath: Path.join(root, "native", "pulltest", "1", "model.gguf"))
     }
 
-    private func pull(_ url: String, sha256: String?) throws {
+    private func pull(_ url: String, sha256: String?, configure: (NativeModelStore) -> Void = { _ in }) throws {
         let request: JSON = sha256.map { ["url": JSON(url), "sha256": JSON($0)] } ?? ["url": JSON(url)]
-        _ = try store().pull("pulltest:1", request: request) { _ in true }
+        let store = store()
+        configure(store)
+        _ = try store.pull("pulltest:1", request: request) { _ in true }
     }
 
     func testPullResumesAPartialWithRange() throws {
@@ -125,6 +133,38 @@ final class NativeModelPullTests: XCTestCase {
         try pull(url, sha256: nil)
         XCTAssertEqual(installed(), payload)
         XCTAssertEqual(requests.value, ["bytes=\(payload.count + 512)-", "full"])
+    }
+
+    func testPullRetriesAfterATransientAnswerAndResumes() throws {
+        let url = try startServer(honorRange: true, firstStatus: 503)
+        try leavePartial(payload.prefix(4096))
+        try pull(url, sha256: sha) { $0.retryPause = { _ in 0 } }
+        XCTAssertEqual(installed(), payload)
+        XCTAssertEqual(requests.value, ["bytes=4096-", "bytes=4096-"])
+    }
+
+    func testStalledPullGivesUpOnTheConnectionAndResumes() throws {
+        // Before 1.1.0 a pull waited out a 6-hour clock on a connection that sent nothing.
+        let url = try startServer(honorRange: true, firstDelay: 2)
+        try leavePartial(payload.prefix(4096))
+        let started = Date()
+        try pull(url, sha256: sha) { store in
+            store.stallTimeoutMs = 400
+            store.retryPause = { _ in 0 }
+        }
+        XCTAssertEqual(installed(), payload)
+        XCTAssertEqual(requests.value.first, "bytes=4096-")
+        XCTAssertGreaterThanOrEqual(requests.value.count, 2)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+    }
+
+    func testPullStopsRetryingAfterMaxAttempts() throws {
+        let url = try startServer(honorRange: true, firstStatus: 503)
+        XCTAssertThrowsError(try pull(url, sha256: sha) { store in
+            store.maxAttempts = 1
+            store.retryPause = { _ in 0 }
+        })
+        XCTAssertEqual(requests.value.count, 1)
     }
 
     // MARK: Download descriptors
