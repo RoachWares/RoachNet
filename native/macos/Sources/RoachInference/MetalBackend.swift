@@ -5,7 +5,7 @@ import Metal
 /// GPU backend for Apple Silicon built only on our own Metal kernels
 /// (`MetalKernelSource`). Weights stay quantized and are read in place from the
 /// memory-mapped GGUF file; activations and the KV cache live in shared buffers.
-public final class MetalBackend: TransformerBackend {
+public final class MetalBackend: TransformerBackend, BatchForwarding {
     public let model: TransformerModel
     public let contextLength: Int
     public var name: String { "metal (\(device.name))" }
@@ -44,6 +44,16 @@ public final class MetalBackend: TransformerBackend {
     let serialDispatch = ProcessInfo.processInfo.environment["ROACHNET_METAL_SERIAL"] == "1"
     /// GPU time of the most recent forward pass, for profiling.
     public private(set) var lastGPUSeconds: Double = 0
+    /// Prompt tokens per batched pass; 0 runs prompts a token at a time.
+    public private(set) var maxBatch = 0
+    /// Prefill matrices use the simdgroup matrix units (Apple7 GPUs and later);
+    /// `ROACHNET_METAL_MATMUL=simple` uses the plain four-token kernels (A/B checks).
+    lazy var matmulKernel: (prefix: String, rows: Int) = {
+        let choice = ProcessInfo.processInfo.environment["ROACHNET_METAL_MATMUL"] ?? ""
+        guard device.supportsFamily(.apple7), choice != "simple" else { return ("matmul_", 32) }
+        return ("matmul_sg_", 64)
+    }()
+    private var batchStorage: BatchBuffers?
 
     private static var cachedLibrary: [ObjectIdentifier: MTLLibrary] = [:]
     private static let libraryLock = NSLock()
@@ -69,6 +79,7 @@ public final class MetalBackend: TransformerBackend {
                 FileHandle.standardError.write(Data("RoachInference: Metal parity check failed (max |Δ| \(worst)); using CPU.\n".utf8))
                 return nil
             }
+            backend.verifyBatching()
             return backend
         } catch {
             FileHandle.standardError.write(Data("RoachInference: Metal unavailable (\(error)); using CPU.\n".utf8))
@@ -169,6 +180,7 @@ public final class MetalBackend: TransformerBackend {
         logitsBuffer = try scratch(model.outputProjection.rows)
         keyCache = try scratch(hp.blockCount * contextLength * kvKeyWidth)
         valueCache = try scratch(hp.blockCount * contextLength * kvValueWidth)
+        maxBatch = min(MetalBackend.batchSize(for: model), contextLength / 4 * 4)
     }
 
     public var logits: UnsafeBufferPointer<Float> {
@@ -339,6 +351,246 @@ public final class MetalBackend: TransformerBackend {
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         lastGPUSeconds = commandBuffer.gpuEndTime - commandBuffer.gpuStartTime
+    }
+
+    // MARK: Batched prefill
+
+    /// Weight types the batched kernels read (q2_K and q3_K models prefill a token at a time).
+    static let batchTypes: Set<GGMLType> = [.f32, .f16, .bf16, .q4_0, .q4_1, .q5_0, .q5_1, .q8_0, .q4_K, .q5_K, .q6_K, .q8_K]
+
+    /// Tokens per batched pass for this model, or 0 when it can't be batched.
+    /// `ROACHNET_METAL_BATCH=0` turns batching off (A/B checks); a number sets the size.
+    static func batchSize(for model: TransformerModel) -> Int {
+        let setting = ProcessInfo.processInfo.environment["ROACHNET_METAL_BATCH"].flatMap { Int($0) }
+        if setting == 0 { return 0 }
+        let hp = model.hyperparameters
+        guard hp.headDimension <= 256, hp.valueDimension <= 256 else { return 0 }
+        for layer in model.layers {
+            for matrix in [layer.query, layer.key, layer.value, layer.output, layer.gate, layer.up, layer.down] where !batchTypes.contains(matrix.type) {
+                return 0
+            }
+        }
+        return max(4, min(setting ?? 512, 2048)) / 4 * 4
+    }
+
+    final class BatchBuffers {
+        let groups: Int
+        let x: MTLBuffer, normed: MTLBuffer, query: MTLBuffer, key: MTLBuffer, value: MTLBuffer
+        let attention: MTLBuffer, hidden: MTLBuffer, up: MTLBuffer
+
+        init(device: MTLDevice, model: TransformerModel, groups: Int) throws {
+            let hp = model.hyperparameters
+            func packed(_ width: Int) throws -> MTLBuffer {
+                guard let buffer = device.makeBuffer(length: max(16, groups * width * 16), options: .storageModeShared) else {
+                    throw InferenceError.invalid("Metal allocation failed.")
+                }
+                return buffer
+            }
+            self.groups = groups
+            x = try packed(hp.embeddingLength)
+            normed = try packed(hp.embeddingLength)
+            query = try packed(hp.headCount * hp.headDimension)
+            key = try packed(hp.headCountKV * hp.headDimension)
+            value = try packed(hp.headCountKV * hp.valueDimension)
+            attention = try packed(hp.headCount * hp.valueDimension)
+            hidden = try packed(hp.feedForwardLength)
+            up = try packed(hp.feedForwardLength)
+        }
+    }
+
+    private func batchBuffers() -> BatchBuffers? {
+        if let batchStorage { return batchStorage }
+        batchStorage = try? BatchBuffers(device: device, model: model, groups: maxBatch / 4)
+        return batchStorage
+    }
+
+    private func matmul(_ encoder: MTLComputeCommandEncoder, _ matrix: QuantizedMatrix, _ input: MTLBuffer, _ output: MTLBuffer,
+                        groups: Int, bias: MTLBuffer? = nil, accumulate: Bool = false) {
+        struct Args { var cols: UInt32; var rowBytes: UInt32; var rows: UInt32; var flags: UInt32; var groups: UInt32 }
+        var args = Args(cols: UInt32(matrix.columns), rowBytes: UInt32(matrix.rowBytes), rows: UInt32(matrix.rows),
+                        flags: (accumulate ? 1 : 0) | (bias != nil ? 2 : 0), groups: UInt32(groups))
+        let (prefix, tileRows) = matmulKernel
+        let kernel = prefix + MetalBackend.matvecKernel(matrix.type).dropFirst("matvec_".count)
+        encoder.setComputePipelineState(pipeline(kernel))
+        encoder.setBuffer(weights, offset: matrix.data - weightsBase, index: 0)
+        encoder.setBuffer(input, offset: 0, index: 1)
+        encoder.setBuffer(output, offset: 0, index: 2)
+        encoder.setBytes(&args, length: MemoryLayout<Args>.stride, index: 3)
+        encoder.setBuffer(bias ?? output, offset: 0, index: 4)
+        encoder.dispatchThreadgroups(MTLSize(width: (matrix.rows + tileRows - 1) / tileRows, height: (groups + 7) / 8, depth: 1),
+                                     threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
+    }
+
+    private func rmsNorm4(_ encoder: MTLComputeCommandEncoder, _ input: MTLBuffer, _ weight: MTLBuffer, _ output: MTLBuffer, count: Int, rows: Int) {
+        struct Args { var n: UInt32; var eps: Float }
+        var args = Args(n: UInt32(count), eps: model.hyperparameters.rmsEpsilon)
+        let state = pipeline("rms_norm4")
+        encoder.setComputePipelineState(state)
+        encoder.setBuffer(input, offset: 0, index: 0)
+        encoder.setBuffer(weight, offset: 0, index: 1)
+        encoder.setBuffer(output, offset: 0, index: 2)
+        encoder.setBytes(&args, length: MemoryLayout<Args>.stride, index: 3)
+        let threads = min(state.maxTotalThreadsPerThreadgroup, 1024, max(32, (count + 31) / 32 * 32))
+        encoder.dispatchThreadgroups(MTLSize(width: rows, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: threads, height: 1, depth: 1))
+    }
+
+    private func rope4(_ encoder: MTLComputeCommandEncoder, _ buffer: MTLBuffer, heads: Int, groups: Int, start: Int) {
+        struct Args { var headDim: UInt32; var pairs: UInt32; var start: UInt32; var neox: UInt32; var heads: UInt32 }
+        let hp = model.hyperparameters
+        let pairs = model.ropeInverseFrequencies.count
+        var args = Args(headDim: UInt32(hp.headDimension), pairs: UInt32(pairs), start: UInt32(start),
+                        neox: hp.ropeStyle == .neox ? 1 : 0, heads: UInt32(heads))
+        encoder.setComputePipelineState(pipeline("rope4"))
+        encoder.setBuffer(buffer, offset: 0, index: 0)
+        encoder.setBuffer(inverseFrequencies, offset: 0, index: 1)
+        encoder.setBytes(&args, length: MemoryLayout<Args>.stride, index: 2)
+        encoder.dispatchThreads(MTLSize(width: pairs, height: heads, depth: groups),
+                                threadsPerThreadgroup: MTLSize(width: min(pairs, 64), height: 1, depth: 1))
+    }
+
+    private func store4(_ encoder: MTLComputeCommandEncoder, _ source: MTLBuffer, into cache: MTLBuffer, offset: Int, width: Int, groups: Int, count: Int) {
+        struct Args { var width: UInt32; var count: UInt32 }
+        var args = Args(width: UInt32(width), count: UInt32(count))
+        encoder.setComputePipelineState(pipeline("kv_store4"))
+        encoder.setBuffer(source, offset: 0, index: 0)
+        encoder.setBuffer(cache, offset: offset, index: 1)
+        encoder.setBytes(&args, length: MemoryLayout<Args>.stride, index: 2)
+        encoder.dispatchThreads(MTLSize(width: width, height: groups, depth: 1), threadsPerThreadgroup: MTLSize(width: min(256, width), height: 1, depth: 1))
+    }
+
+    /// Runs `tokens` at positions `position…` in one pass: every matrix is read
+    /// once per 32 tokens instead of once per token.
+    public func forward(tokens: [Int], position: Int, output: ForwardOutput, each: ((Int, UnsafeBufferPointer<Float>) -> Void)?) {
+        let count = tokens.count
+        guard count > 0 else { return }
+        guard count <= maxBatch, let b = batchBuffers() else {
+            for (offset, token) in tokens.enumerated() {
+                let last = offset == count - 1
+                let wanted: ForwardOutput = each != nil ? (last && output == .logits ? .logits : .hidden) : (last ? output : .none)
+                forward(token: token, position: position + offset, output: wanted)
+                each?(offset, hiddenState)
+            }
+            return
+        }
+        let hp = model.hyperparameters
+        let dim = hp.embeddingLength, heads = hp.headCount, kvHeads = hp.headCountKV
+        let groups = (count + 3) / 4
+
+        // Embeddings, packed four tokens to a float4.
+        let packed = b.x.contents().assumingMemoryBound(to: Float.self)
+        let row = UnsafeMutablePointer<Float>.allocate(capacity: dim)
+        defer { row.deallocate() }
+        for t in 0..<(groups * 4) {
+            if t < count { model.tokenEmbedding.dequantizeRow(tokens[t], into: row) } else { row.initialize(repeating: 0, count: dim) }
+            let base = packed + (t / 4) * dim * 4 + t % 4
+            for i in 0..<dim { base[i * 4] = row[i] }
+        }
+
+        guard let commandBuffer = queue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeComputeCommandEncoder(dispatchType: serialDispatch ? .serial : .concurrent) else { return }
+        let serial = serialDispatch
+        func barrier() { if !serial { encoder.memoryBarrier(scope: .buffers) } }
+        struct AttnArgs {
+            var headDim: UInt32; var valueDim: UInt32; var keyWidth: UInt32; var valueWidth: UInt32
+            var group: UInt32; var heads: UInt32; var start: UInt32; var count: UInt32; var scale: Float
+        }
+        var attn = AttnArgs(headDim: UInt32(hp.headDimension), valueDim: UInt32(hp.valueDimension),
+                            keyWidth: UInt32(kvKeyWidth), valueWidth: UInt32(kvValueWidth), group: UInt32(heads / kvHeads),
+                            heads: UInt32(heads), start: UInt32(position), count: UInt32(count), scale: 1 / sqrtf(Float(hp.headDimension)))
+
+        for (index, layer) in model.layers.enumerated() {
+            let buffers = layerBuffers[index]
+            let keyLayer = index * contextLength * kvKeyWidth * 4
+            let valueLayer = index * contextLength * kvValueWidth * 4
+
+            rmsNorm4(encoder, b.x, buffers.attentionNorm, b.normed, count: dim, rows: groups)
+            barrier()
+            matmul(encoder, layer.query, b.normed, b.query, groups: groups, bias: buffers.queryBias)
+            matmul(encoder, layer.key, b.normed, b.key, groups: groups, bias: buffers.keyBias)
+            matmul(encoder, layer.value, b.normed, b.value, groups: groups, bias: buffers.valueBias)
+            barrier()
+            if let norm = buffers.queryNorm { rmsNorm4(encoder, b.query, norm, b.query, count: hp.headDimension, rows: groups * heads) }
+            if let norm = buffers.keyNorm { rmsNorm4(encoder, b.key, norm, b.key, count: hp.headDimension, rows: groups * kvHeads) }
+            if buffers.queryNorm != nil || buffers.keyNorm != nil { barrier() }
+            rope4(encoder, b.query, heads: heads, groups: groups, start: position)
+            rope4(encoder, b.key, heads: kvHeads, groups: groups, start: position)
+            barrier()
+            store4(encoder, b.key, into: keyCache, offset: keyLayer + position * kvKeyWidth * 4, width: kvKeyWidth, groups: groups, count: count)
+            store4(encoder, b.value, into: valueCache, offset: valueLayer + position * kvValueWidth * 4, width: kvValueWidth, groups: groups, count: count)
+            barrier()
+
+            encoder.setComputePipelineState(pipeline("attn4"))
+            encoder.setBuffer(b.query, offset: 0, index: 0)
+            encoder.setBuffer(keyCache, offset: keyLayer, index: 1)
+            encoder.setBuffer(valueCache, offset: valueLayer, index: 2)
+            encoder.setBuffer(b.attention, offset: 0, index: 3)
+            encoder.setBytes(&attn, length: MemoryLayout<AttnArgs>.stride, index: 4)
+            encoder.dispatchThreadgroups(MTLSize(width: heads, height: groups, depth: 1), threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
+            barrier()
+
+            matmul(encoder, layer.output, b.attention, b.x, groups: groups, accumulate: true)
+            barrier()
+            rmsNorm4(encoder, b.x, buffers.feedForwardNorm, b.normed, count: dim, rows: groups)
+            barrier()
+            matmul(encoder, layer.gate, b.normed, b.hidden, groups: groups)
+            matmul(encoder, layer.up, b.normed, b.up, groups: groups)
+            barrier()
+            elementwise(encoder, "silu_mul", b.hidden, b.up, count: groups * hp.feedForwardLength * 4)
+            barrier()
+            matmul(encoder, layer.down, b.hidden, b.x, groups: groups, accumulate: true)
+            barrier()
+        }
+
+        if each != nil { rmsNorm4(encoder, b.x, outputNorm, b.normed, count: dim, rows: groups) }
+        if output != .none {
+            // The last token's state goes through the usual final norm (and projection).
+            var pick = SIMD2<UInt32>(UInt32(dim), UInt32((count - 1) % 4))
+            encoder.setComputePipelineState(pipeline("take4"))
+            encoder.setBuffer(b.x, offset: ((count - 1) / 4) * dim * 16, index: 0)
+            encoder.setBuffer(x, offset: 0, index: 1)
+            encoder.setBytes(&pick, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 2)
+            encoder.dispatchThreads(MTLSize(width: dim, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: min(256, dim), height: 1, depth: 1))
+            barrier()
+            rmsNorm(encoder, x, outputNorm, normed, count: dim)
+            barrier()
+            if output == .logits { matvec(encoder, model.outputProjection, normed, logitsBuffer) }
+        }
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        lastGPUSeconds = commandBuffer.gpuEndTime - commandBuffer.gpuStartTime
+
+        if let each {
+            let states = b.normed.contents().assumingMemoryBound(to: Float.self)
+            for t in 0..<count {
+                let base = states + (t / 4) * dim * 4 + t % 4
+                for i in 0..<dim { row[i] = base[i * 4] }
+                each(t, UnsafeBufferPointer(start: row, count: dim))
+            }
+        }
+    }
+
+    /// Checks a batched pass against token-by-token passes on this GPU;
+    /// batching is turned off for this model if they disagree.
+    func verifyBatching() {
+        guard maxBatch > 0 else { return }
+        var tokens = model.tokenizer.encode("The quick brown fox jumps").map { Int($0) }
+        if let bos = model.tokenizer.bos, tokens.first != Int(bos) { tokens.insert(Int(bos), at: 0) }
+        tokens = Array(tokens.prefix(6))
+        while tokens.count < 6 { tokens.append(tokens.last ?? 0) }
+        for (position, token) in tokens.enumerated() { forward(token: token, position: position, output: position == tokens.count - 1 ? .logits : .none) }
+        let reference = Array(logits)
+        forward(tokens: tokens, position: 0, output: .logits, each: nil)
+        let batched = Array(logits)
+        var worst: Float = 0, magnitude: Float = 1e-6
+        for i in 0..<reference.count {
+            worst = max(worst, abs(reference[i] - batched[i]))
+            magnitude = max(magnitude, abs(reference[i]))
+        }
+        if !(worst <= 1e-2 * magnitude + 1e-3) {
+            FileHandle.standardError.write(Data("RoachInference: batched prefill check failed (max |Δ| \(worst)); prompts run a token at a time.\n".utf8))
+            maxBatch = 0
+        }
     }
 
     /// Times every layer's matrix of each kind on the GPU (profiling aid for

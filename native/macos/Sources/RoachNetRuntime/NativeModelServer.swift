@@ -13,6 +13,8 @@ final class NativeModelServer {
         let name: String
         /// The weights on disk; models linked to the same file share this engine.
         var fileKey = ""
+        /// What it holds in memory (weights, cache and buffers).
+        var footprint: ModelFootprint?
         let engine: InferenceEngine
         let contextLength: Int
         var requestedContext = 0
@@ -29,7 +31,7 @@ final class NativeModelServer {
 
     let store: NativeModelStore
     private let lock = NSLock()
-    private var loaded: [String: LoadedModel] = [:]
+    var loaded: [String: LoadedModel] = [:]
     private let maxLoadedModels: Int
     private var reaper: DispatchSourceTimer?
     var server: LoopbackHTTPServer?
@@ -41,7 +43,8 @@ final class NativeModelServer {
 
     init(store: NativeModelStore, maxLoadedModels: Int = 2) {
         self.store = store
-        self.maxLoadedModels = maxLoadedModels
+        let configured = ProcessInfo.processInfo.environment["ROACHNET_MAX_LOADED_MODELS"].flatMap { Int($0) }
+        self.maxLoadedModels = max(1, configured ?? maxLoadedModels)
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
         timer.schedule(deadline: .now() + 30, repeating: 30)
         timer.setEventHandler { [weak self] in self?.unloadExpired() }
@@ -268,11 +271,14 @@ final class NativeModelServer {
         if loaded.count >= maxLoadedModels, let oldest = loaded.values.min(by: { $0.lastUsed < $1.lastUsed }) {
             loaded[oldest.name] = nil
         }
+        let footprint = try makeRoom(for: name, footprint: ModelFootprint(file: GGUFFile(path: entry.modelPath), contextLength: wanted),
+                                     budget: SystemMemory.modelBudget)
         let model = try TransformerModel(path: entry.modelPath)
-        let engine = InferenceEngine(model: model, contextLength: wanted)
+        let engine = InferenceEngine(model: model, contextLength: footprint.context)
         let item = LoadedModel(name: name, engine: engine, contextLength: engine.session.contextLength, keepAlive: seconds)
         item.requestedContext = wanted
         item.fileKey = fileKey
+        item.footprint = footprint
         loaded[name] = item
         RuntimeLog.write("native engine loaded \(name) (ctx \(item.contextLength))")
         return item
@@ -306,10 +312,12 @@ final class NativeModelServer {
         return loaded.values.map { item in
             let entry = store.entry(item.name)
             let manifest = entry?.manifest ?? .null
-            return ["name": JSON(item.name), "model": JSON(item.name), "size": manifest["size"] || 0,
+            return ["name": JSON(item.name), "model": JSON(item.name),
                     "digest": manifest["sha256"] || "", "details": details(manifest),
                     "expires_at": JSON(item.expiresAt == .distantFuture || item.expiresAt.timeIntervalSinceNow > 1e9 ? "2318-01-01T00:00:00Z" : JS.iso(item.expiresAt)),
-                    "size_vram": 0, "context_length": JSON(item.contextLength)]
+                    "size": JSON(item.footprint?.total ?? Int(manifest["size"].numberValue ?? 0)),
+                    "size_vram": JSON(item.engine.session.backend is CPUBackend ? 0 : item.footprint?.total ?? 0),
+                    "context_length": JSON(item.contextLength), "backend": JSON(item.engine.session.backend.name)]
         }
     }
 

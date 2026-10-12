@@ -105,6 +105,34 @@ do {
         #else
         fail("Metal is not available on this platform.")
         #endif
+    case "prefill":
+        // roachnet-infer prefill <model.gguf> [--tokens N]: prompt evaluation, batched against a token at a time.
+        #if canImport(Metal)
+        let model = try TransformerModel(path: path)
+        let count = Int(option("--tokens") ?? "512") ?? 512
+        let backend = try MetalBackend(model: model, contextLength: count + 8)
+        var tokens = model.tokenizer.encode(String(repeating: "RoachNet keeps your models, data and agents on your own Mac. ", count: count / 8 + 1)).map { Int($0) }
+        tokens = Array(tokens.prefix(count))
+        func batched() -> Double {
+            let start = Date()
+            var index = 0
+            while index < tokens.count {
+                let end = min(tokens.count, index + max(1, backend.maxBatch))
+                backend.forward(tokens: Array(tokens[index..<end]), position: index, output: end == tokens.count ? .logits : .none, each: nil)
+                index = end
+            }
+            return Date().timeIntervalSince(start)
+        }
+        _ = batched()
+        let fast = min(batched(), batched())
+        let start = Date()
+        for (position, token) in tokens.enumerated() { backend.forward(token: token, position: position, output: position == tokens.count - 1 ? .logits : .none) }
+        let slow = Date().timeIntervalSince(start)
+        print(String(format: "%d tokens: batched %.0f tok/s (%.0f ms, batch %d), one at a time %.0f tok/s (%.0f ms): %.1fx",
+                     tokens.count, Double(tokens.count) / fast, fast * 1000, backend.maxBatch, Double(tokens.count) / slow, slow * 1000, slow / fast))
+        #else
+        fail("Metal is not available on this platform.")
+        #endif
     case "dot-vectors":
         // Format per record: u32 type, u32 cols, u32 rowBytes, f32 expected, row bytes, cols × f32 x.
         guard args.count >= 3 else { fail("missing output path") }

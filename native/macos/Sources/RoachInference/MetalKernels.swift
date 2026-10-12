@@ -5,6 +5,7 @@
 enum MetalKernelSource {
     static let source = #"""
 #include <metal_stdlib>
+#include <metal_simdgroup_matrix>
 using namespace metal;
 
 // GGUF tensors are 32-byte aligned and every block size is even, so 16-bit
@@ -27,28 +28,28 @@ inline void scale_min_k4(int j, device const uchar* q, thread float& d, thread f
 
 // ---- block dot products: one quantized block against floats ----
 
-template <typename X> inline float dot_f32_32(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_f32_32(device const uchar* b, X x) {
     device const float* w = (device const float*)b;
-    float acc = 0;
+    A acc = A(0);
     for (int j = 0; j < 32; ++j) acc += w[j] * x[j];
     return acc;
 }
-template <typename X> inline float dot_f16_32(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_f16_32(device const uchar* b, X x) {
     device const half* w = (device const half*)b;
-    float acc = 0;
+    A acc = A(0);
     for (int j = 0; j < 32; ++j) acc += float(w[j]) * x[j];
     return acc;
 }
-template <typename X> inline float dot_bf16_32(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_bf16_32(device const uchar* b, X x) {
     device const ushort* w = (device const ushort*)b;
-    float acc = 0;
+    A acc = A(0);
     for (int j = 0; j < 32; ++j) acc += as_type<float>(uint(w[j]) << 16) * x[j];
     return acc;
 }
-template <typename X> inline float dot_q4_0(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_q4_0(device const uchar* b, X x) {
     float d = f16_at(b);
     device const ushort* q = (device const ushort*)(b + 2);
-    float acc = 0;
+    A acc = A(0);
     for (int m = 0; m < 8; ++m) {
         uint w = q[m];
         acc += float(int(w & 0x0F) - 8) * x[2 * m] + float(int((w >> 8) & 0x0F) - 8) * x[2 * m + 1]
@@ -56,9 +57,9 @@ template <typename X> inline float dot_q4_0(device const uchar* b, X x) {
     }
     return d * acc;
 }
-template <typename X> inline float dot_q4_1(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_q4_1(device const uchar* b, X x) {
     float d = f16_at(b), m = f16_at(b + 2);
-    float acc = 0, sum = 0;
+    A acc = A(0), sum = A(0);
     for (int j = 0; j < 16; ++j) {
         uchar q = b[4 + j];
         acc += float(q & 0x0F) * x[j] + float(q >> 4) * x[j + 16];
@@ -66,12 +67,12 @@ template <typename X> inline float dot_q4_1(device const uchar* b, X x) {
     }
     return d * acc + m * sum;
 }
-template <typename X> inline float dot_q5_0(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_q5_0(device const uchar* b, X x) {
     float d = f16_at(b);
     device const ushort* h = (device const ushort*)(b + 2);
     uint qh = uint(h[0]) | (uint(h[1]) << 16);
     device const ushort* q = (device const ushort*)(b + 6);
-    float acc = 0;
+    A acc = A(0);
     for (int m = 0; m < 8; ++m) {
         uint w = q[m];
         uint j0 = uint(2 * m), j1 = j0 + 1;
@@ -82,10 +83,10 @@ template <typename X> inline float dot_q5_0(device const uchar* b, X x) {
     }
     return d * acc;
 }
-template <typename X> inline float dot_q5_1(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_q5_1(device const uchar* b, X x) {
     float d = f16_at(b), m = f16_at(b + 2);
     uint qh = u32_at(b + 4);
-    float acc = 0, sum = 0;
+    A acc = A(0), sum = A(0);
     for (int j = 0; j < 16; ++j) {
         uchar q = b[8 + j];
         uint h0 = ((qh >> uint(j)) << 4) & 0x10;
@@ -95,10 +96,10 @@ template <typename X> inline float dot_q5_1(device const uchar* b, X x) {
     }
     return d * acc + m * sum;
 }
-template <typename X> inline float dot_q8_0(device const uchar* b, X x) {
+template <typename X, typename A = float> inline A dot_q8_0(device const uchar* b, X x) {
     float d = f16_at(b);
     device const ushort* q = (device const ushort*)(b + 2);
-    float acc = 0;
+    A acc = A(0);
     for (int m = 0; m < 16; ++m) {
         ushort w = q[m];
         acc += float(lo_s8(w)) * x[2 * m] + float(hi_s8(w)) * x[2 * m + 1];
@@ -243,14 +244,14 @@ inline float dot_q8_K(device const uchar* b, device const float* x) {
 // superblock, so a simdgroup can spread a short row's few superblocks over
 // all 32 lanes instead of leaving most of them idle.
 // `xs` points at the 32 floats of chunk j.
-template <typename X> inline float pdot_q4_K(device const uchar* b, X xs, uint j) {
+template <typename X, typename A = float> inline A pdot_q4_K(device const uchar* b, X xs, uint j) {
     float d = f16_at(b), dmin = f16_at(b + 2);
     float sc, mn;
     scale_min_k4(int(j), b + 4, sc, mn);
     // Q4_K blocks are 144 bytes and the quants start at byte 16: 16-byte aligned.
     device const uint4* q = (device const uint4*)(b + 16 + (j >> 1) * 32);
     uint shift = (j & 1) ? 4 : 0;
-    float a = 0, s = 0;
+    A a = A(0), s = A(0);
     for (int h = 0; h < 2; ++h) {
         uint4 v = q[h];
         uint words[4] = { v.x, v.y, v.z, v.w };
@@ -265,14 +266,14 @@ template <typename X> inline float pdot_q4_K(device const uchar* b, X xs, uint j
     return d * sc * a - dmin * mn * s;
 }
 // `xs` points at the 32 floats of chunk j.
-template <typename X> inline float pdot_q5_K(device const uchar* b, X xs, uint j) {
+template <typename X, typename A = float> inline A pdot_q5_K(device const uchar* b, X xs, uint j) {
     float d = f16_at(b), dmin = f16_at(b + 2);
     float sc, mn;
     scale_min_k4(int(j), b + 4, sc, mn);
     device const uchar* qh = b + 16;
     device const uchar* ql = b + 48 + (j >> 1) * 32;
     uint shift = (j & 1) ? 4 : 0;
-    float a = 0, s = 0;
+    A a = A(0), s = A(0);
     for (int l = 0; l < 32; ++l) {
         a += float(int((ql[l] >> shift) & 0x0F) + (((qh[l] >> j) & 1) ? 16 : 0)) * xs[l];
         s += xs[l];
@@ -280,27 +281,27 @@ template <typename X> inline float pdot_q5_K(device const uchar* b, X xs, uint j
     return d * sc * a - dmin * mn * s;
 }
 // `xs` points at the 32 floats of chunk j.
-template <typename X> inline float pdot_q6_K(device const uchar* b, X xs, uint j) {
+template <typename X, typename A = float> inline A pdot_q6_K(device const uchar* b, X xs, uint j) {
     uint n = j >> 2, k = j & 3;
     device const ushort* ql = (device const ushort*)(b + n * 64 + ((k & 1) ? 32 : 0));
     device const ushort* qh = (device const ushort*)(b + 128 + n * 32);
     device const char* sc = (device const char*)(b + 192 + n * 8);
     float d = f16_at(b + 208);
     uint lowShift = (k & 2) ? 4 : 0, highShift = 2 * k;
-    float a0 = 0, a1 = 0;
+    A a0 = A(0), a1 = A(0);
     for (int m = 0; m < 16; ++m) {
         uint lw = ql[m], hw = qh[m];
-        float v0 = float(int(((lw >> lowShift) & 0x0F) | (((hw >> highShift) & 3) << 4)) - 32) * xs[2 * m];
-        float v1 = float(int(((lw >> (8 + lowShift)) & 0x0F) | (((hw >> (8 + highShift)) & 3) << 4)) - 32) * xs[2 * m + 1];
+        A v0 = float(int(((lw >> lowShift) & 0x0F) | (((hw >> highShift) & 3) << 4)) - 32) * xs[2 * m];
+        A v1 = float(int(((lw >> (8 + lowShift)) & 0x0F) | (((hw >> (8 + highShift)) & 3) << 4)) - 32) * xs[2 * m + 1];
         if (m < 8) a0 += v0 + v1; else a1 += v0 + v1;
     }
     return d * (float(sc[2 * k]) * a0 + float(sc[2 * k + 1]) * a1);
 }
 // `xs` points at the 32 floats of chunk j.
-template <typename X> inline float pdot_q8_K(device const uchar* b, X xs, uint j) {
+template <typename X, typename A = float> inline A pdot_q8_K(device const uchar* b, X xs, uint j) {
     float d = *(device const float*)b;
     device const char* q = (device const char*)(b + 4) + j * 32;
-    float a = 0;
+    A a = A(0);
     for (int l = 0; l < 32; ++l) a += float(q[l]) * xs[l];
     return d * a;
 }
@@ -749,5 +750,360 @@ kernel void attn_values(device const float* s [[buffer(0)]], device const float*
     for (uint t = 0; t < a.span; ++t) acc += p[t] * V[ulong(t) * a.valueWidth + ulong(kvh) * a.valueDim + d];
     out[ulong(h) * a.valueDim + d] = acc;
 }
+// ---- batched prefill: groups of four tokens packed as float4 ----
+// Activations are laid out [group][column] as float4, where component c is
+// token 4·group + c. Every kernel below works on four tokens at once.
+
+struct MatmulArgs { uint cols; uint rowBytes; uint rows; uint flags; uint groups; };
+
+// Y[g][row] = W[row] · X[g]. A threadgroup computes 32 rows for 8 groups
+// (32 tokens). The 32-column slice of X it needs is staged in threadgroup
+// memory, so each weight block is read from memory once per 32 tokens and
+// decoded once per four. Lane l of simdgroup s owns row 8s + (l & 7) for
+// groups l >> 3 and (l >> 3) + 4.
+inline void matmul_store(float4 v, uint row, uint g, device float4* y, device const float* bias, constant MatmulArgs& a) {
+    if (a.flags & 2u) v += bias[row];
+    ulong index = ulong(g) * a.rows + row;
+    if (a.flags & 1u) v += y[index];
+    y[index] = v;
+}
+#define MM_DOT32(NAME, DOT, BYTES) \
+inline float4 NAME(device const uchar* r, uint kc, threadgroup const float4* xs) { \
+    return DOT<threadgroup const float4*, float4>(r + ulong(kc) * BYTES, xs); }
+#define MM_DOTK(NAME, PDOT, BYTES) \
+inline float4 NAME(device const uchar* r, uint kc, threadgroup const float4* xs) { \
+    return PDOT<threadgroup const float4*, float4>(r + ulong(kc >> 3) * BYTES, xs, kc & 7); }
+#define MATMUL(NAME, CALL) \
+kernel void NAME(device const uchar* W [[buffer(0)]], device const float4* x [[buffer(1)]], \
+                 device float4* y [[buffer(2)]], constant MatmulArgs& a [[buffer(3)]], \
+                 device const float* bias [[buffer(4)]], \
+                 uint2 tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]], \
+                 uint sg [[simdgroup_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]]) { \
+    threadgroup float4 tile[8 * 32]; \
+    uint row = tg.x * 32 + sg * 8 + (lane & 7); \
+    uint g0 = tg.y * 8; \
+    uint ga = lane >> 3, gb = ga + 4; \
+    bool live = row < a.rows; \
+    device const uchar* r = W + ulong(min(row, a.rows - 1)) * a.rowBytes; \
+    float4 acc0 = float4(0), acc1 = float4(0); \
+    uint chunks = a.cols / 32; \
+    for (uint kc = 0; kc < chunks; ++kc) { \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+        for (uint i = tid; i < 8 * 32; i += 128) { \
+            uint g = g0 + i / 32; \
+            tile[i] = g < a.groups ? x[ulong(g) * a.cols + kc * 32 + (i & 31)] : float4(0); \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+        if (live) { \
+            acc0 += CALL(r, kc, (threadgroup const float4*)(tile + ga * 32)); \
+            acc1 += CALL(r, kc, (threadgroup const float4*)(tile + gb * 32)); \
+        } \
+    } \
+    if (live) { \
+        if (g0 + ga < a.groups) matmul_store(acc0, row, g0 + ga, y, bias, a); \
+        if (g0 + gb < a.groups) matmul_store(acc1, row, g0 + gb, y, bias, a); \
+    } \
+}
+
+MM_DOT32(mmd_f32, dot_f32_32, 128)
+MM_DOT32(mmd_f16, dot_f16_32, 64)
+MM_DOT32(mmd_bf16, dot_bf16_32, 64)
+MM_DOT32(mmd_q4_0, dot_q4_0, 18)
+MM_DOT32(mmd_q4_1, dot_q4_1, 20)
+MM_DOT32(mmd_q5_0, dot_q5_0, 22)
+MM_DOT32(mmd_q5_1, dot_q5_1, 24)
+MM_DOT32(mmd_q8_0, dot_q8_0, 34)
+MM_DOTK(mmd_q4_K, pdot_q4_K, 144)
+MM_DOTK(mmd_q5_K, pdot_q5_K, 176)
+MM_DOTK(mmd_q6_K, pdot_q6_K, 210)
+MM_DOTK(mmd_q8_K, pdot_q8_K, 292)
+MATMUL(matmul_f32, mmd_f32)
+MATMUL(matmul_f16, mmd_f16)
+MATMUL(matmul_bf16, mmd_bf16)
+MATMUL(matmul_q4_0, mmd_q4_0)
+MATMUL(matmul_q4_1, mmd_q4_1)
+MATMUL(matmul_q5_0, mmd_q5_0)
+MATMUL(matmul_q5_1, mmd_q5_1)
+MATMUL(matmul_q8_0, mmd_q8_0)
+MATMUL(matmul_q4_K, mmd_q4_K)
+MATMUL(matmul_q5_K, mmd_q5_K)
+MATMUL(matmul_q6_K, mmd_q6_K)
+MATMUL(matmul_q8_K, mmd_q8_K)
+
+// rms_norm for four tokens: one threadgroup per row of n float4.
+kernel void rms_norm4(device const float4* x [[buffer(0)]], device const float* w [[buffer(1)]],
+                      device float4* y [[buffer(2)]], constant NormArgs& a [[buffer(3)]],
+                      uint row [[threadgroup_position_in_grid]], uint tid [[thread_position_in_threadgroup]],
+                      uint threads [[threads_per_threadgroup]], uint sg [[simdgroup_index_in_threadgroup]],
+                      uint lane [[thread_index_in_simdgroup]]) {
+    threadgroup float4 partial[32];
+    device const float4* xr = x + ulong(row) * a.n;
+    device float4* yr = y + ulong(row) * a.n;
+    float4 sum = float4(0);
+    for (uint i = tid; i < a.n; i += threads) sum += xr[i] * xr[i];
+    sum = simd_sum(sum);
+    if (lane == 0) partial[sg] = sum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sg == 0) {
+        uint groups = (threads + 31) / 32;
+        float4 v = lane < groups ? partial[lane] : float4(0);
+        v = simd_sum(v);
+        if (lane == 0) partial[0] = v;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float4 scale = rsqrt(partial[0] / float(a.n) + a.eps);
+    for (uint i = tid; i < a.n; i += threads) yr[i] = xr[i] * scale * w[i];
+}
+
+struct Rope4Args { uint headDim; uint pairs; uint start; uint neox; uint heads; };
+
+// RoPE for four tokens; token 4g + c sits at position start + 4g + c.
+kernel void rope4(device float4* v [[buffer(0)]], device const float* inv [[buffer(1)]],
+                  constant Rope4Args& a [[buffer(2)]], uint3 gid [[thread_position_in_grid]]) {
+    uint i = gid.x, h = gid.y, g = gid.z;
+    if (i >= a.pairs) return;
+    device float4* head = v + (ulong(g) * a.heads + h) * a.headDim;
+    float4 position = float4(float(a.start + 4 * g), float(a.start + 4 * g + 1), float(a.start + 4 * g + 2), float(a.start + 4 * g + 3));
+    float4 theta = position * inv[i];
+    float4 c = cos(theta), s = sin(theta);
+    uint p = a.neox ? i : 2 * i;
+    uint q = a.neox ? i + a.pairs : 2 * i + 1;
+    float4 x0 = head[p], x1 = head[q];
+    head[p] = x0 * c - x1 * s;
+    head[q] = x0 * s + x1 * c;
+}
+
+struct KVStoreArgs { uint width; uint count; };
+
+// Unpacks four tokens' keys or values into consecutive cache rows.
+kernel void kv_store4(device const float4* src [[buffer(0)]], device float* cache [[buffer(1)]],
+                      constant KVStoreArgs& a [[buffer(2)]], uint2 gid [[thread_position_in_grid]]) {
+    uint i = gid.x, g = gid.y;
+    if (i >= a.width) return;
+    float4 v = src[ulong(g) * a.width + i];
+    for (uint c = 0; c < 4; ++c) {
+        uint t = 4 * g + c;
+        if (t < a.count) cache[ulong(t) * a.width + i] = v[c];
+    }
+}
+
+struct Attn4Args { uint headDim; uint valueDim; uint keyWidth; uint valueWidth; uint group; uint heads; uint start; uint count; float scale; };
+
+// Causal attention for four tokens and one head per threadgroup (128
+// threads): keys in chunks of 128 with a running maximum and sum (online
+// softmax), so no score buffer is needed. Token 4g + c sees keys up to its
+// own position. Head and value widths are at most 256.
+kernel void attn4(device const float4* q [[buffer(0)]], device const float* K [[buffer(1)]],
+                  device const float* V [[buffer(2)]], device float4* out [[buffer(3)]],
+                  constant Attn4Args& a [[buffer(4)]],
+                  uint2 tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
+                  uint sg [[simdgroup_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]]) {
+    threadgroup float4 qs[256];
+    threadgroup float4 ps[128];
+    threadgroup float4 partial[4];
+    uint h = tg.x, g = tg.y;
+    uint kvh = h / a.group;
+    for (uint d = tid; d < a.headDim; d += 128) qs[d] = q[(ulong(g) * a.heads + h) * a.headDim + d];
+    uint first = a.start + 4 * g;
+    float4 limit = float4(float(first), float(first + 1), float(first + 2), float(first + 3));
+    uint span = min(first + 4, a.start + a.count);
+    float4 m = float4(-INFINITY), l = float4(0), o0 = float4(0), o1 = float4(0);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint base = 0; base < span; base += 128) {
+        uint t = base + tid;
+        float4 score = float4(-INFINITY);
+        if (t < span) {
+            device const float* kt = K + ulong(t) * a.keyWidth + ulong(kvh) * a.headDim;
+            float4 acc = float4(0);
+            for (uint d = 0; d < a.headDim; ++d) acc += qs[d] * kt[d];
+            score = select(acc * a.scale, float4(-INFINITY), float4(float(t)) > limit);
+        }
+        float4 chunk = simd_max(score);
+        if (lane == 0) partial[sg] = chunk;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float4 top = max(m, max(max(partial[0], partial[1]), max(partial[2], partial[3])));
+        ps[tid] = exp(score - top);
+        float4 factor = exp(m - top);
+        m = top;
+        l *= factor;
+        o0 *= factor;
+        o1 *= factor;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        uint keys = min(128u, span - base);
+        for (uint k = 0; k < keys; ++k) {
+            float4 p = ps[k];
+            l += p;
+            device const float* vt = V + ulong(base + k) * a.valueWidth + ulong(kvh) * a.valueDim;
+            if (tid < a.valueDim) o0 += p * vt[tid];
+            if (tid + 128 < a.valueDim) o1 += p * vt[tid + 128];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    device float4* o = out + (ulong(g) * a.heads + h) * a.valueDim;
+    if (tid < a.valueDim) o[tid] = o0 / l;
+    if (tid + 128 < a.valueDim) o[tid + 128] = o1 / l;
+}
+
+// One token's row out of a packed group (the last prompt token's state).
+kernel void take4(device const float4* src [[buffer(0)]], device float* dst [[buffer(1)]],
+                  constant uint2& a [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+    if (i < a.x) dst[i] = src[i][a.y];
+}
+// ---- tiled prefill GEMM on the simdgroup matrix units (Apple7 and later) ----
+// A threadgroup computes 64 rows × 32 tokens. Each 32-column step
+// dequantizes the 64×32 weight tile once into threadgroup memory (two threads
+// per row, 16 values each) and unpacks the 32×32 activation tile; each
+// simdgroup then multiplies its 16 rows against all 32 tokens with 8×8
+// hardware matrix multiply-accumulates, in FP32 like every other kernel.
+
+// 16 dequantized values of 32-column chunk kc of row r: half il (0 or 1).
+#define DQ32(NAME, BYTES) inline void NAME(device const uchar* r, uint kc, uint il, threadgroup float* dst) { \
+    device const uchar* b = r + ulong(kc) * BYTES;
+#define DQK(NAME, BYTES) inline void NAME(device const uchar* r, uint kc, uint il, threadgroup float* dst) { \
+    device const uchar* b = r + ulong(kc >> 3) * BYTES; uint j = kc & 7;
+
+DQ32(dq_f32, 128)
+    device const float* w = (device const float*)b + il * 16;
+    for (int i = 0; i < 16; ++i) dst[i] = w[i];
+}
+DQ32(dq_f16, 64)
+    device const half* w = (device const half*)b + il * 16;
+    for (int i = 0; i < 16; ++i) dst[i] = float(w[i]);
+}
+DQ32(dq_bf16, 64)
+    device const ushort* w = (device const ushort*)b + il * 16;
+    for (int i = 0; i < 16; ++i) dst[i] = as_type<float>(uint(w[i]) << 16);
+}
+DQ32(dq_q4_0, 18)
+    float d = f16_at(b);
+    device const uchar* q = b + 2;
+    for (int i = 0; i < 16; ++i) dst[i] = d * float(int(il ? (q[i] >> 4) : (q[i] & 0x0F)) - 8);
+}
+DQ32(dq_q4_1, 20)
+    float d = f16_at(b), m = f16_at(b + 2);
+    device const uchar* q = b + 4;
+    for (int i = 0; i < 16; ++i) dst[i] = d * float(il ? (q[i] >> 4) : (q[i] & 0x0F)) + m;
+}
+DQ32(dq_q5_0, 22)
+    float d = f16_at(b);
+    device const ushort* h = (device const ushort*)(b + 2);
+    uint qh = uint(h[0]) | (uint(h[1]) << 16);
+    device const uchar* q = b + 6;
+    for (uint i = 0; i < 16; ++i) {
+        uint v = il ? ((uint(q[i]) >> 4) | ((qh >> (i + 12)) & 0x10)) : ((uint(q[i]) & 0x0F) | (((qh >> i) << 4) & 0x10));
+        dst[i] = d * float(int(v) - 16);
+    }
+}
+DQ32(dq_q5_1, 24)
+    float d = f16_at(b), m = f16_at(b + 2);
+    uint qh = u32_at(b + 4);
+    device const uchar* q = b + 8;
+    for (uint i = 0; i < 16; ++i) {
+        uint v = il ? ((uint(q[i]) >> 4) | ((qh >> (i + 12)) & 0x10)) : ((uint(q[i]) & 0x0F) | (((qh >> i) << 4) & 0x10));
+        dst[i] = d * float(v) + m;
+    }
+}
+DQ32(dq_q8_0, 34)
+    float d = f16_at(b);
+    device const char* q = (device const char*)(b + 2) + il * 16;
+    for (int i = 0; i < 16; ++i) dst[i] = d * float(q[i]);
+}
+DQK(dq_q4_K, 144)
+    float d = f16_at(b), dmin = f16_at(b + 2);
+    float sc, mn;
+    scale_min_k4(int(j), b + 4, sc, mn);
+    float scale = d * sc, offset = dmin * mn;
+    device const uchar* q = b + 16 + (j >> 1) * 32 + il * 16;
+    uint shift = (j & 1) ? 4 : 0;
+    for (int i = 0; i < 16; ++i) dst[i] = scale * float((q[i] >> shift) & 0x0F) - offset;
+}
+DQK(dq_q5_K, 176)
+    float d = f16_at(b), dmin = f16_at(b + 2);
+    float sc, mn;
+    scale_min_k4(int(j), b + 4, sc, mn);
+    float scale = d * sc, offset = dmin * mn;
+    device const uchar* qh = b + 16 + il * 16;
+    device const uchar* ql = b + 48 + (j >> 1) * 32 + il * 16;
+    uint shift = (j & 1) ? 4 : 0;
+    for (int i = 0; i < 16; ++i) dst[i] = scale * float(int((ql[i] >> shift) & 0x0F) + (((qh[i] >> j) & 1) ? 16 : 0)) - offset;
+}
+DQK(dq_q6_K, 210)
+    uint n = j >> 2, k = j & 3;
+    device const uchar* ql = b + n * 64 + ((k & 1) ? 32 : 0) + il * 16;
+    device const uchar* qh = b + 128 + n * 32 + il * 16;
+    device const char* sc = (device const char*)(b + 192 + n * 8);
+    float scale = f16_at(b + 208) * float(sc[2 * k + il]);
+    uint lowShift = (k & 2) ? 4 : 0, highShift = 2 * k;
+    for (int i = 0; i < 16; ++i) {
+        uint q = ((ql[i] >> lowShift) & 0x0F) | (((qh[i] >> highShift) & 3) << 4);
+        dst[i] = scale * float(int(q) - 32);
+    }
+}
+DQK(dq_q8_K, 292)
+    float d = *(device const float*)b;
+    device const char* q = (device const char*)(b + 4) + j * 32 + il * 16;
+    for (int i = 0; i < 16; ++i) dst[i] = d * float(q[i]);
+}
+
+#define MATMUL_SG(NAME, DEQ) \
+kernel void NAME(device const uchar* W [[buffer(0)]], device const float4* x [[buffer(1)]], \
+                 device float4* y [[buffer(2)]], constant MatmulArgs& a [[buffer(3)]], \
+                 device const float* bias [[buffer(4)]], \
+                 uint2 tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]], \
+                 uint sg [[simdgroup_index_in_threadgroup]]) { \
+    threadgroup float sa[64 * 32]; \
+    threadgroup float sb[32 * 32]; \
+    uint r0 = tg.x * 64, g0 = tg.y * 8; \
+    simdgroup_float8x8 acc[2][4]; \
+    for (int i = 0; i < 2; ++i) for (int jj = 0; jj < 4; ++jj) acc[i][jj] = simdgroup_float8x8(0); \
+    uint lrow = tid >> 1, il = tid & 1, grow = r0 + lrow; \
+    device const uchar* wr = W + ulong(min(grow, a.rows - 1)) * a.rowBytes; \
+    threadgroup float* wdst = sa + lrow * 32 + il * 16; \
+    uint chunks = a.cols / 32; \
+    for (uint kc = 0; kc < chunks; ++kc) { \
+        if (grow < a.rows) { DEQ(wr, kc, il, wdst); } else { for (int i = 0; i < 16; ++i) wdst[i] = 0; } \
+        for (uint i = tid; i < 256; i += 128) { \
+            uint gl = i >> 5, k = i & 31, g = g0 + gl; \
+            float4 v = g < a.groups ? x[ulong(g) * a.cols + kc * 32 + k] : float4(0); \
+            threadgroup float* t = sb + gl * 4 * 32 + k; \
+            t[0] = v.x; t[32] = v.y; t[64] = v.z; t[96] = v.w; \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+        for (uint kk = 0; kk < 32; kk += 8) { \
+            simdgroup_float8x8 A0, A1, B[4]; \
+            simdgroup_load(A0, sa + (sg * 16) * 32 + kk, 32); \
+            simdgroup_load(A1, sa + (sg * 16 + 8) * 32 + kk, 32); \
+            for (int jj = 0; jj < 4; ++jj) simdgroup_load(B[jj], sb + jj * 8 * 32 + kk, 32, ulong2(0, 0), true); \
+            for (int jj = 0; jj < 4; ++jj) { \
+                simdgroup_multiply_accumulate(acc[0][jj], A0, B[jj], acc[0][jj]); \
+                simdgroup_multiply_accumulate(acc[1][jj], A1, B[jj], acc[1][jj]); \
+            } \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+    } \
+    for (int i = 0; i < 2; ++i) for (int jj = 0; jj < 4; ++jj) \
+        simdgroup_store(acc[i][jj], sa + (sg * 16 + i * 8) * 32 + jj * 8, 32); \
+    threadgroup_barrier(mem_flags::mem_threadgroup); \
+    for (uint i = tid; i < 64 * 8; i += 128) { \
+        uint lr = i & 63, gl = i >> 6, row = r0 + lr, g = g0 + gl; \
+        if (row < a.rows && g < a.groups) { \
+            threadgroup float* o = sa + lr * 32 + gl * 4; \
+            matmul_store(float4(o[0], o[1], o[2], o[3]), row, g, y, bias, a); \
+        } \
+    } \
+}
+
+MATMUL_SG(matmul_sg_f32, dq_f32)
+MATMUL_SG(matmul_sg_f16, dq_f16)
+MATMUL_SG(matmul_sg_bf16, dq_bf16)
+MATMUL_SG(matmul_sg_q4_0, dq_q4_0)
+MATMUL_SG(matmul_sg_q4_1, dq_q4_1)
+MATMUL_SG(matmul_sg_q5_0, dq_q5_0)
+MATMUL_SG(matmul_sg_q5_1, dq_q5_1)
+MATMUL_SG(matmul_sg_q8_0, dq_q8_0)
+MATMUL_SG(matmul_sg_q4_K, dq_q4_K)
+MATMUL_SG(matmul_sg_q5_K, dq_q5_K)
+MATMUL_SG(matmul_sg_q6_K, dq_q6_K)
+MATMUL_SG(matmul_sg_q8_K, dq_q8_K)
 """#
 }

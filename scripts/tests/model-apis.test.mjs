@@ -33,7 +33,7 @@ async function freePort() {
 }
 
 let runtime
-async function start() {
+async function start(extraEnv = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rn-model-apis-'))
   const storage = path.join(root, 'storage')
   // Served in place from an Ollama-style folder, as an existing install would be.
@@ -50,6 +50,7 @@ async function start() {
     env: {
       PATH: process.env.PATH, HOME: root, HOST: '127.0.0.1', PORT: '0', ROACHNET_REPO_ROOT: repoRoot,
       ROACHNET_STORAGE_PATH: storage, ROACHNET_COMPANION_ENABLED: '0', OLLAMA_BASE_URL: `http://127.0.0.1:${port}`,
+      ...extraEnv,
     },
     stdio: 'ignore',
   })
@@ -275,4 +276,29 @@ test('create, show, copy and delete made models without copying weights', needsM
   assert.equal((await post('/api/show', { model: MODEL })).status, 200)
   assert.equal((await post('/api/create', { model: 'x', from: '/nope/model.gguf' })).status, 400)
   assert.equal((await post('/api/create', { model: 'x', from: MODEL, quantize: 'q4_K_M' })).status, 400)
+})
+
+test('models are fitted into memory: a shorter context first, then a clear refusal', needsModel, async () => {
+  for (const [budget, expect] of [['1.4', 'fits'], ['0.3', 'refused']]) {
+    const tight = await start({ ROACHNET_MODEL_MEMORY_GB: budget })
+    try {
+      const response = await fetch(`${tight.base}/api/chat`, {
+        method: 'POST',
+        body: JSON.stringify({ model: MODEL, stream: false, think: false, messages: [{ role: 'user', content: 'Hi' }], options: { num_predict: 2, num_ctx: 8192 } }),
+      })
+      const body = await response.json()
+      if (expect === 'fits') {
+        assert.equal(response.status, 200, JSON.stringify(body))
+        const ps = await (await fetch(`${tight.base}/api/ps`)).json()
+        assert.ok(ps.models[0].context_length < 8192, 'the context was shortened to fit')
+        assert.ok(ps.models[0].size_vram > 0)
+      } else {
+        assert.equal(response.status, 507)
+        assert.match(body.error, /needs about .* GB of memory/)
+      }
+    } finally {
+      tight.child.kill('SIGTERM')
+      await rm(tight.root, { recursive: true, force: true })
+    }
+  }
 })

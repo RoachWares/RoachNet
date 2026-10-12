@@ -38,6 +38,21 @@ public final class InferenceSession {
         var common = 0
         while common < min(tokens.count - 1, cachedTokens.count), tokens[common] == cachedTokens[common] { common += 1 }
         truncate(to: common)
+        for token in tokens[common...] where token < 0 || Int(token) >= model.tokenEmbedding.rows {
+            throw InferenceError.invalid("Token \(token) is out of range.")
+        }
+        if let batched = backend as? BatchForwarding, batched.maxBatch >= 4, tokens.count - common >= 2 {
+            var index = common
+            while index < tokens.count {
+                if cancelled() { throw InferenceError.cancelled }
+                let end = min(tokens.count, index + batched.maxBatch)
+                let chunk = tokens[index..<end]
+                batched.forward(tokens: chunk.map { Int($0) }, position: index, output: end == tokens.count ? .logits : .none, each: nil)
+                cachedTokens.append(contentsOf: chunk)
+                index = end
+            }
+            return logits()
+        }
         let last = tokens.count - 1
         for index in common..<tokens.count {
             if cancelled() { throw InferenceError.cancelled }
@@ -68,7 +83,29 @@ public final class InferenceSession {
         let width = model.hyperparameters.embeddingLength
         var sum = [Float](repeating: 0, count: width)
         var chosen: [Float] = []
-        for (index, token) in tokens.enumerated() {
+        if let batched = backend as? BatchForwarding, batched.maxBatch >= 4, tokens.count >= 2 {
+            for token in tokens where token < 0 || Int(token) >= model.tokenEmbedding.rows {
+                throw InferenceError.invalid("Token \(token) is out of range.")
+            }
+            var index = 0
+            while index < tokens.count {
+                let end = min(tokens.count, index + batched.maxBatch)
+                let chunk = tokens[index..<end]
+                let start = index
+                let wanted = pooling == .mean || (pooling == .cls && start == 0) || (pooling == .last && end == tokens.count)
+                batched.forward(tokens: chunk.map { Int($0) }, position: start, output: .none, each: wanted ? { offset, hidden in
+                    let t = start + offset
+                    if pooling == .mean {
+                        for d in 0..<width { sum[d] += hidden[d] }
+                    } else if (pooling == .cls && t == 0) || (pooling == .last && t == tokens.count - 1) {
+                        chosen = Array(hidden)
+                    }
+                } : nil)
+                cachedTokens.append(contentsOf: chunk)
+                index = end
+            }
+        }
+        for (index, token) in tokens.enumerated() where cachedTokens.count <= index {
             let wanted = pooling == .mean || (pooling == .cls && index == 0) || (pooling == .last && index == tokens.count - 1)
             try step(token, output: wanted ? .hidden : .none)
             guard wanted else { continue }
@@ -115,6 +152,16 @@ public enum ForwardOutput {
     case hidden
     /// Nothing: a prompt token whose output nobody reads.
     case none
+}
+
+/// A backend that runs many prompt tokens in one pass (batched prefill).
+public protocol BatchForwarding: AnyObject {
+    /// The most tokens one call takes; 0 when this model can't be batched here.
+    var maxBatch: Int { get }
+    /// Runs `tokens` at positions `position…`, writing their keys and values
+    /// into the cache. `.logits` and `.hidden` leave the last token's output as
+    /// one `forward` would; `each`, when given, gets every token's final hidden state.
+    func forward(tokens: [Int], position: Int, output: ForwardOutput, each: ((Int, UnsafeBufferPointer<Float>) -> Void)?)
 }
 
 /// A device that runs the transformer forward pass and owns its KV cache.

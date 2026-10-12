@@ -98,3 +98,16 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertFalse(InferenceEngine.thinks(templateSource: "{{ messages }}"))
     }
 }
+
+final class FootprintTests: XCTestCase {
+    func testFootprintFromMetadataAlone() throws {
+        let file = try GGUFFile(path: TestModels.path("stories15M-q4_0"))
+        let footprint = try ModelFootprint(file: file, contextLength: 128)
+        XCTAssertEqual(footprint.weights, file.fileSize)
+        XCTAssertEqual(footprint.context, 128)
+        XCTAssertEqual(footprint.cache, footprint.cachePerToken * 128)
+        XCTAssertGreaterThan(footprint.scratch, 0)
+        XCTAssertEqual(footprint.with(context: 64).cache * 2, footprint.cache)
+        XCTAssertEqual(try ModelFootprint(file: file, contextLength: 1 << 20).context, footprint.trainedContext, "never past the trained context")
+    }
+}
