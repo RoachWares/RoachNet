@@ -9,10 +9,11 @@
 //   node scripts/audit-release-privacy.mjs [path ...]
 //
 // Paths can be app bundles, folders, single files, .zip or .ipa archives
-// (unpacked to a temporary folder first). With none, it checks the built
-// apps in native/macos/dist.
+// (unpacked to a temporary folder first) or, on macOS, .dmg disk images
+// (attached read-only). Symbolic links aren't followed; where they point is
+// checked. With no paths, it checks the built apps in native/macos/dist.
 import { execFileSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -101,7 +102,13 @@ function contains(buffer, needle) {
 
 function* walk(target) {
   const info = lstatSync(target, { throwIfNoEntry: false })
-  if (!info || info.isSymbolicLink()) return
+  if (!info) return
+  // Links are never followed (the disk image links to /Applications), but
+  // where they point is checked.
+  if (info.isSymbolicLink()) {
+    yield target
+    return
+  }
   if (info.isDirectory()) {
     for (const entry of readdirSync(target)) yield* walk(path.join(target, entry))
   } else if (info.isFile()) {
@@ -121,6 +128,33 @@ export function scan(targets, needles) {
       const { target, label } = queue.shift()
       for (const file of walk(target)) {
         const shown = path.join(label, path.relative(target, file)) || label
+        if (lstatSync(file).isSymbolicLink()) {
+          const destination = Buffer.from(readlinkSync(file))
+          const kinds = new Set(compiled.filter((needle) => contains(destination, needle)).map((needle) => needle.kind))
+          for (const kind of kinds) findings.push({ file: `${shown} (link)`, kind })
+          continue
+        }
+        if (/\.dmg$/i.test(file)) {
+          // The disk image is what people download, so check what is on it, not
+          // just the folder it was made from (it also carries the Fix script).
+          const volume = mkdtempSync(path.join(os.tmpdir(), 'rn-privacy-dmg-'))
+          try {
+            execFileSync('hdiutil', ['attach', '-readonly', '-nobrowse', '-noautoopen', '-mountpoint', volume, file], { stdio: 'ignore' })
+          } catch {
+            rmSync(volume, { recursive: true, force: true })
+            findings.push({ file: shown, kind: 'disk image that could not be opened for checking' })
+            continue
+          }
+          try {
+            for (const finding of scan([volume], needles)) {
+              findings.push({ ...finding, file: `${shown}!${finding.file.slice(path.basename(volume).length + 1)}` })
+            }
+          } finally {
+            try { execFileSync('hdiutil', ['detach', volume, '-force'], { stdio: 'ignore' }) } catch {}
+            rmSync(volume, { recursive: true, force: true })
+          }
+          continue
+        }
         if (/\.(zip|ipa)$/i.test(file)) {
           const out = mkdtempSync(path.join(os.tmpdir(), 'rn-privacy-'))
           scratch.push(out)
@@ -149,7 +183,7 @@ function main() {
   const args = process.argv.slice(2)
   const targets = args.length > 0
     ? args.map((arg) => path.resolve(arg))
-    : ['RoachNet.app', 'RoachNet Setup.app'].map((name) => path.join(repoRoot, 'native', 'macos', 'dist', name)).filter(existsSync)
+    : ['RoachNet.app', 'RoachNet Setup.app', 'RoachNet-Setup-macOS.dmg'].map((name) => path.join(repoRoot, 'native', 'macos', 'dist', name)).filter(existsSync)
   if (targets.length === 0) {
     console.error('Nothing to check: build the apps first or pass paths.')
     process.exit(2)

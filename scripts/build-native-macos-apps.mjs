@@ -1856,6 +1856,7 @@ async function main() {
     if (!skipDmg) {
       const dmgPath = await createSetupDmg(setupAppBundlePath)
       await notarizeArtifact(dmgPath)
+      await auditReleasePrivacy([dmgPath])
       await writeSha256Sidecar(dmgPath)
       builtBundles.push(dmgPath)
     }

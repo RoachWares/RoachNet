@@ -4,7 +4,7 @@
 // machine detail here is made up.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -68,6 +68,40 @@ test('details inside a zipped app are found', { skip: process.platform !== 'darw
     const findings = scan([path.join(root, 'Outer')], buildMachineNeedles(machine))
     assert.deepEqual(findings.map((finding) => finding.kind), ['home folder path'])
     assert.match(findings[0].file, /^Outer\/Inner\.zip!\/Inner\.app\/Contents\/Info\.plist$/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('links are not followed, but where they point is checked', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'rn-privacy-link-'))
+  try {
+    const bundle = path.join(root, 'Linked.app')
+    mkdirSync(bundle, { recursive: true })
+    symlinkSync('/Users/sample-builder/Models/model.gguf', path.join(bundle, 'model.gguf'))
+    symlinkSync('/Applications', path.join(bundle, 'Applications'))
+    const findings = scan([bundle], buildMachineNeedles(machine))
+    assert.deepEqual(findings, [{ file: 'Linked.app/model.gguf (link)', kind: 'home folder path' }])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('details on a disk image are found', { skip: process.platform !== 'darwin' && 'needs hdiutil' }, () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'rn-privacy-dmg-test-'))
+  try {
+    const stage = path.join(root, 'stage')
+    mkdirSync(path.join(stage, 'Setup.app', 'Contents'), { recursive: true })
+    writeFileSync(path.join(stage, 'Setup.app', 'Contents', 'Info.plist'), '<string>clean</string>')
+    writeFileSync(path.join(stage, 'Fix.command'), '#!/bin/sh\ncd /Volumes/SampleDisk/Work/RoachNet\n')
+    symlinkSync('/Applications', path.join(stage, 'Applications'))
+    const image = path.join(root, 'Sample.dmg')
+    execFileSync('hdiutil', ['create', '-quiet', '-volname', 'Sample', '-srcfolder', stage, '-format', 'UDZO', image])
+    const findings = scan([image], buildMachineNeedles(machine))
+    assert.deepEqual(findings.map((finding) => [finding.file, finding.kind]).sort(), [
+      ['Sample.dmg!Fix.command', 'build volume path'],
+      ['Sample.dmg!Fix.command', 'workspace path'],
+    ])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
