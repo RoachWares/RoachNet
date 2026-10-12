@@ -140,6 +140,15 @@ do {
         let slow = Date().timeIntervalSince(start)
         print(String(format: "%d tokens: batched %.0f tok/s (%.0f ms, batch %d), one at a time %.0f tok/s (%.0f ms): %.1fx",
                      tokens.count, Double(tokens.count) / fast, fast * 1000, backend.maxBatch, Double(tokens.count) / slow, slow * 1000, slow / fast))
+        if args.contains("--profile") {
+            // --profile: each kind of matrix product alone, for one batched pass of the prompt.
+            var seconds = 0.0, flops = 0.0
+            for row in backend.profileMatmuls(tokens: min(tokens.count, max(4, backend.maxBatch))) {
+                seconds += row.seconds; flops += row.flops
+                print(String(format: "  %-9@ %-5@ %8.2f ms  %5.2f TFLOPS", row.label as NSString, row.type as NSString, row.seconds * 1000, row.flops / row.seconds / 1e12))
+            }
+            print(String(format: "  matmul total %.1f ms (%.2f TFLOPS) of %.1f ms batched", seconds * 1000, flops / seconds / 1e12, fast * 1000))
+        }
         #else
         fail("Metal is not available on this platform.")
         #endif

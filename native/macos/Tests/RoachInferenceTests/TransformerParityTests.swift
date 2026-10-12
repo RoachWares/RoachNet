@@ -17,12 +17,17 @@ final class TransformerParityTests: XCTestCase {
     func testPromptLogitsAndGreedyContinuationsMatchReference() throws {
         let fixture = try JSONDecoder().decode(Fixture.self, from: TestModels.fixture("forward-expected.json"))
         var ran = 0
-        // FP32 keys and values match the float64 reference to 0.002; the
-        // default half cache stays within FP16 rounding of it and gives the
-        // same greedy continuations.
-        for cache in [KVCacheType.f32, .f16] {
+        // Full precision (FP32 cache and prompt tiles) matches the float64
+        // reference to 0.002. The default (FP16 cache and FP16 weight tiles in
+        // prompt products, as llama.cpp's Metal path does) gives the same top
+        // tokens and greedy continuations, and top logits within 0.05.
+        for (cache, matmul) in [(KVCacheType.f32, "float"), (.f16, "")] {
             setenv("ROACHNET_KV_CACHE", cache.rawValue, 1)
-            defer { unsetenv("ROACHNET_KV_CACHE") }
+            setenv("ROACHNET_METAL_MATMUL", matmul, 1)
+            defer {
+                unsetenv("ROACHNET_KV_CACHE")
+                unsetenv("ROACHNET_METAL_MATMUL")
+            }
             for item in fixture.cases {
                 guard let path = try? TestModels.path(item.model) else { continue }
                 let engine = try InferenceEngine(modelPath: path, contextLength: 256)
@@ -30,7 +35,7 @@ final class TransformerParityTests: XCTestCase {
                 let logits = try engine.session.prefill(prompt)
                 let best = logits.indices.max { logits[$0] < logits[$1] }!
                 XCTAssertEqual(Int32(best), item.top, "\(item.model) \(cache) top token for \(item.prompt.debugDescription)")
-                XCTAssertEqual(logits[best], item.topLogit, accuracy: cache == .f32 ? 0.002 : 0.02, "\(item.model) \(cache) top logit vs float64 reference")
+                XCTAssertEqual(logits[best], item.topLogit, accuracy: cache == .f32 ? 0.002 : 0.05, "\(item.model) \(cache) top logit vs float64 reference")
 
                 var options = GenerationOptions()
                 options.sampling = .greedy

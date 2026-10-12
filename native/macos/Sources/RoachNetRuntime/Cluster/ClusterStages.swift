@@ -111,6 +111,7 @@ extension ClusterNode {
                 done += piece
             }
         }
+        if let failure = backend.takeFailure() { throw ClusterError.remote("\(settings.name): \(failure)") }
         return (["ok": true], out)
     }
 

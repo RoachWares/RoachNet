@@ -5,7 +5,7 @@ import Metal
 /// GPU backend for Apple Silicon built only on our own Metal kernels
 /// (`MetalKernelSource`). Weights stay quantized and are read in place from the
 /// memory-mapped GGUF file; activations and the KV cache live in shared buffers.
-public final class MetalBackend: TransformerBackend, StageBatchForwarding, StageBackend, CacheCopying {
+public final class MetalBackend: TransformerBackend, StageBatchForwarding, StageBackend, CacheCopying, FallibleBackend {
     public let model: TransformerModel
     public let contextLength: Int
     public var name: String { "metal (\(device.name))" }
@@ -41,6 +41,7 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
     var cacheSuffix: String { cacheType == .f16 ? "_h" : "" }
     /// Partial softmax results of decode attention split across keys.
     let attentionParts: MTLBuffer
+    /// Keys per threadgroup in split decode attention (64 and 32 measured no faster on the M2 Pro).
     static let attentionChunk = 128
     /// `ROACHNET_METAL_ATTENTION=fused` uses one threadgroup per head instead (A/B checks).
     var splitAttention = ProcessInfo.processInfo.environment["ROACHNET_METAL_ATTENTION"] != "fused"
@@ -58,12 +59,15 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
     public private(set) var lastGPUSeconds: Double = 0
     /// Prompt tokens per batched pass; 0 runs prompts a token at a time.
     public private(set) var maxBatch = 0
-    /// Prefill matrices use the simdgroup matrix units (Apple7 GPUs and later);
-    /// `ROACHNET_METAL_MATMUL=simple` uses the plain four-token kernels (A/B checks).
-    lazy var matmulKernel: (prefix: String, rows: Int) = {
+    /// Prefill matrices use the simdgroup matrix units (Apple7 GPUs and later)
+    /// on 64-row × 32-token tiles, the weight tile staged in half precision.
+    /// For A/B checks, `ROACHNET_METAL_MATMUL=float` stages it in FP32 and
+    /// `simple` uses the plain four-token kernels. (A 64 × 64 tile and an
+    /// 8 × 8-blocked tile layout were both measured slower on the M2 Pro.)
+    lazy var matmulKernel: (prefix: String, rows: Int, groups: Int) = {
         let choice = ProcessInfo.processInfo.environment["ROACHNET_METAL_MATMUL"] ?? ""
-        guard device.supportsFamily(.apple7), choice != "simple" else { return ("matmul_", 32) }
-        return ("matmul_sg_", 64)
+        guard device.supportsFamily(.apple7), choice != "simple" else { return ("matmul_", 32, 8) }
+        return (choice == "float" ? "matmul_sg_" : "matmul_sgh_", 64, 8)
     }()
     private var batchStorage: BatchBuffers?
 
@@ -390,7 +394,24 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
         }
         encoder.endEncoding()
         commandBuffer.commit()
+        finish(commandBuffer)
+    }
+
+    /// A GPU pass that failed (a fault, or the mapped weights going away);
+    /// the session reads it after the pass and throws instead of sampling
+    /// from garbage. Reading it clears it.
+    private var failure: Error?
+
+    public func takeFailure() -> Error? {
+        defer { failure = nil }
+        return failure
+    }
+
+    private func finish(_ commandBuffer: MTLCommandBuffer) {
         commandBuffer.waitUntilCompleted()
+        if commandBuffer.status == .error, failure == nil {
+            failure = InferenceError.invalid("The GPU couldn't finish this step (\(commandBuffer.error?.localizedDescription ?? "unknown error")).")
+        }
     }
 
     public func forward(token: Int, position: Int, output: ForwardOutput) {
@@ -519,7 +540,7 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
         }
         encoder.endEncoding()
         commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+        finish(commandBuffer)
         lastGPUSeconds = commandBuffer.gpuEndTime - commandBuffer.gpuStartTime
     }
 
@@ -579,7 +600,7 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
         struct Args { var cols: UInt32; var rowBytes: UInt32; var rows: UInt32; var flags: UInt32; var groups: UInt32 }
         var args = Args(cols: UInt32(matrix.columns), rowBytes: UInt32(matrix.rowBytes), rows: UInt32(matrix.rows),
                         flags: (accumulate ? 1 : 0) | (bias != nil ? 2 : 0), groups: UInt32(groups))
-        let (prefix, tileRows) = matmulKernel
+        let (prefix, tileRows, tileGroups) = matmulKernel
         let kernel = prefix + MetalBackend.matvecKernel(matrix.type).dropFirst("matvec_".count)
         encoder.setComputePipelineState(pipeline(kernel))
         encoder.setBuffer(weights, offset: matrix.data - weightsBase, index: 0)
@@ -587,7 +608,7 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
         encoder.setBuffer(output, offset: 0, index: 2)
         encoder.setBytes(&args, length: MemoryLayout<Args>.stride, index: 3)
         encoder.setBuffer(bias ?? output, offset: 0, index: 4)
-        encoder.dispatchThreadgroups(MTLSize(width: (matrix.rows + tileRows - 1) / tileRows, height: (groups + 7) / 8, depth: 1),
+        encoder.dispatchThreadgroups(MTLSize(width: (matrix.rows + tileRows - 1) / tileRows, height: (groups + tileGroups - 1) / tileGroups, depth: 1),
                                      threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
     }
 
@@ -759,7 +780,7 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
         }
         encoder.endEncoding()
         commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+        finish(commandBuffer)
         lastGPUSeconds = commandBuffer.gpuEndTime - commandBuffer.gpuStartTime
 
         if let each, head {
@@ -805,6 +826,36 @@ public final class MetalBackend: TransformerBackend, StageBatchForwarding, Stage
             FileHandle.standardError.write(Data("RoachInference: batched prefill check failed (max |Δ| \(worst)); prompts run a token at a time.\n".utf8))
             maxBatch = 0
         }
+    }
+
+    /// GPU time of each kind of prompt matrix product alone, for `tokens` tokens (profiling).
+    public func profileMatmuls(tokens: Int, iterations: Int = 3) -> [(label: String, type: String, seconds: Double, flops: Double)] {
+        let groups = (tokens + 3) / 4
+        var kinds: [(String, [QuantizedMatrix])] = [
+            ("attn_q", model.layers.map(\.query)), ("attn_k", model.layers.map(\.key)), ("attn_v", model.layers.map(\.value)),
+            ("attn_out", model.layers.map(\.output)), ("ffn_gate", model.layers.map(\.gate)), ("ffn_up", model.layers.map(\.up)),
+            ("ffn_down", model.layers.map(\.down)),
+        ]
+        if model.stage.head { kinds.append(("output", [model.outputProjection])) }
+        let hp = model.hyperparameters
+        let width = max(hp.feedForwardLength, hp.embeddingLength, hp.headCount * hp.valueDimension)
+        let rows = max(model.vocabularyRows, hp.feedForwardLength, hp.embeddingLength)
+        guard let input = device.makeBuffer(length: groups * width * 16, options: .storageModeShared),
+              let output = device.makeBuffer(length: groups * rows * 16, options: .storageModeShared) else { return [] }
+        let pointer = input.contents().assumingMemoryBound(to: Float.self)
+        for i in 0..<(groups * width * 4) { pointer[i] = Float(i % 7) * 0.01 }
+        var results: [(label: String, type: String, seconds: Double, flops: Double)] = []
+        for (label, matrices) in kinds {
+            guard let commandBuffer = queue.makeCommandBuffer(), let encoder = commandBuffer.makeComputeCommandEncoder() else { continue }
+            for _ in 0..<iterations { for matrix in matrices { matmul(encoder, matrix, input, output, groups: groups) } }
+            encoder.endEncoding()
+            commandBuffer.commit()
+            commandBuffer.waitUntilCompleted()
+            let seconds = (commandBuffer.gpuEndTime - commandBuffer.gpuStartTime) / Double(iterations)
+            let flops = matrices.reduce(0.0) { $0 + 2 * Double($1.rows) * Double($1.columns) * Double(groups * 4) }
+            results.append((label, matrices.first?.type.name ?? "?", seconds, flops))
+        }
+        return results
     }
 
     /// Times every layer's matrix of each kind on the GPU (profiling aid for

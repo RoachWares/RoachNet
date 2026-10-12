@@ -131,10 +131,12 @@ final class MetalParityTests: XCTestCase {
             let model = try TransformerModel(path: path)
             let text = String(repeating: "The quick brown fox jumps over the lazy dog. ", count: 6)
             let tokens = model.tokenizer.encode(text).prefix(71).map { Int($0) }
-            // With FP32 keys and values both paths agree to rounding. With the
-            // default half cache, a key the two paths compute a hair apart can
-            // round to neighbouring FP16 values, so they agree to FP16 rounding.
-            for cache in [KVCacheType.f32, .f16] {
+            // At full precision (FP32 cache and prompt tiles) both paths agree
+            // to rounding. By default (FP16 cache, FP16 weight tiles in the
+            // prompt products) they agree to FP16 rounding.
+            for (cache, matmul) in [(KVCacheType.f32, "float"), (.f16, "")] {
+                setenv("ROACHNET_METAL_MATMUL", matmul, 1)
+                defer { unsetenv("ROACHNET_METAL_MATMUL") }
                 let label = "\(name) \(cache)"
                 let tolerance: Float = cache == .f32 ? 2e-3 : 1e-2
                 let sequential = try MetalBackend(model: model, contextLength: 128, cacheType: cache)
@@ -173,7 +175,7 @@ final class MetalParityTests: XCTestCase {
                     let expected = Array(reference.hiddenState)
                     let worst = zip(expected, states[position]).map { abs($0 - $1) }.max() ?? 0
                     let magnitude = expected.map(abs).max() ?? 0
-                    XCTAssertLessThan(worst, cache == .f32 ? 1e-2 : 1e-2 + 2e-3 * magnitude, "\(label) hidden state \(position)")
+                    XCTAssertLessThan(worst, cache == .f32 ? 1e-2 : 2e-2 + 5e-3 * magnitude, "\(label) hidden state \(position)")
                 }
             }
             ran += 1

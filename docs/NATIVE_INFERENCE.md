@@ -91,16 +91,18 @@ On a Metal device the session uses the GPU backend. Before using it, the session
 
 ### Prompt evaluation (prefill)
 
-A prompt runs through the model in passes of up to 512 tokens, instead of one token at a time. Each weight matrix is dequantized once per 32 tokens into threadgroup memory. The multiplications run on the GPU's simdgroup matrix units in FP32. Measured with `roachnet-infer prefill <model.gguf> --tokens 512`, warm, on the same M2 Pro:
+A prompt runs through the model in passes of up to 512 tokens, instead of one token at a time. Each weight matrix is dequantized once per 32 tokens into a half-precision tile in threadgroup memory, and the multiplications run on the GPU's simdgroup matrix units with FP32 activations and accumulators. Measured with `roachnet-infer prefill <model.gguf> --tokens 512`, warm, on the same M2 Pro:
 
 | Model | Batched | One token at a time | Speed-up |
 | --- | --- | --- | --- |
-| qwen3 0.6B Q8_0 | 1,945 tok/s | 118 tok/s | 16.4× |
-| qwen2.5 0.5B Q4_K_M | 2,432 tok/s | 151 tok/s | 16.1× |
-| qwen2.5-coder 1.5B Q4_K_M | 795 tok/s | 76 tok/s | 10.5× |
-| llama3.2 3B Q4_K_M | 398 tok/s | 51 tok/s | 7.7× |
+| qwen3 0.6B Q8_0 | 2,180 tok/s | 123 tok/s | 17.7× |
+| qwen2.5 0.5B Q4_K_M | 2,661 tok/s | 182 tok/s | 14.6× |
+| llama3.2 3B Q4_K_M | 454 tok/s | 51 tok/s | 8.9× |
+| qwen3 8B Q4_K_M | 187 tok/s | 21 tok/s | 8.9× |
 
-The qwen3 0.6B and llama3.2 3B rows were measured again after prompt attention moved to whole-simdgroup key reads (they were 1,671 and 375 tok/s); the other two rows predate it.
+Staging the weight tile in FP32 instead (`ROACHNET_METAL_MATMUL=float`) gives 2,017, 2,424, 396 and 160 tok/s on the same four models. A 64 × 64 tile and an 8 × 8-blocked tile layout were both slower on the M2 Pro. `roachnet-infer prefill <model.gguf> --profile` prints each kind of matrix product's GPU time and TFLOPS.
+
+**Precision.** By default RoachInference makes the trade-off llama.cpp's Metal backend makes: half-precision weight tiles in prompt products and a half-precision KV cache, with FP32 arithmetic and accumulation. Against the float64 reference this gives the same top tokens and greedy continuations, with top logits within 0.05. `ROACHNET_METAL_MATMUL=float` and `ROACHNET_KV_CACHE=f32` together give full precision, within 0.002 of the reference; the parity tests check both settings.
 
 The batched pass leaves the same KV cache as token-by-token passes. On every device, the first batched pass is checked against token-by-token passes; if they differ, prompts run a token at a time. `ROACHNET_METAL_BATCH=0` turns batching off, and a number sets the batch size. `ROACHNET_METAL_MATMUL=simple` uses the plain four-token kernels instead of the simdgroup-matrix GEMM. Q2_K and Q3_K models still prefill a token at a time.
 
@@ -122,10 +124,11 @@ The same GGUF file (Ollama's own copy of qwen3:8b Q4_K_M, 5.2 GB), the same 665-
 
 | | Prompt | Decode |
 | --- | --- | --- |
-| Ollama 0.33.2 | 264 tok/s | 21.2 tok/s |
-| RoachInference | 151 tok/s | 17.9 tok/s |
+| Ollama 0.33.2 | 267 tok/s | 22.0 tok/s |
+| RoachInference | 181 tok/s | 18.7 tok/s |
+| RoachInference before the half-precision tiles, FP16 cache and new attention | 151 tok/s | 17.9 tok/s |
 
-At a short context, decode is level with Ollama (21.4 tok/s). Prompt evaluation on large models is the gap still open. The GEMM runs in FP32 throughout, and staging the weight tiles in half precision is the next step.
+With a 12-token prompt, RoachInference decodes at 20.5 tok/s. Most of the remaining decode gap is the matrix-vector kernels, which read the weights at about 107 GB/s; prompt evaluation runs its matrix products at about 2.8 TFLOPS. Both are where the next work goes. Neither engine was tuned for this run beyond its defaults.
 
 ### Memory
 
@@ -137,7 +140,7 @@ Before loading, the runtime works out what the model will hold from its GGUF met
 
 `/api/ps` reports each model's real footprint, backend and request slots. `ROACHNET_MAX_LOADED_MODELS` sets how many models stay loaded at once (2 by default).
 
-On the GPU, keys and values are stored in half precision. That holds twice the context in the same memory and halves what decode attention reads per token; the arithmetic stays in FP32. `ROACHNET_KV_CACHE=f32` keeps full precision. The parity tests check both caches against the CPU and float64 references: FP32 to 0.002 on the top logit, the half cache to 0.02 with the same greedy continuations. Where the reference scores two tokens as a near-tie, FP16 rounding can pick the other one; that is the only kind of difference the tests allow.
+On the GPU, keys and values are stored in half precision. That holds twice the context in the same memory and halves what decode attention reads per token; the arithmetic stays in FP32. `ROACHNET_KV_CACHE=f32` keeps full precision; the precision note under Prompt evaluation says what the default changes. Where the reference scores two tokens as a near-tie, FP16 rounding can pick the other one; that is the only kind of token difference the tests allow.
 
 ### Parallel requests
 
@@ -150,6 +153,13 @@ Each request goes to the slot that keeps the most work:
 3. **Otherwise** it gets the idle slot that shares the most with it, or the one used longest ago, and waits only when every slot is busy.
 
 With two conversations on qwen3 0.6B, asking each again evaluates 1 token instead of 24. A second agent sharing a 117-token system prompt evaluates 14 tokens instead of 117, and both agents keep their own caches.
+
+### Stability
+
+- A GPU pass that Metal reports as failed ends the request with an error instead of a reply sampled from garbage. A stage running on another Mac reports a failure the same way.
+- Every step's logits are checked for NaN and infinity. A numerical blow-up ends the reply with an error that points at `ROACHNET_KV_CACHE=f32`.
+- A model split across Macs whose other Mac drops answers that request with a 502 and loads on this Mac alone for the next one (`docs/CLUSTER.md`).
+- Memory is planned before a load, and requests wait for a free slot instead of overcommitting a model.
 
 ## How correctness is verified
 

@@ -832,10 +832,11 @@ kernel void take4(device const float4* src [[buffer(0)]], device float* dst [[bu
 // simdgroup then multiplies its 16 rows against all 32 tokens with 8×8
 // hardware matrix multiply-accumulates, in FP32 like every other kernel.
 
-// 16 dequantized values of 32-column chunk kc of row r: half il (0 or 1).
-#define DQ32(NAME, BYTES) inline void NAME(device const uchar* r, uint kc, uint il, threadgroup float* dst) { \
+// 16 dequantized values of 32-column chunk kc of row r: half il (0 or 1),
+// written through P: threadgroup or thread memory, float or half.
+#define DQ32(NAME, BYTES) template <typename P> inline void NAME(device const uchar* r, uint kc, uint il, P dst) { \
     device const uchar* b = r + ulong(kc) * BYTES;
-#define DQK(NAME, BYTES) inline void NAME(device const uchar* r, uint kc, uint il, threadgroup float* dst) { \
+#define DQK(NAME, BYTES) template <typename P> inline void NAME(device const uchar* r, uint kc, uint il, P dst) { \
     device const uchar* b = r + ulong(kc >> 3) * BYTES; uint j = kc & 7;
 
 DQ32(dq_f32, 128)
@@ -981,6 +982,72 @@ MATMUL_SG(matmul_sg_q4_K, dq_q4_K)
 MATMUL_SG(matmul_sg_q5_K, dq_q5_K)
 MATMUL_SG(matmul_sg_q6_K, dq_q6_K)
 MATMUL_SG(matmul_sg_q8_K, dq_q8_K)
+// The same GEMM with the weight tile staged in half precision, the way
+// llama.cpp's Metal GEMM stages it: half the threadgroup memory, so more
+// threadgroups stay resident, and half-width matrix loads. Activations and
+// accumulators stay FP32.
+#define MATMUL_SGH(NAME, DEQ, BT, BMAT) \
+kernel void NAME(device const uchar* W [[buffer(0)]], device const float4* x [[buffer(1)]], \
+                 device float4* y [[buffer(2)]], constant MatmulArgs& a [[buffer(3)]], \
+                 device const float* bias [[buffer(4)]], \
+                 uint2 tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]], \
+                 uint sg [[simdgroup_index_in_threadgroup]]) { \
+    threadgroup float smem[64 * 32]; \
+    threadgroup half* sa = (threadgroup half*)smem; \
+    threadgroup BT* sb = (threadgroup BT*)(smem + 64 * 32 / 2); \
+    uint r0 = tg.x * 64, g0 = tg.y * 8; \
+    simdgroup_float8x8 acc[2][4]; \
+    for (int i = 0; i < 2; ++i) for (int jj = 0; jj < 4; ++jj) acc[i][jj] = simdgroup_float8x8(0); \
+    uint lrow = tid >> 1, il = tid & 1, grow = r0 + lrow; \
+    device const uchar* wr = W + ulong(min(grow, a.rows - 1)) * a.rowBytes; \
+    threadgroup half* wdst = sa + lrow * 32 + il * 16; \
+    uint chunks = a.cols / 32; \
+    for (uint kc = 0; kc < chunks; ++kc) { \
+        if (grow < a.rows) { DEQ(wr, kc, il, wdst); } else { for (int i = 0; i < 16; ++i) wdst[i] = 0; } \
+        for (uint i = tid; i < 256; i += 128) { \
+            uint gl = i >> 5, k = i & 31, g = g0 + gl; \
+            float4 v = g < a.groups ? x[ulong(g) * a.cols + kc * 32 + k] : float4(0); \
+            threadgroup BT* t = sb + gl * 4 * 32 + k; \
+            t[0] = BT(v.x); t[32] = BT(v.y); t[64] = BT(v.z); t[96] = BT(v.w); \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+        for (uint kk = 0; kk < 32; kk += 8) { \
+            simdgroup_half8x8 A0, A1; \
+            BMAT B[4]; \
+            simdgroup_load(A0, sa + (sg * 16) * 32 + kk, 32); \
+            simdgroup_load(A1, sa + (sg * 16 + 8) * 32 + kk, 32); \
+            for (int jj = 0; jj < 4; ++jj) simdgroup_load(B[jj], sb + jj * 8 * 32 + kk, 32, ulong2(0, 0), true); \
+            for (int jj = 0; jj < 4; ++jj) { \
+                simdgroup_multiply_accumulate(acc[0][jj], A0, B[jj], acc[0][jj]); \
+                simdgroup_multiply_accumulate(acc[1][jj], A1, B[jj], acc[1][jj]); \
+            } \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+    } \
+    for (int i = 0; i < 2; ++i) for (int jj = 0; jj < 4; ++jj) \
+        simdgroup_store(acc[i][jj], smem + (sg * 16 + i * 8) * 32 + jj * 8, 32); \
+    threadgroup_barrier(mem_flags::mem_threadgroup); \
+    for (uint i = tid; i < 64 * 8; i += 128) { \
+        uint lr = i & 63, gl = i >> 6, row = r0 + lr, g = g0 + gl; \
+        if (row < a.rows && g < a.groups) { \
+            threadgroup float* o = smem + lr * 32 + gl * 4; \
+            matmul_store(float4(o[0], o[1], o[2], o[3]), row, g, y, bias, a); \
+        } \
+    } \
+}
+
+MATMUL_SGH(matmul_sgh_f32, dq_f32, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_f16, dq_f16, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_bf16, dq_bf16, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q4_0, dq_q4_0, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q4_1, dq_q4_1, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q5_0, dq_q5_0, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q5_1, dq_q5_1, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q8_0, dq_q8_0, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q4_K, dq_q4_K, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q5_K, dq_q5_K, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q6_K, dq_q6_K, float, simdgroup_float8x8)
+MATMUL_SGH(matmul_sgh_q8_K, dq_q8_K, float, simdgroup_float8x8)
 // ---- decode attention split across keys ----
 // One threadgroup per (KV head, quad of its query heads, chunk of keys):
 // the four query heads that share a KV head are packed as float4, so each key

@@ -140,7 +140,7 @@ final class ClusterBackend: TransformerBackend, BatchForwarding, FallibleBackend
 
     func takeFailure() -> Error? {
         defer { failure = nil }
-        return failure
+        return failure ?? local.takeFailure()
     }
 
     private func pipeline(_ residuals: [Float], count: Int, position: Int) -> [Float]? {

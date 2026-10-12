@@ -122,6 +122,17 @@ public final class InferenceEngine {
         let promptStart = Date()
         let cachedBefore = session.cachedTokens
         var logits = try session.prefill(prompt, cancelled: cancelled)
+        // A numerical blow-up must end the reply with an error, never as text sampled from garbage.
+        // One vectorizable pass: any NaN or infinity makes the sum non-finite.
+        func checkFinite(_ values: [Float]) throws {
+            var sum: Float = 0
+            for value in values { sum += value }
+            if !sum.isFinite {
+                session.reset()
+                throw InferenceError.invalid("The model produced invalid numbers (NaN or infinity) for this prompt. Setting ROACHNET_KV_CACHE=f32 keeps keys and values in full precision.")
+            }
+        }
+        try checkFinite(logits)
         var reused = 0
         while reused < min(cachedBefore.count, prompt.count - 1), cachedBefore[reused] == prompt[reused] { reused += 1 }
         let promptDuration = Date().timeIntervalSince(promptStart)
@@ -197,6 +208,7 @@ public final class InferenceEngine {
             if generated.count >= limit || session.cachedTokens.count >= session.contextLength { break }
             try session.step(token)
             logits = session.logits()
+            try checkFinite(logits)
         }
         if reason != .stopSequence { text += decoder.flush() }
         flushReady(final: true)
