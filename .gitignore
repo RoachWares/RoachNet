@@ -20,6 +20,7 @@ node_modules_node*_partial_*/
 
 # Build / Dist
 dist
+dist-symbols
 build
 tmp
 .tmp/

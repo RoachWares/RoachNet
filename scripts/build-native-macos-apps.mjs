@@ -1556,6 +1556,50 @@ async function createRoachSpeechPackArchives() {
   return archives
 }
 
+/**
+ * Keeps symbols for crash reports next to the build (never shipped), then
+ * strips debug info from every executable in a bundle. The debug map holds
+ * absolute paths from the build Mac (its volume and workspace folders), which
+ * have no place in a public download.
+ */
+async function writeDebugSymbols(binPath) {
+  const symbolsRoot = path.join(packagePath, 'dist-symbols', `${appVersion}-${appBuildNumber}`)
+  mkdirSync(symbolsRoot, { recursive: true })
+  for (const name of ['RoachNetApp', 'RoachNetSetup', nativeRuntimeExecutableName]) {
+    const binary = path.join(binPath, name)
+    if (!existsSync(binary)) continue
+    try {
+      await run('xcrun', ['dsymutil', binary, '-o', path.join(symbolsRoot, `${name}.dSYM`)], { stdio: 'pipe' })
+    } catch (error) {
+      console.warn(`Couldn't keep debug symbols for ${name}: ${error.message}`)
+    }
+  }
+}
+
+async function stripBundleExecutables(contentsPath) {
+  for (const folder of ['MacOS', 'Helpers']) {
+    const root = path.join(contentsPath, folder)
+    if (!existsSync(root)) continue
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const file = path.join(root, entry.name)
+      const kind = await run('file', ['-b', file], { stdio: 'pipe' })
+      if (!kind.stdout.includes('Mach-O')) continue
+      // -S drops the debug map (and the paths in it); global symbols stay.
+      await run('xcrun', ['strip', '-S', file], { stdio: 'pipe' })
+    }
+  }
+}
+
+async function auditReleasePrivacy(targets) {
+  const result = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'audit-release-privacy.mjs'), ...targets], { encoding: 'utf8' })
+  process.stdout.write(result.stdout || '')
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr || '')
+    throw new Error('The built apps carry details of this Mac; see the privacy audit above.')
+  }
+}
+
 async function copyNativeRuntimeHelper(binPath, contentsPath) {
   const sourcePath = path.join(binPath, nativeRuntimeExecutableName)
   if (!existsSync(sourcePath)) {
@@ -1689,6 +1733,7 @@ ${sourceCommit ? `  <key>RoachNetSourceCommit</key>\n  <string>${sourceCommit}</
 `
 
   writeFileSync(path.join(contentsPath, 'Info.plist'), plist, 'utf8')
+  await stripBundleExecutables(contentsPath)
   console.log(`Signing ${name}...`)
 
   await signAppBundle(bundlePath)
@@ -1742,6 +1787,7 @@ async function main() {
   await ensureLaunchGuideVideo()
   const bundledNodeRuntimePath = bundleNodeCompat ? await ensureBundledNodeRuntime() : null
   const binPath = await buildSwiftPackage()
+  await writeDebugSymbols(binPath)
   const iconPath = await buildIcns()
   const desktopAppBundlePath = path.join(distPath, 'RoachNet.app')
 
@@ -1802,6 +1848,7 @@ async function main() {
 
   builtBundles.push(...(await createRoachSpeechPackArchives()))
   await verifyBuiltArtifacts()
+  await auditReleasePrivacy(builtBundles)
 
   const setupAppBundlePath = builtBundles.find((bundlePath) => bundlePath.endsWith('RoachNet Setup.app'))
   if (setupAppBundlePath) {

@@ -147,7 +147,7 @@ final class DevWorkspaceSupportTests: XCTestCase {
         XCTAssertEqual(
             DeveloperWorkspacePathLabel.displayName(
                 title: "Workspace",
-                path: "/Volumes/Shared/DEVPROJECTS/RoachNet/projects"
+                path: "/Volumes/Shared/Code/RoachNet/projects"
             ),
             "projects"
         )

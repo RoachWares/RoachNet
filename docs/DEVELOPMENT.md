@@ -8,10 +8,10 @@ contributors do not accidentally build or release the wrong application.
 
 ## Source of truth
 
-Repository root:
+Repository:
 
 ```text
-/Volumes/MediaSSD/DEVPROJECTS/RoachNet
+https://github.com/RoachWares/RoachNet
 ```
 
 Current shipping lane:
@@ -41,8 +41,8 @@ Do not add shipping entrypoints, package scripts, installer payloads, or release
 gates that boot a reference-only lane unless the native ownership decision is
 explicitly reversed.
 
-The public website and Apps storefront are maintained separately in
-`/Volumes/MediaSSD/DEVPROJECTS/roachnet-org`.
+The public website and Apps storefront are maintained separately in the
+[roachnet-org](https://github.com/RoachWares/roachnet-org) repository.
 
 ## Requirements
 
@@ -85,7 +85,7 @@ that historical lane. Do not restore it to the public candidate.
 From a clean clone:
 
 ```bash
-cd /Volumes/MediaSSD/DEVPROJECTS/RoachNet
+cd RoachNet
 nvm use
 node --version
 npm --version
@@ -296,22 +296,14 @@ output and artifact checksums for every candidate.
 
 ## Git and workspace safety
 
-The shared DEVPROJECTS root contains multiple repositories and non-repository
-projects. Before changing this repository:
+If this checkout shares a workspace folder with other repositories or has
+work in progress, check its state before changing it:
 
 ```bash
 git status --short --branch
 git worktree list
 git remote -v
 ```
-
-Current known constraints at this guide's verification date:
-
-- `main` has preserved uncommitted and untracked work.
-- local `main` is two commits behind `origin/main`.
-- a detached prunable worktree exists outside DEVPROJECTS.
-- the shared pre-candidate tree retains private legacy admin/runtime work that is
-  deliberately excluded from the public candidate.
 
 Do not use reset, clean, broad stash, rebase, merge, or worktree pruning as a
 setup shortcut. First classify and preserve the existing work. A fresh clone or
@@ -404,4 +396,3 @@ and accepted.
   go/no-go contract, evidence requirements, and candidate sign-off template.
 - `docs/release-gates/v1.0.5-launch-readiness.md` — historical v1.0.5 launch
   board and known signing limitation.
-- `../WORKSPACE.md` and `../DEVPROJECTS.yml` — estate map and move rules.

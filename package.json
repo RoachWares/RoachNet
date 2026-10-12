@@ -24,6 +24,7 @@
     "convex:deploy": "convex deploy",
     "audit:upstreams": "node scripts/audit-upstream-projects.mjs",
     "audit:release": "node scripts/audit-release-configuration.mjs",
+    "audit:privacy": "node scripts/audit-release-privacy.mjs",
     "smoke:macos-install-lanes": "node scripts/smoke-test-macos-install-lanes.mjs",
     "smoke:ios-companion-compat": "node scripts/smoke-test-ios-companion-compat.mjs",
     "smoke:release-gates": "node scripts/smoke-test-release-gates.mjs",
