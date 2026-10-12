@@ -1031,16 +1031,29 @@ extension NativeRuntime {
         let vaultPath = Path.join(storageRoot, "Vault")
         return [
             "vaultPath": JSON(vaultPath),
+            "locked": JSON(vaultIsLocked),
             "knowledgeFiles": jsonStrings(listVaultKnowledgeFiles(vaultPath)),
             "roachBrain": [],
         ]
     }
 
+    /// An encrypted Vault that is locked: the app leaves this marker in the
+    /// empty, read-only folder the encrypted image mounts over (see the app's
+    /// VaultEncryptionManager). The marker is hidden while the Vault is open.
+    static let vaultLockedMarker = ".roachnet-vault-locked"
+    var vaultIsLocked: Bool { Files.exists(Path.join(storageRoot, "Vault", NativeRuntime.vaultLockedMarker)) }
+
+    /// Files the system or RoachNet makes in the Vault that aren't knowledge.
+    static let vaultSystemNames: Set<String> = [vaultLockedMarker, ".metadata_never_index", ".fseventsd", ".Trashes",
+                                                ".Spotlight-V100", ".TemporaryItems", ".DS_Store"]
+
     func isReservedVaultPath(_ relativePath: String) -> Bool {
-        JS.matches("^(?:roachtail|roachclaw)(?:[\\\\/]|$)", relativePath, caseInsensitive: true)
+        if NativeRuntime.vaultSystemNames.contains(Path.basename(relativePath)) { return true }
+        return JS.matches("^(?:roachtail|roachclaw)(?:[\\\\/]|$)", relativePath, caseInsensitive: true)
     }
 
     func listVaultKnowledgeFiles(_ root: String, limit: Int = 80) -> [String] {
+        if Files.exists(Path.join(root, NativeRuntime.vaultLockedMarker)) { return [] }
         var output: [String] = []
         func walk(_ current: String, _ relativeRoot: String) {
             if output.count >= limit || !Files.exists(current) { return }

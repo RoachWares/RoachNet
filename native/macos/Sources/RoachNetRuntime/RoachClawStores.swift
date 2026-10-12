@@ -1495,7 +1495,12 @@ extension NativeRuntime {
         }
         checkWritableDirectory("storageRoot", storageRoot)
         checkWritableDirectory("runtimeStateRoot", config.runtimeStateRoot)
-        checkWritableDirectory("vaultRoot", Path.join(storageRoot, "Vault"))
+        if vaultIsLocked {
+            // An encrypted Vault that is locked is read-only on purpose; that's ready, not broken.
+            checks["vaultRoot"] = ["ok": true, "path": JSON(Path.join(storageRoot, "Vault")), "locked": true]
+        } else {
+            checkWritableDirectory("vaultRoot", Path.join(storageRoot, "Vault"))
+        }
         let localFirst = !JS.matches("^https?://", storageRoot, caseInsensitive: true) && Path.isAbsolute(storageRoot)
         checks["localFirst"] = ["ok": true, "local": JSON(localFirst)]
         let ready = checks.values.allSatisfy { $0["ok"].truthy }

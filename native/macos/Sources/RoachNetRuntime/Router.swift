@@ -206,7 +206,8 @@ extension NativeRuntime {
         case ("GET", "/api/openclaw/skills/installed"):
             let workspace = config.env("OPENCLAW_WORKSPACE_PATH").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(storageRoot, "RoachClaw")
             return ok(["workspacePath": JSON(workspace), "skills": []])
-        case ("GET", "/api/rag/files"): return ok(["files": jsonStrings(listVaultKnowledgeFiles(Path.join(storageRoot, "Vault")))])
+        case ("GET", "/api/rag/files"):
+            return ok(["files": jsonStrings(listVaultKnowledgeFiles(Path.join(storageRoot, "Vault"))), "vaultLocked": JSON(vaultIsLocked)])
         case ("GET", "/api/collections"):
             refreshCollections(force: url.queryParameter("refresh") == "1")
             return ok(["collections": collectionsStatus()])

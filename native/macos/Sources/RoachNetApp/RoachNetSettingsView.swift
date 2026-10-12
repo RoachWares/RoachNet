@@ -601,6 +601,8 @@ struct RoachNetSettingsView: View {
 
     private var vault: some View {
         VStack(alignment: .leading, spacing: 14) {
+            VaultEncryptionSection(storagePath: model.storagePath)
+
             RoachInsetPanel {
                 LazyVGrid(columns: settingsColumns, alignment: .leading, spacing: 12) {
                     RoachMetricCard(label: "Books", value: "\(model.roachArchiveStore.vaultRecords.count)", detail: "Added through Roach's Archive")

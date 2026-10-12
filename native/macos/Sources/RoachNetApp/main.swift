@@ -2710,6 +2710,8 @@ final class WorkspaceModel: ObservableObject {
 
         refreshConfigOnly()
         guard setupCompleted else { return }
+        // Once per launch: finish an interrupted Vault move, and unlock an encrypted Vault if the person chose that.
+        await VaultEncryptionSession.appDidLoad(storagePath: storagePath)
         let currentConfig = config
 
         if !silently {
@@ -14105,6 +14107,7 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         unregisterCommandPaletteHotKey()
+        VaultEncryptionSession.appWillQuit()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
