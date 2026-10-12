@@ -35,6 +35,39 @@ final class MetalParityTests: XCTestCase {
         #endif
     }
 
+    /// Decode attention split across key chunks (long contexts) must match the
+    /// single fused kernel.
+    func testSplitAttentionMatchesFusedOnLongContexts() throws {
+        #if canImport(Metal)
+        var ran = 0
+        for name in ["smollm2-135m-q8_0", "qwen3-0.6b-q8_0"] {
+            guard let path = try? TestModels.path(name) else { continue }
+            let model = try TransformerModel(path: path)
+            let tokens = model.tokenizer.encode(String(repeating: "A long context needs many keys. ", count: 40)).prefix(300).map { Int($0) }
+            let split = try MetalBackend(model: model, contextLength: 512)
+            let fused = try MetalBackend(model: model, contextLength: 512)
+            fused.splitAttention = false
+            for backend in [split, fused] { backend.forward(tokens: tokens, position: 0, output: .none, each: nil) }
+            for step in 0..<3 {
+                split.forward(token: tokens[step], position: tokens.count + step)
+                fused.forward(token: tokens[step], position: tokens.count + step)
+                let a = fused.logits, b = split.logits
+                var worst: Float = 0, magnitude: Float = 1e-6
+                for i in 0..<a.count {
+                    worst = max(worst, abs(a[i] - b[i]))
+                    magnitude = max(magnitude, abs(a[i]))
+                }
+                XCTAssertLessThan(worst, 2e-3 * magnitude + 1e-3, "\(name) step \(step)")
+                XCTAssertEqual(a.indices.max { a[$0] < a[$1] }, b.indices.max { b[$0] < b[$1] }, "\(name) argmax step \(step)")
+            }
+            ran += 1
+        }
+        if ran == 0 { throw XCTSkip("Set ROACHNET_TEST_MODELS to run Metal parity tests.") }
+        #else
+        throw XCTSkip("Metal is not available on this platform.")
+        #endif
+    }
+
     /// Batched prefill must leave the same logits, KV cache and hidden states
     /// as one token at a time: across several 32-token tiles, a padded last
     /// group, and a batch that starts partway into the context.

@@ -17,7 +17,22 @@ public final class InferenceSession {
         self.backend = BackendSelector.make(model: model, contextLength: context, preference: preferred)
     }
 
-    public var vocabularySize: Int { model.outputProjection.rows }
+    /// A session over a backend built elsewhere (a model split across Macs).
+    public init(model: TransformerModel, backend: TransformerBackend) {
+        self.model = model
+        self.contextLength = backend.contextLength
+        self.backend = backend
+    }
+
+    public var vocabularySize: Int { model.vocabularyRows }
+
+    /// Surfaces a failure the backend could not throw (a stage on another Mac went away).
+    private func checkBackend() throws {
+        if let failure = (backend as? FallibleBackend)?.takeFailure() {
+            reset()
+            throw failure
+        }
+    }
 
     /// Forgets cached tokens beyond `count` (prefix reuse).
     public func truncate(to count: Int) {
@@ -38,7 +53,7 @@ public final class InferenceSession {
         var common = 0
         while common < min(tokens.count - 1, cachedTokens.count), tokens[common] == cachedTokens[common] { common += 1 }
         truncate(to: common)
-        for token in tokens[common...] where token < 0 || Int(token) >= model.tokenEmbedding.rows {
+        for token in tokens[common...] where token < 0 || Int(token) >= model.vocabularyRows {
             throw InferenceError.invalid("Token \(token) is out of range.")
         }
         if let batched = backend as? BatchForwarding, batched.maxBatch >= 4, tokens.count - common >= 2 {
@@ -48,6 +63,7 @@ public final class InferenceSession {
                 let end = min(tokens.count, index + batched.maxBatch)
                 let chunk = tokens[index..<end]
                 batched.forward(tokens: chunk.map { Int($0) }, position: index, output: end == tokens.count ? .logits : .none, each: nil)
+                try checkBackend()
                 cachedTokens.append(contentsOf: chunk)
                 index = end
             }
@@ -64,8 +80,9 @@ public final class InferenceSession {
     /// Appends one token and runs the forward pass for it.
     public func step(_ token: Int32, output: ForwardOutput = .logits) throws {
         guard cachedTokens.count < contextLength else { throw InferenceError.invalid("The context window is full.") }
-        guard token >= 0, Int(token) < model.tokenEmbedding.rows else { throw InferenceError.invalid("Token \(token) is out of range.") }
+        guard token >= 0, Int(token) < model.vocabularyRows else { throw InferenceError.invalid("Token \(token) is out of range.") }
         backend.forward(token: Int(token), position: cachedTokens.count, output: output)
+        try checkBackend()
         cachedTokens.append(token)
     }
 
@@ -84,7 +101,7 @@ public final class InferenceSession {
         var sum = [Float](repeating: 0, count: width)
         var chosen: [Float] = []
         if let batched = backend as? BatchForwarding, batched.maxBatch >= 4, tokens.count >= 2 {
-            for token in tokens where token < 0 || Int(token) >= model.tokenEmbedding.rows {
+            for token in tokens where token < 0 || Int(token) >= model.vocabularyRows {
                 throw InferenceError.invalid("Token \(token) is out of range.")
             }
             var index = 0
@@ -101,6 +118,7 @@ public final class InferenceSession {
                         chosen = Array(hidden)
                     }
                 } : nil)
+                try checkBackend()
                 cachedTokens.append(contentsOf: chunk)
                 index = end
             }
@@ -164,6 +182,30 @@ public protocol BatchForwarding: AnyObject {
     func forward(tokens: [Int], position: Int, output: ForwardOutput, each: ((Int, UnsafeBufferPointer<Float>) -> Void)?)
 }
 
+/// A backend that runs one stage of a model split across machines.
+public protocol StageBackend: AnyObject {
+    /// The residual stream after the last forward pass: the next stage's input.
+    var residualState: UnsafeBufferPointer<Float> { get }
+    /// Runs this stage's layers on `residual` (the previous stage's output) at `position`.
+    func forward(residual: UnsafePointer<Float>, position: Int, output: ForwardOutput)
+    /// The final norm, and the vocabulary projection for `.logits`, over the last stage's output.
+    func applyHead(residual: UnsafePointer<Float>, output: ForwardOutput)
+}
+
+/// Batched passes for a stage: residual streams in and out.
+public protocol StageBatchForwarding: BatchForwarding {
+    /// Runs this stage's layers on `count` residual streams (`count` × width, token-major).
+    func forward(residuals: UnsafePointer<Float>, count: Int, position: Int, output: ForwardOutput, each: ((Int, UnsafeBufferPointer<Float>) -> Void)?)
+    /// Every token's residual stream after the last batched pass (`count` × width).
+    func batchResiduals(count: Int) -> [Float]
+}
+
+/// A backend whose forward pass can fail, such as a stage on another Mac.
+public protocol FallibleBackend: AnyObject {
+    /// The failure since the last call, if any; reading it clears it.
+    func takeFailure() -> Error?
+}
+
 /// A device that runs the transformer forward pass and owns its KV cache.
 public protocol TransformerBackend: AnyObject {
     var name: String { get }
@@ -181,7 +223,7 @@ extension TransformerBackend {
 }
 
 /// CPU reference backend: plain Swift with SIMD and multithreaded matvecs.
-public final class CPUBackend: TransformerBackend {
+public final class CPUBackend: TransformerBackend, StageBackend {
     public let model: TransformerModel
     public let contextLength: Int
     public var name: String { "cpu" }
@@ -215,8 +257,8 @@ public final class CPUBackend: TransformerBackend {
             pointer.initialize(repeating: 0, count: max(count, 1))
             return pointer
         }
-        keyCache = buffer(hp.blockCount * layerKeyStride)
-        valueCache = buffer(hp.blockCount * layerValueStride)
+        keyCache = buffer(model.layers.count * layerKeyStride)
+        valueCache = buffer(model.layers.count * layerValueStride)
         let width = max(hp.embeddingLength, hp.headCount * hp.valueDimension)
         x = buffer(hp.embeddingLength)
         normed = buffer(width)
@@ -226,7 +268,7 @@ public final class CPUBackend: TransformerBackend {
         hidden = buffer(hp.feedForwardLength)
         hiddenUp = buffer(hp.feedForwardLength)
         scores = buffer(hp.headCount * context)
-        logitsBuffer = buffer(model.outputProjection.rows)
+        logitsBuffer = buffer(model.vocabularyRows)
     }
 
     deinit {
@@ -236,16 +278,44 @@ public final class CPUBackend: TransformerBackend {
     }
 
     public var logits: UnsafeBufferPointer<Float> {
-        UnsafeBufferPointer(start: logitsBuffer, count: model.outputProjection.rows)
+        UnsafeBufferPointer(start: logitsBuffer, count: model.vocabularyRows)
     }
 
     public var hiddenState: UnsafeBufferPointer<Float> {
         UnsafeBufferPointer(start: normed, count: model.hyperparameters.embeddingLength)
     }
 
+    public var residualState: UnsafeBufferPointer<Float> {
+        UnsafeBufferPointer(start: x, count: model.hyperparameters.embeddingLength)
+    }
+
     // MARK: Forward pass
 
     public func forward(token: Int, position: Int, output: ForwardOutput) {
+        if model.stage.embedding { model.tokenEmbedding.dequantizeRow(token, into: x) }
+        runLayers(position: position)
+        head(output)
+    }
+
+    public func forward(residual: UnsafePointer<Float>, position: Int, output: ForwardOutput) {
+        x.update(from: residual, count: model.hyperparameters.embeddingLength)
+        runLayers(position: position)
+        head(output)
+    }
+
+    public func applyHead(residual: UnsafePointer<Float>, output: ForwardOutput) {
+        x.update(from: residual, count: model.hyperparameters.embeddingLength)
+        head(output)
+    }
+
+    private func head(_ output: ForwardOutput) {
+        guard output != .none, model.stage.head else { return }
+        let hp = model.hyperparameters
+        Kernels.rmsNorm(x, model.outputNorm, hp.embeddingLength, hp.rmsEpsilon, into: normed)
+        if output == .logits { model.outputProjection.multiply(normed, into: logitsBuffer) }
+    }
+
+    private func runLayers(position: Int) {
         let hp = model.hyperparameters
         let dim = hp.embeddingLength
         let headDim = hp.headDimension
@@ -253,8 +323,6 @@ public final class CPUBackend: TransformerBackend {
         let heads = hp.headCount
         let group = heads / hp.headCountKV
         let scale = 1 / sqrtf(Float(headDim))
-
-        model.tokenEmbedding.dequantizeRow(token, into: x)
 
         for (layerIndex, layer) in model.layers.enumerated() {
             let keys = keyCache + layerIndex * layerKeyStride
@@ -321,10 +389,6 @@ public final class CPUBackend: TransformerBackend {
             layer.down.multiply(hidden, into: projected)
             Kernels.add(x, projected, dim)
         }
-
-        guard output != .none else { return }
-        Kernels.rmsNorm(x, model.outputNorm, dim, hp.rmsEpsilon, into: normed)
-        if output == .logits { model.outputProjection.multiply(normed, into: logitsBuffer) }
     }
 }
 

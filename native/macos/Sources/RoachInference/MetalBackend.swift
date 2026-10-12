@@ -5,7 +5,7 @@ import Metal
 /// GPU backend for Apple Silicon built only on our own Metal kernels
 /// (`MetalKernelSource`). Weights stay quantized and are read in place from the
 /// memory-mapped GGUF file; activations and the KV cache live in shared buffers.
-public final class MetalBackend: TransformerBackend, BatchForwarding {
+public final class MetalBackend: TransformerBackend, StageBatchForwarding, StageBackend {
     public let model: TransformerModel
     public let contextLength: Int
     public var name: String { "metal (\(device.name))" }
@@ -32,6 +32,11 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
     let x: MTLBuffer, normed: MTLBuffer, projected: MTLBuffer, query: MTLBuffer
     let attention: MTLBuffer, hidden: MTLBuffer, hiddenUp: MTLBuffer, scores: MTLBuffer, logitsBuffer: MTLBuffer
     let keyCache: MTLBuffer, valueCache: MTLBuffer
+    /// Partial softmax results of decode attention split across keys.
+    let attentionParts: MTLBuffer
+    static let attentionChunk = 128
+    /// `ROACHNET_METAL_ATTENTION=fused` uses one threadgroup per head instead (A/B checks).
+    var splitAttention = ProcessInfo.processInfo.environment["ROACHNET_METAL_ATTENTION"] != "fused"
     let kvKeyWidth: Int, kvValueWidth: Int
     /// Rows each simdgroup computes in a matvec (1, 2 or 4; `ROACHNET_METAL_ROWS` overrides).
     let rowsPerSimdgroup: Int = {
@@ -66,10 +71,21 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
             let backend = try MetalBackend(model: model, contextLength: contextLength)
             if ProcessInfo.processInfo.environment["ROACHNET_METAL_VERIFY"] == "0" { return backend }
             let reference = CPUBackend(model: model, contextLength: 16)
-            let token = Int(model.tokenizer.bos ?? 0)
-            reference.forward(token: token, position: 0)
-            backend.forward(token: token, position: 0)
-            let a = reference.logits, b = backend.logits
+            let a: UnsafeBufferPointer<Float>, b: UnsafeBufferPointer<Float>
+            if model.stage.embedding && model.stage.head {
+                let token = Int(model.tokenizer.bos ?? 0)
+                reference.forward(token: token, position: 0)
+                backend.forward(token: token, position: 0)
+                a = reference.logits
+                b = backend.logits
+            } else {
+                let probe = MetalBackend.probeResiduals(model, count: 1)
+                defer { probe.deallocate() }
+                reference.forward(residual: probe, position: 0, output: .none)
+                backend.forward(residual: probe, position: 0, output: .none)
+                a = reference.residualState
+                b = backend.residualState
+            }
             var worst: Float = 0, magnitude: Float = 1e-6
             for i in 0..<a.count {
                 worst = max(worst, abs(a[i] - b[i]))
@@ -103,7 +119,7 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
                 throw InferenceError.invalid("Matrix width \(matrix.columns) is not supported by the Metal kernels.")
             }
         }
-        guard model.outputProjection.columns % 32 == 0 else {
+        guard !model.stage.head || model.outputProjection.columns % 32 == 0 else {
             throw InferenceError.invalid("Output width \(model.outputProjection.columns) is not supported by the Metal kernels.")
         }
 
@@ -177,14 +193,15 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
         hidden = try scratch(hp.feedForwardLength)
         hiddenUp = try scratch(hp.feedForwardLength)
         scores = try scratch(hp.headCount * contextLength)
-        logitsBuffer = try scratch(model.outputProjection.rows)
-        keyCache = try scratch(hp.blockCount * contextLength * kvKeyWidth)
-        valueCache = try scratch(hp.blockCount * contextLength * kvValueWidth)
+        logitsBuffer = try scratch(model.vocabularyRows)
+        keyCache = try scratch(model.layers.count * contextLength * kvKeyWidth)
+        valueCache = try scratch(model.layers.count * contextLength * kvValueWidth)
+        attentionParts = try scratch(hp.headCount * ((contextLength + MetalBackend.attentionChunk - 1) / MetalBackend.attentionChunk) * (2 + hp.valueDimension))
         maxBatch = min(MetalBackend.batchSize(for: model), contextLength / 4 * 4)
     }
 
     public var logits: UnsafeBufferPointer<Float> {
-        UnsafeBufferPointer(start: logitsBuffer.contents().assumingMemoryBound(to: Float.self), count: model.outputProjection.rows)
+        UnsafeBufferPointer(start: logitsBuffer.contents().assumingMemoryBound(to: Float.self), count: model.vocabularyRows)
     }
 
     public var hiddenState: UnsafeBufferPointer<Float> {
@@ -273,11 +290,47 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
 
     // MARK: Forward
 
+    public var residualState: UnsafeBufferPointer<Float> {
+        UnsafeBufferPointer(start: x.contents().assumingMemoryBound(to: Float.self), count: model.hyperparameters.embeddingLength)
+    }
+
+    /// A fixed, model-independent residual stream for checking a stage.
+    static func probeResiduals(_ model: TransformerModel, count: Int) -> UnsafePointer<Float> {
+        let dim = model.hyperparameters.embeddingLength
+        let values = UnsafeMutablePointer<Float>.allocate(capacity: dim * count)
+        for i in 0..<(dim * count) { values[i] = sinf(Float(i) * 0.37) * 0.05 }
+        return UnsafePointer(values)
+    }
+
+    public func forward(residual: UnsafePointer<Float>, position: Int, output: ForwardOutput) {
+        x.contents().assumingMemoryBound(to: Float.self).update(from: residual, count: model.hyperparameters.embeddingLength)
+        encodeForward(position: position, output: output)
+    }
+
+    public func applyHead(residual: UnsafePointer<Float>, output: ForwardOutput) {
+        guard model.stage.head, output != .none else { return }
+        let dim = model.hyperparameters.embeddingLength
+        x.contents().assumingMemoryBound(to: Float.self).update(from: residual, count: dim)
+        guard let commandBuffer = queue.makeCommandBuffer(), let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
+        rmsNorm(encoder, x, outputNorm, normed, count: dim)
+        if output == .logits {
+            encoder.memoryBarrier(scope: .buffers)
+            matvec(encoder, model.outputProjection, normed, logitsBuffer)
+        }
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+    }
+
     public func forward(token: Int, position: Int, output: ForwardOutput) {
+        if model.stage.embedding { model.tokenEmbedding.dequantizeRow(token, into: x.contents().assumingMemoryBound(to: Float.self)) }
+        encodeForward(position: position, output: output)
+    }
+
+    private func encodeForward(position: Int, output: ForwardOutput) {
         let hp = model.hyperparameters
         let dim = hp.embeddingLength
         let heads = hp.headCount
-        model.tokenEmbedding.dequantizeRow(token, into: x.contents().assumingMemoryBound(to: Float.self))
 
         // Concurrent dispatch with explicit barriers: independent kernels (q/k/v,
         // gate/up, the two RoPEs) overlap instead of draining the GPU between them.
@@ -293,6 +346,14 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
                             keyWidth: UInt32(kvKeyWidth), valueWidth: UInt32(kvValueWidth),
                             group: UInt32(heads / hp.headCountKV), context: UInt32(contextLength),
                             span: UInt32(position + 1), scale: 1 / sqrtf(Float(hp.headDimension)))
+        struct SplitArgs {
+            var headDim: UInt32; var valueDim: UInt32; var keyWidth: UInt32; var valueWidth: UInt32
+            var group: UInt32; var heads: UInt32; var span: UInt32; var chunk: UInt32; var scale: Float
+        }
+        var split = SplitArgs(headDim: UInt32(hp.headDimension), valueDim: UInt32(hp.valueDimension),
+                              keyWidth: UInt32(kvKeyWidth), valueWidth: UInt32(kvValueWidth), group: UInt32(heads / hp.headCountKV),
+                              heads: UInt32(heads), span: UInt32(position + 1), chunk: UInt32(MetalBackend.attentionChunk),
+                              scale: 1 / sqrtf(Float(hp.headDimension)))
 
         for (index, layer) in model.layers.enumerated() {
             let buffers = layerBuffers[index]
@@ -318,14 +379,33 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
             rope(encoder, keyCache, offset: keyRow, heads: hp.headCountKV, position: position)
             barrier()
 
-            encoder.setComputePipelineState(pipeline("attn_fused"))
-            encoder.setBuffer(query, offset: 0, index: 0)
-            encoder.setBuffer(keyCache, offset: keyLayer, index: 1)
-            encoder.setBuffer(valueCache, offset: valueLayer, index: 2)
-            encoder.setBuffer(scores, offset: 0, index: 3)
-            encoder.setBuffer(attention, offset: 0, index: 4)
-            encoder.setBytes(&attn, length: MemoryLayout<AttnArgs>.stride, index: 5)
-            encoder.dispatchThreadgroups(MTLSize(width: heads, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
+            // Short contexts are one chunk: the single fused kernel is quicker there.
+            if splitAttention && position >= MetalBackend.attentionChunk {
+                let group = heads / hp.headCountKV
+                encoder.setComputePipelineState(pipeline("attn_split"))
+                encoder.setBuffer(query, offset: 0, index: 0)
+                encoder.setBuffer(keyCache, offset: keyLayer, index: 1)
+                encoder.setBuffer(valueCache, offset: valueLayer, index: 2)
+                encoder.setBuffer(attentionParts, offset: 0, index: 3)
+                encoder.setBytes(&split, length: MemoryLayout<SplitArgs>.stride, index: 4)
+                encoder.dispatchThreadgroups(MTLSize(width: hp.headCountKV, height: (group + 3) / 4, depth: (position + MetalBackend.attentionChunk) / MetalBackend.attentionChunk),
+                                             threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
+                barrier()
+                encoder.setComputePipelineState(pipeline("attn_merge"))
+                encoder.setBuffer(attentionParts, offset: 0, index: 0)
+                encoder.setBuffer(attention, offset: 0, index: 1)
+                encoder.setBytes(&split, length: MemoryLayout<SplitArgs>.stride, index: 2)
+                encoder.dispatchThreadgroups(MTLSize(width: heads, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
+            } else {
+                encoder.setComputePipelineState(pipeline("attn_fused"))
+                encoder.setBuffer(query, offset: 0, index: 0)
+                encoder.setBuffer(keyCache, offset: keyLayer, index: 1)
+                encoder.setBuffer(valueCache, offset: valueLayer, index: 2)
+                encoder.setBuffer(scores, offset: 0, index: 3)
+                encoder.setBuffer(attention, offset: 0, index: 4)
+                encoder.setBytes(&attn, length: MemoryLayout<AttnArgs>.stride, index: 5)
+                encoder.dispatchThreadgroups(MTLSize(width: heads, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: 128, height: 1, depth: 1))
+            }
 
             barrier()
             matvec(encoder, layer.output, attention, x, accumulate: true)
@@ -342,7 +422,7 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
             barrier()
         }
 
-        if output != .none {
+        if output != .none && model.stage.head {
             rmsNorm(encoder, x, outputNorm, normed, count: dim)
             barrier()
             if output == .logits { matvec(encoder, model.outputProjection, normed, logitsBuffer) }
@@ -461,13 +541,43 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
     /// Runs `tokens` at positions `position…` in one pass: every matrix is read
     /// once per 32 tokens instead of once per token.
     public func forward(tokens: [Int], position: Int, output: ForwardOutput, each: ((Int, UnsafeBufferPointer<Float>) -> Void)?) {
-        let count = tokens.count
+        let embed = model.stage.embedding
+        forwardBatch(count: tokens.count, position: position, output: output, each: each,
+                     single: { offset, wanted in self.forward(token: tokens[offset], position: position + offset, output: wanted) },
+                     fill: { t, row in if embed { self.model.tokenEmbedding.dequantizeRow(tokens[t], into: row) } })
+    }
+
+    public func forward(residuals: UnsafePointer<Float>, count: Int, position: Int, output: ForwardOutput,
+                        each: ((Int, UnsafeBufferPointer<Float>) -> Void)?) {
+        let dim = model.hyperparameters.embeddingLength
+        forwardBatch(count: count, position: position, output: output, each: each,
+                     single: { offset, wanted in self.forward(residual: residuals + offset * dim, position: position + offset, output: wanted) },
+                     fill: { t, row in row.update(from: residuals + t * dim, count: dim) })
+    }
+
+    /// Every token's residual stream after the last batched pass.
+    public func batchResiduals(count: Int) -> [Float] {
+        let dim = model.hyperparameters.embeddingLength
+        guard count <= maxBatch, let b = batchStorage else { return Array(residualState) }
+        let packed = b.x.contents().assumingMemoryBound(to: Float.self)
+        var out = [Float](repeating: 0, count: count * dim)
+        out.withUnsafeMutableBufferPointer { buffer in
+            for t in 0..<count {
+                let base = packed + (t / 4) * dim * 4 + t % 4
+                for i in 0..<dim { buffer[t * dim + i] = base[i * 4] }
+            }
+        }
+        return out
+    }
+
+    private func forwardBatch(count: Int, position: Int, output: ForwardOutput, each: ((Int, UnsafeBufferPointer<Float>) -> Void)?,
+                              single: (Int, ForwardOutput) -> Void, fill: (Int, UnsafeMutablePointer<Float>) -> Void) {
         guard count > 0 else { return }
         guard count <= maxBatch, let b = batchBuffers() else {
-            for (offset, token) in tokens.enumerated() {
+            for offset in 0..<count {
                 let last = offset == count - 1
                 let wanted: ForwardOutput = each != nil ? (last && output == .logits ? .logits : .hidden) : (last ? output : .none)
-                forward(token: token, position: position + offset, output: wanted)
+                single(offset, wanted)
                 each?(offset, hiddenState)
             }
             return
@@ -476,12 +586,13 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
         let dim = hp.embeddingLength, heads = hp.headCount, kvHeads = hp.headCountKV
         let groups = (count + 3) / 4
 
-        // Embeddings, packed four tokens to a float4.
+        // Inputs (embeddings or the previous stage's residual streams), packed four tokens to a float4.
         let packed = b.x.contents().assumingMemoryBound(to: Float.self)
         let row = UnsafeMutablePointer<Float>.allocate(capacity: dim)
         defer { row.deallocate() }
         for t in 0..<(groups * 4) {
-            if t < count { model.tokenEmbedding.dequantizeRow(tokens[t], into: row) } else { row.initialize(repeating: 0, count: dim) }
+            row.initialize(repeating: 0, count: dim)
+            if t < count { fill(t, row) }
             let base = packed + (t / 4) * dim * 4 + t % 4
             for i in 0..<dim { base[i * 4] = row[i] }
         }
@@ -541,8 +652,9 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
             barrier()
         }
 
-        if each != nil { rmsNorm4(encoder, b.x, outputNorm, b.normed, count: dim, rows: groups) }
-        if output != .none {
+        let head = model.stage.head
+        if each != nil && head { rmsNorm4(encoder, b.x, outputNorm, b.normed, count: dim, rows: groups) }
+        if output != .none && head {
             // The last token's state goes through the usual final norm (and projection).
             var pick = SIMD2<UInt32>(UInt32(dim), UInt32((count - 1) % 4))
             encoder.setComputePipelineState(pipeline("take4"))
@@ -560,7 +672,7 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
         commandBuffer.waitUntilCompleted()
         lastGPUSeconds = commandBuffer.gpuEndTime - commandBuffer.gpuStartTime
 
-        if let each {
+        if let each, head {
             let states = b.normed.contents().assumingMemoryBound(to: Float.self)
             for t in 0..<count {
                 let base = states + (t / 4) * dim * 4 + t % 4
@@ -574,14 +686,26 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
     /// batching is turned off for this model if they disagree.
     func verifyBatching() {
         guard maxBatch > 0 else { return }
-        var tokens = model.tokenizer.encode("The quick brown fox jumps").map { Int($0) }
-        if let bos = model.tokenizer.bos, tokens.first != Int(bos) { tokens.insert(Int(bos), at: 0) }
-        tokens = Array(tokens.prefix(6))
-        while tokens.count < 6 { tokens.append(tokens.last ?? 0) }
-        for (position, token) in tokens.enumerated() { forward(token: token, position: position, output: position == tokens.count - 1 ? .logits : .none) }
-        let reference = Array(logits)
-        forward(tokens: tokens, position: 0, output: .logits, each: nil)
-        let batched = Array(logits)
+        let reference: [Float], batched: [Float]
+        if model.stage.embedding && model.stage.head {
+            var tokens = model.tokenizer.encode("The quick brown fox jumps").map { Int($0) }
+            if let bos = model.tokenizer.bos, tokens.first != Int(bos) { tokens.insert(Int(bos), at: 0) }
+            tokens = Array(tokens.prefix(6))
+            while tokens.count < 6 { tokens.append(tokens.last ?? 0) }
+            for (position, token) in tokens.enumerated() { forward(token: token, position: position, output: position == tokens.count - 1 ? .logits : .none) }
+            reference = Array(logits)
+            forward(tokens: tokens, position: 0, output: .logits, each: nil)
+            batched = Array(logits)
+        } else {
+            // A stage in the middle of a model: compare the residual streams it hands on.
+            let dim = model.hyperparameters.embeddingLength
+            let probe = MetalBackend.probeResiduals(model, count: 6)
+            defer { probe.deallocate() }
+            for position in 0..<6 { forward(residual: probe + position * dim, position: position, output: .none) }
+            reference = Array(residualState)
+            forward(residuals: probe, count: 6, position: 0, output: .none, each: nil)
+            batched = Array(batchResiduals(count: 6).suffix(dim))
+        }
         var worst: Float = 0, magnitude: Float = 1e-6
         for i in 0..<reference.count {
             worst = max(worst, abs(reference[i] - batched[i]))
@@ -601,7 +725,7 @@ public final class MetalBackend: TransformerBackend, BatchForwarding {
             ("attn_out", model.layers.map(\.output)), ("ffn_gate", model.layers.map(\.gate)), ("ffn_up", model.layers.map(\.up)),
             ("ffn_down", model.layers.map(\.down)),
         ]
-        groups.append(("output", [model.outputProjection]))
+        if model.stage.head { groups.append(("output", [model.outputProjection])) }
         var results: [(label: String, type: String, seconds: Double, bytes: Int)] = []
         let input = try? { () throws -> MTLBuffer in
             let width = max(model.hyperparameters.feedForwardLength, model.hyperparameters.embeddingLength, model.hyperparameters.headCount * model.hyperparameters.valueDimension)

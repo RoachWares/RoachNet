@@ -1105,5 +1105,90 @@ MATMUL_SG(matmul_sg_q4_K, dq_q4_K)
 MATMUL_SG(matmul_sg_q5_K, dq_q5_K)
 MATMUL_SG(matmul_sg_q6_K, dq_q6_K)
 MATMUL_SG(matmul_sg_q8_K, dq_q8_K)
+// ---- decode attention split across keys ----
+// One threadgroup per (KV head, quad of its query heads, chunk of keys):
+// the four query heads that share a KV head are packed as float4, so each key
+// and value row is read once for all of them, and long contexts spread over
+// many threadgroups. attn_merge combines the chunks' partial softmaxes.
+struct AttnSplitArgs { uint headDim; uint valueDim; uint keyWidth; uint valueWidth; uint group; uint heads; uint span; uint chunk; float scale; };
+
+kernel void attn_split(device const float* q [[buffer(0)]], device const float* K [[buffer(1)]],
+                       device const float* V [[buffer(2)]], device float* part [[buffer(3)]],
+                       constant AttnSplitArgs& a [[buffer(4)]],
+                       uint3 tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
+                       uint sg [[simdgroup_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]]) {
+    threadgroup float4 qs[256];
+    threadgroup float4 ps[128];
+    threadgroup float4 partial[4];
+    uint kvh = tg.x, quad = tg.y, c = tg.z;
+    uint h0 = kvh * a.group + quad * 4;
+    uint nh = min(4u, a.group - quad * 4);
+    for (uint d = tid; d < a.headDim; d += 128) {
+        float4 v = float4(0);
+        for (uint i = 0; i < nh; ++i) v[i] = q[ulong(h0 + i) * a.headDim + d];
+        qs[d] = v;
+    }
+    uint start = c * a.chunk, end = min(start + a.chunk, a.span);
+    float4 m = float4(-INFINITY), l = float4(0), o0 = float4(0), o1 = float4(0);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint base = start; base < end; base += 128) {
+        uint t = base + tid;
+        float4 score = float4(-INFINITY);
+        if (t < end) {
+            device const float* kt = K + ulong(t) * a.keyWidth + ulong(kvh) * a.headDim;
+            float4 acc = float4(0);
+            for (uint d = 0; d < a.headDim; ++d) acc += qs[d] * kt[d];
+            score = acc * a.scale;
+        }
+        float4 chunkMax = simd_max(score);
+        if (lane == 0) partial[sg] = chunkMax;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float4 top = max(m, max(max(partial[0], partial[1]), max(partial[2], partial[3])));
+        ps[tid] = exp(score - top);
+        float4 factor = exp(m - top);
+        m = top;
+        l *= factor;
+        o0 *= factor;
+        o1 *= factor;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        uint keys = min(128u, end - base);
+        for (uint k = 0; k < keys; ++k) {
+            float4 p = ps[k];
+            l += p;
+            device const float* vt = V + ulong(base + k) * a.valueWidth + ulong(kvh) * a.valueDim;
+            if (tid < a.valueDim) o0 += p * vt[tid];
+            if (tid + 128 < a.valueDim) o1 += p * vt[tid + 128];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    uint chunks = (a.span + a.chunk - 1) / a.chunk;
+    uint stride = 2 + a.valueDim;
+    for (uint i = 0; i < nh; ++i) {
+        device float* p = part + (ulong(h0 + i) * chunks + c) * stride;
+        if (tid == 0) { p[0] = m[i]; p[1] = l[i]; }
+        if (tid < a.valueDim) p[2 + tid] = o0[i];
+        if (tid + 128 < a.valueDim) p[2 + tid + 128] = o1[i];
+    }
+}
+
+// out[h] = the chunks' partial results combined, one threadgroup per query head.
+kernel void attn_merge(device const float* part [[buffer(0)]], device float* out [[buffer(1)]],
+                       constant AttnSplitArgs& a [[buffer(2)]],
+                       uint h [[threadgroup_position_in_grid]], uint tid [[thread_position_in_threadgroup]],
+                       uint threads [[threads_per_threadgroup]]) {
+    uint chunks = (a.span + a.chunk - 1) / a.chunk;
+    uint stride = 2 + a.valueDim;
+    device const float* p = part + ulong(h) * chunks * stride;
+    float top = -INFINITY;
+    for (uint c = 0; c < chunks; ++c) top = max(top, p[c * stride]);
+    float total = 0;
+    for (uint c = 0; c < chunks; ++c) total += p[c * stride + 1] * exp(p[c * stride] - top);
+    float inverse = 1.0f / total;
+    for (uint d = tid; d < a.valueDim; d += threads) {
+        float acc = 0;
+        for (uint c = 0; c < chunks; ++c) acc += p[c * stride + 2 + d] * exp(p[c * stride] - top);
+        out[ulong(h) * a.valueDim + d] = acc * inverse;
+    }
+}
 """#
 }

@@ -102,6 +102,27 @@ A prompt runs through the model in passes of up to 512 tokens, instead of one to
 
 The batched pass leaves the same KV cache as token-by-token passes. On every device, the first batched pass is checked against token-by-token passes; if they differ, prompts run a token at a time. `ROACHNET_METAL_BATCH=0` turns batching off, and a number sets the batch size. `ROACHNET_METAL_MATMUL=simple` uses the plain four-token kernels instead of the simdgroup-matrix GEMM. Q2_K and Q3_K models still prefill a token at a time.
 
+### Long contexts
+
+Decode attention is split across chunks of 128 keys. Each threadgroup handles one KV head and a chunk, and packs the query heads that share the KV head as `float4`, so each key and value row is read once for all of them. A second kernel merges the chunks' partial softmaxes. Contexts shorter than one chunk use the single fused kernel. `ROACHNET_METAL_ATTENTION=fused` turns the split off. Measured with `roachnet-infer bench <model.gguf> --context N`:
+
+| Model, context | Fused kernel | Split across keys |
+| --- | --- | --- |
+| qwen3 8B Q4_K_M, 700 tokens | 16.0 tok/s | 19.2 tok/s |
+| qwen3 8B Q4_K_M, 2,000 tokens | 10.5 tok/s | 17.3 tok/s |
+| qwen3 0.6B Q8_0, 2,000 tokens | 27.3 tok/s | 72.1 tok/s |
+
+### Against Ollama
+
+The same GGUF file (Ollama's own copy of qwen3:8b Q4_K_M, 5.2 GB), the same 665-token prompt and 128 generated tokens, on the M2 Pro (16 GB). Ollama 0.33.2 runs llama.cpp's Metal kernels.
+
+| | Prompt | Decode |
+| --- | --- | --- |
+| Ollama 0.33.2 | 264 tok/s | 21.2 tok/s |
+| RoachInference | 151 tok/s | 17.9 tok/s |
+
+At a short context, decode is level with Ollama (21.4 tok/s). Prompt evaluation on large models is the gap still open. The GEMM runs in FP32 throughout, and staging the weight tiles in half precision is the next step.
+
 ### Memory
 
 Before loading, the runtime works out what the model will hold from its GGUF metadata alone: the mapped weights, the FP32 KV cache for the requested context, and the working buffers. Loaded models may use 80% of the Mac's memory together (`ROACHNET_MODEL_MEMORY_GB` overrides this). If a model doesn't fit:

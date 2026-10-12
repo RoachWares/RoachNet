@@ -40,9 +40,15 @@ public final class InferenceEngine {
     /// content, and thinking can be switched off.
     public let supportsThinking: Bool
 
-    public init(model: TransformerModel, contextLength: Int? = nil) {
+    public convenience init(model: TransformerModel, contextLength: Int? = nil) {
+        self.init(session: InferenceSession(model: model, contextLength: contextLength))
+    }
+
+    /// An engine over a prepared session (a model split across Macs runs on a cluster backend).
+    public init(session: InferenceSession) {
+        let model = session.model
         self.model = model
-        session = InferenceSession(model: model, contextLength: contextLength)
+        self.session = session
         let source = model.file["tokenizer.chat_template"]?.stringValue
         chatTemplate = ChatTemplate.detect(templateSource: source, tokenizer: model.tokenizer)
         defaultSystemPrompt = chatTemplate == .chatML ? ChatTemplate.defaultSystemPrompt(in: source) : nil

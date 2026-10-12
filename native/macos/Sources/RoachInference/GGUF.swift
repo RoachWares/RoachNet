@@ -108,6 +108,9 @@ public final class GGUFFile {
     public let fileSize: Int
     let base: UnsafeRawPointer
     let dataOffset: Int
+    /// Where the metadata ends and the tensor list begins (shards copy the metadata as is).
+    let metadataEnd: Int
+    let metadataCount: Int
 
     /// Asks the kernel to start reading the whole file in the background.
     /// Called when a model is loaded for inference (not for metadata reads),
@@ -147,6 +150,8 @@ public final class GGUFFile {
                 metadata[key] = try reader.value(type: type)
             }
             self.metadata = metadata
+            self.metadataEnd = reader.offset
+            self.metadataCount = kvCount
             let alignment = metadata["general.alignment"]?.intValue ?? 32
             guard alignment > 0, alignment & (alignment - 1) == 0 else { throw InferenceError.invalid("Invalid GGUF alignment.") }
             self.alignment = alignment

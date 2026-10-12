@@ -155,28 +155,87 @@ struct TransformerLayer {
     let down: QuantizedMatrix
 }
 
+/// The part of a model one machine runs: a contiguous range of layers, plus
+/// the token embedding (the first stage) and the final norm and vocabulary
+/// projection (the head). One stage holding everything is the whole model.
+/// RoachNet Cluster splits a model into stages across Macs.
+public struct ModelStage: Equatable, Sendable, CustomStringConvertible {
+    public var layers: Range<Int>
+    public var embedding: Bool
+    public var head: Bool
+
+    public init(layers: Range<Int>, embedding: Bool, head: Bool) {
+        self.layers = layers
+        self.embedding = embedding
+        self.head = head
+    }
+
+    public static func whole(_ blockCount: Int) -> ModelStage { ModelStage(layers: 0..<blockCount, embedding: true, head: true) }
+
+    public func isWhole(_ blockCount: Int) -> Bool { self == .whole(blockCount) }
+
+    /// `"0-14,embedding,head"`, as stored in a shard file.
+    public var description: String {
+        ([ "\(layers.lowerBound)-\(layers.upperBound)" ] + (embedding ? ["embedding"] : []) + (head ? ["head"] : [])).joined(separator: ",")
+    }
+
+    public init?(_ text: String) {
+        let parts = text.split(separator: ",").map(String.init)
+        let bounds = parts.first?.split(separator: "-").compactMap { Int($0) } ?? []
+        guard bounds.count == 2, bounds[0] <= bounds[1] else { return nil }
+        self.init(layers: bounds[0]..<bounds[1], embedding: parts.contains("embedding"), head: parts.contains("head"))
+    }
+
+    /// Whether a tensor belongs to this stage.
+    public func includes(tensor name: String, tiedOutput: Bool) -> Bool {
+        if name.hasPrefix("blk.") {
+            let index = name.dropFirst(4).prefix { $0.isNumber }
+            return Int(index).map(layers.contains) ?? false
+        }
+        switch name {
+        case "token_embd.weight": return embedding || (head && tiedOutput)
+        case "output_norm.weight", "output.weight": return head
+        default: return true
+        }
+    }
+}
+
 /// Weights for a decoder-only transformer, memory-mapped from a GGUF file.
 public final class TransformerModel {
     public let file: GGUFFile
     public let hyperparameters: ModelHyperparameters
     public let tokenizer: Tokenizer
-    let tokenEmbedding: QuantizedMatrix
+    public let stage: ModelStage
+    let embeddingMatrix: QuantizedMatrix?
     let outputNorm: [Float]
-    let outputProjection: QuantizedMatrix
+    let projectionMatrix: QuantizedMatrix?
     let layers: [TransformerLayer]
     let ropeInverseFrequencies: [Float]
 
-    public convenience init(path: String) throws {
-        try self.init(file: GGUFFile(path: path))
+    /// The token embedding; only stages with `embedding` (or a tied head) have one.
+    var tokenEmbedding: QuantizedMatrix { embeddingMatrix! }
+    /// The vocabulary projection; only stages with `head` have one.
+    var outputProjection: QuantizedMatrix { projectionMatrix! }
+    /// Rows of the vocabulary: logits per token.
+    public var vocabularyRows: Int { projectionMatrix?.rows ?? embeddingMatrix?.rows ?? hyperparameters.vocabularySize }
+
+    public convenience init(path: String, stage: ModelStage? = nil) throws {
+        try self.init(file: GGUFFile(path: path), stage: stage)
     }
 
-    public init(file: GGUFFile) throws {
+    public init(file: GGUFFile, stage requested: ModelStage? = nil) throws {
         self.file = file
-        file.adviseWillNeed()
         let tokenizer = try Tokenizer(gguf: file)
         self.tokenizer = tokenizer
         let hp = try ModelHyperparameters(gguf: file, vocabularySize: tokenizer.vocabularySize)
         self.hyperparameters = hp
+        let stage = requested ?? file["roachnet.stage"]?.stringValue.flatMap(ModelStage.init) ?? .whole(hp.blockCount)
+        guard stage.layers.lowerBound >= 0, stage.layers.upperBound <= hp.blockCount else {
+            throw InferenceError.invalid("Stage \(stage) is outside the model's \(hp.blockCount) layers.")
+        }
+        self.stage = stage
+        // A whole model pages in ahead of use; a stage touches only its own tensors.
+        if stage.isWhole(hp.blockCount) { file.adviseWillNeed() }
 
         func matrix(_ name: String) throws -> QuantizedMatrix {
             QuantizedMatrix(try file.tensor(name), file: file)
@@ -193,15 +252,17 @@ public final class TransformerModel {
             file.tensors[name] == nil ? nil : try vector(name)
         }
 
-        tokenEmbedding = try matrix("token_embd.weight")
-        outputNorm = try vector("output_norm.weight")
-        outputProjection = file.tensors["output.weight"] != nil ? try matrix("output.weight") : tokenEmbedding
-        guard tokenEmbedding.columns == hp.embeddingLength else {
-            throw InferenceError.invalid("token_embd width \(tokenEmbedding.columns) does not match embedding length \(hp.embeddingLength).")
+        let tied = file.tensors["output.weight"] == nil
+        let embedding = stage.embedding || (stage.head && tied) ? try matrix("token_embd.weight") : nil
+        embeddingMatrix = embedding
+        outputNorm = stage.head ? try vector("output_norm.weight") : []
+        projectionMatrix = stage.head ? (tied ? embedding : try matrix("output.weight")) : nil
+        if let embedding, embedding.columns != hp.embeddingLength {
+            throw InferenceError.invalid("token_embd width \(embedding.columns) does not match embedding length \(hp.embeddingLength).")
         }
 
         var layers: [TransformerLayer] = []
-        for index in 0..<hp.blockCount {
+        for index in stage.layers {
             let p = "blk.\(index)."
             let layer = TransformerLayer(
                 attentionNorm: try vector(p + "attn_norm.weight"),

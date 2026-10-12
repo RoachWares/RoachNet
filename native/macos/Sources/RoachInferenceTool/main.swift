@@ -87,15 +87,25 @@ do {
         #if canImport(Metal)
         let model = try TransformerModel(path: path)
         let positions = Int(option("--tokens") ?? "64") ?? 64
-        let backend = try MetalBackend(model: model, contextLength: positions + 1)
+        // --context N: decode after N tokens already in the cache (filled by a batched prefill).
+        let context = Int(option("--context") ?? "0") ?? 0
+        let backend = try MetalBackend(model: model, contextLength: context + positions + 1)
+        let filler = Int(model.tokenizer.bos ?? 1)
+        var filled = 0
+        while filled < context {
+            let count = min(context - filled, max(1, backend.maxBatch))
+            backend.forward(tokens: Array(repeating: filler, count: count), position: filled, output: .none, each: nil)
+            filled += count
+        }
         var wall = 0.0, gpu = 0.0
-        for position in 0..<positions {
+        for step in 0..<positions {
             let start = Date()
-            backend.forward(token: Int(model.tokenizer.bos ?? 1), position: position)
-            if position >= 4 { wall += Date().timeIntervalSince(start); gpu += backend.lastGPUSeconds }
+            backend.forward(token: filler, position: context + step)
+            if step >= 4 { wall += Date().timeIntervalSince(start); gpu += backend.lastGPUSeconds }
         }
         let measured = Double(max(1, positions - 4))
-        print(String(format: "forward: wall %.2f ms/token (%.1f tok/s), gpu %.2f ms/token", wall / measured * 1000, measured / wall, gpu / measured * 1000))
+        print(String(format: "forward at context %d: wall %.2f ms/token (%.1f tok/s), gpu %.2f ms/token",
+                     context, wall / measured * 1000, measured / wall, gpu / measured * 1000))
         var matvecTotal = 0.0, byteTotal = 0
         for row in backend.profileMatvecs() {
             matvecTotal += row.seconds; byteTotal += row.bytes
