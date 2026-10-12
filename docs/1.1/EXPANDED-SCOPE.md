@@ -6,7 +6,7 @@ Brennan held 1.1 on 2026-10-11, after its first full Mac gate passed, to add fiv
 2. Bring-your-own agents: any agent people already use joins an Org and works with the others the way Paperclip agents do.
 3. ChatGPT/Codex and Claude subscriptions as providers and models, through the user's own logged-in Codex CLI and Claude Code (his decision: the subscription stays inside the vendor's official client).
 4. RoachInference past Ollama: more efficient, more stable, cheaper to run, more features.
-5. A native take on exo (multi-device inference) that improves on it.
+5. RoachNet Cluster: multi-device inference, built natively into RoachNet.
 
 1.1 ships once all five are in and a fresh Mac gate passes. The gated candidate from `46f97b1` (DMG `90a286c1…4c09`) is a reference build only.
 
@@ -91,17 +91,18 @@ Ground rules carry over: offline first, nothing leaves the Mac unless the person
 
 **Cost:** local generations are priced at zero, and every request's trace reports its time and tokens per second, so a local run can be compared with a metered one.
 
-## 5. RoachNet cluster (native exo)
+## 5. RoachNet Cluster
 
 - **Discovery:** Bonjour `_roachnet-infer._tcp` on the local network, plus paired RoachTail peers.
-- **Placement:** each node reports memory, GPU family and a short benchmark. The planner splits a model's layers in proportion to free memory and measured speed, the way exo's memory-weighted ring does, and adds link latency.
+- **Placement:** each node reports memory, GPU family and a short benchmark. The planner splits a model's layers in proportion to each node's free memory and measured speed, and weighs link latency too.
 - **Inference:** pipeline-parallel across Macs, with hidden states over authenticated TCP.
-- **Past exo:**
+- **What RoachNet Cluster adds:**
   - each node downloads only its own layers, with HTTP Range reads of the GGUF tensors;
   - links are encrypted and work across networks over RoachTail;
   - the plan re-forms when a node drops;
   - a one-node cluster falls back to the local engine.
 - **API:** the same Ollama, OpenAI and Anthropic surface, plus `/api/cluster` for nodes, plans and health.
+- **Branding and code:** RoachNet Cluster is written from scratch for RoachNet. No copy, setting or doc names another project, and no outside cluster code is copied in. The 1.0-era external cluster backend option and its labels go away.
 
 ## Order and gates
 

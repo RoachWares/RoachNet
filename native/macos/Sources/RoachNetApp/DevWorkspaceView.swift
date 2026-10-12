@@ -2275,12 +2275,6 @@ struct DevWorkspaceView: View {
         return availableProviders.joined(separator: ", ")
     }
 
-    private var exoStatusText: String {
-        model.config.distributedInferenceBackend == "exo"
-            ? (model.config.exoModelId.isEmpty ? "Exo enabled" : "Exo · \(model.config.exoModelId)")
-            : "Exo optional"
-    }
-
     private var inlineAssistStatusLine: String {
         if let directive = devModel.inlinePromptDirective {
             return devModel.inlineCompletion.isEmpty
@@ -3161,8 +3155,8 @@ struct DevWorkspaceView: View {
                         .foregroundStyle(RoachPalette.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                } else if cloudLaneText != "No cloud lane" || model.config.distributedInferenceBackend == "exo" {
-                    Text([cloudLaneText, model.config.distributedInferenceBackend == "exo" ? exoStatusText : nil].compactMap { $0 }.joined(separator: "  ·  "))
+                } else if cloudLaneText != "No cloud lane" {
+                    Text(cloudLaneText)
                         .font(.roach(size: 11, weight: .medium))
                         .foregroundStyle(RoachPalette.muted)
                 }

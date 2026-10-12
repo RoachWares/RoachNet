@@ -2415,11 +2415,6 @@ final class WorkspaceModel: ObservableObject {
         var ordered: [String] = []
         var seen = Set<String>()
 
-        let configuredExoModel = config.exoModelId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if config.distributedInferenceBackend == "exo", !configuredExoModel.isEmpty, seen.insert(configuredExoModel).inserted {
-            ordered.append(configuredExoModel)
-        }
-
         let preferredModels = [
             snapshot?.roachClaw.resolvedDefaultModel,
             snapshot?.roachClaw.defaultModel,
@@ -4387,9 +4382,6 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func chatModelLabel(for modelName: String) -> String {
-        if modelName == config.exoModelId, config.distributedInferenceBackend == "exo" {
-            return "Exo · \(modelName)"
-        }
         return isCloudModel(modelName) ? "Cloud · \(modelName)" : "Local · \(modelName)"
     }
 
@@ -4428,11 +4420,6 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func preferredInitialChatModel(from options: [String]) -> String? {
-        let trimmedExoModel = config.exoModelId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if config.distributedInferenceBackend == "exo", !trimmedExoModel.isEmpty, options.contains(trimmedExoModel) {
-            return trimmedExoModel
-        }
-
         if config.pendingRoachClawSetup,
            snapshot?.internetConnected == true,
            let cloudModel = preferredCloudChatModel(excluding: nil),

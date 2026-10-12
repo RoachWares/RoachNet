@@ -447,19 +447,6 @@ struct RoachNetSettingsView: View {
 
             RoachInsetPanel {
                 VStack(alignment: .leading, spacing: 14) {
-                    settingTitle("Routing")
-                    Picker("Backend", selection: $model.config.distributedInferenceBackend) {
-                        Text("Disabled").tag("disabled")
-                        Text("Exo").tag("exo")
-                    }
-                    .pickerStyle(.segmented)
-                    RoachInlineField(title: "Exo URL", value: $model.config.exoBaseUrl, placeholder: "http://127.0.0.1:52415")
-                    RoachInlineField(title: "Exo Model", value: $model.config.exoModelId, placeholder: "llama-3.2-3b")
-                }
-            }
-
-            RoachInsetPanel {
-                VStack(alignment: .leading, spacing: 14) {
                     settingTitle("Context")
                     Stepper(
                         value: Binding(
