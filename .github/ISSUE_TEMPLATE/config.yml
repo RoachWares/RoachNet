@@ -1,17 +1,14 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 💬 Discord Community
-    url: https://roachnet.org/community
-    about: Join our Discord community for general questions, support, and discussions
+  - name: 🔒 Security problem
+    url: https://github.com/RoachWares/RoachNet/blob/main/SECURITY.md
+    about: Please don't report security problems in a public issue. See SECURITY.md for how to reach us privately.
   - name: 📖 Documentation
-    url: https://roachnet.org
-    about: Check the official documentation and guides
-  - name: 🏆 Community Leaderboard
-    url: https://benchmark.roachnet.org
-    about: View the RoachNet benchmark leaderboard
+    url: https://github.com/RoachWares/RoachNet/wiki
+    about: Install, Homebrew, RoachClaw, Cluster, RoachTail and the iOS companion
+  - name: 🔌 API reference
+    url: https://roachnet.org/api/
+    about: The local RoachNet API and the model server
   - name: 🤝 Contributing Guide
     url: https://github.com/RoachWares/RoachNet/blob/main/CONTRIBUTING.md
     about: Learn how to contribute to RoachNet
-  - name: 📅 Roadmap
-    url: https://roadmap.roachnet.org
-    about: See our public roadmap, vote on features, and suggest new ones

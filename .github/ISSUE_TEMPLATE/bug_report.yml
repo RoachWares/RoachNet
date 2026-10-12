@@ -21,12 +21,17 @@ body:
       description: What area is this issue related to?
       options:
         - Installation/Setup
-        - RoachClaw / Local AI
-        - RoachVault / Archive
+        - RoachClaw / Local models
+        - Org / Agents / Traces
+        - RoachNet Cluster
+        - Vault / Archive
+        - Maps
+        - Packs / Themes
         - RoachArcade / Games
         - RoachPlayer / Media
         - Dev Workspace
-        - Runtime / Container Issues
+        - iOS companion / RoachTail
+        - Runtime / Local API
         - System Performance/Resources
         - UI/UX Issue
         - Other
@@ -87,9 +92,11 @@ body:
       label: Operating System
       description: What OS are you running RoachNet on?
       options:
+        - macOS 27 on Apple Silicon
+        - macOS 26 on Apple Silicon
         - macOS 15 on Apple Silicon
         - macOS 14 on Apple Silicon
-        - macOS on Intel
+        - macOS on Intel (not supported)
         - iOS / SideStore companion
         - Other
     validations:
