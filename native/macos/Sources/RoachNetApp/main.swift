@@ -4382,6 +4382,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func chatModelLabel(for modelName: String) -> String {
+        if let plan = RoachPlanModel.label(modelName) { return plan }
         return isCloudModel(modelName) ? "Cloud · \(modelName)" : "Local · \(modelName)"
     }
 
@@ -13936,6 +13937,15 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         let paneFile = directory.appendingPathComponent("pane.txt")
         var requested = (try? String(contentsOf: paneFile, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // "Org!hire" opens the Hire sheet and captures it; "Org!hire:claude_local" picks where the agent runs.
+        var opensHire = false
+        var hireRuntime: String?
+        if let mark = requested.range(of: "!hire") {
+            opensHire = true
+            let rest = requested[mark.upperBound...]
+            if rest.hasPrefix(":") { hireRuntime = String(rest.dropFirst()) }
+            requested = String(requested[..<mark.lowerBound])
+        }
         // "Org#Issues" also opens that Org board section.
         var orgSection: OrgBoardSection?
         if let hash = requested.firstIndex(of: "#") {
@@ -13975,6 +13985,16 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         if let orgSection {
             OrgBoardRequest.pending = orgSection
             NotificationCenter.default.post(name: .roachOrgSectionRequest, object: orgSection.rawValue)
+        }
+        if opensHire {
+            if let model = model ?? Self.bootstrapModel, model.selectedPane != .org { model.selectedPane = .org }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                NotificationCenter.default.post(name: .roachOrgHireRequest, object: hireRuntime)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+                self?.captureWindowSnapshot(into: directory, preferSheet: true)
+            }
+            return
         }
         if let pane = WorkspacePane(rawValue: requested),
            let model = model ?? Self.bootstrapModel,
@@ -14024,13 +14044,15 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
         return create(.null, CGWindowListOption.optionIncludingWindow.rawValue, windowID, options)?.takeRetainedValue()
     }
 
-    private func captureWindowSnapshot(into directory: URL, preferSettings: Bool = false, scrolled: Bool = false) {
+    private func captureWindowSnapshot(into directory: URL, preferSettings: Bool = false, preferSheet: Bool = false, scrollPasses: Int = 0) {
         // macOS may refuse to activate RoachNet while someone works in another app,
         // so the Settings window can be open without being key: look it up by its scene id.
         let settingsWindow = preferSettings
             ? NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") ?? false) }
             : nil
-        guard let window = settingsWindow ?? NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }),
+        // A sheet is a window of its own, attached to its parent.
+        let sheetWindow = preferSheet ? NSApp.windows.first { $0.isVisible && $0.isSheet } : nil
+        guard let window = sheetWindow ?? settingsWindow ?? NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }),
               let contentView = window.contentView
         else {
             NSLog("[RoachNet snapshot] No visible window to capture.")
@@ -14039,7 +14061,8 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
 
         // An optional `scroll.txt` ("0" to "1", or "bottom") scrolls the window's
         // main scroll view first, so a gate can capture what sits below the fold.
-        if !scrolled,
+        // SwiftUI lays long pages out as they scroll, so it takes two passes to reach the end.
+        if scrollPasses < 2,
            let raw = try? String(contentsOf: directory.appendingPathComponent("scroll.txt"), encoding: .utf8),
            case let text = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
            let fraction = text == "bottom" ? 1.0 : Double(text),
@@ -14052,7 +14075,7 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
             clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: documentView.isFlipped ? travel * share : travel * (1 - share)))
             scrollView.reflectScrolledClipView(clip)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                self?.captureWindowSnapshot(into: directory, preferSettings: preferSettings, scrolled: true)
+                self?.captureWindowSnapshot(into: directory, preferSettings: preferSettings, preferSheet: preferSheet, scrollPasses: scrollPasses + 1)
             }
             return
         }

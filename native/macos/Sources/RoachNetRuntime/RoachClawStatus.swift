@@ -64,6 +64,7 @@ extension NativeRuntime {
             }
             let server = nativeModelServer ?? NativeModelServer(store: nativeModelStore)
             server.tracer = tracer
+            server.subscriptions = subscriptionModels
             do {
                 try server.start(host: host == "localhost" ? "127.0.0.1" : host, port: port)
                 nativeModelServer = server

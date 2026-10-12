@@ -20,6 +20,8 @@ enum OrgBoardSection: String, CaseIterable, Identifiable {
 extension Notification.Name {
     /// Object: an `OrgBoardSection` raw value. Opens that board on the Org desk.
     static let roachOrgSectionRequest = Notification.Name("org.roachnet.org.section-request")
+    /// Opens the Hire sheet on the Org desk (the gate snapshot hook uses it).
+    static let roachOrgHireRequest = Notification.Name("org.roachnet.org.hire-request")
 }
 
 /// A section asked for before the Org pane was on screen; the desk picks it up when it appears.

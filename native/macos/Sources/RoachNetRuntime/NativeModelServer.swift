@@ -34,6 +34,8 @@ final class NativeModelServer {
     /// RoachTrace; set by the runtime. Every generation is recorded, nested
     /// under the caller's trace when it sends a `traceparent` header.
     var tracer: Tracer?
+    /// Claude and ChatGPT plan models (`claude:…`, `codex:…`); set by the runtime.
+    var subscriptions: SubscriptionModels?
 
     init(store: NativeModelStore, maxLoadedModels: Int = 2) {
         self.store = store
@@ -87,7 +89,7 @@ final class NativeModelServer {
             case ("GET", "/api/version"):
                 return .json(200, ["version": JSON(NativeModelServer.engineVersion)])
             case ("GET", "/api/tags"):
-                return .json(200, ["models": .array(store.list().map(tagJSON))])
+                return .json(200, ["models": .array(store.list().map(tagJSON) + subscriptionTags())])
             case ("GET", "/api/ps"):
                 return .json(200, ["models": .array(loadedSnapshot())])
             case ("POST", "/api/show"):
@@ -103,17 +105,23 @@ final class NativeModelServer {
             case ("POST", "/api/copy"):
                 return try copy(readJSON(&request))
             case ("POST", "/api/generate"):
-                return try generate(readJSON(&request), traceparent: traceparent)
+                let body = try readJSON(&request)
+                if let plan = try subscriptionResponse(body, endpoint: .generate, traceparent: traceparent) { return plan }
+                return try generate(body, traceparent: traceparent)
             case ("POST", "/api/chat"):
-                return try chat(readJSON(&request), traceparent: traceparent)
+                let body = try readJSON(&request)
+                if let plan = try subscriptionResponse(body, endpoint: .chat, traceparent: traceparent) { return plan }
+                return try chat(body, traceparent: traceparent)
             case ("POST", "/api/embed"), ("POST", "/api/embeddings"), ("POST", "/v1/embeddings"):
                 return .json(501, ["error": "Embeddings are not available in the native engine yet."])
             case ("GET", "/v1/models"):
                 return .json(200, ["object": "list", "data": .array(store.list().map {
                     ["id": JSON($0.name), "object": "model", "created": JSON(Double(Int(Date().timeIntervalSince1970))), "owned_by": "roachnet"]
-                })])
+                } + subscriptionOpenAIModels())])
             case ("POST", "/v1/chat/completions"):
-                return try openAIChat(readJSON(&request), traceparent: traceparent)
+                let body = try readJSON(&request)
+                if let plan = try subscriptionResponse(body, endpoint: .openAI, traceparent: traceparent) { return plan }
+                return try openAIChat(body, traceparent: traceparent)
             default:
                 return .json(404, ["error": "404 page not found"])
             }

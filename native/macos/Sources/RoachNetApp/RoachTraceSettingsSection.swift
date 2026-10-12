@@ -321,8 +321,9 @@ struct RoachTraceSettingsSection: View {
             .foregroundStyle(RoachPalette.muted)
     }
 
+    /// Label on the left, switch on the right edge, so every switch lines up.
     private func toggle(_ title: String, detail: String, isOn: Bool, change: @escaping (Bool) async -> Void) -> some View {
-        Toggle(isOn: Binding(get: { isOn }, set: { value in Task { await change(value) } })) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.roach(size: 13, weight: .semibold))
@@ -332,8 +333,11 @@ struct RoachTraceSettingsSection: View {
                     .foregroundStyle(RoachPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 12)
+            Toggle(title, isOn: Binding(get: { isOn }, set: { value in Task { await change(value) } }))
+                .toggleStyle(.switch)
+                .labelsHidden()
         }
-        .toggleStyle(.switch)
         .disabled(busy)
     }
 

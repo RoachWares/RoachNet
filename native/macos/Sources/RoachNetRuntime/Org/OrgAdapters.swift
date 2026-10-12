@@ -61,7 +61,9 @@ enum OrgAdapters {
         case "openai_compatible": return OrgAgentLoopAdapter(mode: .openAICompatible)
         case "http": return OrgHTTPAdapter()
         case "process": return OrgProcessAdapter()
-        default: return OrgAgentLoopAdapter(mode: .roachClawLocal)
+        default:
+            if let kind = OrgCLIKind.from(type) { return OrgCLIAdapter(kind: kind) }
+            return OrgAgentLoopAdapter(mode: .roachClawLocal)
         }
     }
 
@@ -109,7 +111,10 @@ struct OrgAgentLoopAdapter: OrgAdapter {
         while baseURL.hasSuffix("/") { baseURL.removeLast() }
 
         var messages: [JSON] = [["role": "system", "content": JSON(systemPrompt(context))], ["role": "user", "content": JSON(taskPrompt(context))]]
-        var usage = OrgUsage(provider: mode == .roachClawLocal ? "roachclaw_local" : (config.string("provider") ?? "openai_compatible"), model: model)
+        // A RoachClaw agent can think with a plan model (claude:…, codex:…) served by RoachNet.
+        let plan = mode == .roachClawLocal ? SubscriptionModels.parse(model)?.0 : nil
+        let localBilling = plan == nil ? "local" : "subscription_included"
+        var usage = OrgUsage(provider: plan?.kind.provider ?? (mode == .roachClawLocal ? "roachclaw_local" : (config.string("provider") ?? "openai_compatible")), model: model)
         var summary: String?
         var currentIssue = context.issue
         if let issue = currentIssue, ["todo", "backlog", "blocked"].contains(issue.status) {
@@ -129,7 +134,8 @@ struct OrgAgentLoopAdapter: OrgAdapter {
                 stepUsage.model = model
                 let rate = config.int("inputCentsPerMillion").flatMap { input in config.int("outputCentsPerMillion").map { (input, $0) } }
                 generation?.end(output: JSON(turn.content), usage: stepUsage.traceUsage,
-                                cost: io.traceCost(stepUsage, billingType: mode == .roachClawLocal ? "local" : "metered_api", centsPerMillion: rate))
+                                cost: plan != nil ? TraceCost(totalUsd: 0, status: "included", billingType: "subscription_included")
+                                    : io.traceCost(stepUsage, billingType: mode == .roachClawLocal ? "local" : "metered_api", centsPerMillion: rate))
             } catch {
                 generation?.end(level: .error, statusMessage: "Model call failed: \(error)")
                 io.log("error", "model call failed: \(error)")
@@ -168,7 +174,7 @@ struct OrgAgentLoopAdapter: OrgAdapter {
         result.usage = usage
         switch mode {
         case .roachClawLocal:
-            result.billingType = "local"; result.costStatus = "reported"; result.costCents = 0
+            result.billingType = localBilling; result.costStatus = plan == nil ? "reported" : "included"; result.costCents = 0
         case .openAICompatible:
             result.billingType = "metered_api"
             if let input = config.int("inputCentsPerMillion"), let output = config.int("outputCentsPerMillion") {

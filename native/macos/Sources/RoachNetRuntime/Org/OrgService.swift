@@ -17,7 +17,10 @@ struct OrgWakeIntent {
 /// RoachNet's own runtime. It is RoachNet's own implementation; Paperclip is
 /// a design reference only.
 final class OrgService {
-    static let adapterTypes: Set<String> = ["roachclaw_local", "openai_compatible", "http", "process"]
+    static let adapterTypes: Set<String> = Set(["roachclaw_local", "openai_compatible", "http", "process"] + OrgCLIKind.allCases.map(\.rawValue))
+    /// Adapters that run programs on this Mac (a host command, or the person's own
+    /// coding-agent CLI on their subscription). Only the RoachNet owner sets them up.
+    static let hostAdapterTypes: Set<String> = Set(["process"] + OrgCLIKind.allCases.map(\.rawValue))
     static let memberRoles: Set<String> = ["owner", "admin", "operator", "viewer"]
     static let grants: Set<String> = ["agents:create", "users:invite", "users:manage_permissions", "tasks:assign", "joins:approve", "budgets:manage", "secrets:manage"]
     static let ownerUserId = "user_local_owner"
@@ -598,8 +601,8 @@ final class OrgService {
                 agent.adapterConfig = body.raw["adapterConfig"]
                 changed.append("adapterConfig")
             }
-            if agent.adapterType == "process" && !actor.isOwner {
-                throw orgForbidden("Only the RoachNet owner can configure host process agents.")
+            if OrgService.hostAdapterTypes.contains(agent.adapterType) && !actor.isOwner {
+                throw orgForbidden("Only the RoachNet owner can set up agents that run programs on this Mac.")
             }
         }
         if body.raw["heartbeat"].isObject {
@@ -698,7 +701,7 @@ final class OrgService {
             throw orgNotFound("Revision")
         }
         guard revision.beforeConfig.isObject else { throw orgConflict("The creation revision cannot be rolled back.") }
-        if revision.beforeConfig["adapterType"].stringValue == "process" && !actor.isOwner { throw orgForbidden("Only the owner can restore a host process adapter.") }
+        if OrgService.hostAdapterTypes.contains(revision.beforeConfig["adapterType"].stringValue ?? "") && !actor.isOwner { throw orgForbidden("Only the owner can restore an agent that runs programs on this Mac.") }
         let updated: OrgAgent = try store.mutateCompany(companyId) { company in
             guard let index = company.agents.firstIndex(where: { $0.id == agent.id }) else { throw orgNotFound("Agent") }
             let before = OrgService.agentConfig(company.agents[index])

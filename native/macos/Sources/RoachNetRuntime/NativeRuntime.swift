@@ -29,6 +29,9 @@ public final class NativeRuntime {
     /// RoachTrace: local traces of Org runs, chats and model-server requests
     /// (`<storage>/state/traces`, owner-only). The server touches it at start
     /// so it is never first created from two threads at once.
+    /// Claude and ChatGPT plans as models, off until the person turns them on.
+    lazy var subscriptionModels = SubscriptionModels(root: Path.join(config.storageRoot, "state"))
+
     lazy var tracer: Tracer = {
         let store = TraceStore(root: Path.join(config.storageRoot, "state", "traces"))
         let tracer = Tracer(store: store)

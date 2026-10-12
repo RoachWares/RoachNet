@@ -206,10 +206,11 @@ public final class ObservationHandle {
             if !content.isNull { record.output = content }
             // The engine's own account (full prompt, reused prefix, output) wins over a
             // caller's: Ollama-style replies count only the prompt tokens they evaluated.
+            // The same goes for the cost: a plan model is included in the plan even when the caller thinks it's local.
             let engineReported = !record.metadata["engine"].isUndefined && !(record.usage?.isEmpty ?? true)
-            if let usage, !engineReported || extra.map({ !$0["engine"].isUndefined }) == true,
-               !usage.isEmpty || record.usage == nil { record.usage = usage }
-            if let cost { record.cost = cost }
+            let fromEngine = extra.map({ !$0["engine"].isUndefined }) == true
+            if let usage, !engineReported || fromEngine, !usage.isEmpty || record.usage == nil { record.usage = usage }
+            if let cost, !engineReported || fromEngine || record.cost == nil { record.cost = cost }
             if let level { record.level = level }
             if let message { record.statusMessage = message }
             if let extra { record.metadata = record.metadata.merging(extra) }

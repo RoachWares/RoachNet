@@ -504,6 +504,7 @@ struct RoachNetSettingsView: View {
             }
 
             RoachAPITokensSection(config: model.config)
+            RoachSubscriptionsSection(config: model.config)
             RoachTraceSettingsSection(config: model.config)
         }
     }

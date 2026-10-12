@@ -97,6 +97,18 @@ extension NativeRuntime {
             return ok(["status": "ok", "engine": "native", "companies": JSON(org.store.companyIds.count)])
         }
         if segments == ["me"] && method == "GET" { return ok(org.me(actor)) }
+        // Bring-your-own agents: which coding-agent CLIs this Mac has, signed in how.
+        if segments.first == "adapters" {
+            guard actor.isOwner else { throw orgForbidden("Only the RoachNet owner can see the agents installed on this Mac.") }
+            if segments.count == 1 && method == "GET" {
+                return ok(["adapters": .array(OrgCLIDetector.detectAll(refresh: query["refresh"] == "1").map(\.json))])
+            }
+            if segments.count == 3 && segments[2] == "test" && method == "POST" {
+                guard let kind = OrgCLIKind.from(segments[1]) else { throw orgNotFound("Adapter") }
+                return ok(OrgCLIProbe.test(kind, try body()))
+            }
+            throw orgNotFound("Org route")
+        }
         if segments == ["users"] {
             if method == "GET" { return ok(try org.listUsers(actor)) }
             if method == "POST" { return ok(try org.createUser(actor, try body()), 201) }

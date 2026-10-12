@@ -98,3 +98,15 @@ roachnet-infer logits <model.gguf> "prompt"
 roachnet-infer generate <model.gguf> "prompt" [--chat] [--tokens N] [--temp T] [--seed S] [--ctx N]
 roachnet-infer bench <model.gguf> [--tokens N]          (Metal: per-token time and per-matrix bandwidth)
 ```
+
+## Plan models (Claude and ChatGPT plans)
+
+The model server can also offer the Claude or ChatGPT plan a person already pays for, as `claude:<model>` (`claude:sonnet`, `claude:opus`, `claude:haiku`) and `codex:<model>` (the models `codex debug models` lists). They are off until the person turns them on in Settings › RoachClaw › Subscriptions, or with `PUT /api/roachclaw/subscriptions {"claude": true}`.
+
+- **Where they show up:** `/api/tags`, `/v1/models`, RoachClaw's model list, and anywhere an Org agent names a model. `/api/chat`, `/api/generate` and `/v1/chat/completions` answer in each API's own format, streamed or not.
+- **How a reply is made:** RoachNet runs the person's own signed-in CLI headless in an empty scratch folder:
+  - Claude Code: `-p --output-format stream-json --include-partial-messages`, no tools (`--tools ""`), no saved session, no user hooks or MCP servers, and the request's system messages as `--system-prompt`. Text streams as it arrives.
+  - Codex: `exec --json --ephemeral --ignore-user-config` in the read-only sandbox. Its answer arrives in one piece.
+  Earlier turns of a conversation are written out as a transcript. RoachNet never handles the plan's credentials.
+- **Usage and cost:** usage comes from the CLI, with cached prompt tokens counted. Each reply is a generation priced `subscription_included` at $0, with Claude Code's API-equivalent cost in the trace metadata. An Org agent on a plan model bills its runs the same way.
+- **Errors:** an error names the fix: sign in (401), plan limit reached (429), CLI too old for the model, or plan models turned off (403).

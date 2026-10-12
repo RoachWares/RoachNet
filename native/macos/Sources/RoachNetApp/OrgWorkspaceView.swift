@@ -131,6 +131,17 @@ struct OrgDeskAgent: Decodable, Identifiable, Hashable {
     let title: String?
     let status: String
     let errorReason: String?
+    let adapterType: String?
+    let adapterConfig: OrgDeskAdapterConfig?
+    let instructions: String?
+
+    /// Where it runs, e.g. "Claude Code · haiku".
+    var runsOn: String {
+        let place = OrgAgentRuntime.label(adapterType)
+        guard let model = adapterConfig?.model, !model.isEmpty else { return place }
+        if let plan = RoachPlanModel.label(model) { return "RoachClaw · \(plan)" }
+        return "\(place) · \(model)"
+    }
 
     /// Why the last heartbeat failed, in words someone can act on.
     var problem: String? {
@@ -295,6 +306,9 @@ struct OrgWorkspaceView: View {
     @State private var newCompanyName = ""
     @State private var inviteRole = "operator"
     @State private var notes: [String: String] = [:]
+    @State private var hiring = false
+    @State private var hireRuntime: String?
+    @State private var editingAgent: OrgDeskAgent?
 
     /// Agents file approvals and phones answer them while this pane sits open,
     /// so it re-reads the desk on a slow cadence instead of waiting for Refresh.
@@ -350,6 +364,26 @@ struct OrgWorkspaceView: View {
         }
         .onChange(of: store.selectedCompanyID) { _, _ in
             Task { await loadBoard() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .roachOrgHireRequest)) { note in
+            hireRuntime = note.object as? String
+            hiring = true
+        }
+        .sheet(isPresented: $hiring) {
+            if let cid = store.selectedCompanyID {
+                OrgHireAgentSheet(companyID: cid, config: model.config, editing: nil, initialRuntime: hireRuntime) { done in
+                    store.message = done
+                    Task { await store.refresh(using: model.config) }
+                }
+            }
+        }
+        .sheet(item: $editingAgent) { agent in
+            if let cid = store.selectedCompanyID {
+                OrgHireAgentSheet(companyID: cid, config: model.config, editing: agent, initialRuntime: nil) { done in
+                    store.message = done
+                    Task { await store.refresh(using: model.config) }
+                }
+            }
         }
         .accessibilityIdentifier("pane.org")
     }
@@ -716,9 +750,12 @@ struct OrgWorkspaceView: View {
                             .font(.roach(size: 11, design: .monospaced))
                             .foregroundStyle(RoachPalette.muted)
                     }
+                    Button("Hire Agent") { hireRuntime = nil; hiring = true }
+                        .buttonStyle(RoachSecondaryButtonStyle())
+                        .accessibilityIdentifier("org.agents.hire")
                 }
                 if store.agents.isEmpty {
-                    emptyLine("person.badge.plus", "No agents hired yet. Agents can request hires; you approve them above.")
+                    emptyLine("person.badge.plus", "No agents yet. Hire one: RoachClaw on this Mac, or your own Claude Code, Codex, Gemini CLI, OpenCode or Cursor.")
                 }
                 ForEach(store.agents) { agent in
                     VStack(alignment: .leading, spacing: 4) {
@@ -729,6 +766,9 @@ struct OrgWorkspaceView: View {
                                 accent: agentAccent(agent.status)
                             )
                             if agent.status != "terminated" {
+                                Button("Edit") { editingAgent = agent }
+                                    .buttonStyle(RoachSecondaryButtonStyle())
+                                    .accessibilityLabel("Edit \(agent.name)")
                                 let resumes = agent.status == "paused" || agent.status == "error"
                                 Button(agent.status == "error" ? "Try again" : resumes ? "Resume" : "Pause") {
                                     Task { await store.setAgent(agent, resumes ? "resume" : "pause", using: model.config) }
@@ -737,6 +777,9 @@ struct OrgWorkspaceView: View {
                                 .accessibilityLabel("\(agent.status == "error" ? "Try again with" : resumes ? "Resume" : "Pause") \(agent.name)")
                             }
                         }
+                        Text(agent.runsOn)
+                            .font(.roach(size: 11, design: .monospaced))
+                            .foregroundStyle(RoachPalette.muted)
                         if let problem = agent.problem {
                             Text(problem)
                                 .font(.roach(size: 11))

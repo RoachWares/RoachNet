@@ -266,6 +266,15 @@ extension NativeRuntime {
         case ("POST", "/api/roachclaw/mail/messages"): return ok(upsertRoachClawMailMessage(try body()))
         case ("POST", "/api/roachclaw/mail/drafts"): return ok(upsertRoachClawMailDraft(try body()))
         case ("GET", "/api/roachclaw/tokens"): return ok(roachClawPublicApiTokensState())
+        case ("GET", "/api/roachclaw/subscriptions"): return ok(["subscriptions": subscriptionModels.status()])
+        case ("PUT", "/api/roachclaw/subscriptions"), ("PATCH", "/api/roachclaw/subscriptions"):
+            let change = try body()
+            try subscriptionModels.update { settings in
+                if let value = change["claude"].boolValue ?? change["claude"]["enabled"].boolValue { settings.claude = value }
+                if let value = change["codex"].boolValue ?? change["codex"]["enabled"].boolValue { settings.codex = value }
+            }
+            installedModelsCache.invalidate(config.ollamaBaseUrl)
+            return ok(["subscriptions": subscriptionModels.status()])
         case ("POST", "/api/roachclaw/tokens"): return ok(createRoachClawApiToken(try body()))
         case ("GET", "/api/roachclaw/cloud-providers"): return ok(roachClawPublicCloudProviderKeysState())
         case ("POST", "/api/roachclaw/cloud-providers"): return ok(try upsertRoachClawCloudProviderKey(try body()))
