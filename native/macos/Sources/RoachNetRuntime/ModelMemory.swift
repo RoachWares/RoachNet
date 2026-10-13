@@ -53,6 +53,30 @@ enum SystemMemory {
         return total / 10 * 8
     }
 
+    /// The most a newly loaded model may take now, or nil when only the budget decides.
+    ///
+    /// On Linux it is `available()`. Going past a cgroup's limit, or past what a
+    /// machine with little swap has free, ends with the OOM killer stopping the
+    /// runtime, not with a slower machine. On macOS the system compresses and
+    /// swaps memory, and its available figure leaves out what it could compress,
+    /// so the budget alone decides there, as before.
+    static func loadHeadroom() -> Int? {
+        #if canImport(Darwin)
+        return nil
+        #else
+        return available()
+        #endif
+    }
+
+    /// How refusals name the machine.
+    static var thisMachine: String {
+        #if canImport(Darwin)
+        return "this Mac"
+        #else
+        return "this computer"
+        #endif
+    }
+
     static func gigabytes(_ bytes: Int) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }
 
     /// The memory pressure level: 1 normal, 2 warning, 4 critical; 0 when it
@@ -224,29 +248,40 @@ extension NativeModelServer {
     /// Fits a model into memory before loading it, the way a careful person
     /// would: idle models are unloaded first, then the context is shortened
     /// (never below 2,048 tokens), and only then is the load refused, with
-    /// the numbers, instead of the Mac swapping itself to a halt.
+    /// the numbers, instead of the Mac swapping itself to a halt or, on Linux,
+    /// the OOM killer stopping the runtime. `headroom` caps the room by the
+    /// memory free now (see `SystemMemory.loadHeadroom()`).
     /// Called with `lock` held.
-    func makeRoom(for name: String, footprint wanted: ModelFootprint, budget: Int) throws -> ModelFootprint {
+    func makeRoom(for name: String, footprint wanted: ModelFootprint, budget: Int,
+                  headroom: () -> Int? = SystemMemory.loadHeadroom) throws -> ModelFootprint {
         var footprint = wanted
         let floor = min(2_048, wanted.context)
         // An idle copy of this same model (another context length) is replaced by
         // this load, so it doesn't count against the room; a busy one stays until
         // its requests finish, so it does.
         func resident() -> Int { loaded.values.filter { $0.name != name || $0.isBusy }.reduce(0) { $0 + $1.resident } }
+        // Memory free now, counting that idle copy's as free too.
+        func free() -> Int? {
+            guard let measured = headroom() else { return nil }
+            return measured + loaded.values.filter { $0.name == name && !$0.isBusy }.reduce(0) { $0 + $1.resident }
+        }
+        func fits(_ size: Int) -> Bool { resident() + size <= budget && (free().map { size <= $0 } ?? true) }
         // Idle extra request slots go first; they only hold caches.
-        if resident() + footprint.total > budget {
+        if !fits(footprint.total) {
             var trimmed = false
             for item in loaded.values where item.trimSlots(idleSince: .distantFuture) { trimmed = true }
             if trimmed { refreshResident() }
         }
         // Unload idle models, oldest first, until this one fits beside the rest.
-        while resident() + footprint.total > budget {
+        while !fits(footprint.total) {
             let oldestFirst = loaded.values.filter { $0.name != name }.sorted { $0.lastUsed < $1.lastUsed }
             guard let idle = oldestFirst.first(where: { !$0.isBusy }) else { break }
             loaded[idle.name] = nil
             RuntimeLog.write("native engine unloaded \(idle.name) to make room for \(name)")
         }
-        let room = budget - resident()
+        let besideLoaded = budget - resident()
+        let freeNow = free()
+        let room = min(besideLoaded, freeNow ?? Int.max)
         if footprint.total > room {
             var context = footprint.context
             while context > floor, footprint.with(context: context).total > room { context = max(floor, context / 2) }
@@ -256,13 +291,19 @@ extension NativeModelServer {
             }
         }
         if footprint.total > budget {
-            throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory; models can use \(SystemMemory.gigabytes(budget)) on this Mac. "
+            throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory; models can use \(SystemMemory.gigabytes(budget)) on \(SystemMemory.thisMachine). "
                                + "Pick a smaller model or quantization, or set ROACHNET_MODEL_MEMORY_GB.", 507)
         }
         // It fits the budget but not beside the models that are busy right now
         // (they can't be unloaded mid-request). Loading anyway would push the
         // total past the budget and the Mac into swap.
         if footprint.total > room {
+            // Less is free on the machine than the budget leaves: other programs,
+            // or a container's limit, hold the rest.
+            if let freeNow, freeNow < besideLoaded {
+                throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory, and \(SystemMemory.gigabytes(max(0, freeNow))) is free on "
+                                   + "\(SystemMemory.thisMachine) right now. Close other programs, or pick a smaller model or quantization.", 503)
+            }
             throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory, and \(SystemMemory.gigabytes(max(0, room))) is free beside "
                                + "the models answering requests right now. Try again when they finish.", 503)
         }
