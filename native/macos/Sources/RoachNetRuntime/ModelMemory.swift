@@ -1,14 +1,31 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import RoachInference
 
-/// The Mac's memory as model loading sees it.
+/// The machine's memory as model loading sees it.
 enum SystemMemory {
-    static var total: Int { Int(ProcessInfo.processInfo.physicalMemory) }
+    /// The machine's memory, or on Linux the cgroup's limit when it is
+    /// lower (a container, a systemd slice with MemoryMax).
+    static var total: Int {
+        let physical = Int(ProcessInfo.processInfo.physicalMemory)
+        #if canImport(Darwin)
+        return physical
+        #else
+        guard let limit = cgroupMemory()?.limit else { return physical }
+        return min(physical, limit)
+        #endif
+    }
 
-    /// What the system could hand out now without paging: free, inactive,
-    /// purgeable and speculative pages (Activity Monitor's "available").
+    /// What the system could hand out now without paging. On macOS: free,
+    /// inactive, purgeable and speculative pages (Activity Monitor's
+    /// "available"). On Linux: the kernel's own estimate, `MemAvailable`, or
+    /// less when a cgroup limit leaves less headroom than that.
     static func available() -> Int {
+        #if canImport(Darwin)
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride)
         let status = withUnsafeMutablePointer(to: &stats) { pointer in
@@ -17,10 +34,16 @@ enum SystemMemory {
         guard status == KERN_SUCCESS else { return total / 2 }
         let pages = Int(stats.free_count) + Int(stats.inactive_count) + Int(stats.purgeable_count) + Int(stats.speculative_count)
         return pages * Int(getpagesize())
+        #else
+        let meminfo = try? String(contentsOfFile: "/proc/meminfo", encoding: .utf8)
+        let host = meminfo.flatMap(memAvailable(meminfo:)) ?? total / 2
+        guard let cgroup = cgroupMemory() else { return host }
+        return min(host, cgroup.available)
+        #endif
     }
 
     /// How much loaded models may use together: `ROACHNET_MODEL_MEMORY_GB`,
-    /// or 80% of the Mac's memory so macOS and the apps around it keep theirs.
+    /// or 80% of the machine's memory so the system and the apps around it keep theirs.
     static var modelBudget: Int {
         // `Double("inf")` parses, and `Int(.infinity)` traps; past a petabyte isn't a budget anyway.
         if let text = ProcessInfo.processInfo.environment["ROACHNET_MODEL_MEMORY_GB"], let gigabytes = Double(text),
@@ -30,47 +53,309 @@ enum SystemMemory {
         return total / 10 * 8
     }
 
+    /// The most a newly loaded model may take now, or nil when only the budget decides.
+    ///
+    /// On Linux it is `available()`. Going past a cgroup's limit, or past what a
+    /// machine with little swap has free, ends with the OOM killer stopping the
+    /// runtime, not with a slower machine. On macOS the system compresses and
+    /// swaps memory, and its available figure leaves out what it could compress,
+    /// so the budget alone decides there, as before.
+    static func loadHeadroom() -> Int? {
+        #if canImport(Darwin)
+        return nil
+        #else
+        return available()
+        #endif
+    }
+
+    /// How refusals name the machine.
+    static var thisMachine: String {
+        #if canImport(Darwin)
+        return "this Mac"
+        #else
+        return "this computer"
+        #endif
+    }
+
     static func gigabytes(_ bytes: Int) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }
 
-    /// The kernel's memory pressure level: 1 normal, 2 warning, 4 critical; 0 when it can't be read.
+    /// The memory pressure level: 1 normal, 2 warning, 4 critical; 0 when it
+    /// can't be read. macOS reports its own. On Linux it comes from pressure
+    /// stall information, the cgroup's own (cgroup v2) before the whole
+    /// machine's, or from the available share where neither is there.
     static func pressureLevel() -> Int {
+        #if canImport(Darwin)
         var level: Int32 = 0
         var size = MemoryLayout<Int32>.size
         guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else { return 0 }
         return Int(level)
+        #else
+        let psi = cgroupPressure() ?? (try? String(contentsOfFile: "/proc/pressure/memory", encoding: .utf8))
+        if let psi, let level = pressureLevel(psi: psi) { return level }
+        let total = total
+        guard total > 0 else { return 0 }
+        return pressureLevel(available: available(), total: total)
+        #endif
     }
 
-    /// macOS is short of memory (warning or worse): idle request slots hand their caches back sooner.
+    #if !canImport(Darwin)
+    /// The memory limit and headroom from the cgroups this process is in,
+    /// walking up to the root: the lowest limit, and the least headroom under
+    /// any of them. nil when no cgroup sets a limit.
+    static func cgroupMemory() -> (limit: Int, available: Int)? {
+        guard let membership = try? String(contentsOfFile: "/proc/self/cgroup", encoding: .utf8) else { return nil }
+        let mountinfo = try? String(contentsOfFile: "/proc/self/mountinfo", encoding: .utf8)
+        let (version, directories) = cgroupDirectories(procSelfCgroup: membership, mountinfo: mountinfo)
+        func read(_ path: String) -> String? { try? String(contentsOfFile: path, encoding: .utf8) }
+        let levels: [CgroupLevel] = directories.compactMap { directory in
+            let limitFile = version == 2 ? "memory.max" : "memory.limit_in_bytes"
+            let usageFile = version == 2 ? "memory.current" : "memory.usage_in_bytes"
+            guard let limitText = read(directory + "/" + limitFile), let usageText = read(directory + "/" + usageFile),
+                  let usage = Int(usageText.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            let inactive = read(directory + "/memory.stat").map { inactiveFile(memoryStat: $0, version: version) } ?? 0
+            return CgroupLevel(limit: cgroupLimitValue(limitText, version: version), usage: usage, inactiveFile: inactive)
+        }
+        return cgroupLimit(levels)
+    }
+
+    /// The process's own cgroup v2 pressure stall information, when there is one.
+    static func cgroupPressure() -> String? {
+        guard let membership = try? String(contentsOfFile: "/proc/self/cgroup", encoding: .utf8) else { return nil }
+        let mountinfo = try? String(contentsOfFile: "/proc/self/mountinfo", encoding: .utf8)
+        let (version, directories) = cgroupDirectories(procSelfCgroup: membership, mountinfo: mountinfo)
+        guard version == 2, let own = directories.first else { return nil }
+        return try? String(contentsOfFile: own + "/memory.pressure", encoding: .utf8)
+    }
+    #endif
+
+    /// The system is short of memory (warning or worse): idle request slots hand their caches back sooner.
     static var underPressure: Bool { pressureLevel() >= 2 }
+
+    // MARK: Linux sources, parsed here so every platform tests them
+
+    /// `MemAvailable` from the text of /proc/meminfo, in bytes.
+    static func memAvailable(meminfo: String) -> Int? {
+        for line in meminfo.split(separator: "\n") where line.hasPrefix("MemAvailable:") {
+            let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard fields.count >= 2, let kibibytes = Int(fields[1]), kibibytes >= 0, kibibytes < Int.max / 1024 else { return nil }
+            return kibibytes * 1024
+        }
+        return nil
+    }
+
+    /// A level from /proc/pressure/memory: the share of the last ten seconds
+    /// in which tasks stalled waiting for memory. Any stall at all ("some") of
+    /// 10% or more is a warning; every task stalled ("full") 10% of the time,
+    /// or "some" at 40%, is critical.
+    static func pressureLevel(psi: String) -> Int? {
+        func avg10(_ kind: String) -> Double? {
+            guard let line = psi.split(separator: "\n").first(where: { $0.hasPrefix(kind + " ") }) else { return nil }
+            guard let field = line.split(separator: " ").first(where: { $0.hasPrefix("avg10=") }) else { return nil }
+            guard let value = Double(field.dropFirst("avg10=".count)), value.isFinite, value >= 0 else { return nil }
+            return value
+        }
+        guard let some = avg10("some") else { return nil }
+        let full = avg10("full") ?? 0
+        if full >= 10 || some >= 40 { return 4 }
+        if some >= 10 { return 2 }
+        return 1
+    }
+
+    /// One cgroup on the way from this process to the root.
+    struct CgroupLevel: Equatable {
+        /// nil when this cgroup sets no limit.
+        let limit: Int?
+        let usage: Int
+        /// Page cache the kernel can drop before it would hit the limit.
+        let inactiveFile: Int
+    }
+
+    /// Where a cgroup hierarchy is mounted: the folder, and the cgroup that
+    /// folder shows. Inside a container that is often the container's own
+    /// cgroup, not "/".
+    struct CgroupMount: Equatable {
+        let directory: String
+        let root: String
+    }
+
+    /// The cgroup v2 mounts and the mounts of the v1 memory controller, in
+    /// order, from the text of /proc/self/mountinfo. The v1 controller can
+    /// share a mount with others ("cpu,memory") and sit anywhere.
+    static func cgroupMounts(mountinfo: String) -> (unified: [CgroupMount], memory: [CgroupMount]) {
+        // Spaces and the like are written as octal escapes ("\040").
+        func unescape(_ field: Substring) -> String {
+            var bytes: [UInt8] = []
+            var characters = Array(field.utf8)[...]
+            while let byte = characters.first {
+                if byte == UInt8(ascii: "\\"), characters.count >= 4,
+                   let value = UInt8(String(decoding: characters.dropFirst().prefix(3), as: UTF8.self), radix: 8) {
+                    bytes.append(value)
+                    characters = characters.dropFirst(4)
+                } else {
+                    bytes.append(byte)
+                    characters = characters.dropFirst()
+                }
+            }
+            return String(decoding: bytes, as: UTF8.self)
+        }
+        var unified: [CgroupMount] = []
+        var memory: [CgroupMount] = []
+        for line in mountinfo.split(separator: "\n") {
+            // "41 37 0:33 / /sys/fs/cgroup/memory rw,relatime - cgroup cgroup rw,memory"
+            let fields = line.split(separator: " ")
+            guard let dash = fields.firstIndex(of: "-"), dash >= 5, fields.count >= dash + 4 else { continue }
+            let mount = CgroupMount(directory: unescape(fields[4]), root: unescape(fields[3]))
+            if fields[dash + 1] == "cgroup2" {
+                unified.append(mount)
+            } else if fields[dash + 1] == "cgroup", fields[dash + 3].split(separator: ",").contains("memory") {
+                memory.append(mount)
+            }
+        }
+        return (unified, memory)
+    }
+
+    /// The cgroup folders that bound this process, its own first and the root
+    /// last, from the text of /proc/self/cgroup. A cgroup v1 memory controller
+    /// is used where there is one (hybrid setups); otherwise the v2 tree.
+    /// With /proc/self/mountinfo the folders are found under a mount of the
+    /// hierarchy that shows this process's cgroup, as far up as it shows; when
+    /// no mount does, there are none, rather than another cgroup's. Without
+    /// mountinfo they are found under `root`.
+    static func cgroupDirectories(procSelfCgroup: String, mountinfo: String? = nil, root: String = "/sys/fs/cgroup") -> (version: Int, directories: [String]) {
+        var unified: String?
+        var legacy: String?
+        for line in procSelfCgroup.split(separator: "\n") {
+            let fields = line.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            guard fields.count == 3 else { continue }
+            let controllers = fields[1].split(separator: ",")
+            if fields[0] == "0", fields[1].isEmpty {
+                unified = String(fields[2])
+            } else if controllers.contains("memory") {
+                legacy = String(fields[2])
+            }
+        }
+        func walk(_ base: String, _ path: String) -> [String] {
+            var parts = path.split(separator: "/").map(String.init).filter { $0 != "." && $0 != ".." }
+            var directories: [String] = []
+            while true {
+                directories.append(parts.isEmpty ? base : base + "/" + parts.joined(separator: "/"))
+                if parts.isEmpty { break }
+                parts.removeLast()
+            }
+            return directories
+        }
+        // A cgroup path seen through a mount whose root is `mountRoot`; nil when
+        // the mount doesn't show it.
+        func relative(_ path: String, to mountRoot: String) -> String? {
+            if mountRoot == "/" { return path }
+            if path == mountRoot { return "/" }
+            return path.hasPrefix(mountRoot + "/") ? String(path.dropFirst(mountRoot.count)) : nil
+        }
+        // The folders under the first mount that shows `path`, or none.
+        func folders(_ path: String, in mounts: [CgroupMount]) -> [String] {
+            for mount in mounts {
+                if let inside = relative(path, to: mount.root) { return walk(mount.directory, inside) }
+            }
+            return []
+        }
+        let mounts = mountinfo.map(cgroupMounts(mountinfo:))
+        if let legacy {
+            guard let mounts else { return (1, walk(root + "/memory", legacy)) }
+            return (1, folders(legacy, in: mounts.memory))
+        }
+        if let unified {
+            guard let mounts else { return (2, walk(root, unified)) }
+            return (2, folders(unified, in: mounts.unified))
+        }
+        return (2, [])
+    }
+
+    /// A cgroup memory limit in bytes, or nil for none: "max" in cgroup v2, a
+    /// value near Int64.max in cgroup v1.
+    static func cgroupLimitValue(_ text: String, version: Int) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != "max", let value = Int(trimmed), value > 0 else { return nil }
+        if version == 1, value >= 1 << 62 { return nil }
+        return value
+    }
+
+    /// Reclaimable page cache from a cgroup's memory.stat: `inactive_file` in
+    /// cgroup v2, `total_inactive_file` (the whole subtree) in cgroup v1.
+    static func inactiveFile(memoryStat: String, version: Int) -> Int {
+        var found: [String: Int] = [:]
+        for line in memoryStat.split(separator: "\n") {
+            let fields = line.split(separator: " ")
+            guard fields.count == 2, let value = Int(fields[1]), value >= 0 else { continue }
+            found[String(fields[0])] = value
+        }
+        return (version == 1 ? found["total_inactive_file"] : nil) ?? found["inactive_file"] ?? 0
+    }
+
+    /// The lowest limit among `levels`, and the least headroom under any of
+    /// them; nil when none sets a limit.
+    static func cgroupLimit(_ levels: [CgroupLevel]) -> (limit: Int, available: Int)? {
+        var result: (limit: Int, available: Int)?
+        for level in levels {
+            guard let limit = level.limit else { continue }
+            let used = max(0, level.usage - level.inactiveFile)
+            let headroom = max(0, limit - used)
+            result = (min(result?.limit ?? limit, limit), min(result?.available ?? headroom, headroom))
+        }
+        return result
+    }
+
+    /// A level from how much memory is still available: under 5% critical,
+    /// under 15% a warning.
+    static func pressureLevel(available: Int, total: Int) -> Int {
+        guard total > 0 else { return 0 }
+        let share = Double(max(0, available)) / Double(total)
+        if share < 0.05 { return 4 }
+        if share < 0.15 { return 2 }
+        return 1
+    }
 }
 
 extension NativeModelServer {
     /// Fits a model into memory before loading it, the way a careful person
     /// would: idle models are unloaded first, then the context is shortened
     /// (never below 2,048 tokens), and only then is the load refused, with
-    /// the numbers, instead of the Mac swapping itself to a halt.
+    /// the numbers, instead of the Mac swapping itself to a halt or, on Linux,
+    /// the OOM killer stopping the runtime. `headroom` caps the room by the
+    /// memory free now (see `SystemMemory.loadHeadroom()`).
     /// Called with `lock` held.
-    func makeRoom(for name: String, footprint wanted: ModelFootprint, budget: Int) throws -> ModelFootprint {
+    func makeRoom(for name: String, footprint wanted: ModelFootprint, budget: Int,
+                  headroom: () -> Int? = SystemMemory.loadHeadroom) throws -> ModelFootprint {
         var footprint = wanted
         let floor = min(2_048, wanted.context)
         // An idle copy of this same model (another context length) is replaced by
         // this load, so it doesn't count against the room; a busy one stays until
         // its requests finish, so it does.
         func resident() -> Int { loaded.values.filter { $0.name != name || $0.isBusy }.reduce(0) { $0 + $1.resident } }
+        func fitsBudget(_ size: Int) -> Bool { resident() + size <= budget }
+        func fitsFreeMemory(_ size: Int) -> Bool { headroom().map { size <= $0 } ?? true }
+        func fits(_ size: Int) -> Bool { fitsBudget(size) && fitsFreeMemory(size) }
         // Idle extra request slots go first; they only hold caches.
-        if resident() + footprint.total > budget {
+        if !fits(footprint.total) {
             var trimmed = false
             for item in loaded.values where item.trimSlots(idleSince: .distantFuture) { trimmed = true }
             if trimmed { refreshResident() }
         }
         // Unload idle models, oldest first, until this one fits beside the rest.
-        while resident() + footprint.total > budget {
-            let oldestFirst = loaded.values.filter { $0.name != name }.sorted { $0.lastUsed < $1.lastUsed }
-            guard let idle = oldestFirst.first(where: { !$0.isBusy }) else { break }
-            loaded[idle.name] = nil
-            RuntimeLog.write("native engine unloaded \(idle.name) to make room for \(name)")
+        // When the memory free now is what falls short, an idle copy of this
+        // model goes first. This load replaces it anyway, and both copies would
+        // be in memory while the new one loads, so its memory only counts once
+        // it has been released.
+        while !fits(footprint.total) {
+            let idle = loaded.values.filter { !$0.isBusy }
+            let sameModel = fitsBudget(footprint.total) ? idle.first(where: { $0.name == name }) : nil
+            guard let next = sameModel ?? idle.filter({ $0.name != name }).min(by: { $0.lastUsed < $1.lastUsed }) else { break }
+            loaded[next.name] = nil
+            RuntimeLog.write(next.name == name ? "native engine unloaded its idle copy of \(name) to load it again"
+                                               : "native engine unloaded \(next.name) to make room for \(name)")
         }
-        let room = budget - resident()
+        let besideLoaded = budget - resident()
+        let freeNow = headroom()
+        let room = min(besideLoaded, freeNow ?? Int.max)
         if footprint.total > room {
             var context = footprint.context
             while context > floor, footprint.with(context: context).total > room { context = max(floor, context / 2) }
@@ -80,13 +365,19 @@ extension NativeModelServer {
             }
         }
         if footprint.total > budget {
-            throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory; models can use \(SystemMemory.gigabytes(budget)) on this Mac. "
+            throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory; models can use \(SystemMemory.gigabytes(budget)) on \(SystemMemory.thisMachine). "
                                + "Pick a smaller model or quantization, or set ROACHNET_MODEL_MEMORY_GB.", 507)
         }
         // It fits the budget but not beside the models that are busy right now
         // (they can't be unloaded mid-request). Loading anyway would push the
         // total past the budget and the Mac into swap.
         if footprint.total > room {
+            // Less is free on the machine than the budget leaves: other programs,
+            // or a container's limit, hold the rest.
+            if let freeNow, freeNow < besideLoaded {
+                throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory, and \(SystemMemory.gigabytes(max(0, freeNow))) is free on "
+                                   + "\(SystemMemory.thisMachine) right now. Close other programs, or pick a smaller model or quantization.", 503)
+            }
             throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory, and \(SystemMemory.gigabytes(max(0, room))) is free beside "
                                + "the models answering requests right now. Try again when they finish.", 503)
         }

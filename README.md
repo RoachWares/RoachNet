@@ -75,7 +75,7 @@ GitHub does not host the support widgets used on the public site, so the repo ke
 - `Windows 11 x64`
   No public installer lane. RoachArcade keeps Windows-game runner planning inside the macOS app instead of shipping another half-built desktop target.
 - `Linux`
-  No desktop lane.
+  Not released. The runtime builds and is tested on Linux in CI while the Linux app is built; RoachNet for Linux ships only when it matches the Mac app. Progress is tracked in `docs/LINUX_PARITY.md`.
 
 ## Repo Layout
 

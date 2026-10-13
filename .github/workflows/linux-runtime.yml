@@ -1,0 +1,90 @@
+name: Linux runtime
+
+# Builds RoachNet's runtime and inference engine on Linux, runs their tests,
+# then runs the contract tests the Mac gates run against roachnet-runtime,
+# so the Linux port (ROA-80) can't quietly break. Nothing here ships: Linux
+# releases come later, through their own gate, once the Linux app matches the
+# Mac app. docs/LINUX_PARITY.md tracks where it stands.
+
+on:
+  pull_request:
+    paths:
+      - 'native/macos/Package.swift'
+      - 'native/macos/Sources/RoachInference/**'
+      - 'native/macos/Sources/RoachInferenceTool/**'
+      - 'native/macos/Sources/RoachNetRuntime/**'
+      - 'native/macos/Sources/RoachNetRuntimeHost/**'
+      - 'native/macos/Tests/RoachInferenceTests/**'
+      - 'native/macos/Tests/RoachNetRuntimeTests/**'
+      - 'scripts/tests/**'
+      - 'scripts/lib/**'
+      - 'collections/**'
+      - '.github/workflows/linux-runtime.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'native/macos/Package.swift'
+      - 'native/macos/Sources/RoachInference/**'
+      - 'native/macos/Sources/RoachInferenceTool/**'
+      - 'native/macos/Sources/RoachNetRuntime/**'
+      - 'native/macos/Sources/RoachNetRuntimeHost/**'
+      - 'native/macos/Tests/RoachInferenceTests/**'
+      - 'native/macos/Tests/RoachNetRuntimeTests/**'
+      - 'scripts/tests/**'
+      - 'scripts/lib/**'
+      - 'collections/**'
+      - '.github/workflows/linux-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test on Linux (Swift 6.4, Ubuntu 24.04)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    container:
+      # The official Swift image, pinned by digest: 6.4.0-noble (amd64 and arm64).
+      image: swift:6.4.0-noble@sha256:31d14d727f4451f25e29bac9c42563a098c39ac66415e8bad970f48038e38aca
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The pack tests write ZIPs with zip and, where Apple's Compression isn't
+      # available, unpack them with unzip. The roachnet-org helper that
+      # bring-your-own agents call uses curl, as it does on the Mac.
+      - name: Install zip, unzip and curl
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends zip unzip curl ca-certificates
+
+      - name: Build the runtime and its tests
+        run: swift build --package-path native/macos --build-tests
+
+      - name: Run the tests
+        run: swift test --package-path native/macos --skip-build
+
+      # Node is only the test harness here, as in the macOS gates: the contract
+      # tests drive the Linux build of roachnet-runtime over HTTP. Nothing in
+      # RoachNet ships or launches Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      # One test is skipped by name while ROA-90 is open: on Linux, requests
+      # that wait on each other's probes stall the dispatch pool for seconds.
+      # Tests that need macOS tools (ditto, hdiutil) or model files skip
+      # themselves, as they do on a Mac without them.
+      - name: Run the runtime contract tests against the Linux build
+        run: |
+          ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/debug/roachnet-runtime" \
+            node --test --test-skip-pattern='coalesces duplicate provider and model probes' scripts/tests/*.test.mjs
