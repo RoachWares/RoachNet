@@ -153,10 +153,11 @@ final class SetupController: ObservableObject {
         }
     }
 
+    /// Checks the choices on screen without saving them: they go to the
+    /// service as draft overrides, and only an install puts them in place.
     @discardableResult
     func refreshAction() async -> Bool {
         do {
-            try await persistConfig()
             try await refreshState()
             statusLine = "Setup state refreshed."
             return true
@@ -228,7 +229,10 @@ final class SetupController: ObservableObject {
         startedInstallInCurrentSession = true
 
         do {
-            try await persistConfig()
+            // The choices go with the install, which saves them only after it
+            // has kept the installed copy's settings aside. Saving them here
+            // first would leave them in place, unrecoverable, if Setup quit or
+            // lost power before the install started.
             let _: SimpleOKResponse = try await request(
                 path: "/api/install",
                 method: "POST",
@@ -303,8 +307,10 @@ final class SetupController: ObservableObject {
         }
     }
 
+    /// Saves the choices on screen through the setup service, which keeps the
+    /// settings the app doesn't show. Only Open saves this way; an install
+    /// takes the choices with it and saves them itself.
     private func persistConfig() async throws {
-        try RoachNetRepositoryLocator.writeConfig(config)
         let state = try await request(path: "/api/config", method: "POST", body: config, as: ConfigResponse.self)
         config = state.config
     }

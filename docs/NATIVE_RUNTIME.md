@@ -53,7 +53,7 @@ The Setup app, `roachnet-runtime --install` and the Homebrew cask all run the sa
 | 12 | Validating | Stops if any required preflight check failed. |
 | 24 | Staging | Creates `<root>.staging-<hex>` on the same volume as the target. |
 | 38 | AI tooling | RoachClaw runs on the native RoachInference engine inside `roachnet-runtime`, so no separate model runner is installed (1.1). Upgrades drop a carried-forward `runtime/vendor/ollama`. Existing Ollama model folders are still imported in place. |
-| 52 | Preparing | Writes `roachnet-install.json`. |
+| 52 | Preparing | Writes `roachnet-install.json`, with an `installId` that names this install. |
 | 64 | Installing app | Copies `RoachNet.app` (from the folder or the `.zip` in InstallerAssets), clears quarantine, and ad-hoc signs it only if `codesign --verify` fails. |
 | 76 | Verifying | Boots the staged app's helper against scratch storage and requires `/api/health` to answer. |
 | 88 | Finalizing | Stops any running RoachNet, backs up and swaps the root, carries `storage/` across, and rolls back on failure. |
@@ -62,7 +62,7 @@ The Setup app, `roachnet-runtime --install` and the Homebrew cask all run the sa
 
 During the swap, anything at the top of the old root that setup does not manage is carried into the new root. That covers the Homebrew-installed `setup/RoachNet Setup.app` and any files the user placed there.
 
-The setup backend exits when the Setup app quits, but it finishes a running install first. If a run is force-killed, the next run removes its stale `.staging-*` folder. If the root itself had been moved aside, the next run also restores the `.backup-*` copy before continuing.
+The setup backend exits when the Setup app quits, but it finishes a running install first. If a run is force-killed, the next run removes its stale `.staging-*` folder. If the root itself had been moved aside, the next run also restores the `.backup-*` copy before continuing. An install that would replace a copy keeps that copy's saved settings beside the config (`roachnet-installer.json.pre-upgrade`) until its own copy is in place. If the run is cut off before then, the next run puts those settings back. If the new copy did land (its manifest has the run's `installId`), its settings stay. `/api/config` saves the choices as given. The Setup app uses it only for Open, and sends its choices with the install, saving nothing first. A save that leaves the installed copy where it is (another port, say) becomes that copy's settings, so a failed install puts it back rather than older ones. If the settings can't be kept aside, the install stops before changing anything, and anything other than a plain file at that path stops it the same way and is left alone. If they can't be written back, they stay aside until a later run can.
 
 If any phase fails, the staging folder is removed and the previous install is left untouched. Set `ROACHNET_SETUP_KEEP_STAGED_FAILURE=1` to keep the staging folder for debugging. Log lines and error messages replace home paths with `~` and install paths with "RoachNet root".
 
@@ -74,7 +74,7 @@ npm run test:native-runtime    # the contract suite (Node test runner) against t
 npm run native:test            # Swift XCTests (macOS; RoachNetRuntimeTests also run on Linux)
 ```
 
-On Linux only the runtime targets build. The app targets sit behind `#if os(macOS)` in `Package.swift`. The contract tests use `ROACHNET_NATIVE_API_BINARY=<path to roachnet-runtime>`. `scripts/tests/roachnet-native-setup.test.mjs` exercises install, upgrade, rollback, the alias and headless installs against fake InstallerAssets. On a non-Apple host it needs the test-only override `ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST=1`.
+On Linux only the runtime targets build. The app targets sit behind `#if os(macOS)` in `Package.swift`. The contract tests use `ROACHNET_NATIVE_API_BINARY=<path to roachnet-runtime>`. `scripts/tests/roachnet-native-setup.test.mjs` exercises install, upgrade, rollback, the alias and headless installs against fake InstallerAssets. On a non-Apple host it needs the test-only override `ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST=1`. With that override set, `ROACHNET_SETUP_TEST_STOP_AT=swap`, `moved-aside` or `moved-in` ends the process at that point of the swap, as a power cut would, so the tests can check what the next run recovers.
 
 ## No Node, no JavaScript
 

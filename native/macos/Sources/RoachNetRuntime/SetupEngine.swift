@@ -28,6 +28,14 @@ public final class SetupEngine {
     private var activeTask: JSON?
     private var lastCompletedTask: JSON?
     private var persistedConfigCache: JSON?
+    /// The saved config of the copy that is installed, as this Setup service
+    /// found it, as its last install left it, or as `/api/config` last saved it
+    /// for that same copy. A client can save choices that would move the copy
+    /// (a new install folder, say) before it asks for an install, so this, not
+    /// the config saved by then, is what a failed install puts back. An install
+    /// that would replace that copy also keeps it on disk until its own copy is
+    /// in place (`preUpgradeConfigPath`), for a run that is cut off.
+    private var installedConfig: JSON?
     var appHelperName: String { RuntimeBuildInfo.executableName }
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment, version: String = RuntimeConfiguration.shared.version) {
@@ -69,6 +77,10 @@ public final class SetupEngine {
     }
 
     var legacyConfigPath: String { Path.join(home, ".roachnet-setup.json") }
+
+    /// Beside the config: the saved config of the copy an install would
+    /// replace, kept until the install's own copy is in place.
+    var preUpgradeConfigPath: String { configPath + ".pre-upgrade" }
 
     /// `Contents/Resources/InstallerAssets` of the running Setup bundle.
     var installerAssetsPath: String? {
@@ -154,6 +166,21 @@ public final class SetupEngine {
             merged = .object(object)
             persistedConfigCache = merged
             try? Files.write(merged.prettySerialized() + "\n", to: configPath, mode: Files.privateFileMode)
+        }
+    }
+
+    /// Writes `config` back as the whole saved config (`saveConfig` merges).
+    /// Returns whether it was written; the cached config changes only then.
+    @discardableResult
+    func replaceConfig(_ config: JSON) -> Bool {
+        synchronized {
+            do {
+                try Files.write(config.prettySerialized() + "\n", to: configPath, mode: Files.privateFileMode)
+            } catch {
+                return false
+            }
+            persistedConfigCache = config
+            return true
         }
     }
 
@@ -412,6 +439,9 @@ public final class SetupEngine {
         let installRoachClaw: Bool
         let autoLaunch: Bool
         let config: JSON
+        /// Written into the new copy's manifest, so a later run can tell
+        /// whether this install's copy got into place.
+        let installId: String
     }
 
     public func startInstall(_ payload: JSON) throws -> JSON {
@@ -427,12 +457,12 @@ public final class SetupEngine {
     }
 
     func startInstall(_ payload: JSON, synchronous: Bool) throws -> JSON {
-        let config = defaultConfig(payload)
-        if config["dryRun"].truthy {
+        let requested = defaultConfig(payload)
+        if requested["dryRun"].truthy {
             var preview = newTask()
             preview["status"] = "completed"
             preview["finishedAt"] = JSON(JS.isoNow())
-            preview["result"] = ["installPath": config["installPath"], "appPath": config["installedAppPath"], "url": nil]
+            preview["result"] = ["installPath": requested["installPath"], "appPath": requested["installedAppPath"], "url": nil]
             preview["logs"] = ["Preview mode is enabled. No changes were made."]
             synchronized { lastCompletedTask = preview }
             return ["ok": true, "task": preview]
@@ -444,13 +474,21 @@ public final class SetupEngine {
             activeTask = newTask()
             lastCompletedTask = nil
         }
+        // An upgrade cut off mid-swap is put back before anything reads the
+        // folders, with the settings of the copy that is installed, so the
+        // config built for this install still sees that copy.
+        recoverPreUpgradeConfig()
+        let roots = [normalizeInputPath(loadPersistedConfig()["installPath"] || JSON(defaultInstallPath())), normalizeInputPath(requested["installPath"])]
+        for root in Set(roots) { recoverInterruptedInstall(finalRoot: root) }
+        let config = defaultConfig(payload)
         let plan = InstallPlan(
             installPath: normalizeInputPath(config["installPath"]),
             appPath: canonicalAppPath(normalizeInputPath(config["installPath"])),
             storagePath: normalizeInputPath(config["storagePath"] || JSON(Path.join(normalizeInputPath(config["installPath"]), "storage"))),
             installRoachClaw: config["installRoachClaw"].truthy,
             autoLaunch: config["autoLaunch"].truthy,
-            config: config
+            config: config,
+            installId: JS.randomHex(8)
         )
         if synchronous {
             runInstall(plan)
@@ -462,8 +500,26 @@ public final class SetupEngine {
 
     func runInstall(_ plan: InstallPlan) {
         var stagingRoot: String?
+        // When this run would replace an install and fails before the swap,
+        // the saved config goes back to the installed copy's, so it still
+        // describes the copy that stays installed. A first install keeps the
+        // choices it was given, ready for a retry.
+        let previousConfig = synchronized { installedConfig } ?? loadPersistedConfig()
+        let restoreConfigOnFailure = describesInstalledCopy(previousConfig)
+        var swapped = false
+        // Whether this run has saved its choices; until then a failure leaves
+        // the saved settings exactly as they were.
+        var savedChoices = false
         do {
+            // Kept on disk first, so that if this run is cut off (power loss,
+            // force quit) before its copy is in place, the next run puts the
+            // installed copy's settings back over the ones saved below. A run
+            // that can't keep them stops here, before it changes anything.
+            if restoreConfigOnFailure {
+                try keepPreUpgradeConfig(previousConfig, installId: plan.installId, target: plan.installPath)
+            }
             saveConfig(plan.config)
+            savedChoices = true
             try Files.mkdirp(Path.dirname(plan.installPath))
             recoverInterruptedInstall(finalRoot: plan.installPath)
 
@@ -506,7 +562,15 @@ public final class SetupEngine {
             setPhase("Finalizing install", 88)
             terminateRunningRoachNet(plan)
             try finalizeInstallRoot(staging: staging, finalRoot: plan.installPath, storagePath: plan.storagePath)
+            swapped = true
             stagingRoot = nil
+            removePreUpgradeConfig()
+            // From here the new copy is the installed one. If a later step
+            // fails, a retry that fails before its swap puts this back, not the
+            // settings of the copy this install replaced.
+            var swappedConfig = plan.config
+            swappedConfig["installedAppPath"] = JSON(plan.appPath)
+            synchronized { installedConfig = swappedConfig }
             try Files.mkdirp(plan.storagePath)
 
             setPhase("Arming RoachTail local alias", 94)
@@ -524,6 +588,8 @@ public final class SetupEngine {
             completedConfig["bootstrapPending"] = false
             completedConfig["bootstrapFailureCount"] = 0
             saveConfig(completedConfig)
+            let saved = loadPersistedConfig()
+            synchronized { installedConfig = saved }
 
             if plan.autoLaunch {
                 setPhase("Launching RoachNet", 98)
@@ -554,6 +620,14 @@ public final class SetupEngine {
                 } else {
                     Files.remove(stagingRoot)
                     log("Removed the staged install so this Mac can retry setup cleanly.")
+                }
+            }
+            if restoreConfigOnFailure && savedChoices && !swapped {
+                if replaceConfig(previousConfig) {
+                    removePreUpgradeConfig()
+                    log("Kept the saved settings of the copy that is still installed.")
+                } else {
+                    log("Could not put back the saved settings of the copy that is still installed. Setup keeps them aside and tries again when it next starts.")
                 }
             }
         }
@@ -618,6 +692,91 @@ public final class SetupEngine {
         }
     }
 
+    /// The text of the install manifest in `root`, or nil when it has none.
+    func manifestText(_ root: String) -> String? {
+        Files.readText(Path.join(root, SetupEngine.installManifestName))
+    }
+
+    /// Whether an upgrade left a copy of `root` moved aside beside it.
+    func hasBackup(_ root: String) -> Bool {
+        let base = Path.basename(root)
+        let siblings = (try? FileManager.default.contentsOfDirectory(atPath: Path.dirname(root))) ?? []
+        return siblings.contains { $0.hasPrefix("\(base).backup-") }
+    }
+
+    /// Keeps `config`, the saved config of the copy that is installed, beside
+    /// the config, with that copy's manifest. `installId` names the install
+    /// that would replace the copy; `target` is where it goes. Throws when it
+    /// can't be kept.
+    func keepPreUpgradeConfig(_ config: JSON, installId: String, target: String) throws {
+        // Recovery leaves anything but a file at that path alone, so an install
+        // can't go ahead over it either.
+        if let info = Files.lstatInfo(preUpgradeConfigPath), info.st_mode & S_IFMT != S_IFREG {
+            throw RuntimeError("Setup couldn't keep the installed copy's settings aside before changing them, so nothing was changed: something other than a file is at \(Path.basename(preUpgradeConfigPath)).")
+        }
+        let kept: JSON = [
+            "installId": JSON(installId),
+            "installPath": JSON(target),
+            "installedManifest": manifestText(normalizeInputPath(config["installPath"])).map { JSON($0) } ?? .null,
+            "config": config,
+        ]
+        do {
+            try Files.write(kept.prettySerialized() + "\n", to: preUpgradeConfigPath, mode: Files.privateFileMode)
+        } catch {
+            throw RuntimeError("Setup couldn't keep the installed copy's settings aside before changing them, so nothing was changed: \(redact("\(error)"))")
+        }
+    }
+
+    /// Removes the kept config when it is a plain file, as Setup writes it.
+    /// Anything else at that path is left alone.
+    func removePreUpgradeConfig() {
+        guard let info = Files.lstatInfo(preUpgradeConfigPath), info.st_mode & S_IFMT == S_IFREG else { return }
+        unlink(preUpgradeConfigPath)
+    }
+
+    /// After a run that was cut off: when an install had saved its choices
+    /// over the config but its copy never got into place, the copy that is
+    /// installed gets its settings back. The manifests tell which happened:
+    /// the install's own copy names it, and the copy it would replace is still
+    /// in place while its manifest is unchanged. Returns the installed copy's
+    /// settings when the kept copy held them, whether or not they could be
+    /// written back yet.
+    @discardableResult
+    func recoverPreUpgradeConfig() -> JSON? {
+        guard let info = Files.lstatInfo(preUpgradeConfigPath) else { return nil }
+        guard info.st_mode & S_IFMT == S_IFREG else {
+            log("Something other than a file is at \(Path.basename(preUpgradeConfigPath)), where Setup keeps the installed copy's settings during an upgrade. It was left alone, and changes to the installed copy stop until it is moved away.")
+            return nil
+        }
+        guard let kept = JSON.read(contentsOf: preUpgradeConfigPath), kept["config"].isObject else {
+            removePreUpgradeConfig()
+            return nil
+        }
+        let previous = kept["config"]
+        let installedRoot = normalizeInputPath(previous["installPath"])
+        let target = normalizeInputPath(kept["installPath"])
+        for root in Set([installedRoot, target]) { recoverInterruptedInstall(finalRoot: root) }
+        let landed = kept["installId"].stringValue.map { id in
+            manifestText(target).flatMap { try? JSON.parse($0) }?["installId"].stringValue == id
+        } ?? false
+        if !landed {
+            // A copy moved aside that couldn't be put back yet: decide later.
+            if !Files.exists(installedRoot) && hasBackup(installedRoot) { return nil }
+            if manifestText(installedRoot) == kept["installedManifest"].stringValue, describesInstalledCopy(previous) {
+                synchronized { installedConfig = previous }
+                guard replaceConfig(previous) else {
+                    log("Could not put back the saved settings of the copy that is installed. Setup keeps them aside and tries again when it next starts.")
+                    return previous
+                }
+                log("Put back the saved settings of the copy that is installed. An earlier upgrade was cut off before replacing it.")
+                removePreUpgradeConfig()
+                return previous
+            }
+        }
+        removePreUpgradeConfig()
+        return nil
+    }
+
     /// Points the RoachTail hostname at loopback. Best effort unless
     /// ROACHNET_REQUIRE_LOCAL_ALIAS=1; only the system hosts file may prompt.
     func provisionLocalAlias() throws {
@@ -650,6 +809,7 @@ public final class SetupEngine {
             "appPath": JSON(plan.appPath),
             "storagePath": JSON(plan.storagePath),
             "roachClaw": JSON(plan.installRoachClaw),
+            "installId": JSON(plan.installId),
             "host": [
                 "arch": JSON(Host.arch),
                 "os": JSON(SetupPlatform.osVersionString),
@@ -705,21 +865,30 @@ public final class SetupEngine {
         defer { Files.remove(scratch) }
         let source = try resolveAppSource(scratch: scratch)
         try SetupPlatform.copyDirectory(source, to: stagedApp)
-        let helper = Path.join(stagedApp, "Contents", "Helpers", appHelperName)
-        if Files.exists(helper) {
-            log("Native runtime helper is present in the app bundle.")
-        } else {
-            log("This RoachNet build has no native runtime helper; it will fall back to its compatibility launcher.")
+        // RoachNet starts its runtime only through this helper, so an app
+        // without it can't run. It's refused here, while the install is still
+        // staged and the installed copy hasn't been touched.
+        guard hasRuntimeHelper(stagedApp) else {
+            throw RuntimeError("This RoachNet app payload has no usable runtime helper: Contents/Helpers/\(appHelperName) is missing or isn't an executable file, so RoachNet couldn't start. Nothing was replaced. Download a fresh copy of RoachNet Setup and try again.")
         }
+        log("Native runtime helper is present in the app bundle.")
         SetupPlatform.prepareForLaunch(stagedApp, log: log)
+    }
+
+    /// Whether `app` holds the runtime helper as an executable regular file.
+    /// RoachNet's builds copy the helper in, so a folder or a link in its
+    /// place is refused like a missing one.
+    func hasRuntimeHelper(_ app: String) -> Bool {
+        let helper = Path.join(app, "Contents", "Helpers", appHelperName)
+        guard let info = Files.lstatInfo(helper), info.st_mode & S_IFMT == S_IFREG else { return false }
+        return FileManager.default.isExecutableFile(atPath: helper)
     }
 
     /// Boots the staged app's native runtime against scratch storage and waits for health.
     func smokeTestRuntime(appPath: String, scratchRoot: String) throws {
         let helper = Path.join(appPath, "Contents", "Helpers", appHelperName)
-        guard FileManager.default.isExecutableFile(atPath: helper) else {
-            log("Skipped runtime verification: no native runtime helper in this app build.")
-            return
+        guard hasRuntimeHelper(appPath) else {
+            throw RuntimeError("The staged RoachNet app has no usable runtime helper to verify, so the install stopped before replacing anything.")
         }
         defer { Files.remove(scratchRoot) }
         try Files.mkdirp(scratchRoot)
@@ -754,7 +923,7 @@ public final class SetupEngine {
         let deadline = Date().addingTimeInterval(60)
         while Date() < deadline {
             if !process.isRunning {
-                throw RuntimeError("The installed RoachNet runtime exited during verification (status \(process.terminationStatus)).")
+                throw RuntimeError("RoachNet's runtime exited during verification (status \(process.terminationStatus)), so the install stopped before replacing anything. Download a fresh copy of RoachNet Setup and try again.")
             }
             if let info = JSON.read(contentsOf: infoPath), let health = info["healthUrl"].stringValue,
                let response = try? HTTPClient.request(health, timeoutMs: 2_000), response.ok
@@ -764,7 +933,7 @@ public final class SetupEngine {
             }
             usleep(250_000)
         }
-        throw RuntimeError("The installed RoachNet runtime did not become healthy during verification.")
+        throw RuntimeError("RoachNet's runtime didn't pass its health check during verification, so the install stopped before replacing anything. Try again, and if it happens again, download a fresh copy of RoachNet Setup.")
     }
 
     func terminateRunningRoachNet(_ plan: InstallPlan) {
@@ -782,16 +951,27 @@ public final class SetupEngine {
         return !relative.isEmpty && !relative.hasPrefix("..") && !Path.isAbsolute(relative)
     }
 
+    /// Test hosts only: ends the process at a named point of the swap, as a
+    /// power cut would there, so tests can check what the next run recovers.
+    func stopIfTestAsks(_ point: String) {
+        guard environment["ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST"] == "1",
+              environment["ROACHNET_SETUP_TEST_STOP_AT"] == point else { return }
+        _exit(75)
+    }
+
     /// Swaps the staged root into place, carrying user storage across and
     /// restoring the previous install if anything fails.
     func finalizeInstallRoot(staging: String, finalRoot: String, storagePath: String) throws {
+        stopIfTestAsks("swap")
         let backup = Files.exists(finalRoot) ? Path.join(Path.dirname(finalRoot), "\(Path.basename(finalRoot)).backup-\(Int(JS.nowMs()))") : nil
         if let backup {
             log("Moving the previous install aside.")
             try SetupPlatform.moveItem(finalRoot, backup)
+            stopIfTestAsks("moved-aside")
         }
         do {
             try SetupPlatform.moveItem(staging, finalRoot)
+            stopIfTestAsks("moved-in")
             var storageNeedsRecovery = false
             if let backup, isInside(storagePath, finalRoot) {
                 let relative = Path.relative(from: finalRoot, to: storagePath)
@@ -886,8 +1066,17 @@ public final class SetupEngine {
             case ("GET", "/api/state"):
                 return .json(200, state(url))
             case ("POST", "/api/config"):
+                // Saves the choices as given. The Setup app calls this only to
+                // open RoachNet; an install saves its choices itself, once it
+                // has kept the installed copy's settings aside. Choices that
+                // leave the installed copy where it is (another port, say) are
+                // that copy's settings from now on, so an install that fails
+                // later puts them back, not older ones.
                 let config = defaultConfig(try body())
                 saveConfig(config)
+                synchronized {
+                    if let installed = installedConfig, namesSameCopy(installed, config) { installedConfig = config }
+                }
                 return .json(200, ["ok": true, "config": config])
             case ("POST", "/api/install"):
                 return .json(200, try startInstall(try body()))
@@ -907,9 +1096,40 @@ public final class SetupEngine {
         }
     }
 
+    /// Remembers the saved config when it describes a copy that is installed,
+    /// before the Setup app can save new choices over it. An upgrade cut off
+    /// mid-swap is put back first, with that copy's settings, so a copy only
+    /// moved aside still counts.
+    func rememberInstalledConfig() {
+        // Settings kept aside by a run that was cut off are the installed
+        // copy's, even while they can't be written back.
+        if recoverPreUpgradeConfig() != nil { return }
+        let current = loadPersistedConfig()
+        if let root = current["installPath"].stringValue, !root.isEmpty { recoverInterruptedInstall(finalRoot: root) }
+        guard describesInstalledCopy(current) else { return }
+        synchronized { installedConfig = current }
+    }
+
+    /// Whether two configs name the same copy: the same install folder and app.
+    func namesSameCopy(_ a: JSON, _ b: JSON) -> Bool {
+        func copy(_ config: JSON) -> (root: String, app: String) {
+            let root = normalizeInputPath(config["installPath"])
+            let app = (config["installedAppPath"].stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return (root, app.isEmpty ? canonicalAppPath(root) : normalizeInputPath(JSON(app)))
+        }
+        return copy(a) == copy(b)
+    }
+
+    /// Whether `config` points at a copy of RoachNet that is installed now.
+    func describesInstalledCopy(_ config: JSON) -> Bool {
+        guard let root = config["installPath"].stringValue, !root.isEmpty else { return false }
+        return installLooksPresent(root, appPath: config["installedAppPath"].stringValue ?? canonicalAppPath(root))
+    }
+
     /// Starts the loopback setup service and writes the ready file the Setup
     /// app waits for.
     public func serve() throws -> LoopbackHTTPServer {
+        rememberInstalledConfig()
         let requestedPort = UInt16(environment["ROACHNET_SETUP_PORT"]?.trimmingCharacters(in: .whitespaces) ?? "") ?? 0
         let server = LoopbackHTTPServer(host: "127.0.0.1", port: requestedPort, maxBodyBytes: 1024 * 1024) { [self] request in
             handle(&request)

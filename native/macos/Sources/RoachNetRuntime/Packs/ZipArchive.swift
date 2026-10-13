@@ -17,7 +17,8 @@ import Compression
 /// archive is refused when it could be read more than one way: more than one
 /// end record, ZIP and ZIP64 records that disagree, bytes the directory doesn't
 /// account for, files that overlap, a local header that disagrees with the
-/// directory, or a file name that tools could decode differently.
+/// directory, a file name that tools could decode differently, or an entry
+/// RoachNet's reader and unzip would unpack differently.
 struct ZipArchive {
     struct Entry {
         let name: String
@@ -188,7 +189,23 @@ struct ZipArchive {
             guard Self.unicodePathNames(directory, from: extraStart, count: extraLength).allSatisfy({ $0 == nameBytes }) else {
                 throw refused("gives \"\(name)\" a second, different name")
             }
-            let isDirectory = name.hasSuffix("/")
+            let isDirectory = name.unicodeScalars.last == "/"
+            // Both unpackers must write the same files. A file entry named "."
+            // names no file: this reader would skip it, and unzip writes it as
+            // "_", which no check sees. A file entry that ends in "." ("a/.")
+            // is refused too: unzip writes it as "a/_", this reader as "a".
+            // `__MACOSX/` is left out only when a
+            // name starts with it as written (that is what unzip's pattern
+            // matches), so any other spelling of that folder, such as
+            // "./__MACOSX/a" or a file named __MACOSX, is refused.
+            let parts = Self.unpackedParts(name)
+            if !Self.isResourceForkCopy(name) {
+                guard isDirectory || !parts.isEmpty else { throw refused("has a file entry that names no file (\"\(name)\")") }
+                guard isDirectory || !PackArchive.endsInDot(name) else { throw refused("has a file entry whose name ends in \".\" (\"\(name)\")") }
+                guard parts.first?.lowercased() != "__macosx" else {
+                    throw refused("names \"\(name)\" under __MACOSX, which is kept for ditto's resource-fork copies")
+                }
+            }
             guard flags & 0x0001 == 0, flags & 0x0040 == 0, flags & 0x2000 == 0 else {
                 throw refused("is encrypted (\"\(name)\"); packs can't be")
             }
@@ -202,7 +219,7 @@ struct ZipArchive {
                 // One path, one file, even on a volume that ignores case. The
                 // path is the one the file unpacks to, so "a/./b" and "a//b"
                 // count as "a/b": unzip would write each over the last.
-                guard fileNames.insert(Self.unpackedParts(name).joined(separator: "/").lowercased()).inserted else {
+                guard fileNames.insert(Self.collisionKey(parts)).inserted else {
                     throw refused("names \"\(name)\" twice")
                 }
             }
@@ -272,14 +289,28 @@ struct ZipArchive {
         // A file and a folder can't share a path either ("a" beside "a/b" or
         // "a/"). RoachNet's own unpacking refuses that halfway through; this
         // refuses it before anything is written, whichever tool unpacks.
+        // A folder has one spelling, too: "Σ/" and "ς/", or a name in two
+        // Unicode normalization forms, are one folder on APFS and two on
+        // Linux, so the same archive would unpack to different trees.
         var folders = Set<String>()
+        var spellings: [String: String] = [:]
         for entry in entries {
             let parts = Self.unpackedParts(entry.name)
             for end in stride(from: 1, through: entry.isDirectory ? parts.count : parts.count - 1, by: 1) {
-                folders.insert(parts[..<end].joined(separator: "/").lowercased())
+                let key = Self.collisionKey(parts[..<end])
+                folders.insert(key)
+                if Self.isResourceForkCopy(entry.name) { continue }
+                let spelling = parts[..<end].joined(separator: "/")
+                if let first = spellings[key] {
+                    guard first.utf8.elementsEqual(spelling.utf8) else {
+                        throw refused("names one folder two ways (\"\(first)\" and \"\(spelling)\")")
+                    }
+                } else {
+                    spellings[key] = spelling
+                }
             }
         }
-        if let clash = entries.first(where: { !$0.isDirectory && folders.contains(Self.unpackedParts($0.name).joined(separator: "/").lowercased()) }) {
+        if let clash = entries.first(where: { !$0.isDirectory && folders.contains(Self.collisionKey(Self.unpackedParts($0.name))) }) {
             throw refused("puts a file and a folder at the same place (\"\(clash.name)\")")
         }
         self.entries = entries
@@ -288,7 +319,23 @@ struct ZipArchive {
     /// The path an entry unpacks to, as both unpackers write it: empty and
     /// "." components left out, so "a//./b" is "a/b".
     static func unpackedParts(_ name: String) -> [String] {
-        name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
+        PackArchive.components(name).filter { $0 != "." }
+    }
+
+    /// The key two paths share when a volume that ignores case would make them
+    /// one. That is Unicode case folding, which is how APFS compares names, not
+    /// lowercasing: "ς.json" and "σ.json" are one file there, as "A.json" and
+    /// "a.json" are. Swift compares the keys by canonical equivalence, so a name
+    /// in two Unicode normalization forms is one key too.
+    static func collisionKey<Parts: Sequence>(_ parts: Parts) -> String where Parts.Element == String {
+        parts.joined(separator: "/").folding(options: [.caseInsensitive], locale: nil)
+    }
+
+    /// `ditto --sequesterRsrc` keeps resource forks under `__MACOSX/`. Both
+    /// unpackers leave out exactly the entries whose names start with it as
+    /// written: unzip by its `-x "__MACOSX/*"` pattern, this reader by this test.
+    static func isResourceForkCopy(_ name: String) -> Bool {
+        name.unicodeScalars.starts(with: "__MACOSX/".unicodeScalars)
     }
 
     /// The names in an extra block's Info-ZIP Unicode path fields (tag
@@ -335,7 +382,10 @@ struct ZipArchive {
             guard !parts.contains(".."), !entry.name.unicodeScalars.contains(where: { $0.value == 0 }) else {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" isn't a plain name inside the folder.")
             }
-            guard let first = parts.first, first != "__MACOSX" else { continue }
+            // A file entry always names a file (the reader refuses one that
+            // doesn't); a folder entry that names none, such as "./", is the
+            // destination itself.
+            guard !Self.isResourceForkCopy(entry.name), !parts.isEmpty else { continue }
             if entry.isDirectory {
                 try makeFolders(parts, in: destination)
                 continue
@@ -373,9 +423,8 @@ struct ZipArchive {
     /// trade bytes and still add up.
     func checkUnpackedSizes(in destination: String) throws {
         let label = Path.basename(path)
-        for entry in entries where !entry.isDirectory {
+        for entry in entries where !entry.isDirectory && !Self.isResourceForkCopy(entry.name) {
             let parts = Self.unpackedParts(entry.name)
-            guard let first = parts.first, first != "__MACOSX" else { continue }
             guard let info = Files.lstatInfo(destination + "/" + parts.joined(separator: "/")), info.st_mode & S_IFMT == S_IFREG else {
                 throw PackError.integrity("Archive \(label): \"\(entry.name)\" wasn't unpacked as a plain file.")
             }

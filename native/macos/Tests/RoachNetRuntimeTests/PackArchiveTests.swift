@@ -178,13 +178,90 @@ final class PackArchiveTests: XCTestCase {
             ("file-then-folder.zip", [.init(name: "a", data: json), .init(name: "a/b.json", data: json)]),
             ("file-and-folder-entry.zip", [.init(name: "a", data: json), .init(name: "a/", mode: 0o040755)]),
             ("case-folder.zip", [.init(name: "A", data: json), .init(name: "a/b.json", data: json)]),
+            // One name in two Unicode normalization forms: one file on APFS, two on ext4.
+            ("normalization.zip", [.init(name: "caf\u{E9}.json", data: json, flags: 0x0800),
+                                   .init(name: "cafe\u{301}.json", data: json, flags: 0x0800)]),
+            // Names that differ only by Unicode case folding, not by lowercasing:
+            // APFS folds the final sigma to sigma, so these are one file there too.
+            ("sigma.zip", [.init(name: "\u{3C3}.json", data: json, flags: 0x0800),
+                           .init(name: "\u{3C2}.json", data: json, flags: 0x0800)]),
+            ("sigma-folder.zip", [.init(name: "\u{3A3}", data: json, flags: 0x0800),
+                                  .init(name: "\u{3C2}/b.json", data: json, flags: 0x0800)]),
         ]
         for (file, items) in cases {
             XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file)
         }
+        // One folder spelled two ways: one folder on APFS, two on ext4, so the
+        // files inside would land in different trees.
+        let spelledTwice: [(String, [TestZip.Item])] = [
+            ("sigma-folders.zip", [.init(name: "\u{3A3}/x.json", data: json, flags: 0x0800),
+                                   .init(name: "\u{3C2}/y.json", data: json, flags: 0x0800)]),
+            ("case-folders.zip", [.init(name: "A/x.json", data: json), .init(name: "a/y.json", data: json)]),
+            ("deeper-case-folders.zip", [.init(name: "a/B/x.json", data: json), .init(name: "a/b/y.json", data: json)]),
+            ("case-folder-entry.zip", [.init(name: "A/", mode: 0o040755), .init(name: "a/y.json", data: json)]),
+            ("normalization-folders.zip", [.init(name: "caf\u{E9}/x.json", data: json, flags: 0x0800),
+                                           .init(name: "cafe\u{301}/y.json", data: json, flags: 0x0800)]),
+            // "/" then a combining mark still ends the folder name "A".
+            ("combining-folders.zip", [.init(name: "a/x.json", data: json),
+                                       .init(name: "A/\u{301}y.json", data: json, flags: 0x0800)]),
+        ]
+        for (file, items) in spelledTwice {
+            XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file) { error in
+                XCTAssertTrue("\(error)".contains("two ways"), "\(file): \(error)")
+            }
+        }
         // A folder listed next to the files inside it, even twice, is fine.
         let folders: [TestZip.Item] = [.init(name: "a/", mode: 0o040755), .init(name: "a/b.json", data: json), .init(name: "a/./", mode: 0o040755)]
         XCTAssertEqual(try ZipArchive(path: try zip("folders.zip", folders)).entries.count, 3)
+        // So are files in one folder spelled the same way each time.
+        let sameSpelling: [TestZip.Item] = [.init(name: "\u{3A3}/x.json", data: json, flags: 0x0800),
+                                            .init(name: "\u{3A3}/y.json", data: json, flags: 0x0800)]
+        XCTAssertEqual(try ZipArchive(path: try zip("same-spelling.zip", sameSpelling)).entries.count, 2)
+    }
+
+    /// Both unpackers must write the same files. unzip writes a file entry
+    /// named "." as "_" and leaves out only names that start with "__MACOSX/",
+    /// so the reader refuses a file entry that names no file and any other
+    /// spelling of that folder rather than skipping them where nothing checks.
+    func testZipEntriesTheUnpackersWouldWriteDifferentlyAreRefused() throws {
+        let json = Data("{}".utf8)
+        let cases: [(String, [TestZip.Item], String)] = [
+            ("dot.zip", [.init(name: ".", data: json), .init(name: "a.json", data: json)], "names no file"),
+            ("dot-dot.zip", [.init(name: "./.", data: json)], "names no file"),
+            // unzip writes "a/." as "a/_"; this reader would write "a".
+            ("ends-in-dot.zip", [.init(name: "a/.", data: json)], "ends in"),
+            ("ends-in-dot-deeper.zip", [.init(name: "a/b/./.", data: json)], "ends in"),
+            ("dotted-rsrc.zip", [.init(name: "a.json", data: json), .init(name: "./__MACOSX/._a.json", data: json)], "__MACOSX"),
+            ("rsrc-file.zip", [.init(name: "__MACOSX", data: json)], "__MACOSX"),
+            ("rsrc-case.zip", [.init(name: "__macosx/._a.json", data: json)], "__MACOSX"),
+            ("control.zip", [.init(name: "a\u{1}.json", data: json)], "control character"),
+        ]
+        for (file, items, expected) in cases {
+            XCTAssertThrowsError(try PackArchive.inspect(try zip(file, items), format: "zip"), file) { error in
+                XCTAssertTrue("\(error)".contains(expected), "\(file): \(error)")
+            }
+        }
+        // ditto's own resource-fork copies are left out, and a folder entry
+        // that names the destination itself ("./") makes nothing.
+        let path = try zip("rsrc.zip", [
+            .init(name: "./", mode: 0o040755),
+            .init(name: "a.json", data: json),
+            .init(name: "__MACOSX/", mode: 0o040755),
+            .init(name: "__MACOSX/._a.json", data: Data([0, 5, 22, 7])),
+        ])
+        let out = Path.join(root, "out-rsrc")
+        try Files.mkdirp(out)
+        try PackArchive.unpack(path, format: "zip", into: out)
+        XCTAssertEqual(Files.entries(out).map(\.name), ["a.json"])
+        // A tar listing is held to the same rule.
+        let noFile = PackArchive.Entry(name: "./.", isDirectory: false, isLinkOrSpecial: false, uncompressedBytes: 1)
+        XCTAssertThrowsError(try PackArchive.check([noFile], label: "listing", maxBytes: 64))
+        let endsInDot = PackArchive.Entry(name: "a/.", isDirectory: false, isLinkOrSpecial: false, uncompressedBytes: 1)
+        XCTAssertThrowsError(try PackArchive.check([endsInDot], label: "listing", maxBytes: 64))
+        let throughDot = PackArchive.Entry(name: "a/./b.json", isDirectory: false, isLinkOrSpecial: false, uncompressedBytes: 1)
+        XCTAssertNoThrow(try PackArchive.check([throughDot], label: "listing", maxBytes: 64), "a dot inside the path is fine")
+        let itself = PackArchive.Entry(name: "./", isDirectory: true, isLinkOrSpecial: false, uncompressedBytes: 0)
+        XCTAssertNoThrow(try PackArchive.check([itself], label: "listing", maxBytes: 64))
     }
 
     /// unzip (the Linux unpacker) writes each stream whole: per-file sizes are
@@ -213,9 +290,15 @@ final class PackArchiveTests: XCTestCase {
     }
 
     func testEntryNamesThatLeaveTheFolderAreRefused() {
-        for name in ["../escape.txt", "a/../../escape.txt", "/etc/escape.txt", "a\\..\\escape.txt", "C:escape.txt", ""] {
+        for name in ["../escape.txt", "a/../../escape.txt", "/etc/escape.txt", "a\\..\\escape.txt", "C:escape.txt", "",
+                     "a\u{1}.txt", "tab\there.txt", "del\u{7F}.txt",
+                     // A combining mark after "/" or a backslash makes one Swift character
+                     // with it, but unpackers and the kernel still see the separator.
+                     "../\u{301}escape.txt", "/\u{301}etc/escape.txt", "a\\\u{301}b.txt"] {
             XCTAssertNotNil(PackArchive.problem(withEntryName: name), name)
         }
+        XCTAssertEqual(PackArchive.components("a/\u{301}b"), ["a", "\u{301}b"])
+        XCTAssertTrue(ZipArchive.isResourceForkCopy("__MACOSX/\u{301}._a.json"), "unzip's pattern matches it too")
         for name in ["themes/a.json", "./themes/", "a..b/c", "...", "themes/.hidden"] {
             XCTAssertNil(PackArchive.problem(withEntryName: name), name)
         }
