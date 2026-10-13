@@ -649,6 +649,61 @@ test('Setup changes nothing about the installed copy when it can\'t keep that co
     assert.equal(readFileSync(path.join(keptAside, 'notes.txt'), 'utf8'), 'keep\n', 'the folder is left alone')
     assert.equal(existsSync(path.join(installPath, 'app', 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')), true)
     assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /RoachNet\.(staging|backup)-/)
+
+    // A link there stops the install the same way, and stays as it was.
+    rmSync(keptAside, { recursive: true, force: true })
+    const linked = path.join(tempRoot, 'linked.json')
+    writeFileSync(linked, 'someone else\'s file\n')
+    symlinkSync(linked, keptAside)
+    const stopped = await installFromApp(service.url, configPath, installPath, { storagePath: movedStorage })
+    assert.equal(stopped.lastCompletedTask.status, 'failed')
+    assert.match(stopped.lastCompletedTask.error, /couldn't keep the installed copy's settings aside/)
+    assert.equal(lstatSync(keptAside).isSymbolicLink(), true, 'the link is left alone')
+    assert.equal(readFileSync(linked, 'utf8'), 'someone else\'s file\n')
+    assert.deepEqual(savedConfig().storagePath, installed.storagePath)
+  } finally {
+    service?.child.kill('SIGTERM')
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('a choice saved through /api/config that leaves the installed copy in place outlives a failed install', requiresNativeBinary, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-setup-saved-choice-'))
+  const home = path.join(tempRoot, 'home')
+  mkdirSync(home, { recursive: true })
+  const assets = buildFakeInstallerAssets(tempRoot)
+  const installPath = path.join(home, 'RoachNet')
+  const configPath = path.join(home, 'installer.json')
+  const env = {
+    PATH: process.env.PATH,
+    HOME: home,
+    ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
+    ROACHNET_INSTALLER_CONFIG_PATH: configPath,
+    ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+    ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
+    ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
+    ROACHNET_HOSTS_FILE: path.join(tempRoot, 'hosts'),
+  }
+  const payloadHelper = path.join(assets, 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')
+  const savedConfig = () => JSON.parse(readFileSync(configPath, 'utf8'))
+  let service
+  try {
+    const first = spawnSync(nativeBinary, ['--install', '--install-path', installPath, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
+    assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`)
+    const installed = savedConfig()
+
+    // A client saves another port for the copy where it is, then asks for an
+    // upgrade that fails before its swap (the payload lost its helper).
+    service = await startSetup(env)
+    await saveChoices(service.url, configPath, installPath, { companionPort: 38999 })
+    rmSync(payloadHelper)
+    const failed = await installFromApp(service.url, configPath, installPath, { companionPort: 38777 })
+    assert.equal(failed.lastCompletedTask.status, 'failed')
+    assert.match(failed.lastCompletedTask.error, /no usable runtime helper/)
+    assert.equal(savedConfig().companionPort, 38999, 'the port saved for the installed copy comes back, not an older one')
+    for (const key of ['installPath', 'installedAppPath', 'storagePath', 'setupCompletedAt']) {
+      assert.deepEqual(savedConfig()[key], installed[key], key)
+    }
   } finally {
     service?.child.kill('SIGTERM')
     await rm(tempRoot, { recursive: true, force: true })

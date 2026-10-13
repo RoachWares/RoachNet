@@ -29,11 +29,12 @@ public final class SetupEngine {
     private var lastCompletedTask: JSON?
     private var persistedConfigCache: JSON?
     /// The saved config of the copy that is installed, as this Setup service
-    /// found it or as its last install left it. The Setup app saves the choices
-    /// on screen (a new install folder, say) before it asks for an install, so
-    /// this, not the config saved by then, is what a failed install puts back.
-    /// An install that would replace that copy also keeps it on disk until its
-    /// own copy is in place (`preUpgradeConfigPath`), for a run that is cut off.
+    /// found it, as its last install left it, or as `/api/config` last saved it
+    /// for that same copy. A client can save choices that would move the copy
+    /// (a new install folder, say) before it asks for an install, so this, not
+    /// the config saved by then, is what a failed install puts back. An install
+    /// that would replace that copy also keeps it on disk until its own copy is
+    /// in place (`preUpgradeConfigPath`), for a run that is cut off.
     private var installedConfig: JSON?
     var appHelperName: String { RuntimeBuildInfo.executableName }
 
@@ -708,6 +709,11 @@ public final class SetupEngine {
     /// that would replace the copy; `target` is where it goes. Throws when it
     /// can't be kept.
     func keepPreUpgradeConfig(_ config: JSON, installId: String, target: String) throws {
+        // Recovery leaves anything but a file at that path alone, so an install
+        // can't go ahead over it either.
+        if let info = Files.lstatInfo(preUpgradeConfigPath), info.st_mode & S_IFMT != S_IFREG {
+            throw RuntimeError("Setup couldn't keep the installed copy's settings aside before changing them, so nothing was changed: something other than a file is at \(Path.basename(preUpgradeConfigPath)).")
+        }
         let kept: JSON = [
             "installId": JSON(installId),
             "installPath": JSON(target),
@@ -1062,9 +1068,15 @@ public final class SetupEngine {
             case ("POST", "/api/config"):
                 // Saves the choices as given. The Setup app calls this only to
                 // open RoachNet; an install saves its choices itself, once it
-                // has kept the installed copy's settings aside.
+                // has kept the installed copy's settings aside. Choices that
+                // leave the installed copy where it is (another port, say) are
+                // that copy's settings from now on, so an install that fails
+                // later puts them back, not older ones.
                 let config = defaultConfig(try body())
                 saveConfig(config)
+                synchronized {
+                    if let installed = installedConfig, namesSameCopy(installed, config) { installedConfig = config }
+                }
                 return .json(200, ["ok": true, "config": config])
             case ("POST", "/api/install"):
                 return .json(200, try startInstall(try body()))
@@ -1096,6 +1108,16 @@ public final class SetupEngine {
         if let root = current["installPath"].stringValue, !root.isEmpty { recoverInterruptedInstall(finalRoot: root) }
         guard describesInstalledCopy(current) else { return }
         synchronized { installedConfig = current }
+    }
+
+    /// Whether two configs name the same copy: the same install folder and app.
+    func namesSameCopy(_ a: JSON, _ b: JSON) -> Bool {
+        func copy(_ config: JSON) -> (root: String, app: String) {
+            let root = normalizeInputPath(config["installPath"])
+            let app = (config["installedAppPath"].stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return (root, app.isEmpty ? canonicalAppPath(root) : normalizeInputPath(JSON(app)))
+        }
+        return copy(a) == copy(b)
     }
 
     /// Whether `config` points at a copy of RoachNet that is installed now.

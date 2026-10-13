@@ -308,8 +308,8 @@ final class SetupController: ObservableObject {
     }
 
     /// Saves the choices on screen through the setup service, which keeps the
-    /// settings the app doesn't show and, when the choices would move the
-    /// installed copy, that copy's settings aside until an install.
+    /// settings the app doesn't show. Only Open saves this way; an install
+    /// takes the choices with it and saves them itself.
     private func persistConfig() async throws {
         let state = try await request(path: "/api/config", method: "POST", body: config, as: ConfigResponse.self)
         config = state.config
