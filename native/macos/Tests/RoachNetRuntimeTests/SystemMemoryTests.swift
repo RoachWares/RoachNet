@@ -69,9 +69,12 @@ final class SystemMemoryTests: XCTestCase {
                        ["/sys/fs/cgroup/memory"])
         XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/docker/abc/job\n", mountinfo: container).directories,
                        ["/sys/fs/cgroup/memory/job", "/sys/fs/cgroup/memory"])
-        // A cgroup the mount doesn't show: only the mount's folder is read.
-        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/elsewhere\n", mountinfo: container).directories,
-                       ["/sys/fs/cgroup/memory"])
+        // A cgroup no mount shows: no folders, rather than another cgroup's.
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/elsewhere\n", mountinfo: container).directories, [])
+        // Of two memory mounts, the one that shows the cgroup is used.
+        let both = container + "52 37 0:33 / /mnt/all-memory rw - cgroup cgroup rw,memory\n"
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/elsewhere\n", mountinfo: both).directories,
+                       ["/mnt/all-memory/elsewhere", "/mnt/all-memory"])
         // cgroup v2 mounted somewhere unusual, with a space in the path.
         let unified = "47 37 0:39 / /run/cg\\040two rw,relatime - cgroup2 cgroup2 rw\n"
         let v2 = SystemMemory.cgroupDirectories(procSelfCgroup: "0::/user.slice\n", mountinfo: unified)
@@ -82,7 +85,7 @@ final class SystemMemoryTests: XCTestCase {
         XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/x\n0::/\n", mountinfo: hybrid).directories,
                        ["/sys/fs/cgroup/memory/x", "/sys/fs/cgroup/memory"])
         // Lines that aren't cgroup mounts are skipped.
-        XCTAssertEqual(SystemMemory.cgroupMounts(mountinfo: "22 1 8:1 / / rw - ext4 /dev/sda1 rw\nbroken\n").memory, nil)
+        XCTAssertEqual(SystemMemory.cgroupMounts(mountinfo: "22 1 8:1 / / rw - ext4 /dev/sda1 rw\nbroken\n").memory, [])
     }
 
     func testCgroupLimitsAndHeadroom() {
