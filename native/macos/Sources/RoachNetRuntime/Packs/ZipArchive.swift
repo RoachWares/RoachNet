@@ -523,14 +523,21 @@ struct CRC32 {
         var crc = state
         var index = 0
         let count = bytes.count
-        Self.tables.withUnsafeBufferPointer { table in
+        Self.tables.withUnsafeBufferPointer { (table: UnsafeBufferPointer<UInt32>) -> Void in
             while index + 8 <= count {
-                let one = UInt32(littleEndian: base.loadUnaligned(fromByteOffset: index, as: UInt32.self)) ^ crc
-                let two = UInt32(littleEndian: base.loadUnaligned(fromByteOffset: index + 4, as: UInt32.self))
-                crc = table[7 * 256 + Int(one & 0xFF)] ^ table[6 * 256 + Int((one >> 8) & 0xFF)]
-                    ^ table[5 * 256 + Int((one >> 16) & 0xFF)] ^ table[4 * 256 + Int(one >> 24)]
-                    ^ table[3 * 256 + Int(two & 0xFF)] ^ table[2 * 256 + Int((two >> 8) & 0xFF)]
-                    ^ table[256 + Int((two >> 16) & 0xFF)] ^ table[Int(two >> 24)]
+                let one: UInt32 = UInt32(littleEndian: base.loadUnaligned(fromByteOffset: index, as: UInt32.self)) ^ crc
+                let two: UInt32 = UInt32(littleEndian: base.loadUnaligned(fromByteOffset: index + 4, as: UInt32.self))
+                // One lookup per statement: older Swift compilers (CI's) give up
+                // type-checking the whole XOR chain as a single expression.
+                var next: UInt32 = table[1792 + Int(one & 0xFF)]
+                next ^= table[1536 + Int((one >> 8) & 0xFF)]
+                next ^= table[1280 + Int((one >> 16) & 0xFF)]
+                next ^= table[1024 + Int(one >> 24)]
+                next ^= table[768 + Int(two & 0xFF)]
+                next ^= table[512 + Int((two >> 8) & 0xFF)]
+                next ^= table[256 + Int((two >> 16) & 0xFF)]
+                next ^= table[Int(two >> 24)]
+                crc = next
                 index += 8
             }
             while index < count {
