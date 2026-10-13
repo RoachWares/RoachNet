@@ -10,9 +10,10 @@ import Glibc
 /// The archive's SHA-256 only proves it is the archive the manifest named, not
 /// that it is well behaved, and manifests can come from a URL or a folder the
 /// person picked. So an archive is read before anything is extracted (names
-/// that are absolute or climb out with `..`, links, devices), unpacked into
-/// an empty folder of its own, walked again with `lstat`, and only then moved
-/// into place, never over a file that is already there.
+/// that are absolute or climb out with `..`, links, devices, and how much it
+/// unpacks to), unpacked into an empty folder of its own, walked again with
+/// `lstat`, and only then moved into place, never over a file that is
+/// already there.
 enum PackArchive {
     struct Entry: Equatable {
         let name: String
@@ -42,13 +43,20 @@ enum PackArchive {
     // MARK: Before extracting
 
     /// Reads what the archive holds and refuses it when any entry could land
-    /// outside the folder or is not a plain file or folder.
-    static func inspect(_ archivePath: String, format: String) throws {
+    /// outside the folder or is not a plain file or folder, or when it would
+    /// unpack to more than `maxBytes`.
+    static func inspect(_ archivePath: String, format: String, maxBytes: UInt64 = maxUncompressedBytes) throws {
         let label = Path.basename(archivePath)
+        let tooLarge = PackError.integrity("Archive \(label) unpacks to more than \(sizeText(maxBytes)).")
         let entries: [Entry]
         switch format {
         case "zip": entries = try zipEntries(atPath: archivePath)
-        case "tar.gz", "tgz": entries = try tarEntries(atPath: archivePath)
+        case "tar.gz", "tgz":
+            // `tar -t` doesn't list sizes the same way on every system, so the
+            // gzip stream is measured first: it holds every file's bytes, and
+            // the count stops at the limit instead of inflating all of it.
+            guard try inflatedSize(ofGzip: archivePath, limit: maxBytes) <= maxBytes else { throw tooLarge }
+            entries = try tarEntries(atPath: archivePath)
         default: throw PackError.installFailed("Unsupported archive type \(format).")
         }
         guard entries.count <= maxEntries else { throw PackError.integrity("Archive \(label) has more than \(maxEntries) entries.") }
@@ -61,14 +69,48 @@ enum PackArchive {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" is a link or a special file.")
             }
             let (sum, overflow) = total.addingReportingOverflow(entry.uncompressedBytes)
-            guard !overflow, sum <= maxUncompressedBytes else {
-                throw PackError.integrity("Archive \(label) unpacks to more than \(maxUncompressedBytes >> 30) GB.")
-            }
+            guard !overflow, sum <= maxBytes else { throw tooLarge }
             total = sum
         }
     }
 
-    /// The names and types `tar` lists, in archive order.
+    static func sizeText(_ bytes: UInt64) -> String {
+        bytes >= 1 << 30 ? "\(bytes >> 30) GB" : "\(max(1, bytes >> 20)) MB"
+    }
+
+    /// How many bytes a gzip file inflates to. Counting stops once it passes
+    /// `limit`, so an archive that inflates to terabytes costs only the time
+    /// to inflate `limit` bytes, and nothing is written to disk.
+    static func inflatedSize(ofGzip path: String, limit: UInt64) throws -> UInt64 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/gzip")
+        process.arguments = ["-dc", path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        try process.run()
+        let reader = pipe.fileHandleForReading
+        var total: UInt64 = 0
+        var stopped = false
+        while let chunk = try reader.read(upToCount: 1 << 20), !chunk.isEmpty {
+            total += UInt64(chunk.count)
+            if total > limit {
+                stopped = true
+                process.terminate()
+                break
+            }
+        }
+        try? reader.close()
+        process.waitUntilExit()
+        if !stopped, process.terminationStatus != 0 {
+            throw PackError.integrity("Archive \(Path.basename(path)) isn't a readable gzip file.")
+        }
+        return total
+    }
+
+    /// The names and types `tar` lists, in archive order. Sizes are left at
+    /// zero; `inspect` measures the whole stream instead.
     static func tarEntries(atPath path: String) throws -> [Entry] {
         let names = Processes.run("/usr/bin/tar", ["-tzf", path], timeoutMs: 600_000)
         let verbose = Processes.run("/usr/bin/tar", ["-tvzf", path], timeoutMs: 600_000)

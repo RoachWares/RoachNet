@@ -259,6 +259,30 @@ final class PackTests: XCTestCase {
         XCTAssertTrue(registry.record("base-pack")!.isEnabled, "enabling it turns its dependency on")
     }
 
+    func testUpdateThatAddsADependencyThatIsOffSwitchesThePackOff() throws {
+        let registry = registry()
+        let installer = PackInstaller(registry: registry)
+        let (base, f1) = resourcePack(id: "base-pack", payload: Data("b".utf8))
+        try writePackage(base, files: f1, at: Path.join(root, "base"))
+        _ = try installer.installLocalPackage(at: Path.join(root, "base"))
+        _ = try registry.disable("base-pack")
+        let (v1, f2) = resourcePack(id: "child-pack", payload: Data("c1".utf8))
+        try writePackage(v1, files: f2, at: Path.join(root, "child-1"))
+        XCTAssertTrue(try installer.installLocalPackage(at: Path.join(root, "child-1")).isEnabled)
+
+        let (v2, f3) = resourcePack(id: "child-pack", version: "2.0.0", payload: Data("c2".utf8), dependencies: [PackDependency(id: "base-pack")])
+        try writePackage(v2, files: f3, at: Path.join(root, "child-2"))
+        let updated = try installer.installLocalPackage(at: Path.join(root, "child-2"))
+        XCTAssertEqual(updated.state?.installedVersion, "2.0.0")
+        XCTAssertFalse(updated.isEnabled, "version 2 needs base-pack, which is off")
+
+        // Once what it needs is on, a later update keeps the switch as it was.
+        _ = try registry.enable("child-pack")
+        let (v3, f4) = resourcePack(id: "child-pack", version: "3.0.0", payload: Data("c3".utf8), dependencies: [PackDependency(id: "base-pack")])
+        try writePackage(v3, files: f4, at: Path.join(root, "child-3"))
+        XCTAssertTrue(try installer.installLocalPackage(at: Path.join(root, "child-3")).isEnabled)
+    }
+
     func testConcurrentInstallsAllStayInTheStateFile() throws {
         let registry = registry()
         let manifests = (0..<24).map { resourcePack(id: "pack-\($0)", payload: Data("\($0)".utf8)).0 }

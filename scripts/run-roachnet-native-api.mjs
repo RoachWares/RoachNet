@@ -5506,6 +5506,29 @@ function validateRoachSpeechPackRoot(packRoot, expectedPackID, expectedKind) {
   return manifest
 }
 
+// Only plain files and folders may come out of a pack archive: no symbolic or
+// hard links, devices, FIFOs or sockets (the Swift runtime's PackArchive rule).
+function assertPlainArchiveTree(root, archiveName) {
+  const pending = [[root, '']]
+  while (pending.length > 0) {
+    const [folder, relative] = pending.pop()
+    for (const entry of readdirSync(folder)) {
+      const full = path.join(folder, entry)
+      const shown = relative ? `${relative}/${entry}` : entry
+      const info = lstatSync(full)
+      if (info.isSymbolicLink()) {
+        throw new Error(`Archive ${archiveName} contains a link (${shown}); packs may only hold files and folders.`)
+      }
+      if (info.isDirectory()) {
+        pending.push([full, shown])
+        continue
+      }
+      if (!info.isFile()) throw new Error(`Archive ${archiveName} contains a special file (${shown}).`)
+      if (info.nlink > 1) throw new Error(`Archive ${archiveName} contains a hard link (${shown}).`)
+    }
+  }
+}
+
 async function installRoachSpeechPackArchive(job, packID, kind) {
   const packsRoot = modelPacksRootPath()
   mkdirSync(packsRoot, { recursive: true })
@@ -5519,6 +5542,7 @@ async function installRoachSpeechPackArchive(job, packID, kind) {
       throw new Error(`Downloaded RoachSpeech pack is not a file: ${job.filepath}`)
     }
     await runQuiet('ditto', ['-x', '-k', job.filepath, extractRoot])
+    assertPlainArchiveTree(extractRoot, path.basename(job.filepath))
     const packRoot = findRoachSpeechPackRoot(extractRoot)
     if (!packRoot) {
       throw new Error('Downloaded archive did not contain a RoachSpeechPack.json manifest.')

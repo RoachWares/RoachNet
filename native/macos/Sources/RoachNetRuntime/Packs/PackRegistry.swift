@@ -282,7 +282,9 @@ public final class PackRegistry {
 
     /// Records a resource pack that the installer has already placed at its
     /// install root. Enabled immediately when everything it depends on is on;
-    /// otherwise it waits switched off (enabling it turns those on too).
+    /// otherwise it waits switched off (enabling it turns those on too). An
+    /// update keeps the pack's switch, except that it never stays on beside a
+    /// dependency that is off, since a new version can add a dependency.
     func markInstalled(_ manifest: PackManifest, source: String) throws {
         let all = records()
         let enabledIDs = Set(all.filter(\.isEnabled).map(\.manifest.id))
@@ -291,7 +293,7 @@ public final class PackRegistry {
         let previous: PackState? = try mutateState { state in
             let previous = state.packs[manifest.id]
             state.packs[manifest.id] = PackState(
-                enabled: previous?.enabled ?? dependenciesOn,
+                enabled: (previous?.enabled ?? true) && dependenciesOn,
                 installedVersion: manifest.version,
                 installedAt: previous?.installedAt ?? JS.isoNow(),
                 source: source,

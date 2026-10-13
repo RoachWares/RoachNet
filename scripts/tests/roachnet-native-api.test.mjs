@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import net from 'node:net'
@@ -143,7 +143,7 @@ async function stopNativeApi(child, env) {
   })
 }
 
-async function createTestRoachSpeechPackZip(tempRoot, packID = 'test-roachvoice-pack') {
+async function createTestRoachSpeechPackZip(tempRoot, packID = 'test-roachvoice-pack', { linkTo = null } = {}) {
   const sourceRoot = path.join(tempRoot, packID)
   mkdirSync(path.join(sourceRoot, 'RoachVoice'), { recursive: true })
   writeFileSync(
@@ -166,6 +166,7 @@ async function createTestRoachSpeechPackZip(tempRoot, packID = 'test-roachvoice-
     )
   )
   writeFileSync(path.join(sourceRoot, 'RoachVoice', 'placeholder.txt'), 'native test payload\n')
+  if (linkTo) symlinkSync(linkTo, path.join(sourceRoot, 'RoachVoice', 'escape'))
   const archivePath = path.join(tempRoot, `${packID}.zip`)
   await runTool('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', sourceRoot, archivePath])
   return archivePath
@@ -1444,6 +1445,64 @@ test('native API resolves Apps download descriptors before installing RoachSpeec
     assert.equal(jobs[0]?.installStatus, 'installed')
     assert.equal(jobs[0]?.descriptorUrl, `http://127.0.0.1:${descriptorPort}/downloads/model-packs/test-roachvoice-descriptor-pack.json`)
     assert.equal(existsSync(path.join(storagePath, 'RoachSpeech', 'ModelPacks', packID, 'RoachSpeechPack.json')), true)
+  } finally {
+    await stopNativeApi(child, env)
+    await rm(tempRoot, { recursive: true, force: true })
+    await new Promise((resolve) => packServer.close(resolve))
+    await new Promise((resolve) => descriptorServer.close(resolve))
+  }
+})
+
+test('native API refuses a RoachSpeech pack archive that holds a link', macOSDittoTest, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachspeech-link-test-'))
+  const packID = 'test-roachvoice-link-pack'
+  const outside = path.join(tempRoot, 'outside')
+  mkdirSync(outside)
+  // ditto keeps symbolic links when it zips and when it unzips.
+  const archivePath = await createTestRoachSpeechPackZip(tempRoot, packID, { linkTo: outside })
+  const storagePath = path.join(tempRoot, 'storage')
+  const port = await resolveAvailablePort()
+  const downloadPort = await resolveAvailablePort()
+  const descriptorPort = await resolveAvailablePort()
+  const packServer = await startStaticFileServer(downloadPort, `/${packID}.zip`, archivePath)
+  const descriptorPath = path.join(tempRoot, 'descriptor.json')
+  writeFileSync(
+    descriptorPath,
+    JSON.stringify({
+      schema: 'org.roachnet.apps.download-descriptor.v1',
+      id: packID,
+      filename: `${packID}.zip`,
+      sha256: sha256FileSync(archivePath),
+      sources: [{ type: 'test-source', url: `http://127.0.0.1:${downloadPort}/${packID}.zip` }],
+    })
+  )
+  const descriptorServer = await startStaticFileServer(descriptorPort, `/downloads/model-packs/${packID}.json`, descriptorPath)
+  const env = {
+    ...process.env,
+    ROACHNET_STORAGE_PATH: storagePath,
+    ROACHNET_RUNTIME_STATE_ROOT: path.join(tempRoot, 'state'),
+    ROACHNET_APPS_DOWNLOADS_BASE_URL: `http://127.0.0.1:${descriptorPort}/downloads`,
+    HOST: '127.0.0.1',
+    PORT: String(port),
+  }
+  const child = spawn(...nativeApiCommand(), { cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/health`, child)
+    const queued = await requestJson(`http://127.0.0.1:${port}/api/roachspeech/model-packs/download`, {
+      method: 'POST',
+      body: { url: `http://127.0.0.1:${descriptorPort}/downloads/model-packs/${packID}.json`, packID, kind: 'roachVoice' },
+    })
+    assert.equal(queued.success, true)
+    let jobs = []
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      jobs = await requestJson(`http://127.0.0.1:${port}/api/downloads/jobs`)
+      if (jobs[0]?.status === 'completed' || jobs[0]?.status === 'failed') break
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+    assert.ok(['completed', 'failed'].includes(jobs[0]?.status), `the job finished: ${JSON.stringify(jobs[0])}`)
+    assert.notEqual(jobs[0]?.installStatus, 'installed')
+    assert.equal(existsSync(path.join(storagePath, 'RoachSpeech', 'ModelPacks', packID)), false)
+    assert.deepEqual(readdirSync(outside), [], 'nothing was written through the link')
   } finally {
     await stopNativeApi(child, env)
     await rm(tempRoot, { recursive: true, force: true })

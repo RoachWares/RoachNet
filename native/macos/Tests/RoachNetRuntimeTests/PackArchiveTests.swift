@@ -127,6 +127,29 @@ final class PackArchiveTests: XCTestCase {
         XCTAssertThrowsError(try PackArchive.inspect(linked, format: "tar.gz")) { XCTAssertTrue("\($0)".contains("link"), "\($0)") }
     }
 
+    func testTarIsMeasuredBeforeItIsUnpacked() throws {
+        // 3 MB of zeros packs into a few kilobytes, and `tar -t` lists no sizes the same way everywhere.
+        let source = Path.join(root, "big")
+        try Files.mkdirp(source)
+        try Data(count: 3 << 20).write(to: URL(fileURLWithPath: Path.join(source, "zeros.bin")))
+        let archive = Path.join(root, "big.tar.gz")
+        XCTAssertEqual(Processes.run("/usr/bin/tar", ["-czf", archive, "-C", source, "zeros.bin"]).status, 0)
+
+        let whole = try PackArchive.inflatedSize(ofGzip: archive, limit: 64 << 20)
+        XCTAssertGreaterThanOrEqual(whole, 3 << 20)
+        let capped = try PackArchive.inflatedSize(ofGzip: archive, limit: 1 << 20)
+        XCTAssertGreaterThan(capped, 1 << 20)
+        XCTAssertLessThan(capped, whole, "the count stops at the limit")
+        XCTAssertThrowsError(try PackArchive.inspect(archive, format: "tar.gz", maxBytes: 1 << 20)) {
+            XCTAssertTrue("\($0)".contains("more than 1 MB"), "\($0)")
+        }
+        XCTAssertNoThrow(try PackArchive.inspect(archive, format: "tar.gz", maxBytes: 64 << 20))
+
+        let notGzip = Path.join(root, "plain.tar.gz")
+        try Files.write("not gzip at all", to: notGzip)
+        XCTAssertThrowsError(try PackArchive.inflatedSize(ofGzip: notGzip, limit: 1 << 20))
+    }
+
     func testExtractedTreeWithALinkOrHardLinkIsRefused() throws {
         let tree = Path.join(root, "tree")
         try Files.mkdirp(Path.join(tree, "a"))
