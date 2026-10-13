@@ -129,7 +129,9 @@ function requireNativeSwiftRuntime() {
   // Metal is allowed only for RoachInference's hand-written kernels; no ML frameworks
   // (Accelerate, Metal Performance Shaders, Core ML, MLX) and no third-party code.
   // dnssd is the system DNS Service Discovery library (libSystem), for RoachNet Cluster's Bonjour.
-  const allowedModules = new Set(['Foundation', 'FoundationNetworking', 'Darwin', 'Glibc', 'CryptoKit', 'Dispatch', 'Metal', 'dnssd', 'RoachNetRuntime', 'RoachInference'])
+  // Compression is the system DEFLATE library (libcompression); RoachNet's own ZIP reader
+  // inflates pack archives with it on macOS.
+  const allowedModules = new Set(['Foundation', 'FoundationNetworking', 'Darwin', 'Glibc', 'CryptoKit', 'Dispatch', 'Metal', 'dnssd', 'Compression', 'RoachNetRuntime', 'RoachInference'])
   for (const root of runtimeRoots) {
     for (const relativePath of listFiles(root, (candidate) => candidate.endsWith('.swift'))) {
       const source = readText(relativePath)

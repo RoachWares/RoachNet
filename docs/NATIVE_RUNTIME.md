@@ -8,7 +8,7 @@ From 1.0.6, RoachNet ships no Node runtime. Everything the bundled Node 26 runti
 - downloads and the update mirror;
 - the installer.
 
-The helper links only Apple system frameworks: Foundation, Dispatch, Darwin and CryptoKit. On Linux it uses FoundationNetworking and Glibc for the source test lane. `Package.swift` declares no third-party packages, and `scripts/audit-native-release-scope.mjs` enforces both rules.
+The helper links only Apple system frameworks: Foundation, Dispatch, Darwin and CryptoKit, plus Compression (RoachNet's own ZIP reader inflates pack archives with it), Metal (RoachInference's kernels) and dnssd (the Cluster's Bonjour). On Linux it uses FoundationNetworking and Glibc for the source test lane. `Package.swift` declares no third-party packages, and `scripts/audit-native-release-scope.mjs` enforces both rules.
 
 ## Where it lives
 
