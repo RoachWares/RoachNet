@@ -59,11 +59,12 @@ jobs:
           persist-credentials: false
 
       # The pack tests write ZIPs with zip and, where Apple's Compression isn't
-      # available, unpack them with unzip.
-      - name: Install zip and unzip
+      # available, unpack them with unzip. The roachnet-org helper that
+      # bring-your-own agents call uses curl, as it does on the Mac.
+      - name: Install zip, unzip and curl
         run: |
           apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends zip unzip
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends zip unzip curl ca-certificates
 
       - name: Build the runtime and its tests
         run: swift build --package-path native/macos --build-tests
