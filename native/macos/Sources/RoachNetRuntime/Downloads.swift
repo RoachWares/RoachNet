@@ -898,7 +898,7 @@ extension NativeRuntime {
         let trace = tracer.startTrace(kind: "chat", name: "RoachClaw chat · \(model)", sessionId: sessionId, tags: ["roachclaw", source],
                                       input: body["messages"], metadata: JSONObject([("source", JSON(source))]))
         let generation = trace?.observation(.generation, model, input: body["messages"], model: model,
-                                            provider: usesNativeEngine ? "roachinference" : "ollama")
+                                            provider: modelServerIsOllama ? "ollama" : "roachinference")
         var headers: [String: String] = [:]
         if let generation { headers["traceparent"] = generation.traceparent }
         do {

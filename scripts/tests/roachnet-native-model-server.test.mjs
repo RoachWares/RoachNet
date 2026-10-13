@@ -262,3 +262,41 @@ test('a model address somebody set with OLLAMA_BASE_URL is used as configured', 
     await closeServer(lookalike)
   }
 })
+
+test("RoachInference never takes Ollama's port, even when OLLAMA_BASE_URL names it (ROA-74)", needsBinary, async () => {
+  for (const address of ['http://127.0.0.1:11434', 'http://127.0.0.1']) {
+    const lane = await modelLaneOf({ OLLAMA_BASE_URL: address })
+    assert.notEqual(lane.baseUrl, 'http://127.0.0.1:11434', `${address}: RoachNet's model traffic stays off Ollama's port`)
+    assert.match(lane.version, /^roachnet-native-/, address)
+  }
+})
+
+test("with ROACHNET_INFERENCE_ENGINE=ollama, the person's running Ollama answers (ROA-74)", needsBinary, async () => {
+  const lookalike = ollamaLookalike()
+  const ollama = `http://127.0.0.1:${await listen(lookalike, 0)}`
+  try {
+    const lane = await modelLaneOf({ ROACHNET_INFERENCE_ENGINE: 'ollama', ROACHNET_OLLAMA_URL: ollama })
+    assert.equal(lane.baseUrl, ollama)
+    assert.equal(lane.version, '0.40.3')
+    assert.deepEqual(lane.models, ['not-ours:1b'])
+  } finally {
+    await closeServer(lookalike)
+  }
+})
+
+test('with ROACHNET_INFERENCE_ENGINE=ollama and no Ollama running, RoachInference answers and no Ollama is started (ROA-74)', needsBinary, async () => {
+  // An `ollama` where 1.1.0 looked for one: it would have been started with `serve`.
+  const bin = await mkdtemp(path.join(os.tmpdir(), 'rn-fake-ollama-'))
+  const marker = path.join(bin, 'started')
+  writeFileSync(path.join(bin, 'ollama'), `#!/bin/sh\necho "$@" > '${marker}'\n`, { mode: 0o755 })
+  const nobody = `http://127.0.0.1:${await freePort()}`
+  try {
+    const lane = await modelLaneOf({ ROACHNET_INFERENCE_ENGINE: 'ollama', ROACHNET_OLLAMA_URL: nobody, ROACHNET_LOCAL_BIN_PATH: bin })
+    assert.notEqual(lane.baseUrl, nobody)
+    assert.match(lane.version, /^roachnet-native-/)
+    assert.equal(existsSync(marker), false, 'RoachNet never runs an ollama binary')
+    await assert.rejects(fetch(`${nobody}/api/version`), 'nothing was started where the Ollama would be')
+  } finally {
+    await rm(bin, { recursive: true, force: true })
+  }
+})

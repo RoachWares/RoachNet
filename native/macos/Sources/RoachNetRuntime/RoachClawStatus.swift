@@ -14,72 +14,112 @@ extension NativeRuntime {
 
     func isReachable(_ url: String) -> Bool { (try? runtimeReachabilityCache.get(url)) ?? false }
 
-    /// What answers on the Ollama-compatible port, in words for status lines:
-    /// RoachInference unless ROACHNET_INFERENCE_ENGINE=ollama picked a runner.
-    var modelServerName: String { usesNativeEngine ? "The RoachInference model server" : "Ollama" }
+    /// What answers RoachNet's model requests, in words for status lines.
+    var modelServerName: String { modelServerIsOllama ? "Ollama" : "The RoachInference model server" }
 
-    /// Makes the local model lane reachable. The native RoachInference server is the
-    /// default; an external Ollama runner is only used when explicitly opted into with
-    /// ROACHNET_INFERENCE_ENGINE=ollama and one is already installed on the system.
-    /// RoachNet 1.1 no longer bundles a runner, so a missing one falls back to native.
+    /// True while a person's own Ollama answers RoachNet's model requests
+    /// (ROACHNET_INFERENCE_ENGINE=ollama, and that Ollama is running).
+    var modelServerIsOllama: Bool { personsOllamaInUse.value }
+
+    /// Makes the local model lane reachable. RoachInference, RoachNet's own
+    /// engine, is the default. With ROACHNET_INFERENCE_ENGINE=ollama, an
+    /// Ollama the person runs is used where it already listens
+    /// (`personsOllamaURL`), and RoachInference answers whenever it isn't
+    /// running. RoachNet never starts or stops an Ollama and never listens on
+    /// Ollama's port, so a person's Ollama and RoachNet run side by side.
     @discardableResult
     func ensureOllama() -> Bool {
-        if usesNativeEngine { return ensureNativeModelServer() }
-        let versionURL = urlJoin("/api/version", config.ollamaBaseUrl)
-        if isReachable(versionURL) { return true }
-        let localBin = config.env("ROACHNET_LOCAL_BIN_PATH").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(config.repoRoot, "bin")
-        let candidates = [Path.join(localBin, "ollama"), "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
-        guard let ollama = candidates.first(where: { Files.exists($0) }) else {
-            log("external Ollama runner requested but none is installed; using native RoachInference")
-            return startNativeModelServer()
-        }
-        return withState {
-            if ollamaProcessPID != nil { return false }
-            guard let parsed = WebURL(config.ollamaBaseUrl) else { return false }
-            var environment = config.environment
-            // The model server needs none of RoachNet's own credentials.
-            for secret in ["ROACHNET_COMPANION_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"] { environment.removeValue(forKey: secret) }
-            environment["OLLAMA_HOST"] = "\(parsed.hostname):\(parsed.port.isEmpty ? "11434" : parsed.port)"
-            environment["OLLAMA_MODELS"] = config.env("OLLAMA_MODELS").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(storageRoot, "models", "ollama")
-            if let pid = Processes.spawnDetached(ollama, ["serve"], environment: environment) {
-                ollamaProcessPID = pid
-                log("started ollama pid=\(pid)")
+        if !usesNativeEngine {
+            let ollama = personsOllamaURL
+            let version = urlJoin("/api/version", ollama)
+            if isReachable(version), !answersAsRoachInference(version) {
+                personsOllamaInUse.value = true
+                useModelServer(at: ollama)
+                return true
             }
-            runtimeReachabilityCache.invalidate(versionURL)
-            installedModelsCache.invalidate(config.ollamaBaseUrl)
-            return false
+            if !personsOllamaMissingLogged.value {
+                personsOllamaMissingLogged.value = true
+                log("ROACHNET_INFERENCE_ENGINE=ollama, but no Ollama answers at \(safeServiceUrl(JSON(ollama))); RoachInference answers until one does. "
+                    + "RoachNet doesn't start Ollama itself: start it, or set ROACHNET_OLLAMA_URL to where it listens.")
+            }
         }
+        personsOllamaInUse.value = false
+        return ensureNativeModelServer()
     }
 
-    /// RoachInference serves the configured model address unless something
-    /// already answers there:
-    /// - another runtime's RoachInference is shared;
-    /// - an address somebody chose with `OLLAMA_BASE_URL` is used as configured,
-    ///   whatever answers there;
-    /// - on RoachNet's own address (loopback port 36434, where the app points
-    ///   `OLLAMA_BASE_URL`), any other program keeps its port and is never
-    ///   stopped from here. That is usually a 1.0.x `ollama serve` that outlived
-    ///   its app after an upgrade. RoachNet's model traffic doesn't quietly go
-    ///   to it: RoachInference takes a free loopback port and
-    ///   `modelServerBaseUrl` points there.
-    @discardableResult
-    func ensureNativeModelServer() -> Bool {
-        if withState({ nativeModelServer?.server != nil }) { return true }
-        let configured = urlJoin("/api/version", config.ollamaBaseUrl)
-        guard isReachable(configured) else { return startNativeModelServer() }
-        guard usesRoachNetModelAddress, !answersAsRoachInference(configured) else { return true }
-        return startNativeModelServer(onFreePort: true)
+    /// Where a person's own Ollama listens: `ROACHNET_OLLAMA_URL` when set;
+    /// otherwise `OLLAMA_BASE_URL` when somebody pointed it somewhere other
+    /// than RoachNet's own model address; otherwise Ollama's default.
+    var personsOllamaURL: String {
+        if let explicit = config.env("ROACHNET_OLLAMA_URL")?.trimmingCharacters(in: .whitespacesAndNewlines), !explicit.isEmpty {
+            return explicit
+        }
+        if !Self.isRoachNetOwnModelURL(config.ollamaBaseUrl) { return config.ollamaBaseUrl }
+        return "http://127.0.0.1:\(Self.ollamaPort)"
     }
+
+    /// Ollama's default port. RoachNet never listens there, so a person's
+    /// Ollama can always start.
+    static let ollamaPort = "11434"
 
     /// RoachNet's own model port. The app sets `OLLAMA_BASE_URL` to
     /// `http://127.0.0.1:36434`, which is also the runtime's default.
     static let roachNetModelPort = "36434"
 
-    /// Whether `OLLAMA_BASE_URL` is RoachNet's own model address rather than
-    /// one somebody set on purpose.
-    var usesRoachNetModelAddress: Bool {
-        guard let parsed = WebURL(config.ollamaBaseUrl), parsed.port == Self.roachNetModelPort else { return false }
+    /// Where RoachInference listens: the configured model address, except
+    /// that RoachNet never takes Ollama's port. An address on 11434, or with
+    /// no port, means RoachNet's own port, and so does
+    /// ROACHNET_INFERENCE_ENGINE=ollama, where the configured address may be
+    /// the person's Ollama.
+    var roachInferenceURL: String {
+        let own = "http://127.0.0.1:\(Self.roachNetModelPort)"
+        guard usesNativeEngine, let parsed = WebURL(config.ollamaBaseUrl),
+              !parsed.port.isEmpty, parsed.port != Self.ollamaPort else { return own }
+        return config.ollamaBaseUrl
+    }
+
+    /// Whether `url` is RoachNet's own model address (loopback, port 36434)
+    /// rather than one somebody set on purpose.
+    static func isRoachNetOwnModelURL(_ url: String) -> Bool {
+        guard let parsed = WebURL(url), parsed.port == roachNetModelPort else { return false }
         return (try? RuntimeServer.normalizeLoopbackHost(parsed.hostname)) != nil
+    }
+
+    /// Whether `OLLAMA_BASE_URL` is RoachNet's own model address.
+    var usesRoachNetModelAddress: Bool { Self.isRoachNetOwnModelURL(config.ollamaBaseUrl) }
+
+    /// Points RoachNet's model traffic at `address`.
+    func useModelServer(at address: String) {
+        guard modelServerAddress.value != address else { return }
+        modelServerAddress.value = address
+        runtimeReachabilityCache.invalidate(urlJoin("/api/version", address))
+        installedModelsCache.invalidate(address)
+    }
+
+    /// Makes sure RoachInference answers at `roachInferenceURL` and, when
+    /// `route` is true, points RoachNet's model traffic at it:
+    /// - another runtime's RoachInference there is shared;
+    /// - an address somebody chose with `OLLAMA_BASE_URL` is used as
+    ///   configured, whatever answers there;
+    /// - on RoachNet's own address (loopback port 36434), any other program
+    ///   keeps its port and is never stopped from here. That is usually a 1.0.x
+    ///   `ollama serve` that outlived its app after an upgrade. RoachNet's model
+    ///   traffic doesn't quietly go to it: RoachInference takes a free loopback
+    ///   port and `modelServerBaseUrl` points there.
+    @discardableResult
+    func ensureNativeModelServer(route: Bool = true) -> Bool {
+        if let address = roachInferenceAddress.value {
+            if route { useModelServer(at: address) }
+            return true
+        }
+        let target = roachInferenceURL
+        let version = urlJoin("/api/version", target)
+        guard isReachable(version) else { return startNativeModelServer(at: target, route: route) }
+        if answersAsRoachInference(version) || !Self.isRoachNetOwnModelURL(target) {
+            if route { useModelServer(at: target) }
+            return true
+        }
+        return startNativeModelServer(at: target, onFreePort: true, route: route)
     }
 
     /// RoachInference's `/api/version` names it (`roachnet-native-…`); Ollama's is a bare version.
@@ -87,43 +127,53 @@ extension NativeRuntime {
         (try? roachInferenceIdentityCache.get(versionURL)) ?? false
     }
 
-    /// Serves the native engine on the configured local-model address (loopback
-    /// only), or on a free loopback port when another program holds that one.
+    /// Serves the native engine at `target` (loopback only, never Ollama's
+    /// port), or on a free loopback port when another program holds
+    /// RoachNet's own port.
     @discardableResult
-    func startNativeModelServer(onFreePort: Bool = false) -> Bool {
+    func startNativeModelServer(at target: String, onFreePort: Bool = false, route: Bool = true) -> Bool {
         withState {
-            if nativeModelServer?.server != nil { return true }
-            guard let parsed = WebURL(config.ollamaBaseUrl),
+            if let address = roachInferenceAddress.value {
+                if route { useModelServer(at: address) }
+                return true
+            }
+            guard let parsed = WebURL(target),
                   let host = try? RuntimeServer.normalizeLoopbackHost(parsed.hostname),
-                  let port = UInt16(parsed.port.isEmpty ? "11434" : parsed.port) else {
-                log("native model server not started: OLLAMA_BASE_URL must be a loopback address")
+                  let port = UInt16(parsed.port), parsed.port != Self.ollamaPort else {
+                log("native model server not started: \(safeServiceUrl(JSON(target))) must be a loopback address with a port other than Ollama's \(Self.ollamaPort)")
                 return false
             }
             let server = nativeModelServer ?? NativeModelServer(store: nativeModelStore)
             server.tracer = tracer
             server.subscriptions = subscriptionModels
+            let bindHost = host == "localhost" ? "127.0.0.1" : host
             do {
-                let bindHost = host == "localhost" ? "127.0.0.1" : host
-                try server.start(host: bindHost, port: onFreePort ? 0 : port)
-                if onFreePort, let bound = server.server?.port {
-                    let address = "http://\(bindHost.contains(":") ? "[\(bindHost)]" : bindHost):\(bound)"
-                    modelServerAddressOverride.value = address
-                    log("another program answers on \(config.ollamaBaseUrl) (not RoachInference), so RoachInference serves \(address). "
-                        + "Quit that program and restart RoachNet to use the usual address, or set ROACHNET_INFERENCE_ENGINE=ollama to use that program instead.")
-                } else {
-                    modelServerAddressOverride.value = nil
+                do {
+                    try server.start(host: bindHost, port: onFreePort ? 0 : port)
+                } catch where !onFreePort && Self.isRoachNetOwnModelURL(target) {
+                    // Something that doesn't answer HTTP holds RoachNet's own port.
+                    log("RoachInference couldn't listen on \(target) (\(error)); using a free loopback port")
+                    try server.start(host: bindHost, port: 0)
                 }
+                guard let bound = server.server?.port else { return false }
+                let address = bound == port ? target : "http://\(bindHost.contains(":") ? "[\(bindHost)]" : bindHost):\(bound)"
+                if address != target {
+                    log("another program holds \(target), so RoachInference serves \(address). "
+                        + "Quit that program and restart RoachNet to use the usual address.")
+                }
+                roachInferenceAddress.value = address
                 nativeModelServer = server
                 #if canImport(CryptoKit) && canImport(Metal)
                 cluster.server = server
                 server.cluster = cluster
                 cluster.start()
                 #endif
-                runtimeReachabilityCache.invalidate(urlJoin("/api/version", modelServerBaseUrl))
-                installedModelsCache.invalidate(modelServerBaseUrl)
+                if route { useModelServer(at: address) }
+                runtimeReachabilityCache.invalidate(urlJoin("/api/version", address))
+                installedModelsCache.invalidate(address)
                 return true
             } catch {
-                log("native model server could not bind \(onFreePort ? "a free port on \(host)" : config.ollamaBaseUrl): \(error)")
+                log("native model server could not listen on \(onFreePort ? "a free port on \(bindHost)" : target): \(error)")
                 return false
             }
         }
@@ -594,7 +644,7 @@ extension NativeRuntime {
             "diagnostics": [
                 "status": JSON(ollama["available"].truthy ? "ready" : "needs-runtime"),
                 "probes": [
-                    ["id": "ollama", "label": JSON(usesNativeEngine ? "RoachInference model server" : "Ollama"), "available": JSON(ollama["available"].truthy), "detail": ollama["error"] || "Local model server probe."],
+                    ["id": "ollama", "label": JSON(modelServerIsOllama ? "Ollama" : "RoachInference model server"), "available": JSON(ollama["available"].truthy), "detail": ollama["error"] || "Local model server probe."],
                     ["id": "openclaw", "label": "OpenClaw compatibility lane", "available": JSON(openclaw["available"].truthy), "detail": openclaw["error"] || "Compatibility probe only; RoachClaw is native-first."],
                     ["id": "roachclaw-native-agent", "label": "RoachClaw native agent", "available": true, "detail": JSON("\((agent["runtime"] || "native agent").jsString) is available without a WebUI bridge.")],
                 ],
@@ -995,7 +1045,7 @@ extension NativeRuntime {
         [
             ["service_name": "roachnet_kiwix_serve", "friendly_name": "RoachNet Library", "description": "Offline encyclopedias, field manuals, and reference archives staged inside RoachNet.", "icon": "IconBooks", "powered_by": "Kiwix", "ui_location": "8090", "display_order": 1],
             ["service_name": "roachnet_kolibri", "friendly_name": "RoachNet Academy", "description": "Structured offline education content and coursework surfaced through RoachNet.", "icon": "IconSchool", "powered_by": "Kolibri", "ui_location": "8300", "display_order": 2],
-            ["service_name": "roachnet_ollama", "friendly_name": "RoachNet Chat", "description": "Local AI chat and model tooling managed from the RoachNet command grid.", "icon": "IconWand", "powered_by": JSON(usesNativeEngine ? "RoachInference" : "Ollama"), "ui_location": "/chat", "display_order": 3],
+            ["service_name": "roachnet_ollama", "friendly_name": "RoachNet Chat", "description": "Local AI chat and model tooling managed from the RoachNet command grid.", "icon": "IconWand", "powered_by": JSON(modelServerIsOllama ? "Ollama" : "RoachInference"), "ui_location": "/chat", "display_order": 3],
             ["service_name": "roachnet_roachsync", "friendly_name": "RoachSync", "description": "Private sync for the RoachNet vault, settings, and future shared installs.", "icon": "IconArrowsExchange", "powered_by": "Native companion bridge", "ui_location": "8384", "display_order": 4],
             ["service_name": "roachnet_flatnotes", "friendly_name": "RoachNet Notes", "description": "Fast local notes for fragments, checklists, and working references on the same machine.", "icon": "IconNotes", "powered_by": "Flat file vault", "ui_location": "/vault", "display_order": 10],
             ["service_name": "roachnet_cyberchef", "friendly_name": "RoachNet Data Lab", "description": "Encoding, decoding, and analysis tools adapted for RoachNet field workflows.", "icon": "IconChefHat", "powered_by": "Native utilities", "ui_location": "/dev", "display_order": 11],

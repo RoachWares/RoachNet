@@ -19,7 +19,7 @@ extension NativeRuntime {
             return .json(200, ["macs": .array(node.nearby())])
         case ("PUT", "/api/cluster"), ("PATCH", "/api/cluster"):
             try node.update(try readRequestJSON(&request))
-            if node.settings.enabled, nativeModelServer == nil { _ = startNativeModelServer() }
+            if node.settings.enabled, nativeModelServer == nil { _ = ensureNativeModelServer(route: !modelServerIsOllama) }
             return .json(200, node.status(probe: false))
         case ("POST", "/api/cluster/peers"), ("DELETE", "/api/cluster/peers"):
             let body = try readRequestJSON(&request)

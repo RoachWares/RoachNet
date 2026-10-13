@@ -528,21 +528,4 @@ public enum Processes {
             errorOutput: String(decoding: errData.value, as: UTF8.self)
         )
     }
-
-    /// Launches a detached background process (e.g. `ollama serve`).
-    public static func spawnDetached(_ executable: String, _ arguments: [String], environment: [String: String]) -> Int32? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            return process.processIdentifier
-        } catch {
-            return nil
-        }
-    }
 }

@@ -13,26 +13,34 @@ public final class NativeRuntime {
     var benchmarkStatus: JSON = ["status": "idle", "benchmarkId": nil]
     var systemUpdateStatus: JSON
     var latestReleaseCache: (cachedAt: Double, release: JSON)?
-    var ollamaProcessPID: Int32?
     var downloadJobs: [DownloadJob] = []
     var companionLocalURL: String?
     var listenPort: UInt16 = 0
     var companionBoundPort: UInt16 = 0
     /// RoachNet's own inference engine behind an Ollama-compatible API. Default
-    /// engine; set ROACHNET_INFERENCE_ENGINE=ollama to use an external runner.
+    /// engine; ROACHNET_INFERENCE_ENGINE=ollama uses an Ollama the person runs.
     var nativeModelServer: NativeModelServer?
 
     var usesNativeEngine: Bool {
         (config.env("ROACHNET_INFERENCE_ENGINE") ?? "native").lowercased() != "ollama"
     }
 
-    /// Set when another program already answered on the configured model
-    /// address and RoachInference took a free loopback port instead.
-    let modelServerAddressOverride = LockedBox<String?>(nil)
+    /// Where RoachNet's model traffic goes once `ensureOllama` has decided:
+    /// RoachInference (on its own port, or a free one when another program
+    /// holds that), or with ROACHNET_INFERENCE_ENGINE=ollama the person's Ollama.
+    let modelServerAddress = LockedBox<String?>(nil)
+    /// Where this runtime's RoachInference listens, once it has started.
+    let roachInferenceAddress = LockedBox<String?>(nil)
+    /// True while a person's own Ollama answers RoachNet's model requests.
+    let personsOllamaInUse = LockedBox(false)
+    /// The note that no Ollama answers is logged once, not on every request.
+    let personsOllamaMissingLogged = LockedBox(false)
 
-    /// Where RoachNet's own model traffic goes: `OLLAMA_BASE_URL`, unless
-    /// RoachInference had to serve on another port (see `ensureNativeModelServer`).
-    var modelServerBaseUrl: String { modelServerAddressOverride.value ?? config.ollamaBaseUrl }
+    /// Where RoachNet's own model traffic goes. Before anything has been
+    /// decided it is where RoachInference would listen (or, with
+    /// ROACHNET_INFERENCE_ENGINE=ollama, the person's Ollama), never Ollama's
+    /// port in RoachInference's place.
+    var modelServerBaseUrl: String { modelServerAddress.value ?? (usesNativeEngine ? roachInferenceURL : personsOllamaURL) }
 
     /// RoachTrace: local traces of Org runs, chats and model-server requests
     /// (`<storage>/state/traces`, owner-only). The server touches it at start

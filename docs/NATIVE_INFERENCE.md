@@ -59,6 +59,15 @@ How the pieces work:
 - **Errors come back in each API's shape.** A missing model is a 404 before a stream starts.
 - **The Org's RoachClaw agents** send their action schema as the format, so even a small local model always replies with one well-formed action.
 
+## Running beside Ollama
+
+RoachNet and an Ollama you run yourself never share a port, and RoachNet never starts, stops or changes your Ollama.
+
+- RoachInference listens on `127.0.0.1:36434`, RoachNet's own port, and never on Ollama's port, 11434. An `OLLAMA_BASE_URL` on 11434, or with no port, still gets 36434.
+- When another program already holds 36434 (an older RoachNet's `ollama serve` left running after an upgrade, say), that program keeps its port and keeps running, and RoachInference takes a free loopback port instead.
+- `ROACHNET_INFERENCE_ENGINE=ollama` sends RoachNet's model requests to an Ollama you already run: at `ROACHNET_OLLAMA_URL` when that's set, otherwise at `OLLAMA_BASE_URL` when it names somewhere other than RoachNet's own address, otherwise at `127.0.0.1:11434`. While nothing answers there, RoachInference does, and RoachNet moves to your Ollama once it is running. RoachNet doesn't start Ollama for you.
+- Models in an Ollama models folder (`OLLAMA_MODELS`) are read in place. RoachNet never writes to that folder.
+
 ## Metal performance
 
 Measured on an Apple M2 Pro (16 GB) running macOS 26.6. The figures are greedy decode of 128 tokens, warm, with the model on the internal SSD. Ollama is the 0.40.1 build that 1.0.6 bundles, running the same model through its own registry.
