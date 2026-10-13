@@ -352,6 +352,9 @@ extension NativeRuntime {
         }
         var handleOpen = true
         func closeHandle() { if handleOpen { try? handle.close(); handleOpen = false } }
+        // Whether this download's file has taken its place. Until then a file
+        // at that path is an earlier download's, and stays.
+        var placed = false
 
         do {
             if !job.parts.isEmpty {
@@ -361,16 +364,18 @@ extension NativeRuntime {
             }
             closeHandle()
             if withState({ job.status }) == "cancelled" { throw RuntimeError("This operation was aborted", statusCode: 499) }
-            try Files.rename(job.partialFilepath, job.filepath)
-            Files.removeFile(resumeMarkerPath(job))
+            // Checked before the file takes its place, so a bad download never
+            // replaces one that is already there.
             if let expected = job.expectedSha256 {
-                let actual = try SHA256Digest.hexOfFile(atPath: job.filepath)
+                let actual = try SHA256Digest.hexOfFile(atPath: job.partialFilepath)
                 if actual != expected {
-                    Files.removeFile(job.filepath)
                     throw RuntimeError("Checksum mismatch for \(job.url). Expected \(expected), found \(actual).", statusCode: 422)
                 }
                 withState { job.sha256 = actual }
             }
+            try Files.rename(job.partialFilepath, job.filepath)
+            placed = true
+            Files.removeFile(resumeMarkerPath(job))
             if let afterDownload = job.afterDownload {
                 withState {
                     job.status = "installing"
@@ -397,7 +402,7 @@ extension NativeRuntime {
                 Files.removeFile(job.partialFilepath)
                 Files.removeFile(resumeMarkerPath(job))
             }
-            Files.removeFile(job.filepath)
+            if placed { Files.removeFile(job.filepath) }
             withState {
                 job.activeTransfer = nil
                 job.updatedAt = JS.isoNow()

@@ -56,7 +56,7 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 
 ### Downloads, collections and maps
 
-- A download whose name is `.` or `..`, from a download descriptor or a request, gets a generated name instead. Such a name pointed the download at its destination folder or the one above it, which for a ZIM was the whole storage folder, and when that download failed RoachNet removed the folder with everything in it. A download now always lands inside its destination folder, and cleaning up after one removes only a file.
+- A download removes only what it wrote. A name of `.` or `..`, from a download descriptor or a request, pointed it at its destination folder or the one above it (for a ZIM, the whole storage folder), and a failed download removed that folder with everything in it. Such a name now gets a generated one, and a download always lands inside its destination folder. Downloading a file again also removed the copy already there when the new download failed or brought the wrong bytes. The checksum is now checked before the new file takes its place, and a failed download removes only a file it put there.
 - Response size limits hold while bytes arrive, and up front when a server announces a larger body, for collections, pack catalogs, manifests and download descriptors.
 - A live Wikipedia option other than "none" must have a URL.
 - A map tile's gzip size field can no longer make RoachNet reserve gigabytes, and tiles rendered for a previous set of map packs are dropped.

@@ -1,9 +1,9 @@
 import XCTest
 @testable import RoachNetRuntime
 
-/// A download's name can't turn its path into a folder. "." and ".." name
-/// folders, and a failed download used to remove whatever was at its path,
-/// folder and all (ROA-95).
+/// A download removes only what it wrote. Its name can't turn its path into a
+/// folder ("." and ".." name folders), and a failed download leaves whatever
+/// was at its path before: it used to remove that, folder and all (ROA-95).
 final class DownloadNameTests: XCTestCase {
     private var root = ""
     private var server: LoopbackHTTPServer?
@@ -23,14 +23,16 @@ final class DownloadNameTests: XCTestCase {
     }
 
     /// A runtime whose apps downloads come from a local server. Its descriptor
-    /// names `filename`; the file it points to is served, or answers 404.
-    private func runtime(descriptorFilename: String, serveFile: Bool) throws -> (NativeRuntime, String) {
+    /// names `filename` (and `sha256`, when given); the file it points to is
+    /// served, or answers 404.
+    private func runtime(descriptorFilename: String, serveFile: Bool, sha256: String? = nil) throws -> (NativeRuntime, String) {
         server?.stop()
         let port = LockedBox<Int>(0)
         let body = payload
         let server = LoopbackHTTPServer(host: "127.0.0.1", port: 0, maxBodyBytes: 1024) { request in
             if request.target == "/downloads/zim/item.json" {
-                let descriptor: JSON = ["url": JSON("http://127.0.0.1:\(port.value)/item.zim"), "filename": JSON(descriptorFilename)]
+                var descriptor: JSON = ["url": JSON("http://127.0.0.1:\(port.value)/item.zim"), "filename": JSON(descriptorFilename)]
+                if let sha256 { descriptor["sha256"] = JSON(sha256) }
                 let data = Data(descriptor.serialized().utf8)
                 var response = HTTPResponse(status: 200, headers: [("content-type", "application/json"), ("content-length", String(data.count))])
                 response.body = data
@@ -93,5 +95,23 @@ final class DownloadNameTests: XCTestCase {
         XCTAssertThrowsError(try runtime.downloadFile(job))
         XCTAssertTrue(Files.isFile(Path.join(folder, "other.zim")), "the folder and what's in it stay")
         XCTAssertFalse(Files.exists(job.partialFilepath), "the partial file is still cleaned up")
+    }
+
+    /// Downloading a file again that fails, or brings the wrong bytes, leaves
+    /// the copy already there.
+    func testAFailedDownloadLeavesTheFileAlreadyThere() throws {
+        let destination = Path.join(storage, "zim")
+        let installed = Path.join(destination, "item.zim")
+        let earlier = Data("the copy already installed".utf8)
+        let wrongSha = SHA256Digest.hex(Data("something else".utf8))
+        for (serveFile, sha256) in [(false, nil), (true, wrongSha)] as [(Bool, String?)] {
+            try Files.write(earlier, to: installed)
+            let (runtime, descriptor) = try runtime(descriptorFilename: "item.zim", serveFile: serveFile, sha256: sha256)
+            let job = try XCTUnwrap(runtime.queueResolvedDownload(JSON(descriptor), destination, "zim"))
+            XCTAssertEqual(job.filepath, installed)
+            XCTAssertEqual(finish(job, on: runtime), "failed", "serveFile: \(serveFile)")
+            XCTAssertEqual(FileManager.default.contents(atPath: installed), earlier, serveFile ? "the wrong bytes don't replace it" : "a failed download doesn't remove it")
+            XCTAssertFalse(Files.exists(job.partialFilepath))
+        }
     }
 }
