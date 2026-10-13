@@ -33,7 +33,7 @@ async function freePort() {
 }
 
 let runtime
-async function start(extraEnv = {}) {
+async function start(extraEnv = {}, prepare = null) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'rn-model-apis-'))
   const storage = path.join(root, 'storage')
   // Served in place from an Ollama-style folder, as an existing install would be.
@@ -45,6 +45,7 @@ async function start(extraEnv = {}) {
   writeFileSync(path.join(ollama, 'manifests', 'registry.ollama.ai', 'library', 'qwen3', '0.6b'), JSON.stringify({
     layers: [{ mediaType: 'application/vnd.ollama.image.model', digest: `sha256:${digest}`, size: readFileSync(qwen).length }],
   }))
+  prepare?.(root)
   const port = await freePort()
   const child = spawn(binary, [], {
     env: {
@@ -300,6 +301,58 @@ test('models are fitted into memory: a shorter context first, then a clear refus
       tight.child.kill('SIGTERM')
       await rm(tight.root, { recursive: true, force: true })
     }
+  }
+})
+
+test('a model that fits only once a busy one finishes is refused, not squeezed in (ROA-72)', needsModel, async () => {
+  const smol = path.join(modelDir, 'smollm2-135m-q8_0.gguf')
+  if (!existsSync(smol)) return
+  const addModel = (root, file, name, tag) => {
+    const ollama = path.join(root, 'storage', 'models', 'ollama')
+    const digest = createHash('sha256').update(readFileSync(file)).digest('hex')
+    mkdirSync(path.join(ollama, 'manifests', 'registry.ollama.ai', 'library', name), { recursive: true })
+    symlinkSync(file, path.join(ollama, 'blobs', `sha256-${digest}`))
+    writeFileSync(path.join(ollama, 'manifests', 'registry.ollama.ai', 'library', name, tag), JSON.stringify({
+      layers: [{ mediaType: 'application/vnd.ollama.image.model', digest: `sha256:${digest}`, size: readFileSync(file).length }],
+    }))
+  }
+  const chat = (base, model, extra = {}) => fetch(`${base}/api/chat`, {
+    method: 'POST',
+    body: JSON.stringify({ model, stream: false, think: false, messages: [{ role: 'user', content: 'Hi' }], options: { num_predict: 2, num_ctx: 2048 }, ...extra }),
+  })
+  // Measure each model alone, then give the pair a budget a little short of both.
+  const sizes = {}
+  for (const model of [MODEL, 'smollm2:135m']) {
+    const probe = await start({ ROACHNET_MODEL_SLOTS: '1' }, (root) => addModel(root, smol, 'smollm2', '135m'))
+    try {
+      assert.equal((await chat(probe.base, model)).status, 200)
+      sizes[model] = (await (await fetch(`${probe.base}/api/ps`)).json()).models[0].size
+    } finally {
+      probe.child.kill('SIGTERM')
+      await rm(probe.root, { recursive: true, force: true })
+    }
+  }
+  const budget = ((sizes[MODEL] + sizes['smollm2:135m']) * 0.95) / 1_073_741_824
+  const tight = await start({ ROACHNET_MODEL_MEMORY_GB: budget.toFixed(4), ROACHNET_MODEL_SLOTS: '1' }, (root) => addModel(root, smol, 'smollm2', '135m'))
+  try {
+    // Keep the first model busy with a long streamed reply, then ask for the second.
+    const busy = await fetch(`${tight.base}/api/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ model: MODEL, stream: true, think: false, messages: [{ role: 'user', content: 'Count from one to two hundred in words.' }], options: { num_predict: 600, num_ctx: 2048, temperature: 0 } }),
+    })
+    const reader = busy.body.getReader()
+    await reader.read()
+    const second = await chat(tight.base, 'smollm2:135m')
+    const body = await second.json()
+    assert.equal(second.status, 503, JSON.stringify(body))
+    assert.match(body.error, /Try again when they finish/)
+    while (!(await reader.read()).done) {}
+    const ps = (await (await fetch(`${tight.base}/api/ps`)).json()).models
+    assert.ok(ps.reduce((sum, model) => sum + model.size, 0) <= budget * 1_073_741_824, 'the budget held')
+    assert.equal((await chat(tight.base, 'smollm2:135m')).status, 200, 'once the first is idle it is unloaded to make room')
+  } finally {
+    tight.child.kill('SIGTERM')
+    await rm(tight.root, { recursive: true, force: true })
   }
 })
 

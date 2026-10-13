@@ -96,7 +96,16 @@ struct ModelRequest {
 
     static func openAICompletions(_ body: JSON) throws -> ModelRequest {
         var request = ModelRequest(model: body["model"].stringValue ?? "")
-        request.rawPrompt = body["prompt"].stringValue ?? body["prompt"].array.compactMap(\.stringValue).joined()
+        if let items = body["prompt"].arrayValue {
+            // One prompt per request. Several used to be joined into one prompt
+            // (and token arrays dropped), answering a question nobody asked.
+            guard items.count <= 1, items.allSatisfy({ $0.stringValue != nil }) else {
+                throw requestError("Send one text prompt per request; batched prompts and token-array prompts aren't supported.", 400)
+            }
+            request.rawPrompt = items.first?.stringValue ?? ""
+        } else {
+            request.rawPrompt = body["prompt"].stringValue ?? ""
+        }
         request.options = openAIOptions(body)
         request.stream = body["stream"].truthy
         request.includeUsage = body["stream_options"]["include_usage"].truthy

@@ -902,7 +902,7 @@ extension NativeRuntime {
         var headers: [String: String] = [:]
         if let generation { headers["traceparent"] = generation.traceparent }
         do {
-            let reply = try HTTPClient.fetchJSON(urlJoin("/api/chat", config.ollamaBaseUrl), method: "POST", headers: headers, body: body.serializedData(), timeoutMs: 120_000)
+            let reply = try HTTPClient.fetchJSON(urlJoin("/api/chat", modelServerBaseUrl), method: "POST", headers: headers, body: body.serializedData(), timeoutMs: 120_000)
             let usage = TraceUsage(inputTokens: (reply["prompt_eval_count"].clampedInt(0...(1 << 50)) ?? 0), outputTokens: (reply["eval_count"].clampedInt(0...(1 << 50)) ?? 0))
             generation?.end(output: reply["message"]["content"], usage: usage, cost: .local)
             trace?.end(status: "ok", output: reply["message"]["content"])
@@ -917,8 +917,8 @@ extension NativeRuntime {
     func pullModel(_ model: String) {
         ensureOllama()
         if model.isEmpty { return }
-        installedModelsCache.invalidate(config.ollamaBaseUrl)
-        let url = urlJoin("/api/pull", config.ollamaBaseUrl)
+        installedModelsCache.invalidate(modelServerBaseUrl)
+        let url = urlJoin("/api/pull", modelServerBaseUrl)
         let body: JSON = ["name": JSON(model), "stream": false]
         DispatchQueue.global(qos: .utility).async {
             do {
@@ -926,7 +926,7 @@ extension NativeRuntime {
             } catch {
                 self.log("model pull failed: \(error)")
             }
-            self.installedModelsCache.invalidate(self.config.ollamaBaseUrl)
+            self.installedModelsCache.invalidate(self.modelServerBaseUrl)
         }
     }
 }

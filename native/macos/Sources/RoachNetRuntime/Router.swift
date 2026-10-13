@@ -146,7 +146,7 @@ extension NativeRuntime {
         case ("GET", "/api/system/ai/providers"):
             return ok([
                 "providers": [
-                    "ollama": providerStatus("ollama", config.ollamaBaseUrl),
+                    "ollama": providerStatus("ollama", modelServerBaseUrl),
                     "openclaw": providerStatus("openclaw", config.openClawBaseUrl),
                 ],
                 "cloudProviders": roachClawPublicCloudProviderKeysState(),
@@ -275,7 +275,7 @@ extension NativeRuntime {
                 if let value = change["claude"].boolValue ?? change["claude"]["enabled"].boolValue { settings.claude = value }
                 if let value = change["codex"].boolValue ?? change["codex"]["enabled"].boolValue { settings.codex = value }
             }
-            installedModelsCache.invalidate(config.ollamaBaseUrl)
+            installedModelsCache.invalidate(modelServerBaseUrl)
             return ok(["subscriptions": subscriptionModels.status()])
         case ("POST", "/api/roachclaw/tokens"): return ok(createRoachClawApiToken(try body()))
         case ("GET", "/api/roachclaw/cloud-providers"): return ok(roachClawPublicCloudProviderKeysState())

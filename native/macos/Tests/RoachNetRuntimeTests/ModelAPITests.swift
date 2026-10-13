@@ -67,6 +67,17 @@ final class ModelAPITests: XCTestCase {
         XCTAssertEqual(request.format, .schema(.object(properties: ["ok": .boolean], order: ["ok"], required: ["ok"], additional: false)))
     }
 
+    func testCompletionsTakeOnePromptAndRefuseBatches() throws {
+        XCTAssertEqual(try ModelRequest.openAICompletions(["model": "m", "prompt": "Once upon"]).rawPrompt, "Once upon")
+        XCTAssertEqual(try ModelRequest.openAICompletions(["model": "m", "prompt": ["Once upon"]]).rawPrompt, "Once upon")
+        XCTAssertEqual(try ModelRequest.openAICompletions(["model": "m"]).rawPrompt, "")
+        for prompt: JSON in [["a", "b"], [1, 2, 3], [[1, 2, 3]]] {
+            XCTAssertThrowsError(try ModelRequest.openAICompletions(["model": "m", "prompt": prompt]), "\(prompt)") { error in
+                XCTAssertEqual((error as? RuntimeError)?.statusCode, 400)
+            }
+        }
+    }
+
     func testAnthropicAndResponsesInputsBecomeTurns() throws {
         let anthropic = try ModelRequest.anthropicMessages(JSON.parse(#"""
         {"model": "m", "max_tokens": 50, "system": [{"type": "text", "text": "Sys"}],

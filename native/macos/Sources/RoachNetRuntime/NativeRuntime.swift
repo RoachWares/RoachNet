@@ -26,6 +26,14 @@ public final class NativeRuntime {
         (config.env("ROACHNET_INFERENCE_ENGINE") ?? "native").lowercased() != "ollama"
     }
 
+    /// Set when another program already answered on the configured model
+    /// address and RoachInference took a free loopback port instead.
+    let modelServerAddressOverride = LockedBox<String?>(nil)
+
+    /// Where RoachNet's own model traffic goes: `OLLAMA_BASE_URL`, unless
+    /// RoachInference had to serve on another port (see `ensureNativeModelServer`).
+    var modelServerBaseUrl: String { modelServerAddressOverride.value ?? config.ollamaBaseUrl }
+
     /// RoachTrace: local traces of Org runs, chats and model-server requests
     /// (`<storage>/state/traces`, owner-only). The server touches it at start
     /// so it is never first created from two threads at once.
@@ -89,6 +97,12 @@ public final class NativeRuntime {
         } catch {
             return false
         }
+    }
+
+    /// Whether the program answering a `/api/version` URL is RoachInference.
+    lazy var roachInferenceIdentityCache = TTLCache<Bool>(ttlMs: config.runtimeProbeCacheMs) { [unowned self] url in
+        guard let reply = try? HTTPClient.fetchJSON(url, timeoutMs: self.config.serviceHealthProbeTimeoutMs) else { return false }
+        return reply["version"].stringValue?.hasPrefix("roachnet-native") == true
     }
 
     lazy var installedModelsCache = TTLCache<[JSON]>(ttlMs: config.runtimeProbeCacheMs) { baseUrl in

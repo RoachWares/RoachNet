@@ -76,6 +76,10 @@ public final class RuntimeServer {
         let port = UInt16(clamping: JSCoercion.isSafeInteger(portNumber) && portNumber > 0 ? Int(portNumber) : 0)
         let runtime = self.runtime
         _ = runtime.tracer
+        // Lazy caches the model lane reads from several threads; create them once, here.
+        _ = runtime.runtimeReachabilityCache
+        _ = runtime.roachInferenceIdentityCache
+        _ = runtime.installedModelsCache
         let server = LoopbackHTTPServer(host: host, port: port, maxBodyBytes: config.maxRequestBodyBytes) { request in
             runtime.handle(&request)
         }

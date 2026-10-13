@@ -96,7 +96,7 @@ struct OrgAgentLoopAdapter: OrgAdapter {
         var headers: [String: String] = ["content-type": "application/json"]
         switch mode {
         case .roachClawLocal:
-            baseURL = config.string("baseUrl", max: 512) ?? runtime.config.ollamaBaseUrl
+            baseURL = config.string("baseUrl", max: 512) ?? runtime.modelServerBaseUrl
             guard OrgAdapters.allowedEndpoint(baseURL, loopbackOnly: true) else {
                 return .failure("roachclaw_local agents only talk to a model server on this Mac.", code: "adapter_config")
             }

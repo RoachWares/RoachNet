@@ -22,7 +22,9 @@ enum SystemMemory {
     /// How much loaded models may use together: `ROACHNET_MODEL_MEMORY_GB`,
     /// or 80% of the Mac's memory so macOS and the apps around it keep theirs.
     static var modelBudget: Int {
-        if let text = ProcessInfo.processInfo.environment["ROACHNET_MODEL_MEMORY_GB"], let gigabytes = Double(text), gigabytes > 0 {
+        // `Double("inf")` parses, and `Int(.infinity)` traps; past a petabyte isn't a budget anyway.
+        if let text = ProcessInfo.processInfo.environment["ROACHNET_MODEL_MEMORY_GB"], let gigabytes = Double(text),
+           gigabytes > 0, gigabytes < 1_000_000 {
             return Int(gigabytes * 1_073_741_824)
         }
         return total / 10 * 8
@@ -51,7 +53,10 @@ extension NativeModelServer {
     func makeRoom(for name: String, footprint wanted: ModelFootprint, budget: Int) throws -> ModelFootprint {
         var footprint = wanted
         let floor = min(2_048, wanted.context)
-        func resident() -> Int { loaded.values.reduce(0) { $0 + $1.resident } }
+        // An idle copy of this same model (another context length) is replaced by
+        // this load, so it doesn't count against the room; a busy one stays until
+        // its requests finish, so it does.
+        func resident() -> Int { loaded.values.filter { $0.name != name || $0.isBusy }.reduce(0) { $0 + $1.resident } }
         // Idle extra request slots go first; they only hold caches.
         if resident() + footprint.total > budget {
             var trimmed = false
@@ -77,6 +82,13 @@ extension NativeModelServer {
         if footprint.total > budget {
             throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory; models can use \(SystemMemory.gigabytes(budget)) on this Mac. "
                                + "Pick a smaller model or quantization, or set ROACHNET_MODEL_MEMORY_GB.", 507)
+        }
+        // It fits the budget but not beside the models that are busy right now
+        // (they can't be unloaded mid-request). Loading anyway would push the
+        // total past the budget and the Mac into swap.
+        if footprint.total > room {
+            throw requestError("\(name) needs about \(SystemMemory.gigabytes(footprint.total)) of memory, and \(SystemMemory.gigabytes(max(0, room))) is free beside "
+                               + "the models answering requests right now. Try again when they finish.", 503)
         }
         return footprint
     }

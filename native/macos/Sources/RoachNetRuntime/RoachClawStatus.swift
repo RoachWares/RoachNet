@@ -24,9 +24,9 @@ extension NativeRuntime {
     /// RoachNet 1.1 no longer bundles a runner, so a missing one falls back to native.
     @discardableResult
     func ensureOllama() -> Bool {
+        if usesNativeEngine { return ensureNativeModelServer() }
         let versionURL = urlJoin("/api/version", config.ollamaBaseUrl)
         if isReachable(versionURL) { return true }
-        if usesNativeEngine { return startNativeModelServer() }
         let localBin = config.env("ROACHNET_LOCAL_BIN_PATH").flatMap { $0.isEmpty ? nil : $0 } ?? Path.join(config.repoRoot, "bin")
         let candidates = [Path.join(localBin, "ollama"), "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
         guard let ollama = candidates.first(where: { Files.exists($0) }) else {
@@ -51,9 +51,46 @@ extension NativeRuntime {
         }
     }
 
-    /// Serves the native engine on the configured local-model address (loopback only).
+    /// RoachInference serves the configured model address unless something
+    /// already answers there:
+    /// - another runtime's RoachInference is shared;
+    /// - an address somebody chose with `OLLAMA_BASE_URL` is used as configured,
+    ///   whatever answers there;
+    /// - on RoachNet's own address (loopback port 36434, where the app points
+    ///   `OLLAMA_BASE_URL`), any other program keeps its port and is never
+    ///   stopped from here. That is usually a 1.0.x `ollama serve` that outlived
+    ///   its app after an upgrade. RoachNet's model traffic doesn't quietly go
+    ///   to it: RoachInference takes a free loopback port and
+    ///   `modelServerBaseUrl` points there.
     @discardableResult
-    func startNativeModelServer() -> Bool {
+    func ensureNativeModelServer() -> Bool {
+        if withState({ nativeModelServer?.server != nil }) { return true }
+        let configured = urlJoin("/api/version", config.ollamaBaseUrl)
+        guard isReachable(configured) else { return startNativeModelServer() }
+        guard usesRoachNetModelAddress, !answersAsRoachInference(configured) else { return true }
+        return startNativeModelServer(onFreePort: true)
+    }
+
+    /// RoachNet's own model port. The app sets `OLLAMA_BASE_URL` to
+    /// `http://127.0.0.1:36434`, which is also the runtime's default.
+    static let roachNetModelPort = "36434"
+
+    /// Whether `OLLAMA_BASE_URL` is RoachNet's own model address rather than
+    /// one somebody set on purpose.
+    var usesRoachNetModelAddress: Bool {
+        guard let parsed = WebURL(config.ollamaBaseUrl), parsed.port == Self.roachNetModelPort else { return false }
+        return (try? RuntimeServer.normalizeLoopbackHost(parsed.hostname)) != nil
+    }
+
+    /// RoachInference's `/api/version` names it (`roachnet-native-…`); Ollama's is a bare version.
+    func answersAsRoachInference(_ versionURL: String) -> Bool {
+        (try? roachInferenceIdentityCache.get(versionURL)) ?? false
+    }
+
+    /// Serves the native engine on the configured local-model address (loopback
+    /// only), or on a free loopback port when another program holds that one.
+    @discardableResult
+    func startNativeModelServer(onFreePort: Bool = false) -> Bool {
         withState {
             if nativeModelServer?.server != nil { return true }
             guard let parsed = WebURL(config.ollamaBaseUrl),
@@ -66,18 +103,27 @@ extension NativeRuntime {
             server.tracer = tracer
             server.subscriptions = subscriptionModels
             do {
-                try server.start(host: host == "localhost" ? "127.0.0.1" : host, port: port)
+                let bindHost = host == "localhost" ? "127.0.0.1" : host
+                try server.start(host: bindHost, port: onFreePort ? 0 : port)
+                if onFreePort, let bound = server.server?.port {
+                    let address = "http://\(bindHost.contains(":") ? "[\(bindHost)]" : bindHost):\(bound)"
+                    modelServerAddressOverride.value = address
+                    log("another program answers on \(config.ollamaBaseUrl) (not RoachInference), so RoachInference serves \(address). "
+                        + "Quit that program and restart RoachNet to use the usual address, or set ROACHNET_INFERENCE_ENGINE=ollama to use that program instead.")
+                } else {
+                    modelServerAddressOverride.value = nil
+                }
                 nativeModelServer = server
                 #if canImport(CryptoKit) && canImport(Metal)
                 cluster.server = server
                 server.cluster = cluster
                 cluster.start()
                 #endif
-                runtimeReachabilityCache.invalidate(urlJoin("/api/version", config.ollamaBaseUrl))
-                installedModelsCache.invalidate(config.ollamaBaseUrl)
+                runtimeReachabilityCache.invalidate(urlJoin("/api/version", modelServerBaseUrl))
+                installedModelsCache.invalidate(modelServerBaseUrl)
                 return true
             } catch {
-                log("native model server could not bind \(config.ollamaBaseUrl): \(error)")
+                log("native model server could not bind \(onFreePort ? "a free port on \(host)" : config.ollamaBaseUrl): \(error)")
                 return false
             }
         }
@@ -97,7 +143,7 @@ extension NativeRuntime {
 
     func installedModels() -> [JSON] {
         ensureOllama()
-        return (try? installedModelsCache.get(config.ollamaBaseUrl)) ?? []
+        return (try? installedModelsCache.get(modelServerBaseUrl)) ?? []
     }
 
     // MARK: System info
@@ -198,7 +244,7 @@ extension NativeRuntime {
         let openclawBox = LockedBox<JSON>(.null)
         let modelsBox = LockedBox<[JSON]>([])
         group.enter()
-        DispatchQueue.global().async { ollamaBox.value = self.providerStatus("ollama", self.config.ollamaBaseUrl); group.leave() }
+        DispatchQueue.global().async { ollamaBox.value = self.providerStatus("ollama", self.modelServerBaseUrl); group.leave() }
         group.enter()
         DispatchQueue.global().async { openclawBox.value = self.providerStatus("openclaw", self.config.openClawBaseUrl); group.leave() }
         group.enter()
@@ -386,7 +432,7 @@ extension NativeRuntime {
                     : "Local model runner is not reachable yet; RoachClaw can still show local state."),
                 "meta": [
                     "provider": "ollama",
-                    "endpoint": JSON(safeServiceUrl(ollama["baseUrl"] || JSON(config.ollamaBaseUrl))),
+                    "endpoint": JSON(safeServiceUrl(ollama["baseUrl"] || JSON(modelServerBaseUrl))),
                     "modelCount": JSON(models.count),
                 ],
             ],
@@ -957,7 +1003,7 @@ extension NativeRuntime {
     }
 
     func systemServices(_ ollamaStatus: JSON? = nil) -> [JSON] {
-        let ollama = ollamaStatus ?? providerStatus("ollama", config.ollamaBaseUrl)
+        let ollama = ollamaStatus ?? providerStatus("ollama", modelServerBaseUrl)
         return serviceCatalog.map { service in
             let name = service["service_name"].jsString
             let installed = name == "roachnet_ollama" ? ollama["available"].truthy : ["roachnet_flatnotes", "roachnet_cyberchef"].contains(name)

@@ -164,3 +164,101 @@ test('pull downloads, verifies sha256, installs, and rejects tampered files', ne
     await stop(runtime)
   }
 })
+
+// Answers like an Ollama: the bare version a 1.0.x RoachNet's `ollama serve` reports.
+function ollamaLookalike() {
+  return http.createServer((req, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(req.url === '/api/version' ? '{"version":"0.40.3"}' : '{"models":[{"name":"not-ours:1b"}]}')
+  })
+}
+
+function listen(server, port) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(port, '127.0.0.1', () => {
+      server.off('error', reject)
+      resolve(server.address().port)
+    })
+  })
+}
+
+async function closeServer(server) {
+  server.closeAllConnections?.()
+  await new Promise((resolve) => server.close(resolve))
+}
+
+// Starts the runtime with `env` and reports where its model traffic goes.
+async function modelLaneOf(env) {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rn-model-port-'))
+  const storage = path.join(root, 'storage')
+  mkdirSync(storage, { recursive: true })
+  const apiPort = await freePort()
+  const child = spawn(binary, [], {
+    env: {
+      PATH: process.env.PATH,
+      HOME: root,
+      HOST: '127.0.0.1',
+      PORT: String(apiPort),
+      ROACHNET_REPO_ROOT: repoRoot,
+      ROACHNET_STORAGE_PATH: storage,
+      ROACHNET_COMPANION_ENABLED: '0',
+      ROACHNET_CLUSTER_BONJOUR: '0',
+      ...env,
+    },
+    stdio: 'ignore',
+  })
+  const api = `http://127.0.0.1:${apiPort}`
+  try {
+    for (let i = 0; i < 150; i += 1) {
+      try {
+        // installed-models runs ensureOllama before it answers.
+        const models = await (await fetch(`${api}/api/ollama/installed-models`)).json()
+        const { ollama } = (await (await fetch(`${api}/api/system/ai/providers`)).json()).providers
+        if (ollama.available) {
+          const { version } = await (await fetch(`${ollama.baseUrl}/api/version`)).json()
+          return { baseUrl: ollama.baseUrl, models: models.map((model) => model.name), version }
+        }
+      } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    throw new Error('the runtime never reported a model lane')
+  } finally {
+    child.kill('SIGTERM')
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+test("another program on RoachNet's model port keeps it, and RoachInference takes a free one (ROA-72)", needsBinary, async (t) => {
+  // Stands in for an `ollama serve` that a 1.0.x RoachNet left running on 127.0.0.1:36434.
+  const lookalike = ollamaLookalike()
+  try {
+    await listen(lookalike, 36434)
+  } catch (error) {
+    if (error.code === 'EADDRINUSE') return t.skip('127.0.0.1:36434 is already in use on this machine')
+    throw error
+  }
+  try {
+    const lane = await modelLaneOf({})
+    assert.notEqual(lane.baseUrl, 'http://127.0.0.1:36434', "RoachNet's model traffic does not quietly go to the other program")
+    assert.match(lane.version, /^roachnet-native-/)
+    assert.ok(!lane.models.includes('not-ours:1b'))
+    const { version } = await (await fetch('http://127.0.0.1:36434/api/version')).json()
+    assert.equal(version, '0.40.3', 'the other program keeps its port and keeps running')
+  } finally {
+    await closeServer(lookalike)
+  }
+})
+
+test('a model address somebody set with OLLAMA_BASE_URL is used as configured', needsBinary, async () => {
+  const lookalike = ollamaLookalike()
+  const modelBase = `http://127.0.0.1:${await listen(lookalike, 0)}`
+  try {
+    const lane = await modelLaneOf({ OLLAMA_BASE_URL: modelBase })
+    assert.equal(lane.baseUrl, modelBase)
+    assert.equal(lane.version, '0.40.3')
+    assert.deepEqual(lane.models, ['not-ours:1b'])
+  } finally {
+    await closeServer(lookalike)
+  }
+})
