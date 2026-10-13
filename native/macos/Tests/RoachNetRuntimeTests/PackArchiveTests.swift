@@ -181,6 +181,12 @@ final class PackArchiveTests: XCTestCase {
             // One name in two Unicode normalization forms: one file on APFS, two on ext4.
             ("normalization.zip", [.init(name: "caf\u{E9}.json", data: json, flags: 0x0800),
                                    .init(name: "cafe\u{301}.json", data: json, flags: 0x0800)]),
+            // Names that differ only by Unicode case folding, not by lowercasing:
+            // APFS folds the final sigma to sigma, so these are one file there too.
+            ("sigma.zip", [.init(name: "\u{3C3}.json", data: json, flags: 0x0800),
+                           .init(name: "\u{3C2}.json", data: json, flags: 0x0800)]),
+            ("sigma-folder.zip", [.init(name: "\u{3A3}", data: json, flags: 0x0800),
+                                  .init(name: "\u{3C2}/b.json", data: json, flags: 0x0800)]),
         ]
         for (file, items) in cases {
             XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file)

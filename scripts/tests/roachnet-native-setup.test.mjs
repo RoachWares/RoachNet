@@ -251,6 +251,83 @@ test('native setup refuses an app payload without a usable runtime helper and ke
   }
 })
 
+test('a failed install from the Setup app keeps the installed copy\'s settings, though the app saved new ones first', requiresNativeBinary, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-setup-app-flow-'))
+  const home = path.join(tempRoot, 'home')
+  mkdirSync(home, { recursive: true })
+  const assets = buildFakeInstallerAssets(tempRoot)
+  const installPath = path.join(home, 'RoachNet')
+  const elsewhere = path.join(home, 'RoachNet-elsewhere')
+  const configPath = path.join(home, 'installer.json')
+  const env = {
+    PATH: process.env.PATH,
+    HOME: home,
+    ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
+    ROACHNET_INSTALLER_CONFIG_PATH: configPath,
+    ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+    ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
+    ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
+    ROACHNET_HOSTS_FILE: path.join(tempRoot, 'hosts'),
+  }
+  const payloadHelper = path.join(assets, 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')
+  const restoreHelper = () => {
+    rmSync(payloadHelper, { recursive: true, force: true })
+    cpSync(nativeBinary, payloadHelper)
+    chmodSync(payloadHelper, 0o755)
+  }
+  const savedConfig = () => JSON.parse(readFileSync(configPath, 'utf8'))
+  // What the Setup app's Install button does: it writes its config file, saves
+  // the same choices through /api/config, then asks for the install.
+  const installFromApp = async (url, folder) => {
+    const choices = {
+      ...savedConfig(),
+      installPath: folder,
+      installedAppPath: path.join(folder, 'app', 'RoachNet.app'),
+      storagePath: path.join(folder, 'storage'),
+      autoLaunch: false,
+      installRoachClaw: false,
+    }
+    writeFileSync(configPath, JSON.stringify(choices, null, 2))
+    const saved = await call(`${url}/api/config`, 'POST', choices)
+    assert.equal(saved.status, 200, JSON.stringify(saved.body))
+    return runInstall(url, choices)
+  }
+  let service
+  try {
+    const first = spawnSync(nativeBinary, ['--install', '--install-path', installPath, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
+    assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`)
+    const installed = savedConfig()
+    assert.equal(typeof installed.setupCompletedAt, 'string')
+
+    // Setup opens over the finished install, and the payload has lost its helper.
+    service = await startSetup(env)
+    rmSync(payloadHelper)
+    const failed = await installFromApp(service.url, elsewhere)
+    assert.equal(failed.lastCompletedTask.status, 'failed')
+    assert.match(failed.lastCompletedTask.error, /no usable runtime helper/)
+    assert.equal(savedConfig().installPath, installPath, 'the saved settings describe the copy that is still installed')
+    assert.equal(savedConfig().setupCompletedAt, installed.setupCompletedAt)
+    assert.equal(existsSync(path.join(installPath, 'app', 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')), true)
+    assert.equal(existsSync(elsewhere), false)
+    assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /staging-/)
+
+    // An install that works moves the remembered settings along with it.
+    restoreHelper()
+    const moved = await installFromApp(service.url, elsewhere)
+    assert.equal(moved.lastCompletedTask.status, 'completed', JSON.stringify(moved.lastCompletedTask))
+    const movedConfig = savedConfig()
+    assert.equal(movedConfig.installPath, elsewhere)
+    rmSync(payloadHelper)
+    const back = await installFromApp(service.url, installPath)
+    assert.equal(back.lastCompletedTask.status, 'failed')
+    assert.equal(savedConfig().installPath, elsewhere, 'the settings of the latest finished install come back')
+    assert.equal(savedConfig().setupCompletedAt, movedConfig.setupCompletedAt)
+  } finally {
+    service?.child.kill('SIGTERM')
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
 test('roachnet-runtime --install performs a headless install for Homebrew and scripted lanes', requiresNativeBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-headless-'))
   const home = path.join(tempRoot, 'home')

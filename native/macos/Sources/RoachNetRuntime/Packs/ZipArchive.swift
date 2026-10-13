@@ -216,7 +216,7 @@ struct ZipArchive {
                 // One path, one file, even on a volume that ignores case. The
                 // path is the one the file unpacks to, so "a/./b" and "a//b"
                 // count as "a/b": unzip would write each over the last.
-                guard fileNames.insert(parts.joined(separator: "/").lowercased()).inserted else {
+                guard fileNames.insert(Self.collisionKey(parts)).inserted else {
                     throw refused("names \"\(name)\" twice")
                 }
             }
@@ -290,10 +290,10 @@ struct ZipArchive {
         for entry in entries {
             let parts = Self.unpackedParts(entry.name)
             for end in stride(from: 1, through: entry.isDirectory ? parts.count : parts.count - 1, by: 1) {
-                folders.insert(parts[..<end].joined(separator: "/").lowercased())
+                folders.insert(Self.collisionKey(parts[..<end]))
             }
         }
-        if let clash = entries.first(where: { !$0.isDirectory && folders.contains(Self.unpackedParts($0.name).joined(separator: "/").lowercased()) }) {
+        if let clash = entries.first(where: { !$0.isDirectory && folders.contains(Self.collisionKey(Self.unpackedParts($0.name))) }) {
             throw refused("puts a file and a folder at the same place (\"\(clash.name)\")")
         }
         self.entries = entries
@@ -303,6 +303,15 @@ struct ZipArchive {
     /// "." components left out, so "a//./b" is "a/b".
     static func unpackedParts(_ name: String) -> [String] {
         name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
+    }
+
+    /// The key two paths share when a volume that ignores case would make them
+    /// one. That is Unicode case folding, which is how APFS compares names, not
+    /// lowercasing: "ς.json" and "σ.json" are one file there, as "A.json" and
+    /// "a.json" are. Swift compares the keys by canonical equivalence, so a name
+    /// in two Unicode normalization forms is one key too.
+    static func collisionKey<Parts: Sequence>(_ parts: Parts) -> String where Parts.Element == String {
+        parts.joined(separator: "/").folding(options: [.caseInsensitive], locale: nil)
     }
 
     /// `ditto --sequesterRsrc` keeps resource forks under `__MACOSX/`. Both

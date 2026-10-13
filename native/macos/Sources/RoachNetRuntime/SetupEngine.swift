@@ -28,6 +28,11 @@ public final class SetupEngine {
     private var activeTask: JSON?
     private var lastCompletedTask: JSON?
     private var persistedConfigCache: JSON?
+    /// The saved config of the copy that is installed, as this Setup service
+    /// found it or as its last install left it. The Setup app saves the choices
+    /// on screen (a new install folder, say) before it asks for an install, so
+    /// this, not the config saved by then, is what a failed install puts back.
+    private var installedConfig: JSON?
     var appHelperName: String { RuntimeBuildInfo.executableName }
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment, version: String = RuntimeConfiguration.shared.version) {
@@ -471,11 +476,12 @@ public final class SetupEngine {
     func runInstall(_ plan: InstallPlan) {
         var stagingRoot: String?
         // When this run would replace a finished install and fails before the
-        // swap, the saved config goes back to what it was, so it still
+        // swap, the saved config goes back to the installed copy's, so it still
         // describes the copy that stays installed. A first install keeps the
         // choices it was given, ready for a retry.
-        let previousConfig = loadPersistedConfig()
+        let previousConfig = synchronized { installedConfig } ?? loadPersistedConfig()
         let restoreConfigOnFailure = previousConfig["setupCompletedAt"].stringValue != nil
+            && installLooksPresent(previousConfig["installPath"].stringValue ?? "", appPath: previousConfig["installedAppPath"].stringValue ?? "")
         var swapped = false
         do {
             saveConfig(plan.config)
@@ -540,6 +546,8 @@ public final class SetupEngine {
             completedConfig["bootstrapPending"] = false
             completedConfig["bootstrapFailureCount"] = 0
             saveConfig(completedConfig)
+            let saved = loadPersistedConfig()
+            synchronized { installedConfig = saved }
 
             if plan.autoLaunch {
                 setPhase("Launching RoachNet", 98)
@@ -936,9 +944,19 @@ public final class SetupEngine {
         }
     }
 
+    /// Remembers the saved config when it describes a finished install that is
+    /// still there, before the Setup app can save new choices over it.
+    func rememberInstalledConfig() {
+        let current = loadPersistedConfig()
+        guard current["setupCompletedAt"].stringValue != nil,
+              installLooksPresent(current["installPath"].stringValue ?? "", appPath: current["installedAppPath"].stringValue ?? "") else { return }
+        synchronized { installedConfig = current }
+    }
+
     /// Starts the loopback setup service and writes the ready file the Setup
     /// app waits for.
     public func serve() throws -> LoopbackHTTPServer {
+        rememberInstalledConfig()
         let requestedPort = UInt16(environment["ROACHNET_SETUP_PORT"]?.trimmingCharacters(in: .whitespaces) ?? "") ?? 0
         let server = LoopbackHTTPServer(host: "127.0.0.1", port: requestedPort, maxBodyBytes: 1024 * 1024) { [self] request in
             handle(&request)
