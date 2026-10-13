@@ -891,15 +891,21 @@ extension NativeRuntime {
         ]
     }
 
-    /// `date.toLocaleString('en-US', { timeZone })`
+    /// `date.toLocaleString('en-US', { timeZone })`, e.g. "10/13/2026, 2:05:09 PM".
+    ///
+    /// Built from calendar fields, not a DateFormatter. On Linux, Foundation's
+    /// DateFormatter traps on a zone that ICU knows but the system's zoneinfo
+    /// lacks, such as the legacy US/Eastern or America/Indianapolis on Ubuntu
+    /// 24.04 without tzdata-legacy. That crashed the whole runtime whenever
+    /// RoachClaw's status was read under such a TZ.
     static func localeDateTime(_ date: Date, timeZoneName: String) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "M/d/yyyy, h:mm:ss a"
-        formatter.amSymbol = "AM"
-        formatter.pmSymbol = "PM"
-        if timeZoneName != "local", let zone = TimeZone(identifier: timeZoneName) { formatter.timeZone = zone }
-        return formatter.string(from: date)
+        var calendar = Calendar(identifier: .gregorian)
+        if timeZoneName != "local", let zone = TimeZone(identifier: timeZoneName) { calendar.timeZone = zone }
+        let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        let hour = parts.hour ?? 0
+        func twoDigits(_ value: Int?) -> String { value.map { $0 < 10 ? "0\($0)" : "\($0)" } ?? "00" }
+        return "\(parts.month ?? 1)/\(parts.day ?? 1)/\(parts.year ?? 1970), \(hour % 12 == 0 ? 12 : hour % 12):"
+            + "\(twoDigits(parts.minute)):\(twoDigits(parts.second)) \(hour < 12 ? "AM" : "PM")"
     }
 
     func formatRoachClawUtcOffset(_ minutes: Double) -> String {
