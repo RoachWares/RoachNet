@@ -1829,6 +1829,19 @@ test('native API rejects non-loopback Host headers and non-JSON bodies', swiftOn
   })
 })
 
+test('the JavaScript compatibility runtime says plainly that it cannot install feature packs', nativeApiBinary ? { skip: 'JavaScript lane only.' } : {}, async () => {
+  await withNativeApi({}, async ({ port }) => {
+    const response = await requestHttp(`http://127.0.0.1:${port}/api/companion/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ action: 'pack', pack: 'roachnet-retro-terminals' }),
+      timeoutMs: 5_000,
+    })
+    assert.equal(response.status, 400)
+    assert.match(JSON.parse(await response.text()).error, /native runtime/)
+  })
+})
+
 test('native companion install accepts catalog packs by id and nothing else', swiftOnly, async () => {
   await withNativeApi({ ROACHNET_PACK_CATALOG_URL: '' }, async ({ port }) => {
     const post = async (body) => {

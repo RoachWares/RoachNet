@@ -129,7 +129,13 @@ async function main() {
           failures.push(`${result.purl || 'Unknown component'} has staged vulnerability findings.`)
         }
       }
-      const expectedScans = inventory.components?.find((entry) => entry.name === 'Ollama')?.version === 'not-bundled' ? 1 : 2
+      // One scan per runtime the release bundles: 1.1 bundles neither Ollama nor
+      // Node.js, so a valid 1.1 candidate has no runtime scans at all.
+      const bundled = (name) => {
+        const version = inventory.components?.find((entry) => entry.name === name)?.version
+        return Boolean(version) && version !== 'not-bundled'
+      }
+      const expectedScans = ['Ollama', 'Node.js'].filter(bundled).length
       if (!Array.isArray(stagedScan.results) || stagedScan.results.length < expectedScans) {
         failures.push('Candidate-bound vulnerability scan does not cover every bundled runtime.')
       }

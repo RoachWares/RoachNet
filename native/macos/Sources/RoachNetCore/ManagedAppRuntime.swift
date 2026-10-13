@@ -544,6 +544,13 @@ public struct EducationCategory: Decodable, Identifiable, Sendable {
     public let tiers: [Tier]
 
     public var id: String { slug }
+
+    /// The tier "Download recommended" queues: the recommended one when it has
+    /// something to download, else the first tier that does. (A recommended
+    /// tier whose books Kiwix no longer serves would otherwise queue nothing.)
+    public var tierToRecommend: Tier? {
+        tiers.first { $0.recommended == true && !$0.resources.isEmpty } ?? tiers.first { !$0.resources.isEmpty }
+    }
 }
 
 public struct WikipediaStateResponse: Decodable, Sendable {

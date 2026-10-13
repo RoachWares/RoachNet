@@ -5932,6 +5932,14 @@ async function handleCompanionInstall(body) {
     )
   }
 
+  // Feature packs are a RoachNet 1.1 native-runtime feature; this JavaScript
+  // compatibility lane doesn't carry the pack registry, so it says so plainly.
+  case 'pack':
+    throw new NativeApiRequestError(
+      "Feature packs need RoachNet 1.1's native runtime; this JavaScript compatibility runtime can't install them.",
+      400
+    )
+
   default:
     throw new NativeApiRequestError(`Unsupported App Store install action: ${action}.`, 400)
   }

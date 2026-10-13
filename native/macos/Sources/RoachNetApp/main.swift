@@ -10823,7 +10823,7 @@ private struct RootWorkspaceView: View {
 
             LazyVGrid(columns: vaultShelfColumns, alignment: .leading, spacing: 16) {
                 ForEach(categories) { category in
-                    let recommendedTier = category.tiers.first(where: { $0.recommended == true }) ?? category.tiers.first
+                    let recommendedTier = category.tierToRecommend
                     let installedTier = category.tiers.first(where: { $0.slug == category.installedTierSlug })
                     let actionKey = "education-\(category.slug)-\(recommendedTier?.slug ?? "")"
 

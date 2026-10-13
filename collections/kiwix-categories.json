@@ -24,7 +24,7 @@
             },
             {
               "id": "nhs.uk_en_medicines",
-              "version": "2025-12",
+              "version": "2026-09",
               "title": "NHS Medicines A to Z",
               "description": "How medicines work, dosages, side effects, and interactions",
               "url": "https://download.kiwix.org/zim/zimit/nhs.uk_en_medicines_2026-09b.zim",
@@ -594,7 +594,7 @@
           "resources": [
             {
               "id": "vikidia_en_all_nopic",
-              "version": "2026-03",
+              "version": "2026-09",
               "title": "Vikidia English",
               "description": "A kid-friendly general encyclopedia sized for fast installs and easy offline browsing",
               "url": "https://download.kiwix.org/zim/vikidia/vikidia_en_all_nopic_2026-09a.zim",
@@ -772,6 +772,14 @@
           "recommended": true,
           "resources": [
             {
+              "id": "matheducators.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Math Educators Q&A",
+              "description": "Teaching math, curriculum structure, and explaining hard concepts clearly",
+              "url": "https://download.kiwix.org/zim/stack_exchange/matheducators.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 58
+            },
+            {
               "id": "avanti-fundamentals-of-mathematics",
               "version": "2025-09",
               "title": "Avanti: Fundamentals of Mathematics",
@@ -804,14 +812,6 @@
               "description": "A huge applied-and-pure math shelf for proofs, examples, edge cases, and worked intuition",
               "url": "https://download.kiwix.org/zim/stack_exchange/math.stackexchange.com_en_all_2026-08.zim",
               "size_mb": 7417
-            },
-            {
-              "id": "matheducators.stackexchange.com_en_all",
-              "version": "2026-08",
-              "title": "Math Educators Q&A",
-              "description": "Teaching math, curriculum structure, and explaining hard concepts clearly",
-              "url": "https://download.kiwix.org/zim/stack_exchange/matheducators.stackexchange.com_en_all_2026-08.zim",
-              "size_mb": 58
             },
             {
               "id": "avanti-binomial-theorem",
@@ -1285,7 +1285,7 @@
             },
             {
               "id": "3dprinting.stackexchange.com_en_all",
-              "version": "2026-02",
+              "version": "2026-07",
               "title": "3D Printing Q&A",
               "description": "Printers, slicers, materials, tolerances, and fabrication troubleshooting",
               "url": "https://download.kiwix.org/zim/stack_exchange/3dprinting.stackexchange.com_en_all_2026-07a.zim",
@@ -1617,7 +1617,7 @@
             },
             {
               "id": "docs.python.org_en",
-              "version": "2025-09",
+              "version": "2026-08",
               "title": "Python Docs",
               "description": "The official Python documentation mirrored for offline reference inside RoachNet.",
               "url": "https://download.kiwix.org/zim/zimit/docs.python.org_en_all_2026-08a.zim",
