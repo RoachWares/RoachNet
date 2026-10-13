@@ -157,6 +157,14 @@ public final class SetupEngine {
         }
     }
 
+    /// Writes `config` back as the whole saved config (`saveConfig` merges).
+    func replaceConfig(_ config: JSON) {
+        synchronized {
+            persistedConfigCache = config
+            try? Files.write(config.prettySerialized() + "\n", to: configPath, mode: Files.privateFileMode)
+        }
+    }
+
     func installLooksPresent(_ installPath: String, appPath: String) -> Bool {
         let hasManifest = Files.exists(Path.join(installPath, SetupEngine.installManifestName))
         let hasLegacyLauncher = Files.exists(Path.join(installPath, "scripts", "run-roachnet-native-api.mjs"))
@@ -462,6 +470,13 @@ public final class SetupEngine {
 
     func runInstall(_ plan: InstallPlan) {
         var stagingRoot: String?
+        // When this run would replace a finished install and fails before the
+        // swap, the saved config goes back to what it was, so it still
+        // describes the copy that stays installed. A first install keeps the
+        // choices it was given, ready for a retry.
+        let previousConfig = loadPersistedConfig()
+        let restoreConfigOnFailure = previousConfig["setupCompletedAt"].stringValue != nil
+        var swapped = false
         do {
             saveConfig(plan.config)
             try Files.mkdirp(Path.dirname(plan.installPath))
@@ -506,6 +521,7 @@ public final class SetupEngine {
             setPhase("Finalizing install", 88)
             terminateRunningRoachNet(plan)
             try finalizeInstallRoot(staging: staging, finalRoot: plan.installPath, storagePath: plan.storagePath)
+            swapped = true
             stagingRoot = nil
             try Files.mkdirp(plan.storagePath)
 
@@ -555,6 +571,10 @@ public final class SetupEngine {
                     Files.remove(stagingRoot)
                     log("Removed the staged install so this Mac can retry setup cleanly.")
                 }
+            }
+            if restoreConfigOnFailure && !swapped {
+                replaceConfig(previousConfig)
+                log("Kept the saved settings of the copy that is still installed.")
             }
         }
         synchronized {
@@ -709,25 +729,26 @@ public final class SetupEngine {
         // without it can't run. It's refused here, while the install is still
         // staged and the installed copy hasn't been touched.
         guard hasRuntimeHelper(stagedApp) else {
-            throw RuntimeError("This RoachNet app payload has no runtime helper (Contents/Helpers/\(appHelperName)), so it couldn't start. Download a fresh copy of RoachNet Setup and try again.")
+            throw RuntimeError("This RoachNet app payload has no usable runtime helper: Contents/Helpers/\(appHelperName) is missing or isn't an executable file, so RoachNet couldn't start. Nothing was replaced. Download a fresh copy of RoachNet Setup and try again.")
         }
         log("Native runtime helper is present in the app bundle.")
         SetupPlatform.prepareForLaunch(stagedApp, log: log)
     }
 
-    /// Whether `app` holds the runtime helper as an executable file.
+    /// Whether `app` holds the runtime helper as an executable regular file.
+    /// RoachNet's builds copy the helper in, so a folder or a link in its
+    /// place is refused like a missing one.
     func hasRuntimeHelper(_ app: String) -> Bool {
         let helper = Path.join(app, "Contents", "Helpers", appHelperName)
-        var isFolder: ObjCBool = false
-        return FileManager.default.fileExists(atPath: helper, isDirectory: &isFolder) && !isFolder.boolValue
-            && FileManager.default.isExecutableFile(atPath: helper)
+        guard let info = Files.lstatInfo(helper), info.st_mode & S_IFMT == S_IFREG else { return false }
+        return FileManager.default.isExecutableFile(atPath: helper)
     }
 
     /// Boots the staged app's native runtime against scratch storage and waits for health.
     func smokeTestRuntime(appPath: String, scratchRoot: String) throws {
         let helper = Path.join(appPath, "Contents", "Helpers", appHelperName)
         guard hasRuntimeHelper(appPath) else {
-            throw RuntimeError("The staged RoachNet app has no runtime helper to verify.")
+            throw RuntimeError("The staged RoachNet app has no usable runtime helper to verify, so the install stopped before replacing anything.")
         }
         defer { Files.remove(scratchRoot) }
         try Files.mkdirp(scratchRoot)
@@ -762,7 +783,7 @@ public final class SetupEngine {
         let deadline = Date().addingTimeInterval(60)
         while Date() < deadline {
             if !process.isRunning {
-                throw RuntimeError("The installed RoachNet runtime exited during verification (status \(process.terminationStatus)).")
+                throw RuntimeError("RoachNet's runtime exited during verification (status \(process.terminationStatus)), so the install stopped before replacing anything. Download a fresh copy of RoachNet Setup and try again.")
             }
             if let info = JSON.read(contentsOf: infoPath), let health = info["healthUrl"].stringValue,
                let response = try? HTTPClient.request(health, timeoutMs: 2_000), response.ok
@@ -772,7 +793,7 @@ public final class SetupEngine {
             }
             usleep(250_000)
         }
-        throw RuntimeError("The installed RoachNet runtime did not become healthy during verification.")
+        throw RuntimeError("RoachNet's runtime didn't pass its health check during verification, so the install stopped before replacing anything. Try again, and if it happens again, download a fresh copy of RoachNet Setup.")
     }
 
     func terminateRunningRoachNet(_ plan: InstallPlan) {

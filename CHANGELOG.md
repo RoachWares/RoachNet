@@ -7,7 +7,7 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 ### No Node in RoachNet
 
 - RoachNet, RoachNet Setup and `roachnet-runtime` contain and launch no Node or JavaScript. The app and Setup no longer fall back to a Node launcher (`ROACHNET_FORCE_NODE_RUNTIME` is gone) or unpack a bundled source tree; if the runtime helper is missing they say to reinstall with RoachNet Setup.
-- RoachNet Setup refuses an app payload without the runtime helper before it replaces the installed copy, and its verification step now fails instead of being skipped, so Setup can't install an app that can't start.
+- RoachNet Setup refuses an app payload whose runtime helper is missing or isn't an executable file (a folder or a link in its place included) before it replaces the installed copy. Its verification step now fails instead of being skipped, and a helper that fails verification stops the install too, so Setup can't install an app that can't start. When an upgrade fails before the swap, Setup's saved settings stay as they were.
 - The build fails if either bundle holds a `node` binary, `node_modules`, JavaScript files or RoachNet source. `ROACHNET_BUNDLE_NODE_COMPAT` and `ROACHNET_BUNDLE_OPENCLAW` are gone, and OpenClaw files older builds left in the Setup bundle are cleared.
 - Removed: the JavaScript runtime and setup backend (`scripts/run-roachnet*.mjs` and the companion server), the Electron shells (`desktop/`, `installer/`, `setup-ui/`) and the Docker install lane (`install/`, `ops/`, `Dockerfile`). RoachNet Setup no longer shows a Docker option; its setup service already refused one.
 - Both apps now carry the repository's Apache-2.0 `LICENSE`.

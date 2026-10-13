@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -173,17 +173,18 @@ test('native setup refuses an install with no app payload and leaves no staging 
   }
 })
 
-test('native setup refuses an app payload without its runtime helper and keeps the installed copy', requiresNativeBinary, async () => {
+test('native setup refuses an app payload without a usable runtime helper and keeps the installed copy', requiresNativeBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-setup-nohelper-'))
   const home = path.join(tempRoot, 'home')
   mkdirSync(home, { recursive: true })
   const assets = buildFakeInstallerAssets(tempRoot)
   const installPath = path.join(home, 'RoachNet')
+  const configPath = path.join(home, 'installer.json')
   const env = {
     PATH: process.env.PATH,
     HOME: home,
     ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
-    ROACHNET_INSTALLER_CONFIG_PATH: path.join(home, 'installer.json'),
+    ROACHNET_INSTALLER_CONFIG_PATH: configPath,
     ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
     ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
     ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
@@ -191,22 +192,60 @@ test('native setup refuses an app payload without its runtime helper and keeps t
   }
   const install = () =>
     spawnSync(nativeBinary, ['--install', '--install-path', installPath, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
+  const payloadHelper = path.join(assets, 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')
+  const restoreHelper = () => {
+    rmSync(payloadHelper, { recursive: true, force: true })
+    cpSync(nativeBinary, payloadHelper)
+    chmodSync(payloadHelper, 0o755)
+  }
   try {
     const first = install()
     assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`)
     const installedHelper = path.join(installPath, 'app', 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')
-    const before = readFileSync(installedHelper)
+    const helperBefore = readFileSync(installedHelper)
+    const configBefore = JSON.parse(readFileSync(configPath, 'utf8'))
+    const userFile = path.join(installPath, 'storage', 'Vault', 'keep-me.md')
+    mkdirSync(path.dirname(userFile), { recursive: true })
+    writeFileSync(userFile, 'mine\n')
 
-    // The app starts its runtime only through the helper. Setup refuses a
-    // payload without one before it replaces anything, instead of installing
-    // it and skipping the verification step.
-    rmSync(path.join(assets, 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime'))
-    const second = install()
-    assert.notEqual(second.status, 0, second.stdout)
-    assert.match(second.stderr, /no runtime helper/)
-    assert.doesNotMatch(second.stdout, /Skipped runtime verification|Phase: Verifying contained runtime/)
-    assert.equal(readFileSync(installedHelper).equals(before), true)
-    assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /RoachNet\.(backup|staging)-/)
+    // The app starts its runtime only through the helper. Each of these
+    // payloads is refused before anything is replaced: the installed app and
+    // its helper, the person's files and the saved settings stay as they
+    // were, and no staged copy is left behind.
+    const unusable = [
+      ['missing', () => rmSync(payloadHelper), /no usable runtime helper/],
+      ['not executable', () => chmodSync(payloadHelper, 0o644), /no usable runtime helper/],
+      ['a folder', () => { rmSync(payloadHelper); mkdirSync(payloadHelper) }, /no usable runtime helper/],
+      ['a link', () => { rmSync(payloadHelper); symlinkSync(nativeBinary, payloadHelper) }, /no usable runtime helper/],
+      ['a program that fails', () => { rmSync(payloadHelper); writeFileSync(payloadHelper, '#!/bin/sh\nexit 3\n', { mode: 0o755 }) }, /exited during verification \(status 3\)/],
+    ]
+    for (const [label, breakHelper, expected] of unusable) {
+      breakHelper()
+      const result = install()
+      assert.notEqual(result.status, 0, `${label}: ${result.stdout}`)
+      assert.match(result.stderr, expected, label)
+      assert.doesNotMatch(result.stdout, /Skipped runtime verification/, label)
+      assert.equal(readFileSync(installedHelper).equals(helperBefore), true, `${label}: installed helper changed`)
+      assert.equal(readFileSync(userFile, 'utf8'), 'mine\n', label)
+      assert.deepEqual(JSON.parse(readFileSync(configPath, 'utf8')), configBefore, `${label}: saved settings changed`)
+      assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /RoachNet\.(backup|staging)-/, label)
+      restoreHelper()
+    }
+
+    // A failed install into another folder doesn't point the saved settings there.
+    rmSync(payloadHelper)
+    const elsewhere = path.join(home, 'RoachNet-elsewhere')
+    const moved = spawnSync(nativeBinary, ['--install', '--install-path', elsewhere, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
+    assert.notEqual(moved.status, 0, moved.stdout)
+    assert.deepEqual(JSON.parse(readFileSync(configPath, 'utf8')), configBefore, 'another folder: saved settings changed')
+    assert.equal(existsSync(elsewhere), false)
+    assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /staging-/)
+    restoreHelper()
+
+    // With a usable helper back in place, the same payload installs again.
+    const again = install()
+    assert.equal(again.status, 0, `${again.stdout}\n${again.stderr}`)
+    assert.equal(readFileSync(userFile, 'utf8'), 'mine\n')
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }

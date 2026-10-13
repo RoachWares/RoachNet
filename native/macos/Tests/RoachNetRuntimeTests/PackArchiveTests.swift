@@ -178,6 +178,9 @@ final class PackArchiveTests: XCTestCase {
             ("file-then-folder.zip", [.init(name: "a", data: json), .init(name: "a/b.json", data: json)]),
             ("file-and-folder-entry.zip", [.init(name: "a", data: json), .init(name: "a/", mode: 0o040755)]),
             ("case-folder.zip", [.init(name: "A", data: json), .init(name: "a/b.json", data: json)]),
+            // One name in two Unicode normalization forms: one file on APFS, two on ext4.
+            ("normalization.zip", [.init(name: "caf\u{E9}.json", data: json, flags: 0x0800),
+                                   .init(name: "cafe\u{301}.json", data: json, flags: 0x0800)]),
         ]
         for (file, items) in cases {
             XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file)
