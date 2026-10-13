@@ -64,4 +64,22 @@ final class JSONTests: XCTestCase {
         XCTAssertEqual(Path.basename("/a/b.zim"), "b.zim")
         XCTAssertEqual(Path.relative(from: "/a/b", to: "/a/b/c/d"), "c/d")
     }
+
+    /// Tokens, salts and secrets come from `JS.randomHex`: every length is
+    /// honoured (it used to stop at 32) and no position is fixed (a UUID's
+    /// version and variant characters used to be).
+    func testRandomHexIsAsLongAsAskedAndHasNoFixedCharacters() {
+        for length in [0, 1, 6, 12, 32, 40, 64, 100] {
+            let value = JS.randomHex(length)
+            XCTAssertEqual(value.count, length, "randomHex(\(length))")
+            XCTAssertTrue(value.allSatisfy { "0123456789abcdef".contains($0) }, value)
+        }
+        XCTAssertEqual(JS.randomHex(-3), "")
+        let samples = (0..<400).map { _ in Array(JS.randomHex(64)) }
+        XCTAssertEqual(Set(samples.map { String($0) }).count, samples.count, "no repeats")
+        for position in 0..<64 {
+            let seen = Set(samples.map { $0[position] })
+            XCTAssertGreaterThan(seen.count, 8, "position \(position) varies")
+        }
+    }
 }

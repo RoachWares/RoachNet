@@ -4,13 +4,19 @@
 // - numbers no JSON client should send (1e400, -1e400, 1e300) in model and
 //   trace requests get a reply instead of crashing the runtime (ROA-59);
 // - a RoachTail peer token unused past ROACHTAIL_PEER_IDLE_DAYS is refused,
-//   and a recent one still works (ROA-39).
+//   and a recent one still works (ROA-39);
+// - with ROACHNET_API_TOKEN set (as RoachNet.app does), the local API wants
+//   it, RoachClaw API tokens open only their scopes and stop working once
+//   revoked, and other sites' pages are refused (ROA-39, ROA-45);
+// - webhook secrets are kept as a salted HMAC in an owner-only file, never in
+//   the clear (ROA-39).
 // The model checks also need ROACHNET_TEST_MODELS (qwen3-0.6b-q8_0.gguf).
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
+import http from 'node:http'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
@@ -154,6 +160,92 @@ test('a RoachTail peer token unused for too long is refused; a recent one works'
     assert.notEqual((await ask(fresh)).status, 401, 'a token used 3 days ago still works')
     assert.equal((await ask('')).status, 401, 'no token, no access')
     assert.equal((await ask(randomBytes(24).toString('hex'))).status, 401, 'an unknown token is refused')
+  } finally {
+    await stop(node)
+  }
+})
+
+// node:http, because fetch won't send a Host header of our choosing.
+function rawHost(base, route, headers) {
+  const url = new URL(route, base)
+  return new Promise((resolve, reject) => {
+    const request = http.request({ host: url.hostname, port: url.port, path: url.pathname, method: 'GET', headers }, (response) => {
+      response.resume()
+      response.on('end', () => resolve(response.statusCode))
+    })
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+test('the local API wants its token, and RoachClaw tokens open only their scopes', needsBinary, async () => {
+  const launchToken = randomBytes(32).toString('hex')
+  const node = await startRuntime('tokens', { env: { ROACHNET_API_TOKEN: launchToken } })
+  const bearer = (token) => ({ authorization: `Bearer ${token}` })
+  try {
+    assert.equal((await raw(node.api, 'GET', '/api/health')).status, 200, 'health needs no token')
+    assert.equal((await raw(node.api, 'GET', '/api/rag/files')).status, 401, 'no token, no API')
+    assert.equal((await raw(node.api, 'GET', '/api/rag/files', undefined, bearer(randomBytes(32).toString('hex')))).status, 401)
+    assert.equal((await raw(node.api, 'GET', '/api/rag/files', undefined, bearer(launchToken))).status, 200)
+    assert.equal((await raw(node.api, 'GET', '/api/rag/files', undefined, { 'x-roachnet-api-token': launchToken })).status, 200)
+
+    // Pages on other sites are refused even with the token (DNS rebinding, CSRF).
+    assert.equal(await rawHost(node.api, '/api/rag/files', { host: 'rebind.example', ...bearer(launchToken) }), 403)
+    assert.equal((await raw(node.api, 'GET', '/api/rag/files', undefined, { origin: 'https://evil.example', ...bearer(launchToken) })).status, 403)
+    const textBody = await fetch(`${node.api}/api/roachclaw/tokens`, {
+      method: 'POST', headers: { 'content-type': 'text/plain', ...bearer(launchToken) }, body: '{"name":"x"}',
+    })
+    assert.equal(textBody.status, 415, 'a body that a page could post without a preflight is refused')
+
+    // A read-only RoachClaw token: reads work, changes don't, and revoking it ends it.
+    const minted = await raw(node.api, 'POST', '/api/roachclaw/tokens', JSON.stringify({ name: 'Sample script', scopes: ['read'] }), bearer(launchToken))
+    assert.equal(minted.status, 200, minted.text)
+    const { token, record } = JSON.parse(minted.text)
+    assert.match(token, /^rn_/)
+    assert.equal(record.tokenHash, undefined, 'the stored hash is never sent back')
+    assert.equal((await raw(node.api, 'GET', '/api/rag/files', undefined, bearer(token))).status, 200)
+    const change = await raw(node.api, 'PUT', '/api/traces/settings', '{"retentionDays":7}', bearer(token))
+    assert.equal(change.status, 403, change.text)
+    assert.equal(JSON.parse(change.text).requiredScope, 'admin')
+    assert.equal((await raw(node.api, 'POST', '/api/roachclaw/tokens', '{"scopes":["admin"]}', bearer(token))).status, 403,
+      'a read token cannot mint itself a stronger one')
+    assert.equal((await raw(node.api, 'DELETE', `/api/roachclaw/tokens/${record.id}`, undefined, bearer(launchToken))).status, 200)
+    assert.equal((await raw(node.api, 'GET', '/api/rag/files', undefined, bearer(token))).status, 401, 'a revoked token stops working')
+  } finally {
+    await stop(node)
+  }
+})
+
+function findFile(root, name) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, entry.name)
+    if (entry.isFile() && entry.name === name) return full
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      const found = findFile(full, name)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+test('webhook secrets are stored as a salted HMAC, never in the clear', needsBinary, async () => {
+  const secret = `sample-${randomBytes(16).toString('hex')}`
+  const node = await startRuntime('webhooks')
+  try {
+    const saved = await raw(node.api, 'POST', '/api/roachclaw/webhooks', JSON.stringify({ name: 'Sample hook', secret }))
+    assert.equal(saved.status, 200, saved.text)
+    assert.ok(!saved.text.includes(secret), 'the reply does not echo the secret')
+    const file = findFile(node.storage, 'webhooks.json')
+    assert.ok(file, 'the webhook was written')
+    assert.equal(statSync(file).mode & 0o777, 0o600, 'only the owner can read it')
+    const text = readFileSync(file, 'utf8')
+    assert.ok(!text.includes(secret), 'the secret is not on disk')
+    const [hook] = JSON.parse(text).webhooks
+    assert.equal(hook.secretDigestAlgorithm, 'hmac-sha256-salted-v1')
+    assert.match(hook.secretSalt, /^[0-9a-f]{32,}$/)
+    assert.notEqual(hook.secretDigest, createHash('sha256').update(secret).digest('hex'), 'not a bare SHA-256')
+    assert.equal(hook.secretDigest, createHmac('sha256', hook.secretSalt).update(secret).digest('hex'))
+    assert.equal(hook.secretHint, `…${secret.slice(-2)}`, 'the hint shows two characters')
   } finally {
     await stop(node)
   }

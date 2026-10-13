@@ -73,9 +73,24 @@ public enum JS {
 
     public static func randomUUID() -> String { UUID().uuidString.lowercased() }
 
-    /// `randomUUID().replaceAll('-', '').slice(0, length)`
+    /// `length` lowercase hex characters from the system's secure random
+    /// generator. This used to be a UUID with its dashes removed, which capped
+    /// every value at 32 characters (so `randomHex(64)` gave 32) and fixed two
+    /// of them (the UUID version and variant). Tokens, salts and secrets are
+    /// made with it, so they now get every character they ask for.
     public static func randomHex(_ length: Int) -> String {
-        String(randomUUID().replacingOccurrences(of: "-", with: "").prefix(length))
+        guard length > 0 else { return "" }
+        var generator = SystemRandomNumberGenerator()
+        let digits = Array("0123456789abcdef".utf8)
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(length)
+        while bytes.count < length {
+            let word = generator.next() as UInt64
+            for shift in stride(from: 0, to: 64, by: 4) where bytes.count < length {
+                bytes.append(digits[Int((word >> UInt64(shift)) & 0xF)])
+            }
+        }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     // MARK: Dates

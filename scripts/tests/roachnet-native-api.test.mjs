@@ -1296,8 +1296,10 @@ test('native API cancels active download jobs and removes partial files', async 
     })
     assert.equal(queued.success, true)
 
+    // Polled rather than slept: with the whole suite running (model loads in
+    // other files) a fixed 2 s / 500 ms window was sometimes too short.
     let jobs = []
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
       jobs = await requestJson(`http://127.0.0.1:${port}/api/downloads/jobs`)
       if (jobs.length > 0 && jobs[0].status === 'downloading') {
         break
@@ -1313,9 +1315,13 @@ test('native API cancels active download jobs and removes partial files', async 
     })
     assert.equal(cancelled.cancelled, true)
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    assert.equal(existsSync(path.join(storagePath, 'maps', 'pmtiles', 'slow.pmtiles')), false)
-    assert.equal(existsSync(path.join(storagePath, 'maps', 'pmtiles', 'slow.pmtiles.part')), false)
+    const finished = path.join(storagePath, 'maps', 'pmtiles', 'slow.pmtiles')
+    const partial = `${finished}.part`
+    for (let attempt = 0; attempt < 50 && (existsSync(finished) || existsSync(partial)); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.equal(existsSync(finished), false)
+    assert.equal(existsSync(partial), false)
   } finally {
     await stopNativeApi(child, env)
     await rm(tempRoot, { recursive: true, force: true })
