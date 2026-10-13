@@ -46,6 +46,25 @@ final class ModelRoomTests: XCTestCase {
         }
     }
 
+    func testAnIdleCopyOfTheModelIsReleasedBeforeItsMemoryCounts() throws {
+        let models = ProcessInfo.processInfo.environment["ROACHNET_TEST_MODELS"] ?? ""
+        let path = models + "/stories15M-q4_0.gguf"
+        guard !models.isEmpty, FileManager.default.fileExists(atPath: path) else {
+            throw XCTSkip("Set ROACHNET_TEST_MODELS (stories15M-q4_0.gguf).")
+        }
+        let server = server()
+        let copy = NativeModelServer.LoadedModel(name: "m", engine: InferenceEngine(model: try TransformerModel(path: path), contextLength: 256),
+                                                 contextLength: 256, keepAlive: 60)
+        copy.footprint = model
+        server.loaded["m"] = copy
+        // An idle copy at another context length holds memory until it is
+        // released, so the memory free now counts it only after that.
+        let fitted = try server.makeRoom(for: "m", footprint: model, budget: 10_000_000,
+                                         headroom: { server.loaded["m"] == nil ? 2_000_000 : 100_000 })
+        XCTAssertNil(server.loaded["m"], "the idle copy was released before the load")
+        XCTAssertEqual(fitted, model)
+    }
+
     func testOnlyLinuxCapsLoadsByFreeMemory() {
         #if canImport(Darwin)
         XCTAssertNil(SystemMemory.loadHeadroom())

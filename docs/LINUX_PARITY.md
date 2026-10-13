@@ -18,7 +18,7 @@ Measured on 2026-10-13, with the ROA-90 fix. The macOS run was on an Apple silic
 
 | Measure | macOS | Linux |
 | --- | --- | --- |
-| Runtime XCTests | 175 run, 0 failures | 165 run, 1 skipped ([ROA-87](https://linear.app/roachwares/issue/ROA-87)), 0 failures. The 10 fewer are Mac-only: the Cluster's 7, and the installer's 3 archive-pack tests, which install macOS-platform packs. |
+| Runtime XCTests | 177 run, 1 skipped (needs the model files), 0 failures | 167 run, 2 skipped ([ROA-87](https://linear.app/roachwares/issue/ROA-87), and one that needs the model files), 0 failures. The 10 fewer are Mac-only: the Cluster's 7, and the installer's 3 archive-pack tests, which install macOS-platform packs. |
 | Inference XCTests | 36 run, 13 skipped (no model files), 0 failures | 36 run, 13 skipped (Metal, model files), 0 failures |
 | Runtime contract tests | 133 tests, run with the model files: 131 pass, 2 skip themselves (the Metal kernel check, which needs a built `roachnet-infer`, and a RoachVoice check that only runs where Core ML tooling is missing), 0 failures | 133 tests: 112 pass, 21 skip themselves, 0 failures |
 

@@ -104,7 +104,8 @@ enum SystemMemory {
     /// any of them. nil when no cgroup sets a limit.
     static func cgroupMemory() -> (limit: Int, available: Int)? {
         guard let membership = try? String(contentsOfFile: "/proc/self/cgroup", encoding: .utf8) else { return nil }
-        let (version, directories) = cgroupDirectories(procSelfCgroup: membership)
+        let mountinfo = try? String(contentsOfFile: "/proc/self/mountinfo", encoding: .utf8)
+        let (version, directories) = cgroupDirectories(procSelfCgroup: membership, mountinfo: mountinfo)
         func read(_ path: String) -> String? { try? String(contentsOfFile: path, encoding: .utf8) }
         let levels: [CgroupLevel] = directories.compactMap { directory in
             let limitFile = version == 2 ? "memory.max" : "memory.limit_in_bytes"
@@ -120,7 +121,8 @@ enum SystemMemory {
     /// The process's own cgroup v2 pressure stall information, when there is one.
     static func cgroupPressure() -> String? {
         guard let membership = try? String(contentsOfFile: "/proc/self/cgroup", encoding: .utf8) else { return nil }
-        let (version, directories) = cgroupDirectories(procSelfCgroup: membership)
+        let mountinfo = try? String(contentsOfFile: "/proc/self/mountinfo", encoding: .utf8)
+        let (version, directories) = cgroupDirectories(procSelfCgroup: membership, mountinfo: mountinfo)
         guard version == 2, let own = directories.first else { return nil }
         return try? String(contentsOfFile: own + "/memory.pressure", encoding: .utf8)
     }
@@ -168,10 +170,56 @@ enum SystemMemory {
         let inactiveFile: Int
     }
 
+    /// Where a cgroup hierarchy is mounted: the folder, and the cgroup that
+    /// folder shows. Inside a container that is often the container's own
+    /// cgroup, not "/".
+    struct CgroupMount: Equatable {
+        let directory: String
+        let root: String
+    }
+
+    /// The cgroup v2 mount and the mount of the v1 memory controller, from the
+    /// text of /proc/self/mountinfo. The v1 controller can share a mount with
+    /// others ("cpu,memory") and sit anywhere.
+    static func cgroupMounts(mountinfo: String) -> (unified: CgroupMount?, memory: CgroupMount?) {
+        // Spaces and the like are written as octal escapes ("\040").
+        func unescape(_ field: Substring) -> String {
+            var bytes: [UInt8] = []
+            var characters = Array(field.utf8)[...]
+            while let byte = characters.first {
+                if byte == UInt8(ascii: "\\"), characters.count >= 4,
+                   let value = UInt8(String(decoding: characters.dropFirst().prefix(3), as: UTF8.self), radix: 8) {
+                    bytes.append(value)
+                    characters = characters.dropFirst(4)
+                } else {
+                    bytes.append(byte)
+                    characters = characters.dropFirst()
+                }
+            }
+            return String(decoding: bytes, as: UTF8.self)
+        }
+        var unified: CgroupMount?
+        var memory: CgroupMount?
+        for line in mountinfo.split(separator: "\n") {
+            // "41 37 0:33 / /sys/fs/cgroup/memory rw,relatime - cgroup cgroup rw,memory"
+            let fields = line.split(separator: " ")
+            guard let dash = fields.firstIndex(of: "-"), dash >= 5, fields.count >= dash + 4 else { continue }
+            let mount = CgroupMount(directory: unescape(fields[4]), root: unescape(fields[3]))
+            if fields[dash + 1] == "cgroup2", unified == nil {
+                unified = mount
+            } else if fields[dash + 1] == "cgroup", memory == nil, fields[dash + 3].split(separator: ",").contains("memory") {
+                memory = mount
+            }
+        }
+        return (unified, memory)
+    }
+
     /// The cgroup folders that bound this process, its own first and the root
     /// last, from the text of /proc/self/cgroup. A cgroup v1 memory controller
     /// is used where there is one (hybrid setups); otherwise the v2 tree.
-    static func cgroupDirectories(procSelfCgroup: String, root: String = "/sys/fs/cgroup") -> (version: Int, directories: [String]) {
+    /// With /proc/self/mountinfo the folders are found where the hierarchy is
+    /// mounted, as far up as that mount shows; without it, under `root`.
+    static func cgroupDirectories(procSelfCgroup: String, mountinfo: String? = nil, root: String = "/sys/fs/cgroup") -> (version: Int, directories: [String]) {
         var unified: String?
         var legacy: String?
         for line in procSelfCgroup.split(separator: "\n") {
@@ -194,8 +242,22 @@ enum SystemMemory {
             }
             return directories
         }
-        if let legacy { return (1, walk(root + "/memory", legacy)) }
-        if let unified { return (2, walk(root, unified)) }
+        // A cgroup path seen through a mount whose root is `mountRoot`; nil when
+        // the mount doesn't show it, so only the mount's own folder is read.
+        func relative(_ path: String, to mountRoot: String) -> String? {
+            if mountRoot == "/" { return path }
+            if path == mountRoot { return "/" }
+            return path.hasPrefix(mountRoot + "/") ? String(path.dropFirst(mountRoot.count)) : nil
+        }
+        let mounts = mountinfo.map(cgroupMounts(mountinfo:))
+        if let legacy {
+            guard let mount = mounts?.memory else { return (1, walk(root + "/memory", legacy)) }
+            return (1, relative(legacy, to: mount.root).map { walk(mount.directory, $0) } ?? [mount.directory])
+        }
+        if let unified {
+            guard let mount = mounts?.unified else { return (2, walk(root, unified)) }
+            return (2, relative(unified, to: mount.root).map { walk(mount.directory, $0) } ?? [mount.directory])
+        }
         return (2, [])
     }
 
@@ -260,12 +322,9 @@ extension NativeModelServer {
         // this load, so it doesn't count against the room; a busy one stays until
         // its requests finish, so it does.
         func resident() -> Int { loaded.values.filter { $0.name != name || $0.isBusy }.reduce(0) { $0 + $1.resident } }
-        // Memory free now, counting that idle copy's as free too.
-        func free() -> Int? {
-            guard let measured = headroom() else { return nil }
-            return measured + loaded.values.filter { $0.name == name && !$0.isBusy }.reduce(0) { $0 + $1.resident }
-        }
-        func fits(_ size: Int) -> Bool { resident() + size <= budget && (free().map { size <= $0 } ?? true) }
+        func fitsBudget(_ size: Int) -> Bool { resident() + size <= budget }
+        func fitsFreeMemory(_ size: Int) -> Bool { headroom().map { size <= $0 } ?? true }
+        func fits(_ size: Int) -> Bool { fitsBudget(size) && fitsFreeMemory(size) }
         // Idle extra request slots go first; they only hold caches.
         if !fits(footprint.total) {
             var trimmed = false
@@ -273,14 +332,20 @@ extension NativeModelServer {
             if trimmed { refreshResident() }
         }
         // Unload idle models, oldest first, until this one fits beside the rest.
+        // When the memory free now is what falls short, an idle copy of this
+        // model goes first. This load replaces it anyway, and both copies would
+        // be in memory while the new one loads, so its memory only counts once
+        // it has been released.
         while !fits(footprint.total) {
-            let oldestFirst = loaded.values.filter { $0.name != name }.sorted { $0.lastUsed < $1.lastUsed }
-            guard let idle = oldestFirst.first(where: { !$0.isBusy }) else { break }
-            loaded[idle.name] = nil
-            RuntimeLog.write("native engine unloaded \(idle.name) to make room for \(name)")
+            let idle = loaded.values.filter { !$0.isBusy }
+            let sameModel = fitsBudget(footprint.total) ? idle.first(where: { $0.name == name }) : nil
+            guard let next = sameModel ?? idle.filter({ $0.name != name }).min(by: { $0.lastUsed < $1.lastUsed }) else { break }
+            loaded[next.name] = nil
+            RuntimeLog.write(next.name == name ? "native engine unloaded its idle copy of \(name) to load it again"
+                                               : "native engine unloaded \(next.name) to make room for \(name)")
         }
         let besideLoaded = budget - resident()
-        let freeNow = free()
+        let freeNow = headroom()
         let room = min(besideLoaded, freeNow ?? Int.max)
         if footprint.total > room {
             var context = footprint.context
