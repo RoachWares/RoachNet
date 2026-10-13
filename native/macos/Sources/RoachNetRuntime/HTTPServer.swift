@@ -93,8 +93,16 @@ public struct BodyTooLarge: Error { public let limit: Int }
 
 /// Minimal HTTP/1.1 server on POSIX sockets, bound to loopback only.
 /// One request per connection (`Connection: close`) keeps it predictable.
+///
+/// The accept loop and each connection run on threads of their own (see
+/// `BlockingWork`), because handlers block on sockets, child processes and
+/// each other's results.
 public final class LoopbackHTTPServer {
     public typealias Handler = (inout HTTPRequest) -> HTTPResponse
+
+    /// How many connections are served at once. Past it, new connections wait
+    /// in the listen backlog until one finishes.
+    public static let maxConcurrentConnections = 128
 
     private let host: String
     private let requestedPort: UInt16
@@ -102,8 +110,7 @@ public final class LoopbackHTTPServer {
     private let handler: Handler
     private var socketFD: Int32 = -1
     private var running = false
-    private let acceptQueue = DispatchQueue(label: "org.roachnet.runtime.accept")
-    private let workQueue = DispatchQueue(label: "org.roachnet.runtime.work", attributes: .concurrent)
+    private let connectionSlots = DispatchSemaphore(value: LoopbackHTTPServer.maxConcurrentConnections)
     public private(set) var port: UInt16 = 0
 
     public init(host: String, port: UInt16, maxBodyBytes: Int, handler: @escaping Handler) {
@@ -178,7 +185,7 @@ public final class LoopbackHTTPServer {
 
         socketFD = fd
         running = true
-        acceptQueue.async { [weak self] in self?.acceptLoop() }
+        BlockingWork.start("roachnet.http.accept") { [weak self] in self?.acceptLoop() }
     }
 
     public func stop() {
@@ -191,20 +198,31 @@ public final class LoopbackHTTPServer {
     }
 
     private func acceptLoop() {
+        let slots = connectionSlots
         while running {
+            slots.wait()
             var address = sockaddr_storage()
             var length = socklen_t(MemoryLayout<sockaddr_storage>.size)
             let client = withUnsafeMutablePointer(to: &address) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(socketFD, $0, &length) }
             }
             if client < 0 {
+                let failure = errno
+                slots.signal()
                 if !running { return }
-                if errno == EINTR || errno == ECONNABORTED { continue }
+                if failure == EINTR || failure == ECONNABORTED { continue }
                 usleep(10_000)
                 continue
             }
             let remote = LoopbackHTTPServer.describe(address)
-            workQueue.async { [weak self] in self?.serve(client, remote: remote) }
+            BlockingWork.start("roachnet.http.connection") { [weak self] in
+                defer { slots.signal() }
+                guard let self else {
+                    close(client)
+                    return
+                }
+                self.serve(client, remote: remote)
+            }
         }
     }
 

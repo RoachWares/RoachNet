@@ -356,7 +356,7 @@ public enum DNS {
     public static func resolves(_ host: String, timeoutMs: Int = 3_000) -> Bool {
         let semaphore = DispatchSemaphore(value: 0)
         let ok = LockedBox(false)
-        DispatchQueue.global().async {
+        BlockingWork.start("roachnet.dns") {
             var hints = addrinfo()
             hints.ai_family = AF_UNSPEC
             var result: UnsafeMutablePointer<addrinfo>?

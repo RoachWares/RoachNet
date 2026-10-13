@@ -42,7 +42,6 @@ struct OrgRunResult {
 final class OrgEngine {
     unowned let service: OrgService
     private let queue = DispatchQueue(label: "org.roachnet.engine")
-    private let workers = DispatchQueue(label: "org.roachnet.runs", attributes: .concurrent)
     private var timer: DispatchSourceTimer?
     private let cancelLock = NSLock()
     private var cancelled = Set<String>()
@@ -223,7 +222,8 @@ final class OrgEngine {
         for runId in started {
             let actor = OrgActor(kind: .system, userId: nil, agentId: nil, companyId: companyId, runId: runId, source: "engine")
             service.record(companyId, actor, "run.started", "run", runId)
-            workers.async { [weak self] in self?.execute(companyId: companyId, runId: runId) }
+            // A run waits on an agent for minutes, so it gets a thread of its own.
+            BlockingWork.start("roachnet.org.run") { [weak self] in self?.execute(companyId: companyId, runId: runId) }
         }
     }
 

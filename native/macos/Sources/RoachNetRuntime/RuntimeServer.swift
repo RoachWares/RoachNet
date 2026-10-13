@@ -99,7 +99,7 @@ public final class RuntimeServer {
         if !runtime.orgStoreIsEmpty { _ = runtime.orgService }
         try writeRuntimeInfo(baseUrl: baseUrl, port: server.port, companionUrl: companionLocal, companionAdvertisedUrl: companionAdvertised)
         RuntimeLog.write("native api listening on \(baseUrl)")
-        DispatchQueue.global(qos: .utility).async { runtime.ensureOllama() }
+        BlockingWork.start("roachnet.model-lane", qos: .utility) { runtime.ensureOllama() }
         installSignalHandlers()
     }
 

@@ -455,7 +455,7 @@ public final class SetupEngine {
         if synchronous {
             runInstall(plan)
         } else {
-            DispatchQueue.global(qos: .userInitiated).async { self.runInstall(plan) }
+            BlockingWork.start("roachnet.setup.install", qos: .userInitiated) { self.runInstall(plan) }
         }
         return ["ok": true]
     }

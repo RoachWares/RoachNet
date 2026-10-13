@@ -249,16 +249,12 @@ enum OrgCLIDetector {
 
     static func detectAll(refresh: Bool = false) -> [OrgCLIStatus] {
         let results = OrgLocked<[OrgCLIKind: OrgCLIStatus]>([:])
-        let group = DispatchGroup()
-        for kind in OrgCLIKind.allCases {
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
+        BlockingWork.all("roachnet.org.detect", OrgCLIKind.allCases.map { kind -> () -> Void in
+            {
                 let status = detect(kind, override: nil, refresh: refresh)
                 results.mutate { $0[kind] = status }
-                group.leave()
             }
-        }
-        group.wait()
+        })
         return OrgCLIKind.allCases.compactMap { results.value[$0] }
     }
 

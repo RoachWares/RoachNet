@@ -179,7 +179,7 @@ extension NativeRuntime {
             let job = DownloadJob(url: url, filepath: filepath, filetype: filetype, descriptorUrl: descriptorUrl, expectedSha256: expectedSha256, parts: parts)
             job.afterDownload = afterDownload
             downloadJobs = Array(([job] + downloadJobs).prefix(200))
-            DispatchQueue.global(qos: .utility).async {
+            BlockingWork.start("roachnet.download", qos: .utility) {
                 do {
                     try self.downloadFile(job)
                 } catch {
@@ -760,7 +760,7 @@ extension NativeRuntime {
         let names = ["global-min_2026-10.pmtiles", "global-min_2025-12.pmtiles"]
         if names.contains(where: { Files.exists(Path.join(pmtiles, $0)) }) { return false }
         let descriptor = "\(JS.replace("/+$", in: config.appsDownloadsBaseUrl, with: ""))/maps/pmtiles/global-min_2026-10.json"
-        DispatchQueue.global(qos: .utility).async { [self] in
+        BlockingWork.start("roachnet.download.atlas", qos: .utility) { [self] in
             do {
                 _ = try queueResolvedDownload(JSON(descriptor), pmtiles, "pmtiles")
             } catch {
@@ -916,7 +916,7 @@ extension NativeRuntime {
         installedModelsCache.invalidate(modelServerBaseUrl)
         let url = urlJoin("/api/pull", modelServerBaseUrl)
         let body: JSON = ["name": JSON(model), "stream": false]
-        DispatchQueue.global(qos: .utility).async {
+        BlockingWork.start("roachnet.model-pull", qos: .utility) {
             do {
                 _ = try HTTPClient.fetchJSON(url, method: "POST", body: body.serializedData(), timeoutMs: 600_000)
             } catch {
