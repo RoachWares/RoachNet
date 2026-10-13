@@ -289,11 +289,25 @@ struct ZipArchive {
         // A file and a folder can't share a path either ("a" beside "a/b" or
         // "a/"). RoachNet's own unpacking refuses that halfway through; this
         // refuses it before anything is written, whichever tool unpacks.
+        // A folder has one spelling, too: "Σ/" and "ς/", or a name in two
+        // Unicode normalization forms, are one folder on APFS and two on
+        // Linux, so the same archive would unpack to different trees.
         var folders = Set<String>()
+        var spellings: [String: String] = [:]
         for entry in entries {
             let parts = Self.unpackedParts(entry.name)
             for end in stride(from: 1, through: entry.isDirectory ? parts.count : parts.count - 1, by: 1) {
-                folders.insert(Self.collisionKey(parts[..<end]))
+                let key = Self.collisionKey(parts[..<end])
+                folders.insert(key)
+                if Self.isResourceForkCopy(entry.name) { continue }
+                let spelling = parts[..<end].joined(separator: "/")
+                if let first = spellings[key] {
+                    guard first.utf8.elementsEqual(spelling.utf8) else {
+                        throw refused("names one folder two ways (\"\(first)\" and \"\(spelling)\")")
+                    }
+                } else {
+                    spellings[key] = spelling
+                }
             }
         }
         if let clash = entries.first(where: { !$0.isDirectory && folders.contains(Self.collisionKey(Self.unpackedParts($0.name))) }) {

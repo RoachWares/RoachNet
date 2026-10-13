@@ -35,6 +35,9 @@ public final class SetupEngine {
     /// An install that would replace that copy also keeps it on disk until its
     /// own copy is in place (`preUpgradeConfigPath`), for a run that is cut off.
     private var installedConfig: JSON?
+    /// Marks what this service keeps aside, so it never takes its own kept
+    /// settings for those of a run that was cut off.
+    private let sessionId = JS.randomHex(8)
     var appHelperName: String { RuntimeBuildInfo.executableName }
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment, version: String = RuntimeConfiguration.shared.version) {
@@ -169,10 +172,17 @@ public final class SetupEngine {
     }
 
     /// Writes `config` back as the whole saved config (`saveConfig` merges).
-    func replaceConfig(_ config: JSON) {
+    /// Returns whether it was written; the cached config changes only then.
+    @discardableResult
+    func replaceConfig(_ config: JSON) -> Bool {
         synchronized {
+            do {
+                try Files.write(config.prettySerialized() + "\n", to: configPath, mode: Files.privateFileMode)
+            } catch {
+                return false
+            }
             persistedConfigCache = config
-            try? Files.write(config.prettySerialized() + "\n", to: configPath, mode: Files.privateFileMode)
+            return true
         }
     }
 
@@ -500,10 +510,13 @@ public final class SetupEngine {
         let restoreConfigOnFailure = describesInstalledCopy(previousConfig)
         var swapped = false
         do {
-            // Kept on disk too, so that if this run is cut off (power loss,
+            // Kept on disk first, so that if this run is cut off (power loss,
             // force quit) before its copy is in place, the next run puts the
-            // installed copy's settings back over the ones saved below.
-            if restoreConfigOnFailure { keepPreUpgradeConfig(previousConfig, for: plan) }
+            // installed copy's settings back over the ones saved below. A run
+            // that can't keep them stops here, before it changes anything.
+            if restoreConfigOnFailure {
+                try keepPreUpgradeConfig(previousConfig, installId: plan.installId, target: plan.installPath)
+            }
             saveConfig(plan.config)
             try Files.mkdirp(Path.dirname(plan.installPath))
             recoverInterruptedInstall(finalRoot: plan.installPath)
@@ -549,7 +562,7 @@ public final class SetupEngine {
             try finalizeInstallRoot(staging: staging, finalRoot: plan.installPath, storagePath: plan.storagePath)
             swapped = true
             stagingRoot = nil
-            Files.remove(preUpgradeConfigPath)
+            removePreUpgradeConfig()
             // From here the new copy is the installed one. If a later step
             // fails, a retry that fails before its swap puts this back, not the
             // settings of the copy this install replaced.
@@ -608,9 +621,12 @@ public final class SetupEngine {
                 }
             }
             if restoreConfigOnFailure && !swapped {
-                replaceConfig(previousConfig)
-                Files.remove(preUpgradeConfigPath)
-                log("Kept the saved settings of the copy that is still installed.")
+                if replaceConfig(previousConfig) {
+                    removePreUpgradeConfig()
+                    log("Kept the saved settings of the copy that is still installed.")
+                } else {
+                    log("Could not put back the saved settings of the copy that is still installed. Setup keeps them aside and tries again when it next starts.")
+                }
             }
         }
         synchronized {
@@ -687,32 +703,72 @@ public final class SetupEngine {
     }
 
     /// Keeps `config`, the saved config of the copy that is installed, beside
-    /// the config, with that copy's manifest and the id of `plan`'s install.
-    func keepPreUpgradeConfig(_ config: JSON, for plan: InstallPlan) {
+    /// the config, with that copy's manifest. `installId` names the install
+    /// that would replace the copy, once one has started; `target` is where
+    /// the new choices put it. Throws when it can't be kept.
+    func keepPreUpgradeConfig(_ config: JSON, installId: String?, target: String) throws {
         let kept: JSON = [
-            "installId": JSON(plan.installId),
-            "installPath": JSON(plan.installPath),
+            "session": JSON(sessionId),
+            "installId": installId.map { JSON($0) } ?? .null,
+            "installPath": JSON(target),
             "installedManifest": manifestText(normalizeInputPath(config["installPath"])).map { JSON($0) } ?? .null,
             "config": config,
         ]
         do {
             try Files.write(kept.prettySerialized() + "\n", to: preUpgradeConfigPath, mode: Files.privateFileMode)
         } catch {
-            log("Could not keep a copy of the installed copy's settings before the upgrade: \(error)")
+            throw RuntimeError("Setup couldn't keep the installed copy's settings aside before changing them, so nothing was changed: \(redact("\(error)"))")
         }
+    }
+
+    /// For saved choices: keeps the installed copy's settings aside, unless a
+    /// kept copy is there already, which holds them from before the choices.
+    func keepInstalledConfigForChoices(_ installed: JSON, target: String) throws {
+        if let info = Files.lstatInfo(preUpgradeConfigPath), info.st_mode & S_IFMT == S_IFREG { return }
+        try keepPreUpgradeConfig(installed, installId: nil, target: target)
+    }
+
+    /// Removes the kept config when it is a plain file, as Setup writes it.
+    /// Anything else at that path is left alone.
+    func removePreUpgradeConfig() {
+        guard let info = Files.lstatInfo(preUpgradeConfigPath), info.st_mode & S_IFMT == S_IFREG else { return }
+        unlink(preUpgradeConfigPath)
+    }
+
+    /// Whether `config` puts the installed copy, its app or its storage
+    /// somewhere other than `installed` does.
+    func movesInstalledCopy(_ config: JSON, from installed: JSON) -> Bool {
+        func place(_ config: JSON) -> [String] {
+            let root = normalizeInputPath(config["installPath"])
+            return [
+                root,
+                normalizeInputPath(config["installedAppPath"] || JSON(canonicalAppPath(root))),
+                normalizeInputPath(config["storagePath"] || JSON(Path.join(root, "storage"))),
+            ]
+        }
+        return place(config) != place(installed)
     }
 
     /// After a run that was cut off: when an install had saved its choices
     /// over the config but its copy never got into place, the copy that is
     /// installed gets its settings back. The manifests tell which happened:
     /// the install's own copy names it, and the copy it would replace is still
-    /// in place while its manifest is unchanged.
-    func recoverPreUpgradeConfig() {
-        guard Files.exists(preUpgradeConfigPath) else { return }
-        guard let kept = JSON.read(contentsOf: preUpgradeConfigPath), kept["config"].isObject else {
-            Files.remove(preUpgradeConfigPath)
-            return
+    /// in place while its manifest is unchanged. Returns the installed copy's
+    /// settings when the kept copy held them, whether or not they could be
+    /// written back yet.
+    @discardableResult
+    func recoverPreUpgradeConfig() -> JSON? {
+        guard let info = Files.lstatInfo(preUpgradeConfigPath) else { return nil }
+        guard info.st_mode & S_IFMT == S_IFREG else {
+            log("Something other than a file is at \(Path.basename(preUpgradeConfigPath)), where Setup keeps the installed copy's settings during an upgrade. It was left alone, and changes to the installed copy stop until it is moved away.")
+            return nil
         }
+        guard let kept = JSON.read(contentsOf: preUpgradeConfigPath), kept["config"].isObject else {
+            removePreUpgradeConfig()
+            return nil
+        }
+        // Kept by this service: its install or its saved choices are in hand.
+        if kept["session"].stringValue == sessionId { return nil }
         let previous = kept["config"]
         let installedRoot = normalizeInputPath(previous["installPath"])
         let target = normalizeInputPath(kept["installPath"])
@@ -722,14 +778,20 @@ public final class SetupEngine {
         } ?? false
         if !landed {
             // A copy moved aside that couldn't be put back yet: decide later.
-            if !Files.exists(installedRoot) && hasBackup(installedRoot) { return }
+            if !Files.exists(installedRoot) && hasBackup(installedRoot) { return nil }
             if manifestText(installedRoot) == kept["installedManifest"].stringValue, describesInstalledCopy(previous) {
-                replaceConfig(previous)
                 synchronized { installedConfig = previous }
-                log("Put back the saved settings of the copy that is installed. An earlier upgrade was cut off before replacing it.")
+                guard replaceConfig(previous) else {
+                    log("Could not put back the saved settings of the copy that is installed. Setup keeps them aside and tries again when it next starts.")
+                    return previous
+                }
+                log("Put back the saved settings of the copy that is installed. Newer choices that would have replaced or moved it never got into place.")
+                removePreUpgradeConfig()
+                return previous
             }
         }
-        Files.remove(preUpgradeConfigPath)
+        removePreUpgradeConfig()
+        return nil
     }
 
     /// Points the RoachTail hostname at loopback. Best effort unless
@@ -1022,6 +1084,15 @@ public final class SetupEngine {
                 return .json(200, state(url))
             case ("POST", "/api/config"):
                 let config = defaultConfig(try body())
+                // Choices that move the installed copy or its storage take
+                // effect only with an install, so that copy's settings are
+                // kept aside first: if Setup quits or loses power before an
+                // install puts the choices in place, the next run puts the
+                // copy's settings back.
+                if let installed = synchronized({ installedConfig }), describesInstalledCopy(installed),
+                   movesInstalledCopy(config, from: installed) {
+                    try keepInstalledConfigForChoices(installed, target: normalizeInputPath(config["installPath"]))
+                }
                 saveConfig(config)
                 return .json(200, ["ok": true, "config": config])
             case ("POST", "/api/install"):
@@ -1047,7 +1118,9 @@ public final class SetupEngine {
     /// mid-swap is put back first, with that copy's settings, so a copy only
     /// moved aside still counts.
     func rememberInstalledConfig() {
-        recoverPreUpgradeConfig()
+        // Settings kept aside by a run that was cut off are the installed
+        // copy's, even while they can't be written back.
+        if recoverPreUpgradeConfig() != nil { return }
         let current = loadPersistedConfig()
         if let root = current["installPath"].stringValue, !root.isEmpty { recoverInterruptedInstall(finalRoot: root) }
         guard describesInstalledCopy(current) else { return }

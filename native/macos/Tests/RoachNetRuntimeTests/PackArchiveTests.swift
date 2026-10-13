@@ -191,9 +191,29 @@ final class PackArchiveTests: XCTestCase {
         for (file, items) in cases {
             XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file)
         }
+        // One folder spelled two ways: one folder on APFS, two on ext4, so the
+        // files inside would land in different trees.
+        let spelledTwice: [(String, [TestZip.Item])] = [
+            ("sigma-folders.zip", [.init(name: "\u{3A3}/x.json", data: json, flags: 0x0800),
+                                   .init(name: "\u{3C2}/y.json", data: json, flags: 0x0800)]),
+            ("case-folders.zip", [.init(name: "A/x.json", data: json), .init(name: "a/y.json", data: json)]),
+            ("deeper-case-folders.zip", [.init(name: "a/B/x.json", data: json), .init(name: "a/b/y.json", data: json)]),
+            ("case-folder-entry.zip", [.init(name: "A/", mode: 0o040755), .init(name: "a/y.json", data: json)]),
+            ("normalization-folders.zip", [.init(name: "caf\u{E9}/x.json", data: json, flags: 0x0800),
+                                           .init(name: "cafe\u{301}/y.json", data: json, flags: 0x0800)]),
+        ]
+        for (file, items) in spelledTwice {
+            XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file) { error in
+                XCTAssertTrue("\(error)".contains("two ways"), "\(file): \(error)")
+            }
+        }
         // A folder listed next to the files inside it, even twice, is fine.
         let folders: [TestZip.Item] = [.init(name: "a/", mode: 0o040755), .init(name: "a/b.json", data: json), .init(name: "a/./", mode: 0o040755)]
         XCTAssertEqual(try ZipArchive(path: try zip("folders.zip", folders)).entries.count, 3)
+        // So are files in one folder spelled the same way each time.
+        let sameSpelling: [TestZip.Item] = [.init(name: "\u{3A3}/x.json", data: json, flags: 0x0800),
+                                            .init(name: "\u{3A3}/y.json", data: json, flags: 0x0800)]
+        XCTAssertEqual(try ZipArchive(path: try zip("same-spelling.zip", sameSpelling)).entries.count, 2)
     }
 
     /// Both unpackers must write the same files. unzip writes a file entry
