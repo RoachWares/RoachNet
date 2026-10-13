@@ -187,6 +187,44 @@ final class PackArchiveTests: XCTestCase {
         XCTAssertEqual(try ZipArchive(path: try zip("folders.zip", folders)).entries.count, 3)
     }
 
+    /// Both unpackers must write the same files. unzip writes a file entry
+    /// named "." as "_" and leaves out only names that start with "__MACOSX/",
+    /// so the reader refuses a file entry that names no file and any other
+    /// spelling of that folder rather than skipping them where nothing checks.
+    func testZipEntriesTheUnpackersWouldWriteDifferentlyAreRefused() throws {
+        let json = Data("{}".utf8)
+        let cases: [(String, [TestZip.Item], String)] = [
+            ("dot.zip", [.init(name: ".", data: json), .init(name: "a.json", data: json)], "names no file"),
+            ("dot-dot.zip", [.init(name: "./.", data: json)], "names no file"),
+            ("dotted-rsrc.zip", [.init(name: "a.json", data: json), .init(name: "./__MACOSX/._a.json", data: json)], "__MACOSX"),
+            ("rsrc-file.zip", [.init(name: "__MACOSX", data: json)], "__MACOSX"),
+            ("rsrc-case.zip", [.init(name: "__macosx/._a.json", data: json)], "__MACOSX"),
+            ("control.zip", [.init(name: "a\u{1}.json", data: json)], "control character"),
+        ]
+        for (file, items, expected) in cases {
+            XCTAssertThrowsError(try PackArchive.inspect(try zip(file, items), format: "zip"), file) { error in
+                XCTAssertTrue("\(error)".contains(expected), "\(file): \(error)")
+            }
+        }
+        // ditto's own resource-fork copies are left out, and a folder entry
+        // that names the destination itself ("./") makes nothing.
+        let path = try zip("rsrc.zip", [
+            .init(name: "./", mode: 0o040755),
+            .init(name: "a.json", data: json),
+            .init(name: "__MACOSX/", mode: 0o040755),
+            .init(name: "__MACOSX/._a.json", data: Data([0, 5, 22, 7])),
+        ])
+        let out = Path.join(root, "out-rsrc")
+        try Files.mkdirp(out)
+        try PackArchive.unpack(path, format: "zip", into: out)
+        XCTAssertEqual(Files.entries(out).map(\.name), ["a.json"])
+        // A tar listing is held to the same rule.
+        let noFile = PackArchive.Entry(name: "./.", isDirectory: false, isLinkOrSpecial: false, uncompressedBytes: 1)
+        XCTAssertThrowsError(try PackArchive.check([noFile], label: "listing", maxBytes: 64))
+        let itself = PackArchive.Entry(name: "./", isDirectory: true, isLinkOrSpecial: false, uncompressedBytes: 0)
+        XCTAssertNoThrow(try PackArchive.check([itself], label: "listing", maxBytes: 64))
+    }
+
     /// unzip (the Linux unpacker) writes each stream whole: per-file sizes are
     /// checked after it, because two files can trade bytes and keep the total.
     func testFilesAnotherToolUnpackedMustHaveTheDirectorysSizes() throws {
@@ -213,7 +251,8 @@ final class PackArchiveTests: XCTestCase {
     }
 
     func testEntryNamesThatLeaveTheFolderAreRefused() {
-        for name in ["../escape.txt", "a/../../escape.txt", "/etc/escape.txt", "a\\..\\escape.txt", "C:escape.txt", ""] {
+        for name in ["../escape.txt", "a/../../escape.txt", "/etc/escape.txt", "a\\..\\escape.txt", "C:escape.txt", "",
+                     "a\u{1}.txt", "tab\there.txt", "del\u{7F}.txt"] {
             XCTAssertNotNil(PackArchive.problem(withEntryName: name), name)
         }
         for name in ["themes/a.json", "./themes/", "a..b/c", "...", "themes/.hidden"] {

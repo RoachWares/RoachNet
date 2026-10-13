@@ -17,7 +17,8 @@ import Compression
 /// archive is refused when it could be read more than one way: more than one
 /// end record, ZIP and ZIP64 records that disagree, bytes the directory doesn't
 /// account for, files that overlap, a local header that disagrees with the
-/// directory, or a file name that tools could decode differently.
+/// directory, a file name that tools could decode differently, or an entry
+/// RoachNet's reader and unzip would unpack differently.
 struct ZipArchive {
     struct Entry {
         let name: String
@@ -189,6 +190,19 @@ struct ZipArchive {
                 throw refused("gives \"\(name)\" a second, different name")
             }
             let isDirectory = name.hasSuffix("/")
+            // Both unpackers must write the same files. A file entry named "."
+            // names no file: this reader would skip it, and unzip writes it as
+            // "_", which no check sees. `__MACOSX/` is left out only when a
+            // name starts with it as written (that is what unzip's pattern
+            // matches), so any other spelling of that folder, such as
+            // "./__MACOSX/a" or a file named __MACOSX, is refused.
+            let parts = Self.unpackedParts(name)
+            if !Self.isResourceForkCopy(name) {
+                guard isDirectory || !parts.isEmpty else { throw refused("has a file entry that names no file (\"\(name)\")") }
+                guard parts.first?.lowercased() != "__macosx" else {
+                    throw refused("names \"\(name)\" under __MACOSX, which is kept for ditto's resource-fork copies")
+                }
+            }
             guard flags & 0x0001 == 0, flags & 0x0040 == 0, flags & 0x2000 == 0 else {
                 throw refused("is encrypted (\"\(name)\"); packs can't be")
             }
@@ -202,7 +216,7 @@ struct ZipArchive {
                 // One path, one file, even on a volume that ignores case. The
                 // path is the one the file unpacks to, so "a/./b" and "a//b"
                 // count as "a/b": unzip would write each over the last.
-                guard fileNames.insert(Self.unpackedParts(name).joined(separator: "/").lowercased()).inserted else {
+                guard fileNames.insert(parts.joined(separator: "/").lowercased()).inserted else {
                     throw refused("names \"\(name)\" twice")
                 }
             }
@@ -291,6 +305,13 @@ struct ZipArchive {
         name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
     }
 
+    /// `ditto --sequesterRsrc` keeps resource forks under `__MACOSX/`. Both
+    /// unpackers leave out exactly the entries whose names start with it as
+    /// written: unzip by its `-x "__MACOSX/*"` pattern, this reader by this test.
+    static func isResourceForkCopy(_ name: String) -> Bool {
+        name.hasPrefix("__MACOSX/")
+    }
+
     /// The names in an extra block's Info-ZIP Unicode path fields (tag
     /// 0x7075: a version byte, the CRC-32 of the header's name, then the name
     /// in UTF-8). Every such field counts, whatever its version or CRC says.
@@ -335,7 +356,10 @@ struct ZipArchive {
             guard !parts.contains(".."), !entry.name.unicodeScalars.contains(where: { $0.value == 0 }) else {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" isn't a plain name inside the folder.")
             }
-            guard let first = parts.first, first != "__MACOSX" else { continue }
+            // A file entry always names a file (the reader refuses one that
+            // doesn't); a folder entry that names none, such as "./", is the
+            // destination itself.
+            guard !Self.isResourceForkCopy(entry.name), !parts.isEmpty else { continue }
             if entry.isDirectory {
                 try makeFolders(parts, in: destination)
                 continue
@@ -373,9 +397,8 @@ struct ZipArchive {
     /// trade bytes and still add up.
     func checkUnpackedSizes(in destination: String) throws {
         let label = Path.basename(path)
-        for entry in entries where !entry.isDirectory {
+        for entry in entries where !entry.isDirectory && !Self.isResourceForkCopy(entry.name) {
             let parts = Self.unpackedParts(entry.name)
-            guard let first = parts.first, first != "__MACOSX" else { continue }
             guard let info = Files.lstatInfo(destination + "/" + parts.joined(separator: "/")), info.st_mode & S_IFMT == S_IFREG else {
                 throw PackError.integrity("Archive \(label): \"\(entry.name)\" wasn't unpacked as a plain file.")
             }

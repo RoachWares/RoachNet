@@ -34,6 +34,11 @@ enum PackArchive {
         if name.isEmpty { return "an entry has no name" }
         if name.utf8.count > 4_096 { return "an entry name is too long" }
         if name.unicodeScalars.contains(where: { $0.value == 0 }) { return "\"\(name)\" contains a NUL character" }
+        // unzip drops control characters from the names it writes, so the two
+        // unpackers would disagree, and they garble logs and listings.
+        if name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) {
+            return "an entry name contains a control character"
+        }
         if name.hasPrefix("/") { return "\"\(name)\" is an absolute path" }
         if name.contains("\\") { return "\"\(name)\" uses a backslash" }
         if name.count >= 2, name.dropFirst().first == ":", name.first?.isLetter == true { return "\"\(name)\" names a drive" }
@@ -81,6 +86,9 @@ enum PackArchive {
             }
             if entry.isLinkOrSpecial {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" is a link or a special file.")
+            }
+            if !entry.isDirectory, !entry.name.split(separator: "/").contains(where: { $0 != "." }) {
+                throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" names no file.")
             }
             let (sum, overflow) = total.addingReportingOverflow(entry.uncompressedBytes)
             guard !overflow, sum <= maxBytes else { throw tooLarge(label, maxBytes) }
