@@ -89,6 +89,32 @@ final class TraceTests: XCTestCase {
         XCTAssertNotNil(again.trace(traceId))
     }
 
+    /// A CLI agent's turns can start in the same millisecond. They keep the
+    /// order they were recorded in, before and after a reload, instead of
+    /// the order of their random ids.
+    func testObservationsThatStartTogetherKeepTheirOrder() throws {
+        let store = TraceStore(root: root)
+        let start = TraceClock.nowMs()
+        let trace = TraceRecord(id: TraceIDs.trace(), kind: "org_run", name: "run", status: "ok", startMs: start, endMs: start + 1)
+        store.upsert(trace)
+        // Ids that sort the other way round from the order they're recorded in.
+        let ids = ["ff00000000000003", "aa00000000000002", "0000000000000001"]
+        for (index, id) in ids.enumerated() {
+            store.upsert(ObservationRecord(id: id, traceId: trace.id, type: .generation, name: "turn \(index + 1)", startMs: start))
+        }
+        let turns = ["turn 1", "turn 2", "turn 3"]
+        XCTAssertEqual(store.observations(trace.id).map(\.name), turns)
+        // Ending the first turn doesn't move it.
+        var first = try XCTUnwrap(store.observation(trace.id, ids[0]))
+        first.endMs = start + 1
+        store.upsert(first)
+        XCTAssertEqual(store.observations(trace.id).map(\.name), turns)
+        XCTAssertEqual(TraceStore(root: root).observations(trace.id).map(\.name), turns, "replay keeps the order")
+        // An earlier start still comes first.
+        store.upsert(ObservationRecord(id: "bb00000000000004", traceId: trace.id, type: .span, name: "setup", startMs: start - 5))
+        XCTAssertEqual(store.observations(trace.id).map(\.name), ["setup"] + turns)
+    }
+
     func testListPagesNewestFirstWithACursor() throws {
         let store = TraceStore(root: root)
         let base = TraceClock.nowMs() - 10_000
