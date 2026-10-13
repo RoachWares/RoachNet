@@ -39,15 +39,32 @@ public enum HTTPClient {
 
         let semaphore = DispatchSemaphore(value: 0)
         let outcome = LockedBox<(data: Data?, response: URLResponse?, error: Error?)>((nil, nil, nil))
-        let task = session.dataTask(with: request) { data, response, error in
+        // With a size limit the body is collected as it arrives and the transfer
+        // stops at the limit; the completion-handler task would buffer all of an
+        // endless or oversized body before anything could check it.
+        let collector = maxResponseBytes.map { BoundedResponseCollector(limit: $0) { data, response, error in
             outcome.value = (data, response, error)
             semaphore.signal()
+        } }
+        let boundedSession = collector.map { URLSession(configuration: session.configuration, delegate: $0, delegateQueue: nil) }
+        defer { boundedSession?.finishTasksAndInvalidate() }
+        let task: URLSessionDataTask
+        if let boundedSession {
+            task = boundedSession.dataTask(with: request)
+        } else {
+            task = session.dataTask(with: request) { data, response, error in
+                outcome.value = (data, response, error)
+                semaphore.signal()
+            }
         }
         task.resume()
         let deadline = DispatchTime.now() + .milliseconds(timeoutMs + 250)
         if semaphore.wait(timeout: deadline) == .timedOut {
             task.cancel()
             throw RuntimeError("The operation was aborted due to timeout")
+        }
+        if let maxResponseBytes, collector?.exceeded == true {
+            throw RuntimeError("Response from \(urlString) exceeded \(maxResponseBytes) bytes.")
         }
         let (resultData, resultResponse, resultError) = outcome.value
         if let resultError {
@@ -88,6 +105,54 @@ public enum HTTPClient {
             throw RuntimeError(message)
         }
         return data
+    }
+}
+
+/// Collects one response body in memory and cancels the transfer as soon as it
+/// passes `limit` (or announces a longer `Content-Length`), so a size limit
+/// holds while bytes arrive instead of after all of them have.
+final class BoundedResponseCollector: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let limit: Int
+    private let lock = NSLock()
+    private var data = Data()
+    private var response: URLResponse?
+    private var tooLarge = false
+    private let finish: (Data?, URLResponse?, Error?) -> Void
+
+    init(limit: Int, finish: @escaping (Data?, URLResponse?, Error?) -> Void) {
+        self.limit = max(0, limit)
+        self.finish = finish
+    }
+
+    var exceeded: Bool { lock.lock(); defer { lock.unlock() }; return tooLarge }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        lock.lock()
+        self.response = response
+        let announcedTooLarge = response.expectedContentLength > Int64(limit)
+        if announcedTooLarge { tooLarge = true }
+        lock.unlock()
+        completionHandler(announcedTooLarge ? .cancel : .allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive chunk: Data) {
+        lock.lock()
+        if tooLarge || data.count + chunk.count > limit {
+            tooLarge = true
+            lock.unlock()
+            dataTask.cancel()
+            return
+        }
+        data.append(chunk)
+        lock.unlock()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        let body = data, received = response
+        lock.unlock()
+        finish(body, received, error)
     }
 }
 

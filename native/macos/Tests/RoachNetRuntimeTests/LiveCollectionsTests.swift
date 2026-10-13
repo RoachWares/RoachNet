@@ -69,6 +69,11 @@ final class LiveCollectionsTests: XCTestCase {
         XCTAssertNotNil(ContentCollectionValidator.problem(.maps, badSlug))
         let wikipedia: JSON = ["options": [["id": "none", "url": nil], ["id": "top-mini", "url": "https://download.kiwix.org/zim/wikipedia/x.zim"]]]
         XCTAssertNil(ContentCollectionValidator.problem(.wikipedia, wikipedia))
+        // Only `none` may skip the URL; any other option without one would read as installed.
+        let urlless: JSON = ["options": [["id": "none", "url": nil], ["id": "all-maxi", "url": nil]]]
+        XCTAssertEqual(ContentCollectionValidator.problem(.wikipedia, urlless), "Wikipedia all-maxi has no URL")
+        let missing: JSON = ["options": [["id": "top-mini"]]]
+        XCTAssertEqual(ContentCollectionValidator.problem(.wikipedia, missing), "Wikipedia top-mini has no URL")
     }
 
     func testBundledCopyIsUsedUntilALiveOneArrives() throws {

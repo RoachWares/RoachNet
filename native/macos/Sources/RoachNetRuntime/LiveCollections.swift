@@ -62,8 +62,12 @@ enum ContentCollectionValidator {
         case .wikipedia:
             for option in list.array {
                 guard isSlug(option["id"]) else { return "Wikipedia option without an id" }
-                // `none` (skip Wikipedia) has no URL; every other option needs one.
-                if option["url"].isNullish { continue }
+                // `none` (skip Wikipedia) has no URL; every other option needs one. An
+                // option without one would be "selected" with nothing downloaded.
+                if option["url"].isNullish {
+                    if option["id"].stringValue == "none" { continue }
+                    return "Wikipedia \(option["id"].jsString) has no URL"
+                }
                 if let reason = urlProblem(option["url"]) { return "Wikipedia \(option["id"].jsString): \(reason)" }
             }
         }

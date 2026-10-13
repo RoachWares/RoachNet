@@ -189,6 +189,9 @@ final class RoachTileStore: ObservableObject {
     private var cache: [Key: RoachRenderedTile] = [:]
     private var order: [Key] = []
     private var inflight: Set<Key> = []
+    /// Bumped whenever `open` swaps the archive set; a tile rendered for an
+    /// older set is dropped instead of landing under a key the new set reuses.
+    private(set) var generation = 0
     private let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 4
@@ -200,6 +203,7 @@ final class RoachTileStore: ObservableObject {
     func open(_ files: [String]) {
         guard files != paths else { return }
         paths = files
+        generation += 1
         queue.cancelAllOperations()
         cache.removeAll()
         order.removeAll()
@@ -243,17 +247,20 @@ final class RoachTileStore: ObservableObject {
         guard !inflight.contains(key), key.archive < archives.count else { return nil }
         inflight.insert(key)
         let archive = archives[key.archive]
+        let generation = self.generation
         queue.addOperation { [weak self] in
             var rendered = RoachRenderedTile.empty
             if let data = try? archive.tile(z: key.z, x: key.x, y: key.y), let layers = try? RoachMVT.decode(data) {
                 rendered = RoachRenderedTile.build(layers, zoom: key.z)
             }
-            Task { @MainActor [weak self] in self?.store(key, rendered) }
+            Task { @MainActor [weak self] in self?.store(key, rendered, generation: generation) }
         }
         return nil
     }
 
-    private func store(_ key: Key, _ tile: RoachRenderedTile) {
+    func store(_ key: Key, _ tile: RoachRenderedTile, generation: Int) {
+        // A load cancelAllOperations() couldn't stop, from before the archives changed.
+        guard generation == self.generation else { return }
         inflight.remove(key)
         guard key.archive < archives.count else { return }
         cache[key] = tile

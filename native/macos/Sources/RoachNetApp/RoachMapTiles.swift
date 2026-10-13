@@ -52,6 +52,15 @@ enum RoachGzip {
         return try inflate(Array(bytes[cursor..<(bytes.count - 8)]), expected: max(isize, sizeHint))
     }
 
+    /// What to reserve up front for an inflated member. The size hint is the
+    /// file's own ISIZE trailer, so it is a hint, not a promise: DEFLATE can't
+    /// grow past about 1032:1, and nothing past 8 MB is reserved ahead of time
+    /// (a 20-byte tile claiming 4 GB used to reserve 4 GB).
+    static func reservation(inputBytes: Int, hint: Int) -> Int {
+        let ceiling = inputBytes > Int.max / 1032 ? Int.max : inputBytes * 1032
+        return max(0, min(hint, ceiling, 8 << 20))
+    }
+
     /// Raw DEFLATE (Compression's ZLIB algorithm is headerless deflate).
     static func inflate(_ input: [UInt8], expected: Int) throws -> Data {
         let stream = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
@@ -60,9 +69,10 @@ enum RoachGzip {
             throw RoachMapTileError.corruptTile("inflate init")
         }
         defer { compression_stream_destroy(stream) }
-        let chunk = max(16 * 1024, min(expected > 0 ? expected : 64 * 1024, 32 * 1024 * 1024))
+        let plausible = reservation(inputBytes: input.count, hint: expected)
+        let chunk = max(16 * 1024, min(plausible > 0 ? plausible : 64 * 1024, 1 << 20))
         var output = Data()
-        output.reserveCapacity(expected > 0 ? expected : chunk)
+        output.reserveCapacity(plausible > 0 ? plausible : chunk)
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunk)
         defer { buffer.deallocate() }
         return try input.withUnsafeBufferPointer { source -> Data in

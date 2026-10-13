@@ -63,6 +63,36 @@ final class RoachMapTilesTests: XCTestCase {
         XCTAssertEqual(try RoachGzip.decompress(original), original, "non-gzip data passes through")
     }
 
+    func testForgedGzipSizeDoesNotDecideTheReservation() throws {
+        // ISIZE comes from the file: a 20-byte member claiming 4 GB gets at most what DEFLATE could produce.
+        XCTAssertEqual(RoachGzip.reservation(inputBytes: 20, hint: 0xFFFF_FFF0), 20 * 1032)
+        XCTAssertEqual(RoachGzip.reservation(inputBytes: 10 << 20, hint: 4 << 30), 8 << 20)
+        XCTAssertEqual(RoachGzip.reservation(inputBytes: 100, hint: 50), 50)
+        XCTAssertEqual(RoachGzip.reservation(inputBytes: 100, hint: -5), 0)
+        // A stored DEFLATE block whose gzip trailer lies about the size still inflates to the right bytes.
+        let payload = Data("roachnet tile".utf8)
+        var member = Data([0x1f, 0x8b, 0x08, 0x00, 0, 0, 0, 0, 0x00, 0x03])
+        member.append(contentsOf: [0x01, UInt8(payload.count), 0x00, ~UInt8(payload.count), 0xFF])
+        member.append(payload)
+        member.append(contentsOf: [0, 0, 0, 0, 0xF0, 0xFF, 0xFF, 0xFF])
+        XCTAssertEqual(try RoachGzip.decompress(member), payload)
+    }
+
+    @MainActor
+    func testTileFromAnOlderArchiveSetIsDropped() throws {
+        let store = RoachTileStore()
+        store.open([fixtureURL.path])
+        let stale = store.generation
+        store.open([fixtureURL.path, fixtureURL.path])
+        XCTAssertGreaterThan(store.generation, stale)
+        let key = RoachTileStore.Key(archive: 0, z: 0, x: 0, y: 0)
+        let before = store.version
+        store.store(key, RoachRenderedTile.empty, generation: stale)
+        XCTAssertEqual(store.version, before, "a load from the previous archive set lands nowhere")
+        store.store(key, RoachRenderedTile.empty, generation: store.generation)
+        XCTAssertEqual(store.version, before + 1)
+    }
+
     func testRejectsFilesThatAreNotPMTiles() {
         XCTAssertThrowsError(try RoachPMTilesHeader.parse(Data(repeating: 0, count: 127))) { error in
             XCTAssertEqual(error as? RoachMapTileError, .notPMTiles)
