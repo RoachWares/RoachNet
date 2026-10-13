@@ -166,6 +166,27 @@ final class PackArchiveTests: XCTestCase {
         XCTAssertEqual(try ZipArchive(path: try zip("stamped.zip", [stamped])).entries.map(\.name), ["a.json"])
     }
 
+    /// Names are compared as the paths they unpack to. unzip writes "a/./b"
+    /// over "a/b" without asking, so the reader refuses both before either
+    /// unpacker runs, and a file can't sit where a folder is.
+    func testZipNamesThatUnpackToTheSamePlaceAreRefused() throws {
+        let json = Data("{}".utf8)
+        let cases: [(String, [TestZip.Item])] = [
+            ("dot.zip", [.init(name: "a/b.json", data: json), .init(name: "a/./b.json", data: json)]),
+            ("slashes.zip", [.init(name: "a/b.json", data: json), .init(name: "a//b.json", data: json)]),
+            ("leading-dot.zip", [.init(name: "b.json", data: json), .init(name: "./b.json", data: json)]),
+            ("file-then-folder.zip", [.init(name: "a", data: json), .init(name: "a/b.json", data: json)]),
+            ("file-and-folder-entry.zip", [.init(name: "a", data: json), .init(name: "a/", mode: 0o040755)]),
+            ("case-folder.zip", [.init(name: "A", data: json), .init(name: "a/b.json", data: json)]),
+        ]
+        for (file, items) in cases {
+            XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file)
+        }
+        // A folder listed next to the files inside it, even twice, is fine.
+        let folders: [TestZip.Item] = [.init(name: "a/", mode: 0o040755), .init(name: "a/b.json", data: json), .init(name: "a/./", mode: 0o040755)]
+        XCTAssertEqual(try ZipArchive(path: try zip("folders.zip", folders)).entries.count, 3)
+    }
+
     /// unzip (the Linux unpacker) writes each stream whole: per-file sizes are
     /// checked after it, because two files can trade bytes and keep the total.
     func testFilesAnotherToolUnpackedMustHaveTheDirectorysSizes() throws {

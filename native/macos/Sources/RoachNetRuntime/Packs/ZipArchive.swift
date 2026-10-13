@@ -199,8 +199,12 @@ struct ZipArchive {
             if isDirectory {
                 guard uncompressed == 0 else { throw refused("has a folder that holds data (\"\(name)\")") }
             } else {
-                // One name, one file, even on a volume that ignores case.
-                guard fileNames.insert(name.lowercased()).inserted else { throw refused("names \"\(name)\" twice") }
+                // One path, one file, even on a volume that ignores case. The
+                // path is the one the file unpacks to, so "a/./b" and "a//b"
+                // count as "a/b": unzip would write each over the last.
+                guard fileNames.insert(Self.unpackedParts(name).joined(separator: "/").lowercased()).inserted else {
+                    throw refused("names \"\(name)\" twice")
+                }
             }
 
             // The local header must describe the same file: tools that walk the
@@ -264,7 +268,27 @@ struct ZipArchive {
         guard directoryOffset >= expected, slack.contains(directoryOffset - expected) else {
             throw refused(entries.isEmpty ? "lists no files but holds data" : "has data between its last file and its ZIP directory")
         }
+
+        // A file and a folder can't share a path either ("a" beside "a/b" or
+        // "a/"). RoachNet's own unpacking refuses that halfway through; this
+        // refuses it before anything is written, whichever tool unpacks.
+        var folders = Set<String>()
+        for entry in entries {
+            let parts = Self.unpackedParts(entry.name)
+            for end in stride(from: 1, through: entry.isDirectory ? parts.count : parts.count - 1, by: 1) {
+                folders.insert(parts[..<end].joined(separator: "/").lowercased())
+            }
+        }
+        if let clash = entries.first(where: { !$0.isDirectory && folders.contains(Self.unpackedParts($0.name).joined(separator: "/").lowercased()) }) {
+            throw refused("puts a file and a folder at the same place (\"\(clash.name)\")")
+        }
         self.entries = entries
+    }
+
+    /// The path an entry unpacks to, as both unpackers write it: empty and
+    /// "." components left out, so "a//./b" is "a/b".
+    static func unpackedParts(_ name: String) -> [String] {
+        name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
     }
 
     /// The names in an extra block's Info-ZIP Unicode path fields (tag
@@ -306,7 +330,7 @@ struct ZipArchive {
             output.deallocate()
         }
         for entry in entries {
-            let parts = entry.name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
+            let parts = Self.unpackedParts(entry.name)
             // `PackArchive.check` refuses these names first; this never relies on it.
             guard !parts.contains(".."), !entry.name.unicodeScalars.contains(where: { $0.value == 0 }) else {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" isn't a plain name inside the folder.")
@@ -350,7 +374,7 @@ struct ZipArchive {
     func checkUnpackedSizes(in destination: String) throws {
         let label = Path.basename(path)
         for entry in entries where !entry.isDirectory {
-            let parts = entry.name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
+            let parts = Self.unpackedParts(entry.name)
             guard let first = parts.first, first != "__MACOSX" else { continue }
             guard let info = Files.lstatInfo(destination + "/" + parts.joined(separator: "/")), info.st_mode & S_IFMT == S_IFREG else {
                 throw PackError.integrity("Archive \(label): \"\(entry.name)\" wasn't unpacked as a plain file.")
