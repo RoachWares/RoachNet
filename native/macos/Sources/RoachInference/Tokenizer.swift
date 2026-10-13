@@ -436,6 +436,12 @@ public struct StreamingDecoder {
 
     public init() {}
 
+    /// The bytes of a character the last bytes appended only started.
+    public var partialCharacter: [UInt8] { pending }
+
+    /// Whether the bytes appended so far stop partway through a character.
+    public var holdsPartialCharacter: Bool { !pending.isEmpty }
+
     public mutating func append(_ bytes: [UInt8]) -> String {
         pending += bytes
         var end = pending.count

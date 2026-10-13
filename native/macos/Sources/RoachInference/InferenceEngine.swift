@@ -167,12 +167,7 @@ public final class InferenceEngine {
                 let current = decoder
                 guard let chosen = sampler.sample(logits, history: session.cachedTokens, allowed: { id in
                     if tokenizer.isEndOfGeneration(id) { return constraint.canEnd }
-                    let bytes = tokenizer.piece(id)
-                    guard !bytes.isEmpty else { return false }
-                    var probe = current
-                    let piece = probe.append(bytes)
-                    if piece.isEmpty { return constraint.insideFreeText }
-                    return constraint.allows(piece)
+                    return constraint.admits(tokenizer.piece(id), after: current)
                 }) else {
                     reason = .endOfGeneration
                     break

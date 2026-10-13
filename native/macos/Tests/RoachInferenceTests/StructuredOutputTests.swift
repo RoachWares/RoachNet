@@ -86,6 +86,52 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertTrue(accepts(JSONConstraint(schema: many), #"{"k0": false}"#))
     }
 
+    /// A token can stop partway through a character. It may come only where a
+    /// character that starts that way can come: otherwise no token can finish
+    /// it, and the held bytes end the output as "�" (ROA-93).
+    func testATokenStopsInsideACharacterOnlyWhereThatCharacterCanCome() {
+        let lead: [UInt8] = [0xE2]      // the first of the three bytes of "“"
+        let rest: [UInt8] = [0x80, 0x9C]
+        let fresh = StreamingDecoder()
+        let schema = JSONSchemaNode.object(properties: ["color": .string], order: ["color"], required: ["color"], additional: false)
+
+        // Before the value: whitespace may come, a character it can't finish may not.
+        let json = JSONConstraint(schema: schema)
+        XCTAssertTrue(json.admits(Array("  ".utf8), after: fresh))
+        XCTAssertFalse(json.admits(Array("  ".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(lead, after: fresh))
+
+        // Inside a string any character can come, in pieces too.
+        json.accept("{\"color\": \"")
+        XCTAssertTrue(json.admits(lead, after: fresh))
+        XCTAssertTrue(json.admits(Array("red ".utf8) + lead, after: fresh))
+        var held = StreamingDecoder()
+        _ = held.append(lead)
+        XCTAssertTrue(json.admits(rest, after: held))
+        // Not once the string has closed, nor inside an escape, where only ASCII comes.
+        XCTAssertFalse(json.admits(Array("red\"".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(Array("red\"}".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(Array("a\\".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(Array("a\\u00".utf8) + lead, after: fresh))
+
+        // In a fixed value or a known key, such a character can come where an option goes on with it.
+        let e = Array("\u{E9}".utf8)    // "é": C3 A9
+        let values = JSONConstraint(schema: .literals(["\"caf\u{E9}\"", #""cola""#]))
+        values.accept("\"")
+        XCTAssertTrue(values.admits(Array("caf".utf8) + [e[0]], after: fresh))
+        XCTAssertFalse(values.admits(Array("co".utf8) + [e[0]], after: fresh))
+        XCTAssertFalse(values.admits(lead, after: fresh), "no option goes on with that character")
+        values.accept("caf")
+        XCTAssertTrue(values.admits([e[0]], after: fresh))
+        var heldE = StreamingDecoder()
+        _ = heldE.append([e[0]])
+        XCTAssertTrue(values.admits([e[1]] + Array("\"".utf8), after: heldE))
+        let keys = JSONConstraint(schema: .object(properties: ["caf\u{E9}": .string], order: ["caf\u{E9}"], required: [], additional: false))
+        keys.accept("{\"")
+        XCTAssertTrue(keys.admits(Array("caf".utf8) + [e[0]], after: fresh))
+        XCTAssertFalse(keys.admits(Array("x".utf8) + [e[0]], after: fresh))
+    }
+
     func testCompleteValueEndsGeneration() {
         let constraint = JSONConstraint(schema: .number(integer: true))
         XCTAssertTrue(accepts(constraint, "42"))

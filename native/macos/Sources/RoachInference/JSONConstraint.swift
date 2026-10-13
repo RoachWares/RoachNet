@@ -10,9 +10,24 @@ public protocol GenerationConstraint: AnyObject {
     var isComplete: Bool { get }
     /// Whether the end of generation may come now.
     var canEnd: Bool { get }
-    /// Whether a token that ends partway through a UTF-8 character may come now
-    /// (inside free text, such as a JSON string).
-    var insideFreeText: Bool { get }
+    /// Whether `piece` can follow and then a character that starts with the
+    /// bytes `partial`: the end of a token that stops partway through one.
+    func allows(_ piece: String, thenPartial partial: [UInt8]) -> Bool
+}
+
+extension GenerationConstraint {
+    /// Whether a token with these bytes may come next, after the bytes
+    /// `decoder` already holds. A token that stops partway through a character
+    /// may come only where a character that starts that way can come: anywhere
+    /// else no token could finish it, and the held bytes would end the output
+    /// as "\u{FFFD}".
+    public func admits(_ bytes: [UInt8], after decoder: StreamingDecoder) -> Bool {
+        guard !bytes.isEmpty else { return false }
+        var probe = decoder
+        let piece = probe.append(bytes)
+        guard probe.holdsPartialCharacter else { return !piece.isEmpty && allows(piece) }
+        return allows(piece, thenPartial: probe.partialCharacter)
+    }
 }
 
 /// The part of JSON Schema structured outputs use.
@@ -72,9 +87,31 @@ public final class JSONConstraint: GenerationConstraint {
 
     public var isComplete: Bool { states.contains { $0.complete } }
 
-    public var insideFreeText: Bool {
-        states.contains { state in
-            if case .string(_, _, let options, _) = state.stack.last { return options == nil }
+    public func allows(_ piece: String, thenPartial partial: [UInt8]) -> Bool {
+        var current = states
+        for character in piece.unicodeScalars {
+            current = Self.advance(current, character)
+            if current.isEmpty { return false }
+        }
+        return current.contains { Self.canStart(partial, in: $0) }
+    }
+
+    /// Whether a character that starts with the bytes `partial` can come next:
+    /// anywhere in free text, and in a fixed value or key where one of the
+    /// options goes on with such a character. Never inside an escape, where
+    /// only ASCII can come.
+    static func canStart(_ partial: [UInt8], in state: State) -> Bool {
+        func someOption(_ options: [String], after text: String) -> Bool {
+            let start = Array(text.utf8) + partial
+            return options.contains { Array($0.utf8).starts(with: start) }
+        }
+        switch state.stack.last {
+        case .string(let text, let escape, let options, _)?:
+            guard escape == 0 else { return false }
+            return options.map { someOption($0, after: text) } ?? true
+        case .literal(let text, let options)?:
+            return someOption(options, after: text)
+        default:
             return false
         }
     }
