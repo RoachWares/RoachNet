@@ -112,10 +112,11 @@ RoachTail is served from the same runtime. The desktop owns the local control-pl
 
 A peer token unused for 90 days stops working (`ROACHTAIL_PEER_IDLE_DAYS`; `0` turns this off).
 
-Build and test the native macOS packages, and run the runtime contract tests against the built helper:
+Build and test the native macOS packages, and run the runtime contract tests against the release build of the helper:
 
 ```bash
 swift test --package-path native/macos
+npm run runtime:build
 npm run test:native-runtime
 node scripts/build-native-macos-apps.mjs
 ```
