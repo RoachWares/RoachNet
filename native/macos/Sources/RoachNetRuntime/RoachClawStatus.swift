@@ -291,17 +291,14 @@ extension NativeRuntime {
 
     func roachClawStatus() -> JSON {
         ensureOllama()
-        let group = DispatchGroup()
         let ollamaBox = LockedBox<JSON>(.null)
         let openclawBox = LockedBox<JSON>(.null)
         let modelsBox = LockedBox<[JSON]>([])
-        group.enter()
-        DispatchQueue.global().async { ollamaBox.value = self.providerStatus("ollama", self.modelServerBaseUrl); group.leave() }
-        group.enter()
-        DispatchQueue.global().async { openclawBox.value = self.providerStatus("openclaw", self.config.openClawBaseUrl); group.leave() }
-        group.enter()
-        DispatchQueue.global().async { modelsBox.value = self.installedModels(); group.leave() }
-        group.wait()
+        BlockingWork.all("roachnet.status", [
+            { ollamaBox.value = self.providerStatus("ollama", self.modelServerBaseUrl) },
+            { openclawBox.value = self.providerStatus("openclaw", self.config.openClawBaseUrl) },
+            { modelsBox.value = self.installedModels() },
+        ])
         let ollama = ollamaBox.value
         let openclaw = openclawBox.value
         let models = modelsBox.value

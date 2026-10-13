@@ -69,7 +69,7 @@ public final class PackInstaller {
         Self.jobsLock.lock()
         Self.jobs = Array(([job] + Self.jobs).prefix(50))
         Self.jobsLock.unlock()
-        DispatchQueue.global(qos: .utility).async { [self] in
+        BlockingWork.start("roachnet.pack-install", qos: .utility) { [self] in
             do {
                 let staging = try makeStaging(for: manifest)
                 defer { if Files.exists(staging) { Files.remove(staging) } }

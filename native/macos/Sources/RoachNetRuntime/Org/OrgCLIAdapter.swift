@@ -158,7 +158,7 @@ struct OrgCLIAdapter: OrgAdapter {
         }
         if let text = invocation.stdin {
             let writer = stdin.fileHandleForWriting
-            DispatchQueue.global(qos: .userInitiated).async {
+            BlockingWork.start("roachnet.org.stdin", qos: .userInitiated) {
                 writer.write(Data(text.utf8))
                 try? writer.close()
             }
@@ -259,7 +259,7 @@ struct OrgCLIAdapter: OrgAdapter {
     static func drain(_ handle: FileHandle, timeout: TimeInterval) -> Data {
         let box = OrgLocked(Data())
         let done = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .utility).async {
+        BlockingWork.start("roachnet.org.drain", qos: .utility) {
             let data = handle.readDataToEndOfFile()
             box.mutate { $0 = data }
             done.signal()

@@ -160,7 +160,7 @@ extension NativeRuntime {
             return true
         }
         guard claimed else { return }
-        DispatchQueue.global(qos: .utility).async { [self] in
+        BlockingWork.start("roachnet.collections", qos: .utility) { [self] in
             defer { withState { collectionsRefreshInFlight = false } }
             for collection in due { fetchCollection(collection, from: "\(base)/\(collection.fileName)") }
         }

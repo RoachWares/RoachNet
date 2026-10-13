@@ -102,7 +102,7 @@ extension NativeRuntime {
            let modified = attributes[.modificationDate] as? Date, Date().timeIntervalSince(modified) < 3600 {
             return
         }
-        DispatchQueue.global(qos: .utility).async { [self] in
+        BlockingWork.start("roachnet.pack-catalog", qos: .utility) { [self] in
             do {
                 let response = try HTTPClient.request(url, headers: ["accept": "application/json", "user-agent": "RoachNet/\(config.version) pack-catalog"], timeoutMs: 15_000, maxResponseBytes: 2 * 1024 * 1024)
                 guard response.ok else { throw RuntimeError("HTTP \(response.status) from \(url)") }

@@ -213,7 +213,7 @@ extension OrgCLIProcess {
         }
         if let stdin {
             let writer = input.fileHandleForWriting
-            DispatchQueue.global(qos: .userInitiated).async {
+            BlockingWork.start("roachnet.subscription.stdin", qos: .userInitiated) {
                 writer.write(Data(stdin.utf8))
                 try? writer.close()
             }

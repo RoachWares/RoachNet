@@ -510,12 +510,12 @@ public enum Processes {
         let errData = LockedBox(Data())
         let readers = DispatchGroup()
         readers.enter()
-        DispatchQueue.global().async {
+        BlockingWork.start("roachnet.process.stdout") {
             outData.value = stdout.fileHandleForReading.readDataToEndOfFile()
             readers.leave()
         }
         readers.enter()
-        DispatchQueue.global().async {
+        BlockingWork.start("roachnet.process.stderr") {
             errData.value = stderr.fileHandleForReading.readDataToEndOfFile()
             readers.leave()
         }
