@@ -221,15 +221,24 @@ final class RoachThemeStore: ObservableObject {
         if RoachBuiltInThemes.theme(id: document.id) != nil || themes.contains(where: { $0.id == document.id && !$0.isUserTheme }) {
             document.id = "user." + document.id
         }
+        // A shared theme names its background picture; that name must be a
+        // picture inside the theme's folder, on both ends of the copy, or the
+        // import is refused (`../../somewhere.plist` would land outside).
+        let pictures = try Self.backgroundPictures(of: document).map { name -> (name: String, source: URL) in
+            guard let source = RoachThemeResolver.safeChild(named: name, of: sourceFolder) else {
+                throw Self.error("The background picture \"\(name)\" has to be a picture file inside the theme's folder.")
+            }
+            return (name, source)
+        }
         let destination = themesFolder.appendingPathComponent(document.id, isDirectory: true)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-        for mode in [document.dark, document.light] {
-            guard let name = mode?.background?.image else { continue }
-            let source = sourceFolder.appendingPathComponent(name)
-            let target = destination.appendingPathComponent(name)
-            guard FileManager.default.fileExists(atPath: source.path), !FileManager.default.fileExists(atPath: target.path) else { continue }
+        for picture in pictures {
+            guard let target = RoachThemeResolver.safeChild(named: picture.name, of: destination) else {
+                throw Self.error("The background picture \"\(picture.name)\" has to be a picture file inside the theme's folder.")
+            }
+            guard FileManager.default.fileExists(atPath: picture.source.path), !FileManager.default.fileExists(atPath: target.path) else { continue }
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: source, to: target)
+            try FileManager.default.copyItem(at: picture.source, to: target)
         }
         try write(document, to: destination.appendingPathComponent(document.id + RoachThemeDocument.fileSuffix))
         reload()
@@ -266,10 +275,11 @@ final class RoachThemeStore: ObservableObject {
         let folder = themesFolder.appendingPathComponent(document.id, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         if let source {
-            for mode in [document.dark, document.light] {
-                guard let name = mode?.background?.image else { continue }
-                let from = source.appendingPathComponent(name)
-                let to = folder.appendingPathComponent(name)
+            // Only a picture inside both folders is carried along; any other name
+            // is left behind (the theme then shows a solid background).
+            for name in Self.backgroundPictures(of: document) {
+                guard let from = RoachThemeResolver.safeChild(named: name, of: source),
+                      let to = RoachThemeResolver.safeChild(named: name, of: folder) else { continue }
                 if FileManager.default.fileExists(atPath: from.path), !FileManager.default.fileExists(atPath: to.path) {
                     try FileManager.default.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try FileManager.default.copyItem(at: from, to: to)
@@ -278,6 +288,15 @@ final class RoachThemeStore: ObservableObject {
         }
         try write(document, to: folder.appendingPathComponent(document.id + RoachThemeDocument.fileSuffix))
         reload()
+    }
+
+    /// The background picture names a theme's modes give, each once.
+    static func backgroundPictures(of document: RoachThemeDocument) -> [String] {
+        var names: [String] = []
+        for mode in [document.dark, document.light] {
+            if let name = mode?.background?.image, !names.contains(name) { names.append(name) }
+        }
+        return names
     }
 
     /// Moves a user theme to the Trash (so it can be put back).

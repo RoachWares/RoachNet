@@ -289,6 +289,37 @@ final class RoachThemeStoreTests: XCTestCase {
         XCTAssertTrue(store.snippets.contains { $0.id == "user.tight" && $0.source == .user })
     }
 
+    func testImportCopiesOnlyBackgroundPicturesInsideTheThemeFolder() throws {
+        let store = RoachThemeStore(storageRoot: root)
+        store.scan()
+        let shared = root.appendingPathComponent("shared/nested/deep", isDirectory: true)
+        try FileManager.default.createDirectory(at: shared, withIntermediateDirectories: true)
+
+        // A picture next to the theme comes along.
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: shared.appendingPathComponent("bg.png"))
+        var good = themeJSON(id: "user.pictured", name: "Pictured", accent: "#FF4545")
+        good["dark"] = ["palette": ["background": "#0A0A0A", "text": "#F2F2F2", "accent": "#FF4545"], "background": ["style": "image", "image": "bg.png"]]
+        try writeJSON(good, to: shared.appendingPathComponent("pictured.roachtheme.json"))
+        let id = try store.importFile(at: shared.appendingPathComponent("pictured.roachtheme.json"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("themes/\(id)/bg.png").path))
+
+        // A name that climbs out of the folder (any extension) is refused, and nothing lands outside.
+        let payload = root.appendingPathComponent("payload.plist")
+        try Data("payload".utf8).write(to: payload)
+        let escape = root.appendingPathComponent("themes/user.climber").appendingPathComponent("../../../payload.plist").standardizedFileURL
+        for name in ["../../../payload.plist", "/etc/hosts", "bg.plist"] {
+            var hostile = themeJSON(id: "user.climber", name: "Climber", accent: "#FF4545")
+            hostile["dark"] = ["palette": ["background": "#0A0A0A", "text": "#F2F2F2", "accent": "#FF4545"], "background": ["style": "image", "image": name]]
+            try writeJSON(hostile, to: shared.appendingPathComponent("climber.roachtheme.json"))
+            XCTAssertThrowsError(try store.importFile(at: shared.appendingPathComponent("climber.roachtheme.json")), name) { error in
+                XCTAssertTrue("\(error)".contains("inside the theme's folder"), "\(name): \(error)")
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: escape.path), "nothing was copied outside the themes folder")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("themes/user.climber").path))
+        XCTAssertNil(store.themes.first { $0.id == "user.climber" })
+    }
+
     func testDuplicateMakesAnEditableCopyAndSettingsPersist() throws {
         let store = RoachThemeStore(storageRoot: root)
         store.scan()
