@@ -41,6 +41,8 @@ public struct TraceSettings: Codable, Equatable {
 /// a later line for the same id wins. Recent records are indexed in memory.
 public final class TraceStore {
     public static let memoryTraceCap = 20_000
+    /// How far past the cap the index may run before it trims (trimming sorts every trace).
+    static let replaySlack = 1_000
     public let root: String
     private let lock = NSRecursiveLock()
     private var traces: [String: TraceRecord] = [:]
@@ -97,7 +99,9 @@ public final class TraceStore {
         lock.lock(); defer { lock.unlock() }
         traces[trace.id] = trace
         append(Line(k: "t", t: trace), day: TraceClock.day(trace.startMs))
-        capMemory()
+        // Trimming sorts every trace, so it waits until the index is a little past
+        // the cap (once per `replaySlack` new traces, not on every one past it).
+        if traces.count > TraceStore.memoryTraceCap + TraceStore.replaySlack { capMemory() }
     }
 
     public func upsert(_ observation: ObservationRecord) {
@@ -205,7 +209,13 @@ public final class TraceStore {
             for raw in text.split(separator: "\n", omittingEmptySubsequences: true) {
                 guard let line = try? decoder.decode(Line.self, from: Data(raw.utf8)) else { continue }
                 switch line.k {
-                case "t": if let trace = line.t { traces[trace.id] = trace }
+                case "t":
+                    if let trace = line.t {
+                        traces[trace.id] = trace
+                        // One day's file can hold more than the cap (capMemory trims memory,
+                        // not the file), so trim while replaying, not only before each day.
+                        if traces.count > TraceStore.memoryTraceCap + TraceStore.replaySlack { capMemory() }
+                    }
                 case "o": if let observation = line.o { observations[observation.traceId, default: [:]][observation.id] = observation }
                 case "s": if let score = line.s { scores[score.traceId, default: []].removeAll { $0.id == score.id }; scores[score.traceId, default: []].append(score) }
                 case "d": if let id = line.id { traces.removeValue(forKey: id); observations.removeValue(forKey: id); scores.removeValue(forKey: id) }
@@ -213,8 +223,10 @@ public final class TraceStore {
                 }
             }
         }
-        // Observations whose trace was deleted or never written.
+        capMemory()
+        // Observations and scores whose trace was deleted, trimmed or never written.
         for key in observations.keys where traces[key] == nil { observations.removeValue(forKey: key) }
+        for key in scores.keys where traces[key] == nil { scores.removeValue(forKey: key) }
         // A trace left "running" by an earlier process will never finish.
         for (id, trace) in traces where trace.status == "running" && trace.endMs == nil {
             var closed = trace

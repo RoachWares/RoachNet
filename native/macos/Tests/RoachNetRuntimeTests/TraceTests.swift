@@ -161,6 +161,73 @@ final class TraceTests: XCTestCase {
         XCTAssertTrue(scrubbed["long"].stringValue?.hasSuffix("[30 more characters]") ?? false)
     }
 
+    func testRedactorCatchesCompoundCredentialNamesButKeepsCounts() {
+        let credentials = ["access_token", "refresh_token", "client_secret", "private_key", "x-api-key", "X-Api-Key", "apiKey", "APIKey",
+                           "accessToken", "idToken", "set-cookie", "Cookie", "dbPassword", "key", "authorization", "X-Auth", "apikey",
+                           "clientsecret", "session_key", "credentials"]
+        let ordinary = ["max_tokens", "input_tokens", "outputTokens", "tokens", "prompt_tokens", "total_tokens", "keys", "tokenizer",
+                        "keyword", "monkey", "author", "model", "prompt", "temperature", "sessionId"]
+        for name in credentials { XCTAssertTrue(TraceRedactor.isCredentialKey(name), name) }
+        for name in ordinary { XCTAssertFalse(TraceRedactor.isCredentialKey(name), name) }
+        let scrubbed = TraceRedactor().scrub(["request": ["headers": ["x-api-key": "opaque-value-1", "accept": "json"],
+                                                          "body": ["client_secret": "opaque-value-2", "max_tokens": 64]]], maxChars: 200)
+        XCTAssertEqual(scrubbed["request"]["headers"]["x-api-key"].stringValue, "***")
+        XCTAssertEqual(scrubbed["request"]["headers"]["accept"].stringValue, "json")
+        XCTAssertEqual(scrubbed["request"]["body"]["client_secret"].stringValue, "***")
+        XCTAssertEqual(scrubbed["request"]["body"]["max_tokens"].numberValue, 64)
+        XCTAssertFalse(scrubbed.serialized().contains("opaque-value"))
+    }
+
+    func testOverlappingFlushesNeverDropAnUnsentBatch() throws {
+        let store = TraceStore(root: root)
+        _ = try store.updateSettings { settings in
+            settings.export.enabled = true
+            settings.export.endpoint = "http://127.0.0.1:4318/"
+        }
+        let exporter = TraceExporter(store: store, version: "1.1.0-test")
+        let now = TraceClock.nowMs()
+        for index in 0..<450 {
+            exporter.enqueue(TraceRecord(id: TraceIDs.trace(), kind: "model", name: "t\(index)", status: "ok", startMs: now, endMs: now + 1), [])
+        }
+        XCTAssertEqual(exporter.pendingCount, 450)
+        let lock = NSLock()
+        var sent: [String] = []
+        let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        var first = true
+        exporter.send = { _, _, body in
+            let spans = ((try? JSON.parse(body)) ?? .null)["resourceSpans"][0]["scopeSpans"][0]["spans"].array.compactMap { $0["spanId"].stringValue }
+            lock.lock(); let isFirst = first; first = false; sent += spans; lock.unlock()
+            if isFirst { entered.signal(); release.wait() }
+            return .init(status: 200, body: Data())
+        }
+        let group = DispatchGroup()
+        DispatchQueue.global().async(group: group) { exporter.flush(force: true) }
+        entered.wait()
+        // A second flush (the timer's, say) starts while the first is still sending.
+        DispatchQueue.global().async(group: group) { exporter.flush(force: true) }
+        Thread.sleep(forTimeInterval: 0.2)
+        release.signal()
+        XCTAssertEqual(group.wait(timeout: .now() + 10), .success)
+        XCTAssertEqual(sent.count, 400)
+        XCTAssertEqual(Set(sent).count, 400, "the second flush sent the next batch, not the same one again")
+        XCTAssertEqual(exporter.pendingCount, 50)
+    }
+
+    func testReplayingABigDayHoldsTheMemoryCap() throws {
+        do {
+            let store = TraceStore(root: root)
+            let now = TraceClock.nowMs()
+            for index in 0..<(TraceStore.memoryTraceCap + 2_500) {
+                store.upsert(TraceRecord(id: TraceIDs.trace(), kind: "model", name: "t\(index)", status: "ok", startMs: now - 100_000 + Int64(index), endMs: now))
+            }
+        }
+        let reloaded = TraceStore(root: root)
+        let kept = reloaded.allTraces { _ in true }
+        XCTAssertEqual(kept.count, TraceStore.memoryTraceCap, "one day's file larger than the cap is trimmed while it replays")
+        XCTAssertNotNil(kept.first { $0.name == "t\(TraceStore.memoryTraceCap + 2_499)" }, "the newest traces are the ones kept")
+        XCTAssertNil(kept.first { $0.name == "t0" })
+    }
+
     func testTracingOffRecordsNothing() throws {
         let store = TraceStore(root: root)
         _ = try store.updateSettings { $0.enabled = false }

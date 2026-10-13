@@ -9,7 +9,13 @@ public final class TraceExporter {
     let store: TraceStore
     let version: String
     private let lock = NSLock()
+    /// One flush at a time: the timer's and `POST /api/traces/export/flush` would
+    /// otherwise send the same batch and each drop a batch's worth, losing the next one.
+    private let flushLock = NSLock()
     private var pending: [JSON] = []
+    /// Spans `enqueue` dropped from the front to stay under the cap, so a flush
+    /// in flight removes only what it sent and is still queued.
+    private var droppedFromFront = 0
     private let queue = DispatchQueue(label: "org.roachnet.trace-export")
     private var timer: DispatchSourceTimer?
     private var retryAfter = Date.distantPast
@@ -58,7 +64,11 @@ public final class TraceExporter {
         let spans = TraceExporter.spans(trace, observations, includeContent: settings.export.includeContent)
         lock.lock()
         pending.append(contentsOf: spans)
-        if pending.count > TraceExporter.queueCap { pending.removeFirst(pending.count - TraceExporter.queueCap) }
+        if pending.count > TraceExporter.queueCap {
+            let overflow = pending.count - TraceExporter.queueCap
+            pending.removeFirst(overflow)
+            droppedFromFront += overflow
+        }
         lock.unlock()
     }
 
@@ -69,14 +79,18 @@ public final class TraceExporter {
     public func flush(force: Bool = false) -> Bool {
         let settings = store.settings
         guard settings.export.enabled, let url = TraceExporter.endpointURL(settings.export.endpoint) else { return false }
+        flushLock.lock()
+        defer { flushLock.unlock() }
         lock.lock()
         guard !pending.isEmpty, force || Date() >= retryAfter else { lock.unlock(); return true }
         let batch = Array(pending.prefix(TraceExporter.batchSize))
+        let droppedBefore = droppedFromFront
         lock.unlock()
         let ok = post(url: url, spans: batch, settings: settings)
         lock.lock()
         if ok {
-            pending.removeFirst(min(batch.count, pending.count))
+            let sentAndQueued = max(0, batch.count - (droppedFromFront - droppedBefore))
+            pending.removeFirst(min(sentAndQueued, pending.count))
             backoffSeconds = 5
             retryAfter = .distantPast
         } else {

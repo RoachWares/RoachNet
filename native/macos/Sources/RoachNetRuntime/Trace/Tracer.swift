@@ -14,6 +14,54 @@ public final class TraceRedactor {
 
     public init() {}
 
+    /// Words that make a field a credential wherever they appear in its name
+    /// (`access_token`, `clientSecret`, `X-Auth`, `set-cookie`).
+    private static let credentialWords: Set<String> = [
+        "token", "secret", "password", "passwd", "passphrase", "authorization", "auth", "credential", "credentials",
+        "cookie", "apikey", "privatekey", "bearer", "jwt", "otp",
+    ]
+    /// `key` is a credential on its own or after one of these (`api_key`, `x-api-key`, `private_key`).
+    private static let keyQualifiers: Set<String> = [
+        "api", "private", "access", "secret", "session", "signing", "client", "master", "encryption", "auth", "license",
+    ]
+    /// Run-together names whose last part gives them away (`accesstoken`, `clientsecret`, `dbpassword`).
+    private static let credentialSuffixes = ["token", "secret", "password", "passwd", "apikey", "privatekey", "accesskey", "secretkey"]
+
+    /// The name's words, split at separators and camelCase: `X-Api-Key` and
+    /// `xApiKey` are both `x api key`; `max_tokens` is `max tokens`.
+    static func nameWords(_ name: String) -> [String] {
+        var words: [String] = []
+        var current = String.UnicodeScalarView()
+        let scalars = Array(name.unicodeScalars)
+        func flush() { if !current.isEmpty { words.append(String(current).lowercased()); current = String.UnicodeScalarView() } }
+        for (index, scalar) in scalars.enumerated() {
+            guard CharacterSet.alphanumerics.contains(scalar) else { flush(); continue }
+            if CharacterSet.uppercaseLetters.contains(scalar), index > 0, !current.isEmpty {
+                let previous = scalars[index - 1]
+                let nextIsLower = index + 1 < scalars.count && CharacterSet.lowercaseLetters.contains(scalars[index + 1])
+                if CharacterSet.lowercaseLetters.contains(previous) || CharacterSet.decimalDigits.contains(previous)
+                    || (CharacterSet.uppercaseLetters.contains(previous) && nextIsLower) {
+                    flush()
+                }
+            }
+            current.append(scalar)
+        }
+        flush()
+        return words
+    }
+
+    /// Whether a JSON field name holds a credential. Counts (`max_tokens`,
+    /// `inputTokens`) and ordinary words (`keys`, `tokenizer`) are left alone.
+    public static func isCredentialKey(_ name: String) -> Bool {
+        let words = nameWords(name)
+        for (index, word) in words.enumerated() {
+            if credentialWords.contains(word) { return true }
+            if word == "key", words.count == 1 || (index > 0 && keyQualifiers.contains(words[index - 1])) { return true }
+            if word.count > 6, credentialSuffixes.contains(where: { word.hasSuffix($0) }) { return true }
+        }
+        return false
+    }
+
     public func register(_ secret: String?) {
         guard let secret, secret.count >= 8 else { return }
         lock.lock(); secrets.insert(secret); lock.unlock()
@@ -41,8 +89,7 @@ public final class TraceRedactor {
         case .object(let object):
             var next = JSONObject()
             for (key, item) in object {
-                let lowered = key.lowercased()
-                if ["authorization", "apikey", "api_key", "password", "secret", "token"].contains(lowered) { next[key] = "***"; continue }
+                if Self.isCredentialKey(key) { next[key] = "***"; continue }
                 next[key] = scrub(item, maxChars: maxChars)
             }
             return .object(next)
