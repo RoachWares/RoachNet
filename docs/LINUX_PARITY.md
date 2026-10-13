@@ -22,7 +22,7 @@ Measured on 2026-10-13, with the ROA-90 fix. The macOS run was on an Apple silic
 | Inference XCTests | 36 run, 13 skipped (no model files), 0 failures | 36 run, 13 skipped (Metal, model files), 0 failures |
 | Runtime contract tests | 133 tests, run with the model files: 131 pass, 2 skip themselves (the Metal kernel check, which needs a built `roachnet-infer`, and a RoachVoice check that only runs where Core ML tooling is missing), 0 failures | 133 tests: 112 pass, 21 skip themselves, 0 failures |
 
-In CI, the ROA-72 port test can skip itself too, when something already holds 127.0.0.1:36434 at that moment. It passes in a local run.
+CI runs the model-server test file after the others. Its ROA-72 test needs 127.0.0.1:36434 free, and the other files' runtimes hold that port while they run, so in one parallel run that test can skip itself.
 
 The 21 self-skipping contract tests on Linux:
 - **12 need model files** (`ROACHNET_TEST_MODELS`). They also skip on a Mac without those files. Nothing in them is Mac-specific, and running them on Linux with the files is L2 work.

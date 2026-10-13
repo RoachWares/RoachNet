@@ -232,11 +232,17 @@ async function modelLaneOf(env) {
 test("another program on RoachNet's model port keeps it, and RoachInference takes a free one (ROA-72)", needsBinary, async (t) => {
   // Stands in for an `ollama serve` that a 1.0.x RoachNet left running on 127.0.0.1:36434.
   const lookalike = ollamaLookalike()
-  try {
-    await listen(lookalike, 36434)
-  } catch (error) {
-    if (error.code === 'EADDRINUSE') return t.skip('127.0.0.1:36434 is already in use on this machine')
-    throw error
+  // A runtime that another test just stopped can hold the port for a moment.
+  const deadline = Date.now() + 10_000
+  for (;;) {
+    try {
+      await listen(lookalike, 36434)
+      break
+    } catch (error) {
+      if (error.code !== 'EADDRINUSE') throw error
+      if (Date.now() >= deadline) return t.skip('127.0.0.1:36434 is already in use on this machine')
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
   }
   try {
     const lane = await modelLaneOf({})

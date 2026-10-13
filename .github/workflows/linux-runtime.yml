@@ -81,8 +81,11 @@ jobs:
           package-manager-cache: false
 
       # Tests that need macOS tools (ditto, hdiutil) or model files skip
-      # themselves, as they do on a Mac without them.
+      # themselves, as they do on a Mac without them. The model-server file
+      # runs after the others: its ROA-72 test needs 127.0.0.1:36434 free, and
+      # the other files' runtimes hold that port while they run.
       - name: Run the runtime contract tests against the Linux build
         run: |
-          ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/debug/roachnet-runtime" \
-            node --test scripts/tests/*.test.mjs
+          export ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/debug/roachnet-runtime"
+          node --test $(ls scripts/tests/*.test.mjs | grep -v '/roachnet-native-model-server\.test\.mjs$')
+          node --test scripts/tests/roachnet-native-model-server.test.mjs
