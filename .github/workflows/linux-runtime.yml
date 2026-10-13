@@ -1,0 +1,64 @@
+name: Linux runtime
+
+# Builds RoachNet's runtime and inference engine on Linux and runs their
+# tests, so the Linux port (ROA-80) can't quietly break. Nothing here ships:
+# Linux releases come later, through their own gate, once the Linux app
+# matches the Mac app.
+
+on:
+  pull_request:
+    paths:
+      - 'native/macos/Package.swift'
+      - 'native/macos/Sources/RoachInference/**'
+      - 'native/macos/Sources/RoachInferenceTool/**'
+      - 'native/macos/Sources/RoachNetRuntime/**'
+      - 'native/macos/Sources/RoachNetRuntimeHost/**'
+      - 'native/macos/Tests/RoachInferenceTests/**'
+      - 'native/macos/Tests/RoachNetRuntimeTests/**'
+      - '.github/workflows/linux-runtime.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'native/macos/Package.swift'
+      - 'native/macos/Sources/RoachInference/**'
+      - 'native/macos/Sources/RoachInferenceTool/**'
+      - 'native/macos/Sources/RoachNetRuntime/**'
+      - 'native/macos/Sources/RoachNetRuntimeHost/**'
+      - 'native/macos/Tests/RoachInferenceTests/**'
+      - 'native/macos/Tests/RoachNetRuntimeTests/**'
+      - '.github/workflows/linux-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test on Linux (Swift 6.4, Ubuntu 24.04)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    container:
+      # The official Swift image, pinned by digest: 6.4.0-noble (amd64 and arm64).
+      image: swift:6.4.0-noble@sha256:31d14d727f4451f25e29bac9c42563a098c39ac66415e8bad970f48038e38aca
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # Where Apple's Compression isn't available, the pack tests unpack ZIPs with unzip.
+      - name: Install unzip
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends unzip
+
+      - name: Build the runtime and its tests
+        run: swift build --package-path native/macos --build-tests
+
+      - name: Run the tests
+        run: swift test --package-path native/macos --skip-build

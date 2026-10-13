@@ -70,9 +70,23 @@ Intel/Rosetta diagnostics, not public release artifacts.
 ### Linux or non-macOS verification
 
 Script tests, TypeScript checks, dependency audit, upstream drift checks, and
-several native-source audits run without Xcode. Linux cannot validate the Swift
-build, Core ML, `ditto` archive behavior, signing, app launch, iOS compatibility,
-or DMG/notarization gates.
+several native-source audits run without Xcode.
+
+On Linux with Swift 6.4 (and `unzip`), the runtime targets build and their
+XCTests run: RoachInference, RoachNetRuntime and `roachnet-runtime`.
+
+```bash
+swift build --package-path native/macos --build-tests
+swift test --package-path native/macos --skip-build
+```
+
+The `Linux runtime` workflow runs the same two commands on every change to
+those targets, in the official Swift image. RoachInference uses its CPU
+backend there. The Cluster and RoachSpeech are compiled out.
+
+Linux cannot validate the macOS app targets, Core ML, `ditto` archive
+behavior, signing, app launch, iOS compatibility, or DMG/notarization gates.
+RoachNet for Linux ships only once the Linux app matches the Mac app (ROA-80).
 
 ### Historical legacy admin/WebUI work only
 

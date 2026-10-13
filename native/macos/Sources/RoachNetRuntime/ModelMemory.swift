@@ -1,14 +1,20 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import RoachInference
 
-/// The Mac's memory as model loading sees it.
+/// The machine's memory as model loading sees it.
 enum SystemMemory {
     static var total: Int { Int(ProcessInfo.processInfo.physicalMemory) }
 
-    /// What the system could hand out now without paging: free, inactive,
-    /// purgeable and speculative pages (Activity Monitor's "available").
+    /// What the system could hand out now without paging. On macOS: free,
+    /// inactive, purgeable and speculative pages (Activity Monitor's
+    /// "available"). On Linux: the kernel's own estimate, `MemAvailable`.
     static func available() -> Int {
+        #if canImport(Darwin)
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride)
         let status = withUnsafeMutablePointer(to: &stats) { pointer in
@@ -17,10 +23,14 @@ enum SystemMemory {
         guard status == KERN_SUCCESS else { return total / 2 }
         let pages = Int(stats.free_count) + Int(stats.inactive_count) + Int(stats.purgeable_count) + Int(stats.speculative_count)
         return pages * Int(getpagesize())
+        #else
+        let meminfo = try? String(contentsOfFile: "/proc/meminfo", encoding: .utf8)
+        return meminfo.flatMap(memAvailable(meminfo:)) ?? total / 2
+        #endif
     }
 
     /// How much loaded models may use together: `ROACHNET_MODEL_MEMORY_GB`,
-    /// or 80% of the Mac's memory so macOS and the apps around it keep theirs.
+    /// or 80% of the machine's memory so the system and the apps around it keep theirs.
     static var modelBudget: Int {
         // `Double("inf")` parses, and `Int(.infinity)` traps; past a petabyte isn't a budget anyway.
         if let text = ProcessInfo.processInfo.environment["ROACHNET_MODEL_MEMORY_GB"], let gigabytes = Double(text),
@@ -32,16 +42,68 @@ enum SystemMemory {
 
     static func gigabytes(_ bytes: Int) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }
 
-    /// The kernel's memory pressure level: 1 normal, 2 warning, 4 critical; 0 when it can't be read.
+    /// The memory pressure level: 1 normal, 2 warning, 4 critical; 0 when it
+    /// can't be read. macOS reports its own; on Linux it comes from the
+    /// kernel's pressure stall information, or from `MemAvailable` where that
+    /// isn't there (older kernels, some containers).
     static func pressureLevel() -> Int {
+        #if canImport(Darwin)
         var level: Int32 = 0
         var size = MemoryLayout<Int32>.size
         guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else { return 0 }
         return Int(level)
+        #else
+        if let psi = try? String(contentsOfFile: "/proc/pressure/memory", encoding: .utf8), let level = pressureLevel(psi: psi) {
+            return level
+        }
+        let meminfo = try? String(contentsOfFile: "/proc/meminfo", encoding: .utf8)
+        guard let available = meminfo.flatMap(memAvailable(meminfo:)), total > 0 else { return 0 }
+        return pressureLevel(available: available, total: total)
+        #endif
     }
 
-    /// macOS is short of memory (warning or worse): idle request slots hand their caches back sooner.
+    /// The system is short of memory (warning or worse): idle request slots hand their caches back sooner.
     static var underPressure: Bool { pressureLevel() >= 2 }
+
+    // MARK: Linux sources, parsed here so every platform tests them
+
+    /// `MemAvailable` from the text of /proc/meminfo, in bytes.
+    static func memAvailable(meminfo: String) -> Int? {
+        for line in meminfo.split(separator: "\n") where line.hasPrefix("MemAvailable:") {
+            let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard fields.count >= 2, let kibibytes = Int(fields[1]), kibibytes >= 0, kibibytes < Int.max / 1024 else { return nil }
+            return kibibytes * 1024
+        }
+        return nil
+    }
+
+    /// A level from /proc/pressure/memory: the share of the last ten seconds
+    /// in which tasks stalled waiting for memory. Any stall at all ("some") of
+    /// 10% or more is a warning; every task stalled ("full") 10% of the time,
+    /// or "some" at 40%, is critical.
+    static func pressureLevel(psi: String) -> Int? {
+        func avg10(_ kind: String) -> Double? {
+            guard let line = psi.split(separator: "\n").first(where: { $0.hasPrefix(kind + " ") }) else { return nil }
+            guard let field = line.split(separator: " ").first(where: { $0.hasPrefix("avg10=") }) else { return nil }
+            guard let value = Double(field.dropFirst("avg10=".count)), value.isFinite, value >= 0 else { return nil }
+            return value
+        }
+        guard let some = avg10("some") else { return nil }
+        let full = avg10("full") ?? 0
+        if full >= 10 || some >= 40 { return 4 }
+        if some >= 10 { return 2 }
+        return 1
+    }
+
+    /// A level from how much memory is still available: under 5% critical,
+    /// under 15% a warning.
+    static func pressureLevel(available: Int, total: Int) -> Int {
+        guard total > 0 else { return 0 }
+        let share = Double(max(0, available)) / Double(total)
+        if share < 0.05 { return 4 }
+        if share < 0.15 { return 2 }
+        return 1
+    }
 }
 
 extension NativeModelServer {
