@@ -1,6 +1,7 @@
-# RoachNet Native macOS Scaffold
+# RoachNet Native macOS Package
 
-This package is the first concrete step away from the transitional Electron shell.
+The whole shipping product: both apps, `roachnet-runtime` and the RoachInference
+engine. Nothing in it runs Node or JavaScript.
 
 Targets:
 
@@ -10,6 +11,11 @@ Targets:
   Native SwiftUI main application shell for macOS Apple Silicon.
 - `RoachNetDesign`
   Shared design system primitives, colors, surfaces, and small reusable UI pieces.
+- `RoachNetRuntime` / `roachnet-runtime`
+  The loopback runtime both apps run: API, setup service, RoachTail, RoachClaw
+  and the RoachInference model server.
+- `RoachInference`
+  Native GGUF inference with hand-written Metal kernels.
 
 Build locally:
 
@@ -24,8 +30,8 @@ ROACHNET_CANDIDATE_BUILD=1 node scripts/build-native-macos-apps.mjs
 ```
 
 This is the credential-independent Gate C candidate path: it builds ad-hoc
-signed local artifacts with the exact reviewed Node/Ollama runtime URLs and
-SHA-256 pins. It does not notarize and is not public-release evidence. The
+signed local artifacts and holds the RoachSpeech packs to their recorded
+digests. It does not notarize and is not public-release evidence. The
 protected release workflow alone uses `ROACHNET_RELEASE_BUILD=1`, which remains
 fail-closed on Developer ID, notarization, and DMG requirements.
 
@@ -61,11 +67,5 @@ npm run release:apple-secrets
 - The App Store Connect password here is the Apple app-specific password used by `notarytool`.
 - When those secrets are present, `scripts/build-native-macos-apps.mjs` signs with Developer ID and the workflow notarizes plus staples the macOS artifacts.
 
-This scaffold is intentionally focused on:
-
-- window structure
-- installer flow shape
-- shared RoachNet design language
-- native navigation patterns
-
-It is not the full application replacement yet.
+The builder refuses either bundle if it carries a `node` binary, `node_modules`,
+JavaScript files or RoachNet source (ROA-78).

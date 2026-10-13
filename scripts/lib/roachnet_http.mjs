@@ -3,7 +3,6 @@ import http from 'node:http'
 import https from 'node:https'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { resolveCompanionTargetOrigin } from './roachnet_companion_security.mjs'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_MAX_REDIRECTS = 5
@@ -47,9 +46,25 @@ export class RoachNetHTTPError extends Error {
   }
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
+
+// Smoke and audit scripts talk to the runtime on this Mac and nothing else.
+function assertLocalRuntimeURL(url) {
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('The local runtime URL must use http or https.')
+  }
+  if (url.username || url.password) {
+    throw new Error('The local runtime URL must not include credentials.')
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase()
+  if (!LOOPBACK_HOSTS.has(host)) {
+    throw new Error('The local runtime URL must point at the local desktop runtime.')
+  }
+}
+
 export async function requestLocalRuntimeHttp(rawUrl, options = {}) {
   const url = new URL(rawUrl)
-  resolveCompanionTargetOrigin(url.origin)
+  assertLocalRuntimeURL(url)
   return requestHttp(url, {
     ...options,
     maxRedirects: 0,
@@ -58,7 +73,8 @@ export async function requestLocalRuntimeHttp(rawUrl, options = {}) {
 
 export async function requestHttp(rawUrl, options = {}) {
   const timeoutMs = positiveInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS)
-  const maxRedirects = positiveInteger(options.maxRedirects, DEFAULT_MAX_REDIRECTS)
+  // 0 means "follow no redirects" (requestLocalRuntimeHttp), not "use the default".
+  const maxRedirects = options.maxRedirects === 0 ? 0 : positiveInteger(options.maxRedirects, DEFAULT_MAX_REDIRECTS)
   const maxResponseBytes = positiveInteger(options.maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES)
   const body = bodyBufferFor(options.body)
   const headers = { ...(options.headers || {}) }

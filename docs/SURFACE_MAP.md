@@ -4,7 +4,7 @@ Historical reference only. This map describes the removed `admin/` WebUI at tag
 `v1.0.5`; none of the routes, files, or Docker-oriented assumptions below are
 part of the post-v1.0.5 native shipping candidate. Use it only for migration
 research. The current public implementation is the macOS native surface under
-`native/macos/` plus the loopback bridge in `scripts/run-roachnet-native-api.mjs`.
+`native/macos/`, served by `roachnet-runtime` (`native/macos/Sources/RoachNetRuntime`).
 
 ## Verified Route Status
 

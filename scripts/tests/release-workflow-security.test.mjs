@@ -75,9 +75,10 @@ test('candidate build pins runtime payloads without weakening public release sig
   })
 
   const builder = readFileSync(path.join(repoRoot, 'scripts', 'build-native-macos-apps.mjs'), 'utf8')
-  // RoachNet 1.1 retired the bundled Ollama runner: the builder must never fetch it again.
+  // RoachNet 1.1 retired the bundled Ollama runner: the builder must never fetch it again,
+  // and it clears the Ollama and OpenClaw payloads older builds left behind.
   assert.doesNotMatch(builder, /ensureBundledOllamaCache|ollama-darwin\.tgz/)
-  assert.match(builder, /for \(const stale of \['bundled-ollama\.tar\.gz', 'bundled-ollama'\]\) discardPath/)
+  assert.match(builder, /for \(const stale of \['bundled-ollama\.tar\.gz', 'bundled-ollama', 'bundled-openclaw\.tar\.gz', 'openclaw-deferred\.marker'\]\) \{\s*discardPath/)
   assert.match(builder, /const codesignIdentity = releaseBuild \? process\.env\.ROACHNET_CODESIGN_IDENTITY\?\.trim\(\) \|\| '' : ''/)
   assert.match(builder, /async function notarizeArtifact\(artifactPath\) \{\s*if \(candidateBuild\) \{\s*return/)
   assert.match(builder, /if \(releaseBuild && \(!codesignIdentity \|\| !notaryProfile \|\| skipDmg\)\)/)

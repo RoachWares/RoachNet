@@ -2,7 +2,7 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { cp, mkdtemp, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -11,7 +11,6 @@ import { fileURLToPath } from 'node:url'
 
 import { writeSha256Sidecar } from './build-native-macos-packaging-support.mjs'
 import { readDigestManifest, verifyImportedUpstreamFiles, verifyPackAgainstManifest } from './lib/roachspeech_pack_digests.mjs'
-import { downloadHttpToFile, requestHttp } from './lib/roachnet_http.mjs'
 import { parseAcceptedNotarySubmission } from './lib/roachnet_notary_evidence.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -37,9 +36,6 @@ const installerHelperPath = path.join(
   'RoachNet Fix.command'
 )
 const packageManifest = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
-const runtimePins = JSON.parse(
-  readFileSync(path.join(repoRoot, 'docs', 'release-gates', 'runtime-freshness.json'), 'utf8')
-)
 const appVersion = packageManifest.version || '1.0.0'
 const appBuildNumber = String(packageManifest.buildNumber || '')
 
@@ -72,15 +68,10 @@ export function resolveBuildModes(environment = process.env) {
 }
 
 const { releaseBuild, candidateBuild, pinnedRuntimeBuild } = resolveBuildModes()
-const bundledNodeVersion = runtimePins.node?.bundledVersion
-const bundledOpenClawPackage = process.env.ROACHNET_BUNDLED_OPENCLAW_PACKAGE?.trim() || 'openclaw@2026.5.18'
 const codesignIdentity = releaseBuild ? process.env.ROACHNET_CODESIGN_IDENTITY?.trim() || '' : ''
 const notaryProfile = process.env.ROACHNET_NOTARY_PROFILE?.trim() || ''
 const notaryKeychain = process.env.ROACHNET_NOTARY_KEYCHAIN?.trim() || ''
 const skipDmg = process.env.ROACHNET_SKIP_DMG === '1'
-// The app ships the native Swift runtime helper. The embedded Node runtime and
-// bundled source tree are opt-in compatibility payloads only.
-const bundleNodeCompat = process.env.ROACHNET_BUNDLE_NODE_COMPAT === '1'
 const nativeRuntimeExecutableName = 'roachnet-runtime'
 const requireAppleSiliconNativeBuild = process.env.ROACHNET_REQUIRE_APPLE_SILICON_NATIVE !== '0'
 const roachSpeechBundleProfile = (
@@ -282,228 +273,16 @@ function getPreferredNodeBinary() {
   return process.execPath
 }
 
-function getPreferredNpmBinary() {
-  const nodeBinary = getPreferredNodeBinary()
-  const localNodeNpm = nodeBinary.includes(path.sep)
-    ? path.join(path.dirname(nodeBinary), process.platform === 'win32' ? 'npm.cmd' : 'npm')
-    : null
-  const macHomebrewNode26 = '/opt/homebrew/opt/node/bin/npm'
-  const macHomebrewNode26Alias = '/opt/homebrew/opt/node@26/bin/npm'
-
-  return [localNodeNpm, macHomebrewNode26, macHomebrewNode26Alias, 'npm']
-    .filter(Boolean)
-    .find((candidate) => candidate === 'npm' || existsSync(candidate)) || 'npm'
-}
-
-function sanitizeCacheKey(value) {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, '-')
-}
-
-async function fetchJson(url) {
-  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || ''
-  const headers = {
-    'user-agent': 'RoachNet-Bundler',
-    accept: 'application/json',
-  }
-  if (token && url.startsWith('https://api.github.com/')) {
-    headers.authorization = `Bearer ${token}`
-  }
-
-  const response = await requestHttp(url, { headers, timeoutMs: 30_000 })
-
-  if (!response.ok) {
-    throw new Error(`Request failed for ${url}: ${response.status} ${response.statusText}`)
-  }
-
-  return response.json()
-}
-
-async function downloadFile(url, destinationPath) {
-  mkdirSync(path.dirname(destinationPath), { recursive: true })
-  await downloadHttpToFile(url, destinationPath, {
-    headers: {
-      'user-agent': 'RoachNet-Bundler',
-      accept: '*/*',
-    },
-    timeoutMs: 120_000,
-  })
-}
-
-async function ensureBundledOpenClawCache() {
-  if (releaseBuild) {
-    throw new Error('Public release builds cannot bundle OpenClaw from an unlocked npm install.')
-  }
-  const cacheRoot = path.join(repoRoot, 'native', 'macos', '.cache', 'bundled-openclaw')
-  const cacheKey = sanitizeCacheKey(bundledOpenClawPackage)
-  const packageRoot = path.join(cacheRoot, cacheKey)
-  const packageJsonPath = path.join(packageRoot, 'package.json')
-  const installedBinaryPath = path.join(
-    packageRoot,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'
-  )
-
-  if (!existsSync(installedBinaryPath)) {
-    console.log(`Preparing bundled OpenClaw payload from ${bundledOpenClawPackage}...`)
-    rmSync(packageRoot, { recursive: true, force: true })
-    mkdirSync(packageRoot, { recursive: true })
-    writeFileSync(
-      packageJsonPath,
-      JSON.stringify(
-        {
-          name: 'roachnet-bundled-openclaw',
-          private: true,
-        },
-        null,
-        2
-      ) + '\n',
-      'utf8'
-    )
-
-    await run(getPreferredNpmBinary(), ['install', '--prefix', packageRoot, '--no-audit', '--no-fund', '--omit=dev', bundledOpenClawPackage], {
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        npm_config_update_notifier: 'false',
-        npm_config_fund: 'false',
-        npm_config_audit: 'false',
-      },
-    })
-  } else {
-    console.log(`Using cached bundled OpenClaw payload from ${packageRoot}...`)
-  }
-
-  return packageRoot
-}
-
-async function createDirectoryPayloadArchive(sourcePath, destinationArchivePath) {
-  discardPath(destinationArchivePath)
-  mkdirSync(path.dirname(destinationArchivePath), { recursive: true })
-  await run('tar', ['-czf', destinationArchivePath, '-C', sourcePath, '.'], {
-    stdio: 'pipe',
-  })
-}
-
-async function pruneBundledToolCache(cacheRoot, keepNames) {
-  if (!existsSync(cacheRoot)) {
-    return
-  }
-
-  const entries = await readdir(cacheRoot, { withFileTypes: true })
-  for (const entry of entries) {
-    if (keepNames.has(entry.name)) {
-      continue
-    }
-
-    const entryPath = path.join(cacheRoot, entry.name)
-    console.log(`Removing stale bundled tool cache ${entryPath}...`)
-    rmSync(entryPath, { recursive: true, force: true })
-  }
-}
-
-const prunableNodePayloadDirectoryNames = new Set([
-  '.cache',
-  '.github',
-  '__tests__',
-  'benchmark',
-  'benchmarks',
-  'coverage',
-  'doc',
-  'docs',
-  'example',
-  'examples',
-  'test',
-  'tests',
-])
-
-const prunableNodePayloadFileNames = new Set([
-  '.DS_Store',
-  '.npmignore',
-  '.prettierrc',
-  '.prettierignore',
-  'tsconfig.tsbuildinfo',
-])
-
-function shouldPruneNodePayloadFile(fileName) {
-  return (
-    prunableNodePayloadFileNames.has(fileName) ||
-    fileName.endsWith('.map') ||
-    fileName.endsWith('.tsbuildinfo')
-  )
-}
-
-async function pruneNodeRuntimePayload(rootPath) {
-  if (!existsSync(rootPath)) {
-    return
-  }
-
-  const entries = await readdir(rootPath, { withFileTypes: true })
-  for (const entry of entries) {
-    const entryPath = path.join(rootPath, entry.name)
-
-    if (entry.isDirectory()) {
-      if (prunableNodePayloadDirectoryNames.has(entry.name)) {
-        rmSync(entryPath, { recursive: true, force: true })
-        continue
-      }
-
-      await pruneNodeRuntimePayload(entryPath)
-      continue
-    }
-
-    if (entry.isFile() && shouldPruneNodePayloadFile(entry.name)) {
-      rmSync(entryPath, { force: true })
-    }
-  }
-}
-
-async function createPrunedNodePayloadArchive(sourcePath, destinationArchivePath, options = {}) {
-  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-node-payload-'))
-  const stagedPayloadRoot = path.join(stagingRoot, 'payload')
-
-  try {
-    await copyTreeFast(sourcePath, stagedPayloadRoot)
-    if (options.materializeRuntimeArtifacts) {
-      await materializeBundledRuntimeArtifacts(stagedPayloadRoot)
-    }
-    await pruneNodeRuntimePayload(stagedPayloadRoot)
-    await createDirectoryPayloadArchive(stagedPayloadRoot, destinationArchivePath)
-  } finally {
-    rmSync(stagingRoot, { recursive: true, force: true })
-  }
-}
-
 async function prepareInstallerContainedTooling(installerAssetsPath) {
-  // RoachNet 1.1+ runs local models on its own engine (RoachInference); no
-  // Ollama runner is fetched or bundled. Clear payloads left by older builds.
-  for (const stale of ['bundled-ollama.tar.gz', 'bundled-ollama']) discardPath(path.join(installerAssetsPath, stale))
-  discardPath(path.join(repoRoot, 'native', 'macos', '.cache', 'bundled-ollama'))
-
-  if (process.env.ROACHNET_BUNDLE_OPENCLAW === '1') {
-    const openClawDestination = path.join(installerAssetsPath, 'bundled-openclaw.tar.gz')
-    const packageRoot = await ensureBundledOpenClawCache()
-    await createPrunedNodePayloadArchive(packageRoot, openClawDestination)
-  } else {
-    writeFileSync(
-      path.join(installerAssetsPath, 'openclaw-deferred.marker'),
-      'OpenClaw hydration is deferred; RoachClaw runs on the native RoachInference engine by default.\n',
-      'utf8'
-    )
+  // RoachNet runs local models on its own engine (RoachInference) and ships no
+  // Node payloads: no Ollama runner and no OpenClaw package. Clear what older
+  // builds left behind.
+  for (const stale of ['bundled-ollama.tar.gz', 'bundled-ollama', 'bundled-openclaw.tar.gz', 'openclaw-deferred.marker']) {
+    discardPath(path.join(installerAssetsPath, stale))
   }
-
-}
-
-function getBundledNodePlatformTag() {
-  if (process.arch === 'arm64') {
-    return 'darwin-arm64'
+  for (const stale of ['bundled-ollama', 'bundled-openclaw']) {
+    discardPath(path.join(repoRoot, 'native', 'macos', '.cache', stale))
   }
-
-  if (process.arch === 'x64') {
-    return 'darwin-x64'
-  }
-
-  throw new Error(`RoachNet does not have a bundled Node runtime definition for macOS ${process.arch}.`)
 }
 
 function assertAppleSiliconNativeBuildHost() {
@@ -531,39 +310,6 @@ async function verifyAppleSiliconExecutable(executablePath, label) {
   }
 }
 
-function resolveNodeRuntimeRoot(nodeBinaryPath) {
-  if (!nodeBinaryPath || !existsSync(nodeBinaryPath)) {
-    return null
-  }
-
-  try {
-    return path.dirname(path.dirname(realpathSync(nodeBinaryPath)))
-  } catch {
-    return path.dirname(path.dirname(nodeBinaryPath))
-  }
-}
-
-function isAllowedBundledLibraryPath(libraryPath, runtimeRoot) {
-  if (!libraryPath) {
-    return false
-  }
-
-  if (
-    libraryPath.startsWith('@rpath/') ||
-    libraryPath.startsWith('@loader_path/') ||
-    libraryPath.startsWith('@executable_path/')
-  ) {
-    return true
-  }
-
-  if (libraryPath.startsWith('/System/Library/') || libraryPath.startsWith('/usr/lib/')) {
-    return true
-  }
-
-  const resolvedRuntimeRoot = path.resolve(runtimeRoot)
-  return libraryPath === resolvedRuntimeRoot || libraryPath.startsWith(`${resolvedRuntimeRoot}${path.sep}`)
-}
-
 async function inspectDynamicLibraries(binaryPath) {
   if (process.platform !== 'darwin') {
     return []
@@ -583,64 +329,6 @@ async function inspectDynamicLibraries(binaryPath) {
     .filter(Boolean)
 }
 
-async function verifyNodeRuntimeRoot(runtimeRoot, options = {}) {
-  if (!runtimeRoot) {
-    return false
-  }
-
-  const binaryPath = path.join(runtimeRoot, 'bin', 'node')
-  if (!existsSync(binaryPath)) {
-    return false
-  }
-
-  const attempts = options.attempts ?? 2
-  const timeoutMs = options.timeoutMs ?? 10_000
-
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      const versionCheckDir = await mkdtemp(path.join(os.tmpdir(), 'roachnet-node-version-'))
-      const versionPath = path.join(versionCheckDir, 'version.txt')
-      try {
-        await run(
-          binaryPath,
-          [
-            '-e',
-            "require('node:fs').writeFileSync(process.argv[1], process.versions.node)",
-            versionPath,
-          ],
-          {
-            stdio: 'ignore',
-            timeoutMs,
-          }
-        )
-        const resolvedVersion = `v${readFileSync(versionPath, 'utf8').trim()}`
-        const expectedMajor = bundledNodeVersion.replace(/^v/, '').split('.')[0]
-        const actualMajor = resolvedVersion.replace(/^v/, '').split('.')[0]
-        if (actualMajor !== expectedMajor) {
-          return false
-        }
-      } finally {
-        rmSync(versionCheckDir, { recursive: true, force: true })
-      }
-
-      if (options.requirePortable !== true || process.platform !== 'darwin') {
-        return true
-      }
-
-      const libraries = await inspectDynamicLibraries(binaryPath)
-      return libraries.every((libraryPath) => isAllowedBundledLibraryPath(libraryPath, runtimeRoot))
-    } catch {
-      if (attempt + 1 >= attempts) {
-        return false
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 750))
-    }
-  }
-
-  return false
-}
-
 async function verifyBundleMetadata(bundlePath, expectedVersion, label) {
   if (!existsSync(bundlePath)) {
     throw new Error(`Missing ${label} bundle at ${bundlePath}`)
@@ -650,26 +338,6 @@ async function verifyBundleMetadata(bundlePath, expectedVersion, label) {
   if (actualVersion !== expectedVersion) {
     throw new Error(
       `${label} bundle version mismatch. Expected ${expectedVersion}, found ${actualVersion || 'missing'} at ${bundlePath}`
-    )
-  }
-}
-
-async function verifyEmbeddedNodeBundle(bundlePath, label) {
-  const runtimeRoot = path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node')
-  const binaryPath = path.join(runtimeRoot, 'bin', 'node')
-
-  if (!existsSync(binaryPath)) {
-    throw new Error(`${label} is missing the embedded Node runtime binary at ${binaryPath}`)
-  }
-
-  const libraries = await inspectDynamicLibraries(binaryPath)
-  const invalidLibraries = libraries.filter(
-    (libraryPath) => !isAllowedBundledLibraryPath(libraryPath, runtimeRoot)
-  )
-
-  if (invalidLibraries.length > 0) {
-    throw new Error(
-      `${label} is carrying a non-portable embedded Node runtime at ${runtimeRoot}\n${invalidLibraries.join('\n')}`
     )
   }
 }
@@ -691,10 +359,29 @@ async function verifyNativeRuntimeHelper(bundlePath, label) {
   }
 }
 
-function assertNoEmbeddedNode(bundlePath, label) {
-  const nodeRoot = path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime', 'node')
-  if (existsSync(nodeRoot)) {
-    throw new Error(`${label} still carries an embedded Node runtime at ${nodeRoot}; set ROACHNET_BUNDLE_NODE_COMPAT=1 only for compatibility builds.`)
+// Node, JavaScript and RoachNet's own source stay out of every bundle: the
+// apps run only Swift code (ROA-78).
+const forbiddenBundleNames = new Set(['node_modules', 'RoachNetSource', 'RoachNetSource.tar.gz'])
+const forbiddenBundleExtensions = new Set(['.js', '.mjs', '.cjs', '.node'])
+
+function assertNoNodeOrJavaScript(bundlePath, label) {
+  const found = []
+  const walk = (folder) => {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const entryPath = path.join(folder, entry.name)
+      const shown = path.relative(bundlePath, entryPath)
+      if (forbiddenBundleNames.has(entry.name) || forbiddenBundleExtensions.has(path.extname(entry.name).toLowerCase())) {
+        found.push(shown)
+      } else if (entry.name === 'node' && !entry.isDirectory()) {
+        found.push(shown)
+      } else if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        walk(entryPath)
+      }
+    }
+  }
+  walk(bundlePath)
+  if (found.length > 0) {
+    throw new Error(`${label} carries Node, JavaScript or RoachNet source it must not ship:\n${found.slice(0, 20).join('\n')}`)
   }
 }
 
@@ -720,139 +407,17 @@ async function verifyBuiltArtifacts() {
     throw new Error(`Missing native runtime catalog data at ${runtimeCatalogPath}`)
   }
 
-  if (bundleNodeCompat) {
-    await verifyEmbeddedNodeBundle(desktopBundlePath, 'RoachNet')
-    await verifyEmbeddedNodeBundle(setupBundlePath, 'RoachNet Setup')
-
-    const desktopSourceArchivePath = path.join(desktopBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')
-    if (!existsSync(desktopSourceArchivePath)) {
-      throw new Error(`Missing bundled source archive for RoachNet at ${desktopSourceArchivePath}`)
+  assertNoNodeOrJavaScript(desktopBundlePath, 'RoachNet')
+  assertNoNodeOrJavaScript(setupBundlePath, 'RoachNet Setup')
+  for (const [bundlePath, label] of [[desktopBundlePath, 'RoachNet'], [setupBundlePath, 'RoachNet Setup']]) {
+    if (!existsSync(path.join(bundlePath, 'Contents', 'Resources', 'LICENSE'))) {
+      throw new Error(`${label} is missing Contents/Resources/LICENSE`)
     }
-    await verifyBundledSourceArchive(desktopSourceArchivePath, 'RoachNet')
-
-    const setupSourceArchivePath = path.join(setupBundlePath, 'Contents', 'Resources', 'RoachNetSource.tar.gz')
-    const setupSourceTreePath = path.join(setupBundlePath, 'Contents', 'Resources', 'RoachNetSource')
-    if (existsSync(setupSourceArchivePath)) {
-      await verifyBundledSourceArchive(setupSourceArchivePath, 'RoachNet Setup')
-    } else {
-      await verifyBundledSourceTree(setupSourceTreePath, 'RoachNet Setup')
-    }
-  } else {
-    assertNoEmbeddedNode(desktopBundlePath, 'RoachNet')
-    assertNoEmbeddedNode(setupBundlePath, 'RoachNet Setup')
   }
 
   if (!existsSync(installerAssetArchivePath)) {
     throw new Error(`Missing installer asset archive at ${installerAssetArchivePath}`)
   }
-}
-
-async function verifyBundledSourceArchive(archivePath, label) {
-  const { stdout } = await run('tar', ['-tzf', archivePath], {
-    stdio: 'pipe',
-  })
-
-  const entries = stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  const suspiciousEntries = entries.filter(
-    (entry) =>
-      bundledSourceForbiddenArchivePrefixes.some((prefix) => entry.startsWith(prefix)) ||
-      bundledSourceForbiddenArchivePatterns.some((pattern) => pattern.test(entry))
-  )
-
-  if (suspiciousEntries.length > 0) {
-    throw new Error(
-      `${label} bundled source archive is carrying local runtime or indexed-content artifacts:\n${suspiciousEntries
-        .slice(0, 20)
-        .join('\n')}`
-    )
-  }
-}
-
-async function verifyBundledSourceTree(treePath, label) {
-  if (!existsSync(treePath)) {
-    throw new Error(`Missing bundled source tree for ${label} at ${treePath}`)
-  }
-
-  const entries = []
-  function walk(currentPath) {
-    const relativePath = path.relative(treePath, currentPath)
-    const archiveStylePath = relativePath
-      ? `RoachNetSource/${relativePath.split(path.sep).join('/')}`
-      : 'RoachNetSource/'
-    entries.push(archiveStylePath)
-
-    for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
-      const entryPath = path.join(currentPath, entry.name)
-      if (entry.isDirectory()) {
-        walk(entryPath)
-      } else {
-        const fileRelativePath = path.relative(treePath, entryPath).split(path.sep).join('/')
-        entries.push(`RoachNetSource/${fileRelativePath}`)
-      }
-    }
-  }
-  walk(treePath)
-
-  const suspiciousEntries = entries.filter(
-    (entry) =>
-      bundledSourceForbiddenArchivePrefixes.some((prefix) => entry.startsWith(prefix)) ||
-      bundledSourceForbiddenArchivePatterns.some((pattern) => pattern.test(entry))
-  )
-
-  if (suspiciousEntries.length > 0) {
-    throw new Error(
-      `${label} bundled source tree is carrying local runtime or indexed-content artifacts:\n${suspiciousEntries
-        .slice(0, 20)
-        .join('\n')}`
-    )
-  }
-}
-
-async function ensureBundledNodeRuntime() {
-  const cacheRoot = path.join(packagePath, '.cache', 'node-runtime')
-  const platformTag = getBundledNodePlatformTag()
-  const archiveName = `node-${bundledNodeVersion}-${platformTag}.tar.gz`
-  const extractedFolderName = `node-${bundledNodeVersion}-${platformTag}`
-  const archivePath = path.join(cacheRoot, archiveName)
-  const extractedPath = path.join(cacheRoot, extractedFolderName)
-  const bundledNodeBinary = path.join(extractedPath, 'bin', 'node')
-  // An explicit root is the builder's own choice. A previously extracted cache
-  // is never trusted as is (ROA-40): the archive is re-checked against its
-  // pinned SHA-256 and extracted fresh every time.
-  const explicitRoot = process.env.ROACHNET_BUNDLED_NODE_ROOT?.trim()
-  if (explicitRoot && (await verifyNodeRuntimeRoot(explicitRoot, { requirePortable: true }))) {
-    return explicitRoot
-  }
-
-  mkdirSync(cacheRoot, { recursive: true })
-
-  if (!existsSync(archivePath)) {
-    const pinKey = process.arch === 'arm64' ? 'darwinArm64' : 'darwinX64'
-    const downloadURL = runtimePins.node?.artifacts?.[pinKey]?.url
-    if (!downloadURL) throw new Error(`Missing reviewed Node runtime URL for ${pinKey}.`)
-    console.log(`Downloading bundled Node runtime from ${downloadURL}...`)
-    await downloadFile(downloadURL, archivePath)
-  }
-
-  const pinKey = process.arch === 'arm64' ? 'darwinArm64' : 'darwinX64'
-  await requireFileSha256(
-    archivePath,
-    runtimePins.node?.artifacts?.[pinKey]?.sha256,
-    `Node ${bundledNodeVersion} ${pinKey}`
-  )
-
-  discardPath(extractedPath)
-  await run('tar', ['-xzf', archivePath, '-C', cacheRoot], { stdio: 'pipe' })
-
-  if (!(await verifyNodeRuntimeRoot(extractedPath, { requirePortable: true }))) {
-    throw new Error(`Bundled Node runtime at ${bundledNodeBinary} could not execute after extraction.`)
-  }
-
-  return extractedPath
 }
 
 function getCodesignArgs(targetPath, options = {}) {
@@ -901,12 +466,7 @@ async function collectCodeSignTargets(rootPath) {
         continue
       }
 
-      const extension = path.extname(entry.name)
-      if (
-        extension === '.dylib' ||
-        extension === '.node' ||
-        entry.name === 'node'
-      ) {
+      if (path.extname(entry.name) === '.dylib') {
         targets.push(entryPath)
       }
     }
@@ -932,7 +492,6 @@ async function signAppBundle(bundlePath) {
   const signTargetRoots = [
     path.join(bundlePath, 'Contents', 'MacOS'),
     path.join(bundlePath, 'Contents', 'Frameworks'),
-    path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime'),
   ]
 
   for (const rootPath of signTargetRoots) {
@@ -974,11 +533,8 @@ async function clearLaunchMetadata(targetPath, options = {}) {
   }).catch(() => {})
 }
 
-async function clearEmbeddedRuntimeLaunchMetadata(bundlePath) {
+async function clearBundleLaunchMetadata(bundlePath) {
   await clearLaunchMetadata(bundlePath, {
-    recursive: true,
-  })
-  await clearLaunchMetadata(path.join(bundlePath, 'Contents', 'Resources', 'EmbeddedRuntime'), {
     recursive: true,
   })
 }
@@ -1051,146 +607,6 @@ async function buildIcns() {
   return icnsPath
 }
 
-const bundledSourceExcludes = [
-  '.git/',
-  '.netlify/',
-  '.native/',
-  '.next/',
-  '.turbo/',
-  'dist/',
-  'release/',
-  'desktop/',
-  'desktop-dist/',
-  'installer/',
-  'setup-dist/',
-  'node_modules/',
-  'admin/',
-  'runtime/',
-  'storage/',
-  'native/macos/.build/',
-  'native/macos/.cache/',
-  'native/macos/.swiftpm/',
-  'native/macos/dist/',
-  'native/linux/target/',
-  'native/windows/bin/',
-  'native/windows/obj/',
-  'admin/node_modules/',
-  'admin/build/node_modules/',
-  'admin/build/storage/',
-  'admin/build/tmp/',
-  'admin/build/uploads/',
-  'admin/build/public/uploads/',
-  'admin/build/*.sqlite',
-  'admin/build/*.sqlite-*',
-  'admin/build/*.db',
-  'admin/build/*.db-*',
-  'admin/build/*.jsonl',
-  'admin/build/*.ndjson',
-  'admin/build/vaults.json',
-  'admin/build/roachnet-runtime-processes.json',
-  'admin/.runtime-build-cache/',
-  'admin/storage/',
-  'admin/.env',
-  '*.DS_Store',
-  '*.dmg',
-  '*.zip',
-  '*.pkg',
-  '*.zim',
-  '*node_modules_node*',
-  '*/storage/logs/',
-  '*/storage/tmp/',
-]
-
-const bundledSourceDirectoryExcludes = [
-  ...bundledSourceExcludes,
-  'tests/',
-  'run-roachnet.mjs',
-  'refresh-admin-runtime.mjs',
-  'check-admin-node-runtime.mjs',
-  'smoke-test-*.mjs',
-  'audit-*.mjs',
-  'build-*.mjs',
-  'prepare-native-assets.mjs',
-  'configure-apple-release-secrets.sh',
-]
-
-const bundledSourceForbiddenArchivePrefixes = [
-  'RoachNetSource/storage/',
-  'RoachNetSource/admin/storage/',
-  'RoachNetSource/admin/build/storage/',
-  'RoachNetSource/admin/build/tmp/',
-  'RoachNetSource/admin/build/uploads/',
-  'RoachNetSource/admin/build/public/uploads/',
-]
-
-const bundledSourceForbiddenArchivePatterns = [
-  /(?:^|\/)RoachNetSource\/admin\//i,
-  /(?:^|\/)RoachNetSource\/desktop\//i,
-  /(?:^|\/)RoachNetSource\/installer\//i,
-  /(?:^|\/)RoachNetSource\/\.github\//i,
-  /(?:^|\/)RoachNetSource\/admin\/\.env\.example$/i,
-  /(?:^|\/)RoachNetSource\/MEMORY\.MD$/i,
-  /(?:^|\/)RoachNetSource\/docs\/BRAND_STYLE\.md$/i,
-  /(?:^|\/)RoachNetSource\/native\/windows\//i,
-  /(?:^|\/)RoachNetSource\/scripts\/(?:run-roachnet|refresh-admin-runtime|check-admin-node-runtime|build-admin-runtime)\.mjs$/i,
-  /(?:^|\/)RoachNetSource\/scripts\/(?:audit-|smoke-test-|prepare-native-assets|configure-apple-release-secrets)/i,
-  /(?:^|\/)RoachNetSource\/scripts\/tests\//i,
-  /\.zim$/i,
-  /\/vaults\.json$/i,
-  /\.sqlite(?:$|[-.])/i,
-  /\.db(?:$|[-.])/i,
-  /\.jsonl$/i,
-  /\.ndjson$/i,
-  /\/roachnet-runtime-processes\.json$/i,
-]
-
-const bundledSourceDirectories = [
-  'scripts',
-  'setup-ui',
-  'ops',
-  'collections',
-]
-
-const bundledSourceFiles = [
-  'package.json',
-  'LICENSE',
-]
-
-function createBundledPackageManifest(packageJson) {
-  const allowedScripts = {}
-  for (const scriptName of ['start', 'start:no-browser', 'setup', 'setup:no-browser']) {
-    if (packageJson.scripts?.[scriptName]) {
-      allowedScripts[scriptName] = packageJson.scripts[scriptName]
-    }
-  }
-
-  return {
-    name: packageJson.name,
-    version: packageJson.version,
-    description: packageJson.description,
-    private: true,
-    main: 'scripts/run-roachnet-native-api.mjs',
-    scripts: allowedScripts,
-    author: packageJson.author,
-    license: packageJson.license,
-    engines: packageJson.engines,
-  }
-}
-
-async function syncTree(sourcePath, destinationPath, excludePatterns = bundledSourceExcludes) {
-  mkdirSync(destinationPath, { recursive: true })
-
-  const args = [
-    '-a',
-    '--delete',
-    ...excludePatterns.flatMap((pattern) => ['--exclude', pattern]),
-    `${sourcePath}/`,
-    `${destinationPath}/`,
-  ]
-
-  await run('rsync', args, { stdio: 'pipe' })
-}
-
 async function copyTreeFast(sourcePath, destinationPath) {
   discardPath(destinationPath)
   mkdirSync(path.dirname(destinationPath), { recursive: true })
@@ -1232,98 +648,6 @@ function discardPath(targetPath) {
     stdio: 'ignore',
   })
   cleanup.unref()
-}
-
-async function copyBundledSourceTree(destinationPath, options = {}) {
-  discardPath(destinationPath)
-  console.log(`Bundling source tree into ${destinationPath}...`)
-  await stageBundledSourcePayload(destinationPath)
-}
-
-async function createBundledSourceArchive(archivePath) {
-  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-bundled-source-'))
-  const stagedSourceRoot = path.join(stagingRoot, 'RoachNetSource')
-
-  try {
-    console.log(`Preparing bundled source archive at ${archivePath}...`)
-    await stageBundledSourcePayload(stagedSourceRoot)
-
-    discardPath(archivePath)
-    mkdirSync(path.dirname(archivePath), { recursive: true })
-    await run('tar', ['-czf', archivePath, '-C', stagingRoot, 'RoachNetSource'], {
-      stdio: 'pipe',
-    })
-  } finally {
-    rmSync(stagingRoot, { recursive: true, force: true })
-  }
-}
-
-async function stageBundledSourcePayload(destinationPath) {
-  discardPath(destinationPath)
-  mkdirSync(destinationPath, { recursive: true })
-
-  for (const relativeFilePath of bundledSourceFiles) {
-    const sourcePath = path.join(repoRoot, relativeFilePath)
-    const targetPath = path.join(destinationPath, relativeFilePath)
-    if (!existsSync(sourcePath)) {
-      continue
-    }
-
-    mkdirSync(path.dirname(targetPath), { recursive: true })
-    if (relativeFilePath === 'package.json') {
-      const sourcePackage = JSON.parse(readFileSync(sourcePath, 'utf8'))
-      writeFileSync(targetPath, `${JSON.stringify(createBundledPackageManifest(sourcePackage), null, 2)}\n`, 'utf8')
-    } else {
-      await cp(sourcePath, targetPath, { force: true })
-    }
-  }
-
-  for (const relativeDirectoryPath of bundledSourceDirectories) {
-    const sourcePath = path.join(repoRoot, relativeDirectoryPath)
-    const targetPath = path.join(destinationPath, relativeDirectoryPath)
-    if (!existsSync(sourcePath)) {
-      continue
-    }
-
-    await syncTree(sourcePath, targetPath, bundledSourceDirectoryExcludes)
-  }
-
-}
-
-async function pruneEmbeddedNodeRuntimePayload(nodeRuntimeRoot) {
-  const buildOnlyPaths = [
-    'include',
-    'share',
-    'CHANGELOG.md',
-    'README.md',
-  ]
-
-  for (const relativePath of buildOnlyPaths) {
-    rmSync(path.join(nodeRuntimeRoot, relativePath), { recursive: true, force: true })
-  }
-
-  await pruneNodeRuntimePayload(path.join(nodeRuntimeRoot, 'lib', 'node_modules'))
-}
-
-async function materializeBundledRuntimeArtifacts(nodeModulesRoot) {
-  const libzimReleaseRoot = path.join(nodeModulesRoot, '@openzim', 'libzim', 'build', 'Release')
-  const libzimTargetPath = path.join(libzimReleaseRoot, 'libzim.9.dylib')
-  const libzimLinkPath = path.join(libzimReleaseRoot, 'libzim.dylib')
-
-  if (!existsSync(libzimTargetPath)) {
-    return
-  }
-
-  rmSync(libzimLinkPath, { force: true })
-  await cp(libzimTargetPath, libzimLinkPath, { force: true })
-}
-
-async function copyBundledNodeRuntime(sourcePath, resourcesPath) {
-  const destinationPath = path.join(resourcesPath, 'EmbeddedRuntime', 'node')
-  console.log(`Bundling self-contained Node runtime into ${destinationPath}...`)
-  await copyTreeFast(sourcePath, destinationPath)
-  await pruneEmbeddedNodeRuntimePayload(destinationPath)
-  await clearLaunchMetadata(path.join(resourcesPath, 'EmbeddedRuntime'), { recursive: true })
 }
 
 function roachSpeechPackIsBundled(packID) {
@@ -1665,6 +989,8 @@ async function bundleApp({ name, executable, identifier, iconPath, prepareResour
   if (iconPath) {
     await cp(iconPath, path.join(resourcesPath, 'RoachNet.icns'))
   }
+  // Each app carries the repository license (Apache-2.0).
+  await cp(path.join(repoRoot, 'LICENSE'), path.join(resourcesPath, 'LICENSE'))
 
   if (prepareResources) {
     console.log(`Preparing bundled resources for ${name}...`)
@@ -1737,7 +1063,7 @@ ${sourceCommit ? `  <key>RoachNetSourceCommit</key>\n  <string>${sourceCommit}</
   console.log(`Signing ${name}...`)
 
   await signAppBundle(bundlePath)
-  await clearEmbeddedRuntimeLaunchMetadata(bundlePath)
+  await clearBundleLaunchMetadata(bundlePath)
 
   return bundlePath
 }
@@ -1785,7 +1111,6 @@ async function main() {
   assertAppleSiliconNativeBuildHost()
   mkdirSync(distPath, { recursive: true })
   await ensureLaunchGuideVideo()
-  const bundledNodeRuntimePath = bundleNodeCompat ? await ensureBundledNodeRuntime() : null
   const binPath = await buildSwiftPackage()
   await writeDebugSymbols(binPath)
   const iconPath = await buildIcns()
@@ -1801,11 +1126,6 @@ async function main() {
         await copyNativeRuntimeHelper(binPath, contentsPath)
         await copyNativeRuntimeData(resourcesPath)
         await copyBundledRoachSpeechRuntime(resourcesPath)
-        if (bundleNodeCompat) {
-          await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
-          const bundledSourceArchivePath = path.join(resourcesPath, 'RoachNetSource.tar.gz')
-          await createBundledSourceArchive(bundledSourceArchivePath)
-        }
       },
     },
     {
@@ -1815,10 +1135,6 @@ async function main() {
       prepareResources: async ({ contentsPath, resourcesPath }) => {
         await copyNativeRuntimeHelper(binPath, contentsPath)
         const installerAssetsPath = path.join(resourcesPath, 'InstallerAssets')
-        if (bundleNodeCompat) {
-          await copyBundledNodeRuntime(bundledNodeRuntimePath, resourcesPath)
-          await copyBundledSourceTree(path.join(resourcesPath, 'RoachNetSource'), { includeRuntimeDependencies: false })
-        }
         mkdirSync(installerAssetsPath, { recursive: true })
         writeFileSync(path.join(installerAssetsPath, 'setup-assets.marker'), '', 'utf8')
         await prepareInstallerContainedTooling(installerAssetsPath)

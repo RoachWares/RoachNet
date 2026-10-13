@@ -14,12 +14,13 @@ release boundary.
 - The current clone has one configured remote:
   `https://github.com/RoachWares/RoachNet.git`.
 - No separate imported-source remote is configured in this checkout.
-- `admin/`, `desktop/`, `installer/`, Compose/management files, and related
-  documentation retain reference or migration value from the imported
-  web/container architecture.
-- The public Apple Silicon product is owned by the native Swift package,
-  dependency-free Node API bridge, native setup app, and native packaging
-  scripts described in `DEVELOPMENT.md`.
+- `admin/` (removed after v1.0.5) and `desktop/`, `installer/` and the
+  Compose/management files (removed in 1.1.1) came from the imported
+  web/container architecture; tags `v1.0.5` and `v1.1.0` keep them for
+  reference.
+- The public Apple Silicon product is owned by the native Swift package
+  (both apps and `roachnet-runtime`) and the packaging scripts described in
+  `DEVELOPMENT.md`. Nothing that ships runs Node.
 
 The exact imported repository URL and baseline commit are not established by
 current remote configuration. Do not invent them from naming similarities or

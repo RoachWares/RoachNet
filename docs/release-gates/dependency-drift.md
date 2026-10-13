@@ -4,17 +4,16 @@ This gate is repo-grounded only. Current and locked versions must come from `pac
 
 ## Native Shipping Scope
 
-- Root package version: `1.0.6` (build `106`)
-- Root entrypoint: `scripts/run-roachnet-native-api.mjs`
-- Root local engine: Node `>=26 <27`, npm `>=10`
-- Local default Node: `.nvmrc` pins `26`; bundled runtime freshness is tracked separately in `runtime-freshness.json`
-- CI Node runtime: native/root setup-node workflows pin Node `26`.
+- Root package version: read it from `package.json`; it has no JavaScript entry point.
+- Shipping runtime: `roachnet-runtime` (Swift, no third-party packages). RoachNet ships no Node (ROA-78).
+- Script toolchain: Node `>=26 <27`, npm `>=10`; `.nvmrc` pins `26`.
+- CI Node runtime: native/root setup-node workflows pin Node `26` for the scripts.
 - Root runtime dependencies: none
 - Root dev dependencies:
   - `convex` declared `^1.39.1`, locked `1.39.1`
   - `typescript` declared `^6.0.3`, locked `6.0.3`
 
-The public native desktop lane must stay runnable through the first-party SwiftUI app, setup app, and dependency-free native API bridge. It must not require Electron, the legacy WebUI runtime, `npm --prefix admin ci`, or staged admin `node_modules`.
+The public native desktop lane must stay runnable through the first-party SwiftUI app, setup app, and `roachnet-runtime`. It must not require Node, Electron, the legacy WebUI runtime, `npm --prefix admin ci`, or staged admin `node_modules`.
 
 ## Legacy Admin Scope
 
@@ -22,11 +21,11 @@ The admin/WebUI tree remains historical reference material at tag `v1.0.5`; it
 is not present in this public candidate or native runtime. Its high/critical
 dependency findings cannot be waived into a public source tag.
 
-## Legacy Electron Quarantine
+## Retired JavaScript and Electron Lanes
 
-The `desktop/` and `installer/` Electron trees are retained as feature-parity references only. Their READMEs must say they are legacy reference material and not used by the native shipping lane. Root package scripts and native packaging scripts must continue to avoid Electron, `electron-builder`, legacy WebUI boot, admin source fallback, and admin `node_modules` staging.
+The `desktop/` and `installer/` Electron trees, `setup-ui/`, the JavaScript runtime and setup backend, and the Docker install lane were removed in 1.1.1 (tag `v1.1.0` keeps them). Root package scripts and native packaging scripts must not bring back Electron, `electron-builder`, legacy WebUI boot, admin source fallback, or admin `node_modules` staging.
 
-The public setup payload must also stay clean. `RoachNetSource` inside the `.app` bundles may include the native API, setup backend, shared first-party helpers, collections, and setup UI. It must not include admin/WebUI source, Electron source, GitHub workflow state, local memory, legacy launchers, audit scripts, smoke scripts, tests, databases, ZIM payloads, or user-machine paths.
+The `.app` bundles carry no `RoachNetSource` tree and no JavaScript at all; the builder and the release-scope audit fail a bundle that does.
 
 ## Required Checks
 

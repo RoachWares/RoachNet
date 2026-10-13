@@ -228,12 +228,15 @@ export function auditReleaseConfiguration() {
     requirePattern(failures, buildScript, /if \(pinnedRuntimeBuild\) await requireFileSha256\(archivePath, release\.sha256, `Ollama \$\{release\.version\}`\)/, 'Candidate build mode does not checksum-verify the reviewed Ollama archive.')
   }
 
-  for (const [label, value] of [
-    ['Node arm64', runtimePins.node?.artifacts?.darwinArm64?.sha256],
-    ['Node x64', runtimePins.node?.artifacts?.darwinX64?.sha256],
-    ...(ollamaRetired ? [] : [['Ollama macOS', runtimePins.ollama?.artifact?.sha256]]),
-  ]) {
-    if (!/^[a-f0-9]{64}$/i.test(String(value || ''))) failures.push(`${label} runtime artifact is not checksum-pinned.`)
+  if (!ollamaRetired && !/^[a-f0-9]{64}$/i.test(String(runtimePins.ollama?.artifact?.sha256 || ''))) {
+    failures.push('Ollama macOS runtime artifact is not checksum-pinned.')
+  }
+  // RoachNet ships no Node (ROA-78): nothing may pin, download or embed one.
+  if (runtimePins.node?.mode !== 'not-shipped' || runtimePins.node?.artifacts) {
+    failures.push('runtime-freshness.json must record Node as not-shipped, with no release artifacts.')
+  }
+  if (/nodejs\.org\/dist|EmbeddedRuntime|ROACHNET_BUNDLE_NODE_COMPAT/.test(buildScript)) {
+    failures.push('Native builder can still download or embed Node.')
   }
 
   if (existsSync(path.join(repoRoot, 'admin'))) {

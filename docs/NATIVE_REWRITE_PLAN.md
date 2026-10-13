@@ -69,19 +69,19 @@ Recommended split:
 - shared runtime core
   Service/process/container orchestration, RoachClaw bootstrap, updater state, health probes, model routing, and knowledge/indexing APIs.
 
-Current bridge:
+Current runtime:
 
-- `scripts/run-roachnet-native-api.mjs`
-  Dependency-free native API bridge used by the SwiftUI shell and installer smoke tests.
-- It owns health, system info, local AI provider status, RoachClaw model calls, companion payloads, service catalog state, map manifests, Kiwix/Wikipedia manifests, downloads, site archive summaries, update status, and benchmark state without booting the legacy WebUI.
-- It can spawn the token-protected companion proxy for iOS compatibility while keeping the target runtime on loopback.
+- `roachnet-runtime` (`native/macos/Sources/RoachNetRuntime`)
+  The Swift runtime the SwiftUI shell and setup app run. It replaced the JavaScript bridge (`scripts/run-roachnet-native-api.mjs`, removed in 1.1.1).
+- It owns health, system info, local AI provider status, RoachClaw model calls, companion payloads, service catalog state, map manifests, Kiwix/Wikipedia manifests, downloads, site archive summaries, update status, and benchmark state.
+- It serves the token-protected companion bridge for iOS while keeping the runtime on loopback.
 
 ## RoachClaw Direction
 
 RoachClaw remains the bundled local-AI path:
 
-- install Ollama and OpenClaw together
-- prefer local Ollama models by default
+- RoachInference, RoachNet's own engine, serves local models; models already pulled with Ollama are read in place
+- an Ollama or OpenClaw the person runs themselves stays optional; RoachNet installs and starts neither
 - present one guided onboarding path
 - expose advanced model/runtime tuning inside RoachNet after setup, not during initial install unless the user opens advanced options
 
@@ -89,7 +89,7 @@ RoachClaw remains the bundled local-AI path:
 
 - `RoachNet Setup.app` is the only setup/onboarding entry point.
 - `RoachNet.app` is SwiftUI/AppKit, not Electron.
-- The default package entrypoint is `scripts/run-roachnet-native-api.mjs`; `npm start` must not boot the legacy WebUI runtime.
+- The package has no JavaScript entry point; the apps run `roachnet-runtime` and nothing else.
 - The native API and companion bridge default to loopback. LAN companion access is an explicit user/runtime setting, not the public install default.
 - Runtime services may stay as local background glue while features migrate into native surfaces.
 - New user-facing work should land in the native macOS app unless there is a clear runtime-only reason.
@@ -98,7 +98,7 @@ RoachClaw remains the bundled local-AI path:
 
 Moving away from Electron is not permission to throw features overboard.
 
-- Legacy Electron/WebUI source may stay in the private working tree as reference material until native parity exists.
+- The legacy Electron/WebUI source was removed in 1.1.1; tag `v1.1.0` keeps it as reference material.
 - The public shipping lane must not install Electron or package Electron artifacts.
 - A feature can be removed from the legacy surface only after it exists in the native app, is intentionally retired, or is replaced by a tested runtime API.
 - Release gates must prove the native app still has first-class surfaces for RoachClaw, Vault, RoachArcade, Dev, Settings, About, command bar, installer handoff, and the local runtime bridge.

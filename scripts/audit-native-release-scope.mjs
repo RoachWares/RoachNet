@@ -3,7 +3,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -100,16 +99,6 @@ function requireNodeEngine(packageJson, label, expectedNodeRange) {
   }
 }
 
-function requireNativeApiLoopbackBind(source) {
-  const normalizesHost = /function normalizeLoopbackHost\b/.test(source)
-  const computesListenHost = /const listenHost = normalizeLoopbackHost\(process\.env\.HOST\)/.test(source)
-  const bindsDirectly = /server\.listen\(listenPort,\s*listenHost/.test(source)
-  const bindsThroughHelper = /listenServer\(server,\s*listenPort,\s*listenHost\)/.test(source)
-  if (!normalizesHost || !computesListenHost || (!bindsDirectly && !bindsThroughHelper)) {
-    failures.push('native API script must normalize and bind its HTTP listener to loopback')
-  }
-}
-
 // The shipping runtime is the dependency-free Swift helper (roachnet-runtime).
 function requireNativeSwiftRuntime() {
   const runtimeRoots = ['native/macos/Sources/RoachNetRuntime', 'native/macos/Sources/RoachNetRuntimeHost', 'native/macos/Sources/RoachInference', 'native/macos/Sources/RoachInferenceTool']
@@ -171,14 +160,18 @@ function requireNativeSwiftRuntime() {
   }
   const coreSource = readText('native/macos/Sources/RoachNetCore/ManagedAppRuntime.swift')
   if (!/nativeRuntimeBinary\(\)/.test(coreSource)) {
-    failures.push('ManagedAppRuntime must launch the native runtime helper before any compatibility launcher')
+    failures.push('ManagedAppRuntime must launch the native runtime helper')
   }
-}
-
-function requireLegacyReferenceReadme(relativePath, label) {
-  const source = readText(relativePath)
-  if (!/Legacy reference only/i.test(source) || !/not used by the native shipping lane/i.test(source)) {
-    failures.push(`${label} must be quarantined as non-shipping legacy reference material in ${relativePath}`)
+  // Nothing in the apps may look for Node, switch to it or start it (ROA-78).
+  for (const relativePath of listFiles('native/macos/Sources', (candidate) => candidate.endsWith('.swift'))) {
+    const source = readText(relativePath)
+    for (const [pattern, what] of [
+      [/preferred(?:Portable)?NodeBinary|embeddedNode(?:Root|Binary|BinDirectory)|isPortableNodeBinary/, 'looks for a Node binary'],
+      [/ROACHNET_FORCE_NODE_RUNTIME|node-compat|ROACHNET_REQUIRE_PORTABLE_NODE"\]\s*=/, 'can switch RoachNet to a Node runtime'],
+      [/RoachNetSource(?:\.tar\.gz)?"/, 'reads RoachNet source carried in a bundle'],
+    ]) {
+      if (pattern.test(source)) failures.push(`${relativePath} ${what}; RoachNet runs only its Swift runtime`)
+    }
   }
 }
 
@@ -276,129 +269,16 @@ function requireNoMachineSpecificReleaseText() {
   }
 }
 
-const bundledDistForbiddenPatterns = [
-  /(?:^|\/)RoachNetSource\/admin\//i,
-  /(?:^|\/)RoachNetSource\/desktop\//i,
-  /(?:^|\/)RoachNetSource\/installer\//i,
-  /(?:^|\/)RoachNetSource\/\.github\//i,
-  /(?:^|\/)RoachNetSource\/MEMORY\.MD$/i,
-  /(?:^|\/)RoachNetSource\/scripts\/(?:run-roachnet|refresh-admin-runtime|check-admin-node-runtime|build-admin-runtime)\.mjs$/i,
-  /(?:^|\/)RoachNetSource\/scripts\/(?:audit-|smoke-test-|prepare-native-assets|configure-apple-release-secrets)/i,
-  /(?:^|\/)RoachNetSource\/scripts\/tests\//i,
-  /(?:^|\/)RoachNetSource\/admin\/\.env(?:\.example)?$/i,
-  /(?:^|\/)RoachNetSource\/storage\//i,
-  /(?:^|\/)RoachNetSource\/(?:.*\/)?node_modules\//i,
-  /\.zim$/i,
-  /\.sqlite(?:$|[-.])/i,
-  /\.db(?:$|[-.])/i,
-  /\.jsonl$/i,
-  /\.ndjson$/i,
-]
+const forbiddenBundleNames = new Set(['node_modules', 'RoachNetSource', 'RoachNetSource.tar.gz'])
+const forbiddenBundleExtensions = new Set(['.js', '.mjs', '.cjs', '.node'])
+const forbiddenBundleDataPatterns = [/\.zim$/i, /\.sqlite(?:$|[-.])/i, /\.db(?:$|[-.])/i, /\.jsonl$/i, /\.ndjson$/i]
 
-function requireNoForbiddenBundledSourceEntry(entry, label) {
-  const normalized = entry.split(path.sep).join('/')
-  if (bundledDistForbiddenPatterns.some((pattern) => pattern.test(normalized))) {
-    failures.push(`${label} includes non-shipping bundled source entry: ${normalized}`)
-  }
-}
-
-function requireCleanBundledPackageManifest(manifest, label) {
-  if (!manifest || typeof manifest !== 'object') {
-    failures.push(`${label} bundled package manifest is unreadable`)
-    return
-  }
-
-  if (manifest.main !== 'scripts/run-roachnet-native-api.mjs') {
-    failures.push(`${label} bundled package manifest must point at the native API entrypoint`)
-  }
-
-  const allowedScripts = new Set(['start', 'start:no-browser', 'setup', 'setup:no-browser'])
-  for (const [scriptName, command] of Object.entries(manifest.scripts || {})) {
-    if (!allowedScripts.has(scriptName)) {
-      failures.push(`${label} bundled package manifest exposes non-runtime script: ${scriptName}`)
-    }
-    if (/admin|run-roachnet\.mjs|electron|build|test|audit|smoke/i.test(`${scriptName} ${command}`)) {
-      failures.push(`${label} bundled package manifest script ${scriptName} points at a non-shipping lane`)
-    }
-  }
-
-  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'overrides']) {
-    if (Object.keys(manifest[section] || {}).length > 0) {
-      failures.push(`${label} bundled package manifest must not expose ${section}`)
-    }
-  }
-}
-
-function requireCleanBundledSourceTree(treePath, label) {
-  if (!fs.existsSync(treePath)) {
-    return
-  }
-
-  const walk = (currentPath) => {
-    for (const entry of fs.readdirSync(currentPath, { withFileTypes: true })) {
-      const entryPath = path.join(currentPath, entry.name)
-      const relativePath = path.relative(treePath, entryPath).split(path.sep).join('/')
-      requireNoForbiddenBundledSourceEntry(`RoachNetSource/${relativePath}`, label)
-      if (entry.isDirectory()) {
-        walk(entryPath)
-      }
-    }
-  }
-
-  walk(treePath)
-
-  const packageManifestPath = path.join(treePath, 'package.json')
-  if (fs.existsSync(packageManifestPath)) {
-    try {
-      requireCleanBundledPackageManifest(JSON.parse(fs.readFileSync(packageManifestPath, 'utf8')), label)
-    } catch (error) {
-      failures.push(`${label} bundled package manifest could not be parsed: ${error instanceof Error ? error.message : error}`)
-    }
-  }
-}
-
-function requireCleanBundledSourceArchive(archivePath, label) {
-  if (!fs.existsSync(archivePath)) {
-    return
-  }
-
-  const result = spawnSync('tar', ['-tzf', archivePath], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 30_000,
-  })
-  if (result.status !== 0) {
-    failures.push(`${label} bundled source archive could not be listed: ${result.stderr || result.error?.message || result.status}`)
-    return
-  }
-
-  for (const entry of String(result.stdout || '').split(/\r?\n/).filter(Boolean)) {
-    requireNoForbiddenBundledSourceEntry(entry, label)
-  }
-
-  const manifestResult = spawnSync('tar', ['-xOzf', archivePath, 'RoachNetSource/package.json'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 30_000,
-  })
-  if (manifestResult.status === 0) {
-    try {
-      requireCleanBundledPackageManifest(JSON.parse(manifestResult.stdout), label)
-    } catch (error) {
-      failures.push(`${label} bundled package manifest could not be parsed from archive: ${error instanceof Error ? error.message : error}`)
-    }
-  }
-}
-
-function requireNoEmbeddedNodeInBuiltApps() {
-  if (process.env.ROACHNET_BUNDLE_NODE_COMPAT === '1') return
+function requireNoNodeOrJavaScriptInBuiltApps() {
   const requireFreshDist = process.env.ROACHNET_REQUIRE_FRESH_DIST === '1'
   for (const bundle of ['RoachNet.app', 'RoachNet Setup.app']) {
-    const contents = path.join(repoRoot, 'native', 'macos', 'dist', bundle, 'Contents')
-    if (!fs.existsSync(contents)) continue
-    const nodeRoot = path.join(contents, 'Resources', 'EmbeddedRuntime', 'node')
-    const nativeHelper = path.join(contents, 'Helpers', 'roachnet-runtime')
-    if (!fs.existsSync(nativeHelper)) {
+    const bundlePath = path.join(repoRoot, 'native', 'macos', 'dist', bundle)
+    if (!fs.existsSync(path.join(bundlePath, 'Contents'))) continue
+    if (!fs.existsSync(path.join(bundlePath, 'Contents', 'Helpers', 'roachnet-runtime'))) {
       // Bundle predates the native Swift runtime packaging lane. It is a stale local
       // artifact (dist/ is git-ignored), not a source defect, unless this is the
       // release gate that inspects freshly packaged output.
@@ -407,24 +287,22 @@ function requireNoEmbeddedNodeInBuiltApps() {
       else staleNotices.push(message)
       continue
     }
-    if (fs.existsSync(nodeRoot)) {
-      failures.push(`${bundle} in native/macos/dist still embeds a Node runtime; rebuild without ROACHNET_BUNDLE_NODE_COMPAT`)
+    const walk = (folder) => {
+      for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+        const entryPath = path.join(folder, entry.name)
+        const shown = `${bundle}/${path.relative(bundlePath, entryPath).split(path.sep).join('/')}`
+        if (forbiddenBundleNames.has(entry.name) || forbiddenBundleExtensions.has(path.extname(entry.name).toLowerCase())
+            || (entry.name === 'node' && !entry.isDirectory())) {
+          failures.push(`${shown} is Node, JavaScript or RoachNet source; native builds ship none`)
+        } else if (forbiddenBundleDataPatterns.some((pattern) => pattern.test(entry.name))) {
+          failures.push(`${shown} is local data that must not ship`)
+        } else if (entry.isDirectory() && !entry.isSymbolicLink()) {
+          walk(entryPath)
+        }
+      }
     }
+    walk(bundlePath)
   }
-}
-
-function requireCleanBuiltNativePayloadsIfPresent() {
-  requireNoEmbeddedNodeInBuiltApps()
-  const distRoot = path.join(repoRoot, 'native', 'macos', 'dist')
-  if (!fs.existsSync(distRoot)) {
-    return
-  }
-
-  const setupResources = path.join(distRoot, 'RoachNet Setup.app', 'Contents', 'Resources')
-  const appResources = path.join(distRoot, 'RoachNet.app', 'Contents', 'Resources')
-  requireCleanBundledSourceTree(path.join(setupResources, 'RoachNetSource'), 'RoachNet Setup.app')
-  requireCleanBundledSourceArchive(path.join(setupResources, 'RoachNetSource.tar.gz'), 'RoachNet Setup.app')
-  requireCleanBundledSourceArchive(path.join(appResources, 'RoachNetSource.tar.gz'), 'RoachNet.app')
 }
 
 function requireRoachSpeechNativeReleaseScope() {
@@ -714,15 +592,29 @@ if (fs.existsSync(path.join(repoRoot, 'admin'))) {
   failures.push('legacy admin/WebUI source must remain outside the public native candidate')
 }
 if (readText('.nvmrc').trim() !== '26') {
-  failures.push('.nvmrc must keep local installs on Node 26 while the release bundle freshness gate owns the exact bundled Node patch')
+  failures.push('.nvmrc must keep the build and test tooling on Node 26 (RoachNet itself ships no Node)')
 }
-if (rootPackage.main !== 'scripts/run-roachnet-native-api.mjs') {
-  failures.push('package main still boots a non-native runtime launcher')
+if (rootPackage.main) {
+  failures.push('package.json must not name a JavaScript entry point; RoachNet runs only its Swift runtime')
+}
+// The JavaScript runtimes, the Electron shells and the Docker image are retired (ROA-78).
+for (const relativePath of [
+  'scripts/run-roachnet-native-api.mjs',
+  'scripts/run-roachnet-setup.mjs',
+  'scripts/run-roachnet.mjs',
+  'scripts/roachnet-companion-server.mjs',
+  'desktop',
+  'installer',
+  'setup-ui',
+  'Dockerfile',
+]) {
+  if (fs.existsSync(path.join(repoRoot, relativePath))) {
+    failures.push(`${relativePath} is a retired JavaScript, Electron or Docker lane and must stay out of the repository`)
+  }
 }
 requireNoKeys(rootPackage.dependencies, ['electron', 'electron-builder', 'electron-log', 'electron-updater'], 'root dependencies')
 requireNoKeys(rootPackage.devDependencies, ['electron', 'electron-builder', 'electron-log', 'electron-updater'], 'root devDependencies')
 requireNoPackagePattern(rootPackage, /^electron(?:-|$)/, 'root package')
-
 
 for (const [scriptName, command] of Object.entries(rootPackage.scripts || {})) {
   if (/electron|electron-builder|desktop:|installer:|build:web|npm\s+--prefix\s+admin|run-roachnet\.mjs/i.test(`${scriptName} ${command}`)) {
@@ -738,72 +630,52 @@ requireFile('native/macos/Sources/RoachNetApp/DevWorkspaceView.swift', 'Dev nati
 requireFile('native/macos/Sources/RoachNetApp/RoachNetSettingsView.swift', 'Settings native surface')
 requireFile('native/macos/Sources/RoachNetApp/RoachNetAboutView.swift', 'About native surface')
 requireFile('native/macos/Sources/RoachNetCore/ManagedAppRuntime.swift', 'managed local runtime bridge')
-requireFile('scripts/run-roachnet-native-api.mjs', 'dependency-free native API launcher')
-requireFile('scripts/run-roachnet-setup.mjs', 'native setup backend')
 requireFile('scripts/build-native-macos-apps.mjs', 'native packaging script')
 
 const buildScript = fs.readFileSync(path.join(repoRoot, 'scripts', 'build-native-macos-apps.mjs'), 'utf8')
 for (const requiredToken of [
-  "copyBundledSourceTree(path.join(resourcesPath, 'RoachNetSource'), { includeRuntimeDependencies: false })",
   'copyNativeRuntimeHelper(binPath, contentsPath)',
   'copyNativeRuntimeData(resourcesPath)',
   'verifyNativeRuntimeHelper(desktopBundlePath',
   'verifyNativeRuntimeHelper(setupBundlePath',
-  'assertNoEmbeddedNode(desktopBundlePath',
-  "process.env.ROACHNET_BUNDLE_NODE_COMPAT === '1'",
-  "'admin/'",
-  'pruneNodeRuntimePayload',
-  'openclaw-deferred.marker',
+  'assertNoNodeOrJavaScript(desktopBundlePath',
+  'assertNoNodeOrJavaScript(setupBundlePath',
   'supportedBuildNodeMajorRange',
-  "'/opt/homebrew/opt/node/bin/node'",
 ]) {
   if (!buildScript.includes(requiredToken)) {
-    failures.push(`native packaging script is missing payload optimization guard: ${requiredToken}`)
+    failures.push(`native packaging script is missing a native-only guard: ${requiredToken}`)
   }
 }
-
-const setupScript = fs.readFileSync(path.join(repoRoot, 'scripts', 'run-roachnet-setup.mjs'), 'utf8')
-for (const requiredToken of [
-  'run-roachnet-native-api.mjs',
-  'Apple Silicon macOS',
-  'Node.js 26',
-  "const minimumNodeVersion = '26.0.0'",
+for (const forbiddenToken of [
+  'ROACHNET_BUNDLE_NODE_COMPAT',
+  'ROACHNET_BUNDLE_OPENCLAW',
+  'ensureBundledNodeRuntime',
+  'copyBundledNodeRuntime',
+  'createBundledSourceArchive',
+  'copyBundledSourceTree',
+  'bundled-admin-build-node-modules',
+  'ensureAdminBuildRuntimeDependencies',
+  'build-admin-runtime.mjs',
 ]) {
-  if (!setupScript.includes(requiredToken)) {
-    failures.push(`setup backend is missing native transition guard: ${requiredToken}`)
+  if (buildScript.includes(forbiddenToken)) {
+    failures.push(`native packaging script can still put Node or RoachNet source in a bundle: ${forbiddenToken}`)
   }
-}
-
-if (/bundled-admin-build-node-modules|ensureAdminBuildRuntimeDependencies|build-admin-runtime\.mjs/.test(buildScript + setupScript)) {
-  failures.push('native shipping lane still stages legacy admin WebUI runtime dependencies')
 }
 
 requireNativeSwiftRuntime()
 
-const nativeApiScript = readText('scripts/run-roachnet-native-api.mjs')
-requireNativeApiLoopbackBind(nativeApiScript)
-
-const companionScript = readText('scripts/roachnet-companion-server.mjs')
-if (!/ROACHNET_COMPANION_HOST\?\.[\s\S]*\|\|\s*'127\.0\.0\.1'/.test(companionScript)) {
-  failures.push('companion bridge must default to loopback; LAN exposure must be explicit')
-}
-requireLegacyReferenceReadme('desktop/README.md', 'legacy Electron desktop shell')
-requireLegacyReferenceReadme('installer/README.md', 'legacy Electron setup shell')
-
 requireNoThirdPartyImports(
   [
-    'scripts/run-roachnet-native-api.mjs',
-    'scripts/run-roachnet-setup.mjs',
     'scripts/build-native-macos-apps.mjs',
     ...listFiles('scripts/lib', (relativePath) => /\.(?:mjs|js|cjs)$/.test(relativePath)),
   ],
-  'native shipping script'
+  'native packaging script'
 )
 requireBlacksmithWorkflows()
 requireWorkflowNodeVersions()
 requireNoMachineSpecificReleaseText()
 requireRoachSpeechNativeReleaseScope()
-requireCleanBuiltNativePayloadsIfPresent()
+requireNoNodeOrJavaScriptInBuiltApps()
 
 for (const notice of staleNotices) {
   console.warn(`notice: ${notice}`)

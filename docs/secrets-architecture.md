@@ -1,5 +1,10 @@
 # RoachNet Secrets Architecture
 
+> **1.1.1:** `scripts/run-roachnet.mjs`, `admin/.env` and the Compose files named
+> below belonged to the JavaScript and container lanes, which are gone (ROA-78).
+> RoachNet now runs only its Swift app and `roachnet-runtime`. Sections that name
+> those files are kept as history.
+
 ## Goals
 
 - Keep RoachNet portable: install once, move machines, no silent data loss.

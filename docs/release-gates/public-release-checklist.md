@@ -92,7 +92,7 @@ These checks do not substitute for the macOS gates.
 | P0 | Make publication staged and reversible. | Candidate assets are first uploaded immutably to a draft/quarantined release, verified there, then promoted without `--clobber` or byte replacement. Stable channels switch under a serialized release transaction with a recorded rollback plan, owner, trigger, and target recovery time. | FAIL |
 | P1 | Finish current release notes and support copy. | Notes describe user-visible changes, security/privacy changes, system requirements, install/upgrade/rollback, known limitations, and support/reporting links in direct RoachNet voice. No stale checksum or already-published version is reused. | FAIL |
 | P1 | Resolve retained legacy-admin source risk. | If `admin/` remains in the public tag, its Node 24 lockfile audit has zero high/critical findings and its non-shipping status is unmistakable. Otherwise remove it from the public source surface without losing private preservation/provenance. | PASS in v1.0.6 candidate: removed with v1.0.5 tree and dirty local-work hashes preserved |
-| P1 | Prove final-artifact supply-chain health. | Generate an SBOM and binary/license inventory from the mounted/installed artifact, covering bundled OpenClaw packages, Node, Ollama, model/runtime assets, and native dependencies. Every binary/package is versioned, source-pinned, licensed for distribution, checksum-verified, and scanned for candidate-bound vulnerabilities. | NOT RUN |
+| P1 | Prove final-artifact supply-chain health. | Generate an SBOM and binary/license inventory from the mounted/installed artifact, covering model/runtime assets and native dependencies, and recording Node, Ollama and OpenClaw as not bundled. Every binary/package is versioned, source-pinned, licensed for distribution, checksum-verified, and scanned for candidate-bound vulnerabilities. | NOT RUN |
 | P1 | Complete target-device product-quality review. | Keyboard, VoiceOver, focus, contrast, Reduce Motion, narrow/wide window layouts, long content, first launch, errors, and offline behavior pass on the built candidate. | NOT RUN |
 | P1 | Measure performance on target hardware. | Candidate hardware and measurements are recorded for cold launch, time-to-healthy, workflow responsiveness, memory, and a 30-minute soak. No unexplained regression versus the approved baseline and no unbounded growth/hang occurs. | NOT RUN |
 | P1 | Validate public routing and discovery. | Product, install, release, checksum, Homebrew, SideStore/iOS (if included), privacy, support, and API URLs return the intended public content; redirects, canonical metadata, version text, screenshots, and download links all point to the candidate. | NOT RUN |
@@ -303,9 +303,9 @@ shasum -a 256 "RoachNet-Setup-macOS.dmg"
 - [ ] Notarization result is `Accepted`; submission ID is recorded.
 - [ ] Stapler validation and Gatekeeper assessment pass offline after download.
 - [ ] DMG mounts read-only and contains only intended setup/install material.
-- [ ] App, setup app, nested executables, embedded Node/Ollama payloads, model
-      packs, source archive, and archive manifests are signed or covered as
-      intended and contain no local data.
+- [ ] App, setup app, nested executables (`roachnet-runtime`), model packs and
+      archive manifests are signed or covered as intended and contain no local
+      data. Neither app carries Node, JavaScript or a RoachNet source tree.
 - [ ] SHA-256 and byte size are recorded before publication and independently
       reproduced after public download.
 
@@ -430,8 +430,8 @@ measurements or an after-the-fact threshold is `NO-GO`.
 - [ ] Root and every shipped runtime dependency have zero known high/critical
       vulnerabilities, with dependency scan evidence tied to the candidate.
 - [ ] An SBOM and mounted-artifact binary/license inventory cover Swift packages,
-      root and bundled OpenClaw packages, Node, Ollama, model/runtime assets, and
-      every redistributed binary. Sources, exact versions, licenses, checksums,
+      model/runtime assets, and every redistributed binary, and record Node,
+      Ollama and OpenClaw as not bundled. Sources, exact versions, licenses, checksums,
       and candidate-bound scan results are recorded; unlocked `npm install`
       output or an unverified latest-download binary is not releasable.
 - [ ] GitHub security alerts, workflow permissions, release-token scope, artifact
@@ -516,8 +516,9 @@ release owner accepts them as P2/P3:
 
 - macOS 14+ Apple Silicon is the only desktop target for this release; Windows
   and Linux desktop installers are not shipped.
-- Legacy `admin/`, Electron desktop, and Electron installer lanes are reference
-  material, not runtime dependencies of the native public product.
+- The legacy `admin/`, Electron desktop, Electron installer and JavaScript
+  runtime lanes are removed (tags `v1.0.5` and `v1.1.0` keep them); none is a
+  runtime dependency of the native public product.
 - Optional remote AI providers, cloud metadata, model downloads, maps, and public
   catalogs need network access; core local surfaces must fail clearly offline.
 - iOS companion distribution may be a separately versioned companion release,

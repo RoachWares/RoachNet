@@ -4,6 +4,15 @@
 
 Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships until the 1.1.1 gate passes.
 
+### No Node in RoachNet
+
+- RoachNet, RoachNet Setup and `roachnet-runtime` contain and launch no Node or JavaScript. The app and Setup no longer fall back to a Node launcher (`ROACHNET_FORCE_NODE_RUNTIME` is gone) or unpack a bundled source tree; if the runtime helper is missing they say to reinstall with RoachNet Setup.
+- The build fails if either bundle holds a `node` binary, `node_modules`, JavaScript files or RoachNet source. `ROACHNET_BUNDLE_NODE_COMPAT` and `ROACHNET_BUNDLE_OPENCLAW` are gone, and OpenClaw files older builds left in the Setup bundle are cleared.
+- Removed: the JavaScript runtime and setup backend (`scripts/run-roachnet*.mjs` and the companion server), the Electron shells (`desktop/`, `installer/`, `setup-ui/`) and the Docker install lane (`install/`, `ops/`, `Dockerfile`). RoachNet Setup no longer shows a Docker option; its setup service already refused one.
+- Both apps now carry the repository's Apache-2.0 `LICENSE`.
+- `runtime-freshness.json` records Node as not shipped and OpenClaw as something RoachNet only probes when you run it yourself; the SBOM lists both as not bundled.
+- Node 26 is still the toolchain for the build, test and release scripts in `scripts/`. None of it ships.
+
 ### RoachNet Cluster
 
 - When a Mac in a split model drops before any of a reply is sent, the same request is planned again without it (on this Mac alone when the model fits) instead of failing with 502. A drop after part of the reply was sent still fails that request.
@@ -35,7 +44,7 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 
 - A pack archive is read before it's unpacked and refused if an entry is absolute, climbs out with `..`, or is a link or special file, or if it would unpack to more than 64 GB. ZIPs are unpacked by RoachNet's own reader, so what's written is what was checked: `ditto` also walks an archive's local headers, and in testing it unpacked a file the directory didn't list, past every check and the size limit. The reader creates each file new (never through a link or over another file), writes exactly the size the directory declares, checks each file's CRC-32, and refuses an archive that could be read two ways: two end records, ZIP and ZIP64 records that disagree, bytes between files or ahead of the first, overlapping files, a local header that disagrees with the directory, two names that unpack to the same file (`a/./b` and `a/b`) or a file where a folder is, or a file name that tools could decode differently (a name past ASCII must be marked UTF-8, and an Info-ZIP Unicode path field must repeat it). A .tar.gz is measured by inflating it without writing anything, then unpacked by tar. Either way the result lands in a folder of its own, is checked again (a folder the archive made unreadable no longer passes as empty), and is merged in without replacing a file the pack already has. (macOS's own tools kept the tested archives inside the folder, but a symbolic link could still point outside it.)
 - Unpacked packs get plain modes (folders 0755, files 0644, or 0755 when executable), and the tools that read archives run without `UNZIP`, `TAR_OPTIONS` and similar variables that change how they read.
-- RoachSpeech packs install only from RoachNet download descriptors, and a pack the catalog lists must match the catalog's SHA-256 however the install was asked for (Pack Manager, install link or iPhone). The JavaScript compatibility runtime also refuses a RoachSpeech archive that unpacks a link or a special file.
+- RoachSpeech packs install only from RoachNet download descriptors, and a pack the catalog lists must match the catalog's SHA-256 however the install was asked for (Pack Manager, install link or iPhone).
 - A pack installs only when the packs it depends on are installed; if one of them is switched off, the new pack installs switched off, and an update that adds a dependency that's off switches the pack off. A pack whose dependency is removed while it downloads installs switched off. Pack state changes are made in one step, so two installs finishing together both stay recorded.
 - An imported theme's background picture has to be a picture file inside the theme's folder, or the import is refused. A crafted name could copy a file outside the themes folder.
 

@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-08",
+  "checkedAt": "2026-10-13",
   "nativeRuntime": {
     "mode": "swift-native",
     "executable": "roachnet-runtime",
@@ -8,25 +8,10 @@
     "bundleLocation": "Contents/Helpers/roachnet-runtime"
   },
   "node": {
-    "channel": "26",
-    "bundledVersion": "v26.8.1",
-    "latestReviewedVersion": "v26.8.1",
-    "source": "https://nodejs.org/dist/v26.8.1/SHASUMS256.txt",
-    "license": "MIT",
-    "artifacts": {
-      "darwinArm64": {
-        "filename": "node-v26.8.1-darwin-arm64.tar.gz",
-        "url": "https://nodejs.org/dist/v26.8.1/node-v26.8.1-darwin-arm64.tar.gz",
-        "sha256": "6e577fd0d9db776db82306629e441a9dace416702622aebdd171c9dfaa41f4d2"
-      },
-      "darwinX64": {
-        "filename": "node-v26.8.1-darwin-x64.tar.gz",
-        "url": "https://nodejs.org/dist/v26.8.1/node-v26.8.1-darwin-x64.tar.gz",
-        "sha256": "fe9c6dbf9c8e1b4443803d75e2a20366e420dae650c747dbb116b22975751baf"
-      }
-    },
-    "mode": "compat-only-not-bundled",
-    "releasePolicy": "Public 1.0.6+ builds ship the native Swift runtime (roachnet-runtime) and no Node. The pin is used only when ROACHNET_BUNDLE_NODE_COMPAT=1 builds a legacy compatibility payload."
+    "mode": "not-shipped",
+    "releasePolicy": "RoachNet, RoachNet Setup and roachnet-runtime contain and launch no Node or JavaScript (ROA-78). The builder refuses any bundle that holds a node binary, node_modules, .js/.mjs/.cjs/.node files or RoachNet source. Node is only used by the repository's developer and release tooling under scripts/, on a developer's Mac or in CI; none of it ships.",
+    "developerToolingChannel": "26",
+    "source": "https://nodejs.org"
   },
   "ollama": {
     "mode": "retired-not-bundled",
@@ -39,15 +24,15 @@
     "reviewNotes": "2026-10-09: retired after the M2 Pro Mac gate. Native Metal decode is within ~10% of Ollama 0.40.1 on 1.5B-3B models and faster on 0.5B; CPU and Metal produce identical tokens on six reference models (ROA-30, ROA-33)."
   },
   "openclaw": {
-    "mode": "deferred-not-bundled",
+    "mode": "external-not-bundled",
     "bundledPackage": null,
     "reviewedVersion": "2026.7.1-2",
     "source": "https://www.npmjs.com/package/openclaw/v/2026.7.1-2",
-    "releasePolicy": "Public release builds fail if ROACHNET_BUNDLE_OPENCLAW=1; unlocked npm install output is not permitted in the artifact."
+    "releasePolicy": "RoachNet never bundles, installs or starts OpenClaw. RoachClaw only probes an OpenClaw the person runs themselves (OPENCLAW_BASE_URL, loopback by default) as an optional compatibility lane."
   },
   "roachClawAgent": {
     "mode": "native-rewrite",
-    "runtimeModule": "scripts/lib/roachnet_roachclaw_agent.mjs",
+    "runtimeModule": "native/macos/Sources/RoachNetRuntime/RoachClawAgent.swift",
     "upstreamRuntimeDependency": "none",
     "hermesReference": {
       "role": "design-reference-only",
@@ -55,7 +40,6 @@
       "latestRelease": "v2026.8.27",
       "reviewedHead": "5fc308a70719a83cccdbba4c0e39c23f5a8239d5",
       "docs": "https://hermes-agent.nousresearch.com/docs/"
-    },
-    "nativeRuntimeModule": "native/macos/Sources/RoachNetRuntime/RoachClawAgent.swift"
+    }
   }
 }

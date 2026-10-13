@@ -5,9 +5,8 @@ import Darwin
 import Glibc
 #endif
 
-/// Native port of scripts/lib/roachtail_hostname.mjs and
-/// scripts/install-roachtail-hostname.mjs: keeps a marked RoachNet block in the
-/// hosts file so `http://RoachNet:<port>` resolves to the contained loopback lane.
+/// Keeps a marked RoachNet block in the hosts file so `http://RoachNet:<port>`
+/// resolves to the contained loopback lane.
 public enum RoachTailHostname {
     public static let defaultHostname = "RoachNet"
     public static let blockBegin = "# >>> RoachNet local alias >>>"

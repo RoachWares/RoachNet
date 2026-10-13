@@ -65,7 +65,6 @@ final class SetupController: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
-    private var backendScriptURL: URL?
     private var primaryActionCooldownTask: Task<Void, Never>?
     private var installRequestSentAt: Date?
     private var backendOutputTail: [String] = []
@@ -219,34 +218,6 @@ final class SetupController: ObservableObject {
         }
 
         statusLine = "Install root updated."
-    }
-
-    func startRuntimeAction() async {
-        guard config.useDockerContainerization else {
-            statusLine = "Docker containerization is off for this install."
-            return
-        }
-
-        guard !isBusy else { return }
-        isBusy = true
-        errorLine = nil
-        statusLine = "Starting the contained runtime."
-
-        do {
-            try await persistConfig()
-            let _: SimpleOKResponse = try await request(
-                path: "/api/container-runtime/start",
-                method: "POST",
-                body: config,
-                as: SimpleOKResponse.self
-            )
-            try await refreshState()
-            statusLine = "Contained runtime start requested."
-        } catch {
-            errorLine = describe(error)
-        }
-
-        isBusy = false
     }
 
     func installAction() async {
@@ -524,109 +495,18 @@ final class SetupController: ObservableObject {
         let setupWorkspaceRoot = preferredSetupWorkspaceRoot()
         setenv("ROACHNET_SETUP_WORK_ROOT", setupWorkspaceRoot, 1)
 
-        if let nativeHelper = RoachNetRepositoryLocator.nativeRuntimeBinary() {
-            try await startNativeBackend(helperPath: nativeHelper, setupWorkspaceRoot: setupWorkspaceRoot)
-            return
-        }
-
-        let bundledSourceDirectory = Bundle.main.resourceURL?
-            .appendingPathComponent("RoachNetSource", isDirectory: true)
-        if let bundledSourceDirectory,
-           FileManager.default.fileExists(atPath: bundledSourceDirectory.path)
-        {
-            statusLine = "Starting the local setup service."
-        } else {
-            statusLine = "Preparing bundled setup files. First launch can take a minute."
-        }
-
-        let repoRoot = await Task.detached(priority: .userInitiated) {
-            RoachNetRepositoryLocator.repositoryRoot()
-        }.value
-
-        guard let repoRoot else {
+        guard let nativeHelper = RoachNetRepositoryLocator.nativeRuntimeBinary() else {
             throw NSError(domain: "RoachNetSetup", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Could not locate the RoachNet repository root for the setup backend."
+                NSLocalizedDescriptionKey: "RoachNet Setup is missing its native setup service (roachnet-runtime). Download RoachNet Setup again."
             ])
         }
-
-        let scriptURL = repoRoot.appendingPathComponent("scripts/run-roachnet-setup.mjs")
-        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-            throw NSError(domain: "RoachNetSetup", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "Missing setup backend at \(scriptURL.path)."
-            ])
-        }
-        backendScriptURL = scriptURL
-        Self.terminateSetupBackends(scriptURL: scriptURL)
-
-        let readyFileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("roachnet-setup-\(UUID().uuidString).json")
-        self.readyFileURL = readyFileURL
-
-        let node = RoachNetRepositoryLocator.preferredNodeBinary()
-        let process = Process()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        let resolvedNodeBinary = node == "/usr/bin/env" ? "/usr/bin/env" : node
-        process.executableURL = URL(fileURLWithPath: resolvedNodeBinary)
-        process.arguments = node == "/usr/bin/env" ? ["node", scriptURL.path] : [scriptURL.path]
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        var environment = ProcessInfo.processInfo.environment
-        environment["ROACHNET_SETUP_NO_BROWSER"] = "1"
-        environment["ROACHNET_SETUP_READY_FILE"] = readyFileURL.path
-        environment["ROACHNET_REPO_ROOT"] = repoRoot.path
-        environment["ROACHNET_SETUP_WORK_ROOT"] = setupWorkspaceRoot
-        if let installerAssets = RoachNetRepositoryLocator.bundledInstallerAssetsDirectory() {
-            environment["ROACHNET_SETUP_APP_BUNDLE"] = installerAssets
-                .appendingPathComponent("setup-assets.marker")
-                .path
-        }
-        process.environment = environment
-
-        try process.run()
-        self.process = process
-        self.stdoutPipe = stdoutPipe
-        self.stderrPipe = stderrPipe
-        attachBackendOutputDrain(stdoutPipe, label: "setup")
-        attachBackendOutputDrain(stderrPipe, label: "setup")
-
-        let deadline = Date().addingTimeInterval(90)
-        while Date() < deadline {
-            if
-                let data = try? Data(contentsOf: readyFileURL),
-                let ready = try? JSONDecoder().decode(ReadyFile.self, from: data),
-                let url = URL(string: ready.url)
-            {
-                serverURL = url
-                return
-            }
-
-            if !process.isRunning {
-                throw NSError(domain: "RoachNetSetup", code: 3, userInfo: [
-                    NSLocalizedDescriptionKey: makeBackendBootFailureMessage(
-                        fallback: "The native installer could not keep the setup backend running.",
-                        includePipeOutput: true
-                    )
-                ])
-            }
-
-            try await Task.sleep(for: .milliseconds(250))
-        }
-
-        throw NSError(domain: "RoachNetSetup", code: 3, userInfo: [
-                NSLocalizedDescriptionKey: makeBackendBootFailureMessage(
-                    fallback: "The native installer could not boot the setup service before the local timeout.",
-                    includePipeOutput: false
-                )
-            ])
+        try await startNativeBackend(helperPath: nativeHelper, setupWorkspaceRoot: setupWorkspaceRoot)
     }
 
     /// Boots the native setup service (`roachnet-runtime --setup`) shipped in
-    /// `Contents/Helpers`; no Node runtime is required.
+    /// `Contents/Helpers`. Nothing in Setup runs Node.
     private func startNativeBackend(helperPath: String, setupWorkspaceRoot: String) async throws {
         statusLine = "Starting the local setup service."
-        backendScriptURL = nil
 
         let readyFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("roachnet-setup-\(UUID().uuidString).json")
@@ -692,11 +572,9 @@ final class SetupController: ObservableObject {
     }
 
     private func terminateBackendProcess() {
-        let childPid = process?.processIdentifier
-
         // The native setup service finishes a running install before it exits on
         // SIGTERM; force-killing it could interrupt the install-root swap.
-        let nativeInstallRunning = backendScriptURL == nil && setupState?.activeTask?.status == "running"
+        let nativeInstallRunning = setupState?.activeTask?.status == "running"
 
         if let process, process.isRunning {
             process.terminate()
@@ -714,73 +592,12 @@ final class SetupController: ObservableObject {
             }
         }
 
-        if let backendScriptURL {
-            Self.terminateSetupBackends(scriptURL: backendScriptURL, excluding: childPid)
-        }
-
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         process = nil
         stdoutPipe = nil
         stderrPipe = nil
         serverURL = nil
-    }
-
-    private static func terminateSetupBackends(scriptURL: URL, excluding excludedPid: Int32? = nil) {
-        let scriptName = scriptURL.lastPathComponent
-        let outputPipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-fal", scriptName]
-        process.standardOutput = outputPipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            return
-        }
-
-        let rawOutput = String(decoding: outputPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
-        let matchingPids = rawOutput
-            .split(separator: "\n")
-            .compactMap { line -> Int32? in
-                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-                guard
-                    trimmedLine.contains(scriptName),
-                    trimmedLine.localizedCaseInsensitiveContains("roachnet")
-                else {
-                    return nil
-                }
-
-                let parts = trimmedLine.split(maxSplits: 1, whereSeparator: \.isWhitespace)
-                guard let firstPart = parts.first, let pid = Int32(firstPart) else {
-                    return nil
-                }
-
-                if pid == ProcessInfo.processInfo.processIdentifier || pid == excludedPid {
-                    return nil
-                }
-
-                return pid
-            }
-
-        guard !matchingPids.isEmpty else {
-            return
-        }
-
-        for pid in matchingPids {
-            kill(pid, SIGTERM)
-        }
-
-        usleep(300_000)
-
-        for pid in matchingPids {
-            if kill(pid, 0) == 0 {
-                kill(pid, SIGKILL)
-            }
-        }
     }
 
     private func request<Response: Decodable>(
@@ -847,16 +664,7 @@ final class SetupController: ObservableObject {
             request.httpBody = try JSONEncoder().encode(body)
         }
 
-        let data: Data
-        let response: URLResponse
-
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch let urlError as URLError where urlError.code == .timedOut && path == "/api/container-runtime/start" {
-            throw NSError(domain: "RoachNetSetup", code: 408, userInfo: [
-                NSLocalizedDescriptionKey: "RoachNet Setup waited too long for the contained Docker lane to answer. Docker may still be warming up on this Mac. Try the runtime step again in a moment."
-            ])
-        }
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
 
@@ -915,18 +723,6 @@ final class SetupController: ObservableObject {
             || description.localizedCaseInsensitiveContains("enospc")
         {
             return "RoachNet ran out of disk space while staging the contained install. Free up more space, choose a roomier install root, or turn off Install RoachClaw for the first pass."
-        }
-
-        if description.localizedCaseInsensitiveContains("reading 'includes'")
-            || description.localizedCaseInsensitiveContains("reading \\\"includes\\\"")
-        {
-                return "RoachNet Setup hit a bad package check while staging the contained tools. Retry the install with the rebuilt bundle."
-        }
-
-        if description.localizedCaseInsensitiveContains("npm error")
-            || description.localizedCaseInsensitiveContains("npm install")
-        {
-            return "RoachNet Setup couldn't finish staging one of the contained tool bundles. Retry the install. If you only need the shell first, turn off Install RoachClaw and finish the AI lane after launch."
         }
 
         if description.localizedCaseInsensitiveContains("timed out")
@@ -1661,7 +1457,6 @@ private struct SetupRootView: View {
             VStack(alignment: .leading, spacing: 14) {
                 LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 12) {
                     RoachInfoPill(title: "Runtime Mode", value: runtimeModeValue)
-                    RoachInfoPill(title: "Container Runtime", value: runtimeValue)
                     RoachInfoPill(title: "Services", value: servicesValue)
                     RoachInfoPill(
                         title: "Storage",
@@ -1671,20 +1466,6 @@ private struct SetupRootView: View {
                                 : controller.config.storagePath
                         )
                     )
-                }
-
-                RoachInsetPanel {
-                    Toggle(isOn: $controller.config.useDockerContainerization) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Use Docker containerization")
-                                .font(.roach(size: 15, weight: .semibold))
-                                .foregroundStyle(RoachPalette.text)
-                            Text("Leave this off for the contained Apple Silicon path. Turn it on only if you want Docker-backed support services.")
-                                .font(.roach(size: 13, weight: .regular))
-                                .foregroundStyle(RoachPalette.muted)
-                        }
-                    }
-                    .toggleStyle(.switch)
                 }
 
                 RoachInsetPanel {
@@ -1699,12 +1480,6 @@ private struct SetupRootView: View {
                         }
                     }
                     .toggleStyle(.switch)
-                }
-
-                if controller.config.useDockerContainerization {
-                    SetupNativeButton(title: "Start Runtime Now", role: .secondary, isEnabled: !controller.isBusy) {
-                        Task { await controller.startRuntimeAction() }
-                    }
                 }
             }
 
@@ -1937,7 +1712,6 @@ private struct SetupRootView: View {
 
         if dependencies.isEmpty {
             return [
-                ("Container Runtime", runtimeValue, RoachPalette.green),
                 ("Services", servicesValue, controller.setupState?.installLooksReady == true ? RoachPalette.green : RoachPalette.warning),
             ]
         }
@@ -1958,25 +1732,8 @@ private struct SetupRootView: View {
         }
     }
 
-    private var runtimeValue: String {
-        if !controller.config.useDockerContainerization {
-            return "Not selected"
-        }
-        if controller.setupState?.containerRuntime.detectionPending == true {
-            return "Checking"
-        }
-        if controller.setupState?.containerRuntime.ready == true {
-            return "Ready"
-        }
-        if controller.setupState?.containerRuntime.available == true {
-            return "Detected"
-        }
-        return "Needs Setup"
-    }
-
-    private var runtimeModeValue: String {
-        controller.config.useDockerContainerization ? "Docker" : "Contained Local"
-    }
+    // RoachNet runs on its own Swift runtime; there is no container lane.
+    private var runtimeModeValue: String { "Contained Local" }
 
     private var servicesValue: String {
         if controller.setupState?.installLooksReady == true {

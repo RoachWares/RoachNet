@@ -9,12 +9,13 @@ import process from 'node:process'
 import test from 'node:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { createAsyncTTLCache } from '../lib/roachnet_async_cache.mjs'
 import { requestHttp } from '../lib/roachnet_http.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..', '..')
+const binary = process.env.ROACHNET_NATIVE_API_BINARY?.trim() || ''
+const needsBinary = binary ? {} : { skip: 'Set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -67,7 +68,7 @@ async function waitForHealth(url, child, timeoutMs = 20_000) {
 
 async function stopNativeApi(child, env) {
   await new Promise((resolve) => {
-    const stop = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs'), '--stop'], {
+    const stop = spawn(binary, ['--stop'], {
       cwd: repoRoot,
       env,
       stdio: 'ignore',
@@ -90,45 +91,6 @@ async function stopNativeApi(child, env) {
     })
   })
 }
-
-test('async TTL cache coalesces concurrent work and expires resolved values', async () => {
-  let now = 1_000
-  let loads = 0
-  const cache = createAsyncTTLCache(
-    async (key) => {
-      loads += 1
-      await delay(10)
-      return `${key}:${loads}`
-    },
-    { ttlMs: 500, now: () => now }
-  )
-
-  const concurrent = await Promise.all(Array.from({ length: 12 }, () => cache.get('ollama')))
-  assert.deepEqual(new Set(concurrent), new Set(['ollama:1']))
-  assert.equal(loads, 1)
-
-  assert.equal(await cache.get('ollama'), 'ollama:1')
-  assert.equal(loads, 1)
-
-  now += 501
-  assert.equal(await cache.get('ollama'), 'ollama:2')
-  assert.equal(loads, 2)
-})
-
-test('async TTL cache retries failures and supports explicit invalidation', async () => {
-  let attempts = 0
-  const cache = createAsyncTTLCache(async () => {
-    attempts += 1
-    if (attempts === 1) throw new Error('temporary failure')
-    return attempts
-  })
-
-  await assert.rejects(cache.get('provider'), /temporary failure/)
-  assert.equal(await cache.get('provider'), 2)
-  assert.equal(await cache.get('provider'), 2)
-  cache.invalidate('provider')
-  assert.equal(await cache.get('provider'), 3)
-})
 
 test('every macOS TimelineView stops when Reduce Motion is enabled', () => {
   const sourcesRoot = path.join(repoRoot, 'native', 'macos', 'Sources')
@@ -175,7 +137,7 @@ test('every macOS TimelineView stops when Reduce Motion is enabled', () => {
   )
 })
 
-test('native status refresh coalesces duplicate provider and model probes', async () => {
+test('native status refresh coalesces duplicate provider and model probes', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-performance-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')
@@ -237,7 +199,7 @@ test('native status refresh coalesces duplicate provider and model probes', asyn
     HOST: '127.0.0.1',
     PORT: String(apiPort),
   }
-  const child = spawn(process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs')], {
+  const child = spawn(binary, [], {
     cwd: repoRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],

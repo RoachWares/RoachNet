@@ -273,10 +273,6 @@ public enum RoachNetRepositoryLocator {
     /// app bundle; development builds find it beside the app executable.
     public static func nativeRuntimeBinary() -> String? {
         let environment = ProcessInfo.processInfo.environment
-        if environment["ROACHNET_FORCE_NODE_RUNTIME"] == "1" {
-            return nil
-        }
-
         var candidates: [String] = []
         if let override = environment["ROACHNET_RUNTIME_BINARY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
             candidates.append(override)
@@ -322,44 +318,6 @@ public enum RoachNetRepositoryLocator {
         return nil
     }
 
-    public static func embeddedNodeRoot() -> URL? {
-        guard let resourceURL = Bundle.main.resourceURL else {
-            return nil
-        }
-
-        let candidate = resourceURL
-            .appendingPathComponent("EmbeddedRuntime", isDirectory: true)
-            .appendingPathComponent("node", isDirectory: true)
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return nil
-        }
-
-        return candidate
-    }
-
-    public static func embeddedNodeBinary() -> String? {
-        guard let root = embeddedNodeRoot() else {
-            return nil
-        }
-
-        let binaryPath = root
-            .appendingPathComponent("bin", isDirectory: true)
-            .appendingPathComponent("node")
-            .path
-
-        return FileManager.default.isExecutableFile(atPath: binaryPath) ? binaryPath : nil
-    }
-
-    public static func embeddedNodeBinDirectory() -> String? {
-        guard let root = embeddedNodeRoot() else {
-            return nil
-        }
-
-        let binPath = root.appendingPathComponent("bin", isDirectory: true).path
-        return FileManager.default.fileExists(atPath: binPath) ? binPath : nil
-    }
-
     public static func repositoryRoot() -> URL? {
         if
             let explicitOverride = ProcessInfo.processInfo.environment["ROACHNET_REPO_ROOT"],
@@ -367,10 +325,6 @@ public enum RoachNetRepositoryLocator {
             let root = ascendForRepoRoot(from: URL(fileURLWithPath: explicitOverride))
         {
             return root
-        }
-
-        if isSetupBundle(), let bundledRoot = bundledRepositoryRoot() {
-            return bundledRoot
         }
 
         if let configuredRoot = configuredRepositoryRoot() {
@@ -396,28 +350,7 @@ public enum RoachNetRepositoryLocator {
             }
         }
 
-        if let bundledRoot = bundledRepositoryRoot() {
-            return bundledRoot
-        }
-
         return nil
-    }
-
-    public static func bundledRepositoryRoot() -> URL? {
-        guard let resourceURL = Bundle.main.resourceURL else {
-            return nil
-        }
-
-        let candidate = resourceURL.appendingPathComponent("RoachNetSource", isDirectory: true)
-        guard isRepositoryRoot(candidate) else {
-            guard let archiveURL = bundledRepositoryArchiveURL(resourceURL: resourceURL) else {
-                return nil
-            }
-
-            return extractBundledRepositoryArchive(from: archiveURL)
-        }
-
-        return candidate
     }
 
     public static func bundledInstallerAssetsDirectory() -> URL? {
@@ -625,103 +558,6 @@ public enum RoachNetRepositoryLocator {
         profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "homebrew-cask"
     }
 
-    private static func isAllowedPortableLibraryPath(_ libraryPath: String, runtimeRoot: String) -> Bool {
-        if
-            libraryPath.hasPrefix("@rpath/") ||
-            libraryPath.hasPrefix("@loader_path/") ||
-            libraryPath.hasPrefix("@executable_path/")
-        {
-            return true
-        }
-
-        if libraryPath.hasPrefix("/System/Library/") || libraryPath.hasPrefix("/usr/lib/") {
-            return true
-        }
-
-        let resolvedRuntimeRoot = URL(fileURLWithPath: runtimeRoot).standardizedFileURL.path
-        return libraryPath == resolvedRuntimeRoot || libraryPath.hasPrefix("\(resolvedRuntimeRoot)/")
-    }
-
-    private static func isPortableNodeBinary(at path: String) -> Bool {
-        let fileManager = FileManager.default
-        guard fileManager.isExecutableFile(atPath: path) else {
-            return false
-        }
-
-        #if os(macOS)
-        let process = Process()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/otool")
-        process.arguments = ["-L", path]
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return false
-        }
-
-        guard process.terminationStatus == 0,
-              let output = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
-        else {
-            return false
-        }
-
-        let runtimeRoot = URL(fileURLWithPath: path)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .standardizedFileURL
-            .path
-
-        return output
-            .split(separator: "\n")
-            .dropFirst()
-            .map { line in
-                line
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .components(separatedBy: " (compatibility version")
-                    .first?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            }
-            .filter { !$0.isEmpty }
-            .allSatisfy { isAllowedPortableLibraryPath($0, runtimeRoot: runtimeRoot) }
-        #else
-        return true
-        #endif
-    }
-
-    public static func preferredNodeBinary() -> String {
-        let candidates = [
-            embeddedNodeBinary(),
-            ProcessInfo.processInfo.environment["ROACHNET_NODE_BINARY"],
-            "/opt/homebrew/bin/node",
-            "/usr/local/bin/node",
-            "/usr/bin/node",
-        ].compactMap { $0 }
-
-        let fileManager = FileManager.default
-        if let match = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) {
-            return match
-        }
-
-        return "/usr/bin/env"
-    }
-
-    public static func preferredPortableNodeBinary() -> String? {
-        let candidates = [
-            ProcessInfo.processInfo.environment["ROACHNET_NODE_BINARY"],
-            embeddedNodeBinary(),
-            "/opt/homebrew/bin/node",
-            "/usr/local/bin/node",
-            "/usr/bin/node",
-        ].compactMap { $0 }
-
-        return candidates.first(where: { isPortableNodeBinary(at: $0) })
-    }
-
     public static func preferredBinarySearchPath() -> String {
         let pathSeparator = ":"
         let existingSegments = (ProcessInfo.processInfo.environment["PATH"] ?? "")
@@ -731,9 +567,6 @@ public enum RoachNetRepositoryLocator {
         let preferredSegments = [
             ProcessInfo.processInfo.environment["ROACHNET_LOCAL_BIN_PATH"],
             defaultLocalBinPath(installPath: configuredInstallPath),
-            embeddedNodeBinDirectory(),
-            "/opt/homebrew/opt/node/bin",
-            "/opt/homebrew/opt/node@26/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/Applications/Docker.app/Contents/Resources/bin",
@@ -793,15 +626,6 @@ public enum RoachNetRepositoryLocator {
         return sanitized
     }
 
-    private static func bundledRepositoryArchiveURL(resourceURL: URL) -> URL? {
-        let archiveURL = resourceURL.appendingPathComponent("RoachNetSource.tar.gz", isDirectory: false)
-        return FileManager.default.fileExists(atPath: archiveURL.path) ? archiveURL : nil
-    }
-
-    private static func isSetupBundle() -> Bool {
-        (Bundle.main.bundleIdentifier ?? "").hasSuffix(".setup")
-    }
-
     private static func configuredRepositoryRoot() -> URL? {
         let configuredInstallPath = readConfig().installPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !configuredInstallPath.isEmpty else {
@@ -810,79 +634,6 @@ public enum RoachNetRepositoryLocator {
 
         let candidate = URL(fileURLWithPath: configuredInstallPath).standardizedFileURL
         return isRepositoryRoot(candidate) ? candidate : nil
-    }
-
-    private static func bundledRepositoryExtractionRoot() -> URL {
-        let version =
-            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-            ?? "0"
-
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.roachwares.roachnet"
-        if bundleIdentifier.hasSuffix(".setup") {
-            return URL(fileURLWithPath: defaultSetupWorkspaceRoot())
-                .appendingPathComponent("source", isDirectory: true)
-                .appendingPathComponent(version, isDirectory: true)
-        }
-
-        let installPath = readConfig().installPath
-        let normalizedInstallPath = installPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? defaultInstallPath()
-            : installPath
-
-        return URL(fileURLWithPath: normalizedInstallPath)
-            .appendingPathComponent("runtime", isDirectory: true)
-            .appendingPathComponent("bundled-source", isDirectory: true)
-            .appendingPathComponent(version, isDirectory: true)
-    }
-
-    private static func extractBundledRepositoryArchive(from archiveURL: URL) -> URL? {
-        let fileManager = FileManager.default
-        let extractionRoot = bundledRepositoryExtractionRoot()
-        let extractedRepositoryRoot = extractionRoot.appendingPathComponent("RoachNetSource", isDirectory: true)
-        if isRepositoryRoot(extractedRepositoryRoot) {
-            return extractedRepositoryRoot
-        }
-
-        let parentDirectory = extractionRoot.deletingLastPathComponent()
-        let stagingRoot = parentDirectory.appendingPathComponent(
-            "\(extractionRoot.lastPathComponent).staging-\(UUID().uuidString)",
-            isDirectory: true
-        )
-
-        do {
-            try fileManager.createDirectory(at: parentDirectory, withIntermediateDirectories: true)
-            try? fileManager.removeItem(at: extractionRoot)
-            try fileManager.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
-
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-            process.arguments = ["-xzf", archiveURL.path, "-C", stagingRoot.path]
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-
-            try process.run()
-            process.waitUntilExit()
-
-            guard process.terminationStatus == 0 else {
-                try? fileManager.removeItem(at: stagingRoot)
-                return nil
-            }
-
-            let stagedRepositoryRoot = stagingRoot.appendingPathComponent("RoachNetSource", isDirectory: true)
-            guard isRepositoryRoot(stagedRepositoryRoot) else {
-                try? fileManager.removeItem(at: stagingRoot)
-                return nil
-            }
-
-            try fileManager.moveItem(at: stagingRoot, to: extractionRoot)
-            return extractionRoot.appendingPathComponent("RoachNetSource", isDirectory: true)
-        } catch {
-            try? fileManager.removeItem(at: stagingRoot)
-            return nil
-        }
     }
 
     public static func writeConfig(_ config: RoachNetInstallerConfig) throws {
@@ -912,11 +663,12 @@ public enum RoachNetRepositoryLocator {
         return nil
     }
 
+    /// A RoachNet source checkout: the Swift package and the content catalogs.
     private static func isRepositoryRoot(_ candidate: URL) -> Bool {
         let fileManager = FileManager.default
-        let script = candidate.appendingPathComponent("scripts/run-roachnet-setup.mjs").path
-        let package = candidate.appendingPathComponent("package.json").path
-        return fileManager.fileExists(atPath: script) && fileManager.fileExists(atPath: package)
+        let package = candidate.appendingPathComponent("native/macos/Package.swift").path
+        let catalogs = candidate.appendingPathComponent("collections/maps.json").path
+        return fileManager.fileExists(atPath: package) && fileManager.fileExists(atPath: catalogs)
     }
 }
 

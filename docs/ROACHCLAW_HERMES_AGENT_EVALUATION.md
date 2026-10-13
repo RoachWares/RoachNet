@@ -27,11 +27,11 @@ The current upstream project version is `0.14.0`. Its core Python dependency set
 
 ## Native Rewrite Assessment
 
-Hermes Agent is no longer a candidate runtime dependency. RoachClaw should replace OpenClaw with a RoachNet-owned native agent spine. OpenClaw remains deferred and optional while RoachClaw defaults to the native RoachInference model lane and the first-party `roachclaw-native-agent` packet builder.
+Hermes Agent is no longer a candidate runtime dependency. RoachClaw should replace OpenClaw with a RoachNet-owned native agent spine. RoachNet never bundles or installs OpenClaw; RoachClaw only probes one the person runs themselves, and defaults to the native RoachInference model lane and the first-party `roachclaw-native-agent` packet builder.
 
 The safe path:
 
-1. Keep `scripts/lib/roachnet_roachclaw_agent.mjs` as the owned runtime spine for permissions, skills, budgets, and prompt packets.
+1. Keep `native/macos/Sources/RoachNetRuntime/RoachClawAgent.swift`, in the Swift runtime, as the owned runtime spine for permissions, skills, budgets, and prompt packets.
 2. Store RoachClaw work under `storage/RoachClaw` and RoachBrain memory under the existing storage root.
 3. Map RoachClaw permissions to explicit allowed/blocked command policy before shell, file, browser, network, installer, or destructive work.
 4. Import OpenClaw skills into RoachClaw-native skills rather than exporting Hermes-compatible procedures.
@@ -57,4 +57,4 @@ Before a public release:
 - `docs/release-gates/runtime-freshness.json` must point at the RoachClaw native agent module and the reviewed Hermes reference HEAD.
 - `scripts/audit-runtime-freshness.mjs` must prove Hermes is design-reference-only and that RoachNet does not vendor or poll Hermes as a runtime dependency.
 - Any RoachClaw native-agent integration must be additive until it has feature parity with the existing RoachClaw/OpenClaw behavior.
-- OpenClaw can remain deferred, but the pinned package metadata must track the latest npm package so first-run hydration never installs stale agent code.
+- OpenClaw stays out of the build: RoachNet ships no Node and installs no agent packages. `runtime-freshness.json` only records the OpenClaw release the compatibility probe was last checked against.

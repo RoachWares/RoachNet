@@ -1,12 +1,13 @@
 # Native runtime (`roachnet-runtime`)
 
-From 1.0.6, RoachNet ships no Node runtime. Everything the bundled Node 26 runtime used to do now runs in one native Swift helper, `roachnet-runtime`:
+RoachNet ships no Node runtime (from 1.0.6) and, from 1.1.1, has no Node fallback or JavaScript runtime at all (ROA-78). Everything the bundled Node 26 runtime used to do runs in one native Swift helper, `roachnet-runtime`:
 
 - the loopback API;
 - the iOS companion bridge;
 - RoachTail and RoachClaw state;
 - downloads and the update mirror;
-- the installer.
+- the installer;
+- the RoachInference model server (1.1).
 
 The helper links only Apple system frameworks: Foundation, Dispatch, Darwin and CryptoKit, plus Compression (RoachNet's own ZIP reader inflates pack archives with it), Metal (RoachInference's kernels) and dnssd (the Cluster's Bonjour). On Linux it uses FoundationNetworking and Glibc for the source test lane. `Package.swift` declares no third-party packages, and `scripts/audit-native-release-scope.mjs` enforces both rules.
 
@@ -25,7 +26,7 @@ The helper finds its data folder relative to its real executable path, and resol
 ## CLI modes
 
 ```
-roachnet-runtime                     # start the runtime (same env contract as the old Node launcher)
+roachnet-runtime                     # start the runtime
 roachnet-runtime --stop              # stop the runtime that owns ROACHNET_STORAGE_PATH
 roachnet-runtime --setup             # RoachNet Setup backend on 127.0.0.1 (ROACHNET_SETUP_PORT, default ephemeral)
 roachnet-runtime --install [--install-path P] [--storage-path P] [--no-roachclaw] [--launch] [--profile NAME] [--no-companion]
@@ -33,14 +34,14 @@ roachnet-runtime --provision-alias [--hosts-file F] [--interactive] [--print-com
 roachnet-runtime --version | --help
 ```
 
-The runtime keeps the environment contract of `scripts/run-roachnet-native-api.mjs`:
+The runtime keeps the environment contract of the retired Node launcher:
 
 - `HOST` and `PORT`;
 - `ROACHNET_STORAGE_PATH`, `ROACHNET_RUNTIME_STATE_ROOT` and `ROACHNET_SERVER_INFO_FILE`;
 - the `ROACHNET_COMPANION_*` settings;
 - `OLLAMA_BASE_URL`.
 
-`HOST` must be a loopback address. The companion bridge refuses to bind to anything else. `RoachNetCore.ManagedAppRuntime` launches the helper first. It falls back to the Node launcher only when the helper is missing, or when `ROACHNET_FORCE_NODE_RUNTIME=1` is set for compatibility debugging.
+`HOST` must be a loopback address. The companion bridge refuses to bind to anything else. `RoachNetCore.ManagedAppRuntime` launches only the helper; if it is missing, the app says to reinstall with RoachNet Setup rather than looking for anything else to run.
 
 ## Install workflow (Setup app, `--install`, Homebrew)
 
@@ -69,16 +70,18 @@ If any phase fails, the staging folder is removed and the previous install is le
 
 ```
 npm run runtime:build          # swift build -c release --product roachnet-runtime (macOS or Linux)
-npm run test:native-runtime    # full Node contract suite against the built helper
+npm run test:native-runtime    # the contract suite (Node test runner) against the built helper
 npm run native:test            # Swift XCTests (macOS; RoachNetRuntimeTests also run on Linux)
 ```
 
 On Linux only the runtime targets build. The app targets sit behind `#if os(macOS)` in `Package.swift`. The contract tests use `ROACHNET_NATIVE_API_BINARY=<path to roachnet-runtime>`. `scripts/tests/roachnet-native-setup.test.mjs` exercises install, upgrade, rollback, the alias and headless installs against fake InstallerAssets. On a non-Apple host it needs the test-only override `ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST=1`.
 
-## Legacy compatibility
+## No Node, no JavaScript
 
-`ROACHNET_BUNDLE_NODE_COMPAT=1 npm run native:dist` still produces bundles with the embedded Node runtime and `RoachNetSource`, for diagnosing regressions against the old runtime. Public builds must not set it. The release-scope and runtime-freshness audits fail any native build that contains `EmbeddedRuntime/node`.
+There is no compatibility build any more: `ROACHNET_BUNDLE_NODE_COMPAT`, the embedded Node runtime and the bundled `RoachNetSource` tree are gone. `scripts/build-native-macos-apps.mjs` fails if either bundle holds a `node` binary, `node_modules`, a `.js`/`.mjs`/`.cjs`/`.node` file or RoachNet source, and the release-scope and runtime-freshness audits check the built apps for the same.
 
-## Still third-party
+Node is still the toolchain for the scripts in `scripts/` (packaging, audits, contract tests). Moving those to Swift as well is tracked separately.
 
-The local model runner is Ollama, bundled as a checksum-pinned upstream binary (`docs/release-gates/runtime-freshness.json`). Replacing it with in-process inference is outside the 1.0.6 scope.
+## Third-party runtimes
+
+None ship. Since 1.1 the local model runner is RoachInference, inside `roachnet-runtime`; the bundled Ollama runner is retired (`docs/release-gates/runtime-freshness.json`). An Ollama or OpenClaw the person runs themselves stays optional.

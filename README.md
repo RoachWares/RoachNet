@@ -41,7 +41,7 @@ RoachNet keeps AI, archive, media, games, notes, and dev tools on hardware you o
 
 Start with `RoachNet Setup`.
 
-The setup app checks the machine, stages the contained runtime beside the target, smoke-tests it before swapping it in, and hands off to the native shell. It runs on `roachnet-runtime`, a native Swift helper, so it needs no Node, Homebrew, or host libraries. Docker-backed support services are an explicit opt-in and off by default.
+The setup app checks the machine, stages the contained runtime beside the target, smoke-tests it before swapping it in, and hands off to the native shell. It runs on `roachnet-runtime`, a native Swift helper, so it needs no Node, Docker, Homebrew, or host libraries. RoachNet ships no Node and runs no JavaScript of its own; agent CLIs you connect to Org yourself run on whatever they were built with.
 
 There is also a direct Homebrew lane for Apple Silicon Macs:
 
@@ -82,7 +82,7 @@ GitHub does not host the support widgets used on the public site, so the repo ke
 - [`native/macos/`](./native/macos)
   SwiftUI/AppKit shell, setup app, `roachnet-runtime`, RoachInference, and the design and theme system.
 - [`scripts/`](./scripts)
-  Setup, runtime, packaging, companion, and release automation.
+  Packaging, audits, contract tests, and release automation (Node 26; none of it ships).
 - [`docs/`](./docs)
   Architecture, brand voice, upstream notes, and release records.
 
@@ -90,15 +90,18 @@ The public site and Apps storefront live in [`RoachWares/roachnet-org`](https://
 
 ## Local Development
 
-Start the dependency-free native API bridge:
+RoachNet itself is Swift only. Node 26 is just the toolchain for the build, test and release scripts in `scripts/`.
+
+Build and start `roachnet-runtime`, the loopback runtime the app runs:
 
 ```bash
-npm start
+npm run runtime:build
+PORT=8080 npm run runtime:start
 ```
 
 The loopback API refuses any request whose `Host` is not `localhost`, `::1` or a `127.x.x.x` address, any request from another website's `Origin`, and request bodies that are not JSON. When `ROACHNET_API_TOKEN` is set (RoachNet.app sets a fresh one every launch), every route except `GET /api/health` and Org requests that carry an Org member key also needs that token or a RoachClaw API token with the right scope, sent as `Authorization: Bearer …` or `X-RoachNet-API-Token`. See [roachnet.org/api](https://roachnet.org/api/).
 
-RoachTail is served from the same native bridge. The desktop owns the local control-plane state, the join key is one-use and expiring, and paired devices only receive peer-scoped tokens:
+RoachTail is served from the same runtime. The desktop owns the local control-plane state, the join key is one-use and expiring, and paired devices only receive peer-scoped tokens:
 
 - `GET /api/companion/roachtail`
   Returns the current RoachTail status, join payload, route map, relay map, and paired peer list.
@@ -109,23 +112,18 @@ RoachTail is served from the same native bridge. The desktop owns the local cont
 
 A peer token unused for 90 days stops working (`ROACHTAIL_PEER_IDLE_DAYS`; `0` turns this off).
 
-No-browser boot:
-
-```bash
-npm run start:no-browser
-```
-
-Build and test the native macOS packages:
+Build and test the native macOS packages, and run the runtime contract tests against the built helper:
 
 ```bash
 swift test --package-path native/macos
+npm run test:native-runtime
 node scripts/build-native-macos-apps.mjs
 ```
 
-Run the setup backend:
+Run the setup backend RoachNet Setup uses:
 
 ```bash
-npm run setup:no-browser
+native/macos/.build/release/roachnet-runtime --setup
 ```
 
 ## Public Source Boundary

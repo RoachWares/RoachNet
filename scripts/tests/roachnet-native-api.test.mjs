@@ -15,23 +15,19 @@ import { requestHttp } from '../lib/roachnet_http.mjs'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..', '..')
-const macOSDittoTest = process.platform === 'darwin'
-  ? {}
-  : { skip: 'Requires macOS ditto archive semantics.' }
-
-// The runtime contract is exercised against the native Swift runtime when
-// ROACHNET_NATIVE_API_BINARY points at a built `roachnet-runtime`, and against
-// the legacy Node launcher otherwise.
+// The runtime contract is exercised against the native Swift runtime,
+// `roachnet-runtime`. RoachNet has no other runtime, so without a built one
+// (ROACHNET_NATIVE_API_BINARY; npm run test:native-runtime sets it) these
+// tests are skipped rather than run against something that doesn't ship.
 const nativeApiBinary = process.env.ROACHNET_NATIVE_API_BINARY?.trim() || ''
+const needsBinary = nativeApiBinary ? {} : { skip: 'Set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }
+const macOSDittoTest = !nativeApiBinary
+  ? needsBinary
+  : process.platform === 'darwin'
+    ? {}
+    : { skip: 'Requires macOS ditto archive semantics.' }
 function nativeApiCommand(extraArgs = []) {
-  if (nativeApiBinary) {
-    return [nativeApiBinary, extraArgs]
-  }
-  return [process.execPath, [path.join(repoRoot, 'scripts', 'run-roachnet-native-api.mjs'), ...extraArgs]]
-}
-
-function readRepoFile(relativePath) {
-  return readFileSync(path.join(repoRoot, relativePath), 'utf8')
+  return [nativeApiBinary, extraArgs]
 }
 
 async function resolveAvailablePort() {
@@ -410,7 +406,7 @@ function startSlowDownloadServer(port) {
   })
 }
 
-test('native API exposes app catalogs and companion payloads without the legacy WebUI runtime', async () => {
+test('native API exposes app catalogs and companion payloads without the legacy WebUI runtime', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')
@@ -1074,7 +1070,7 @@ test('native API exposes app catalogs and companion payloads without the legacy 
   }
 })
 
-test('native RoachTail control plane supports join-key pairing and peer tokens', async () => {
+test('native RoachTail control plane supports join-key pairing and peer tokens', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachtail-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')
@@ -1162,7 +1158,7 @@ test('native RoachTail control plane supports join-key pairing and peer tokens',
   }
 })
 
-test('companion App Store installs route descriptor downloads into the native app', async () => {
+test('companion App Store installs route descriptor downloads into the native app', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-appstore-install-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')
@@ -1256,20 +1252,7 @@ test('companion App Store installs route descriptor downloads into the native ap
   }
 })
 
-test('native API downloads through temporary partial files with an explicit byte ceiling', () => {
-  const source = readRepoFile('scripts/run-roachnet-native-api.mjs')
-
-  assert.match(source, /NATIVE_API_MAX_DOWNLOAD_BYTES/)
-  assert.match(source, /partialFilepath:\s*`\$\{filepath\}\.part`/)
-  assert.match(source, /bytesReceived/)
-  assert.match(source, /completedAt/)
-  assert.match(source, /createWriteStream\(job\.partialFilepath\)/)
-  assert.match(source, /renameSync\(job\.partialFilepath,\s*job\.filepath\)/)
-  assert.match(source, /rmSync\(job\.partialFilepath,\s*\{\s*force:\s*true\s*\}\)/)
-  assert.match(source, /Download exceeded the configured/)
-})
-
-test('native API cancels active download jobs and removes partial files', async () => {
+test('native API cancels active download jobs and removes partial files', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-cancel-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')
@@ -1511,8 +1494,7 @@ test('native API refuses a RoachSpeech pack archive that holds a link', macOSDit
   }
 })
 
-// Swift runtime only (`swiftOnly` is declared further down).
-test('native API holds catalog RoachSpeech packs to the catalog digest', nativeApiBinary ? {} : { skip: 'Swift runtime behaviour; set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }, async () => {
+test('native API holds catalog RoachSpeech packs to the catalog digest', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachspeech-pin-test-'))
   // A real catalog pack id, served by a descriptor that names a different archive digest.
   const packID = 'roachvoice-kokoro-82m-int8-coreml'
@@ -1643,7 +1625,7 @@ test('native API reassembles chunked Apps descriptors before installing RoachSpe
   }
 })
 
-test('native API rejects oversized JSON bodies with a public 413 response', async () => {
+test('native API rejects oversized JSON bodies with a public 413 response', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-body-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')
@@ -1681,7 +1663,7 @@ test('native API rejects oversized JSON bodies with a public 413 response', asyn
   }
 })
 
-test('native API removes partial update downloads after transfer failure', async () => {
+test('native API removes partial update downloads after transfer failure', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-update-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')
@@ -1778,9 +1760,8 @@ async function response_text(response) {
 // single-use join codes) lives in the Swift runtime. The dependency-free Node
 // reference API is a compatibility lane and does not implement it, so these
 // run only against a built roachnet-runtime.
-const swiftOnly = nativeApiBinary ? {} : { skip: 'Swift runtime behaviour; set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }
 
-test('native API refuses to queue an installer whose release has no checksum sidecar', swiftOnly, async () => {
+test('native API refuses to queue an installer whose release has no checksum sidecar', needsBinary, async () => {
   await runUpdateLane({ mode: 'good', sidecar: false }, async ({ updatePayload, updateStatus, storagePath }) => {
     assert.equal(updatePayload.success, false)
     assert.match(updatePayload.error, /no verifiable checksum/)
@@ -1789,7 +1770,7 @@ test('native API refuses to queue an installer whose release has no checksum sid
   })
 })
 
-test('native API discards an installer whose bytes do not match the published checksum', swiftOnly, async () => {
+test('native API discards an installer whose bytes do not match the published checksum', needsBinary, async () => {
   await runUpdateLane({ mode: 'tampered' }, async ({ updatePayload, updateStatus, storagePath }) => {
     assert.equal(updatePayload.success, true)
     assert.equal(updateStatus.stage, 'error')
@@ -1798,7 +1779,7 @@ test('native API discards an installer whose bytes do not match the published ch
   })
 })
 
-test('native API keeps an installer whose bytes match the published checksum', async () => {
+test('native API keeps an installer whose bytes match the published checksum', needsBinary, async () => {
   await runUpdateLane({ mode: 'good' }, async ({ updatePayload, updateStatus, storagePath }) => {
     assert.equal(updatePayload.success, true)
     assert.equal(updateStatus.stage, 'ready')
@@ -1845,7 +1826,7 @@ function rawRequest(port, text) {
   })
 }
 
-test('native API survives malformed body framing and stays up', swiftOnly, async () => {
+test('native API survives malformed body framing and stays up', needsBinary, async () => {
   await withNativeApi({}, async ({ port }) => {
     const negative = await rawRequest(port, 'POST /api/benchmark/run HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: -1\r\n\r\n')
     assert.match(negative, /^HTTP\/1\.1 400/)
@@ -1859,7 +1840,7 @@ test('native API survives malformed body framing and stays up', swiftOnly, async
   })
 })
 
-test('native API rejects non-loopback Host headers and non-JSON bodies', swiftOnly, async () => {
+test('native API rejects non-loopback Host headers and non-JSON bodies', needsBinary, async () => {
   await withNativeApi({}, async ({ port }) => {
     const rebound = await requestHttp(`http://127.0.0.1:${port}/api/health`, {
       headers: { Host: 'attacker.example', Accept: 'application/json' },
@@ -1888,20 +1869,7 @@ test('native API rejects non-loopback Host headers and non-JSON bodies', swiftOn
   })
 })
 
-test('the JavaScript compatibility runtime says plainly that it cannot install feature packs', nativeApiBinary ? { skip: 'JavaScript lane only.' } : {}, async () => {
-  await withNativeApi({}, async ({ port }) => {
-    const response = await requestHttp(`http://127.0.0.1:${port}/api/companion/install`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ action: 'pack', pack: 'roachnet-retro-terminals' }),
-      timeoutMs: 5_000,
-    })
-    assert.equal(response.status, 400)
-    assert.match(JSON.parse(await response.text()).error, /native runtime/)
-  })
-})
-
-test('native companion install accepts catalog packs by id and nothing else', swiftOnly, async () => {
+test('native companion install accepts catalog packs by id and nothing else', needsBinary, async () => {
   await withNativeApi({ ROACHNET_PACK_CATALOG_URL: '' }, async ({ port }) => {
     const post = async (body) => {
       const response = await requestHttp(`http://127.0.0.1:${port}/api/companion/install`, {
@@ -1922,7 +1890,7 @@ test('native companion install accepts catalog packs by id and nothing else', sw
   })
 })
 
-test('native RoachTail join codes pair exactly once and retire after repeated wrong guesses', swiftOnly, async () => {
+test('native RoachTail join codes pair exactly once and retire after repeated wrong guesses', needsBinary, async () => {
   const companionPort = await resolveAvailablePort()
   await withNativeApi(
     {
@@ -1965,9 +1933,8 @@ test('native RoachTail join codes pair exactly once and retire after repeated wr
 })
 
 // Feature packs live in the Swift runtime only; the dependency-free Node reference API does not implement them.
-const packsNeedBinary = nativeApiBinary ? {} : { skip: 'Set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }
 
-test('native API manages feature packs: catalog, offline install, toggles and data-preserving uninstall', packsNeedBinary, async () => {
+test('native API manages feature packs: catalog, offline install, toggles and data-preserving uninstall', needsBinary, async () => {
   await withNativeApi({}, async ({ port, storagePath }) => {
     const catalog = await requestJson(`http://127.0.0.1:${port}/api/packs`)
     assert.equal(catalog.schema, 'org.roachnet.packs.v1')
@@ -2042,7 +2009,7 @@ test('native API manages feature packs: catalog, offline install, toggles and da
   })
 })
 
-test('native API refuses non-loopback bind hosts before listening', async () => {
+test('native API refuses non-loopback bind hosts before listening', needsBinary, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-host-test-'))
   const storagePath = path.join(tempRoot, 'storage')
   const runtimeStateRoot = path.join(tempRoot, 'state')

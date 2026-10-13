@@ -108,4 +108,16 @@ test('requestLocalRuntimeHttp only calls loopback origins', async () => {
     () => requestLocalRuntimeHttp('https://example.com/api/companion/bootstrap'),
     /local desktop runtime/
   )
+  await assert.rejects(
+    () => requestLocalRuntimeHttp('http://user:secret@127.0.0.1:9/api/health'),
+    /credentials/
+  )
+
+  // A redirect is never followed, so the local runtime can't send the request elsewhere.
+  await withServer((_request, response) => {
+    response.writeHead(302, { Location: 'https://example.com/elsewhere' })
+    response.end()
+  }, async (baseUrl) => {
+    await assert.rejects(() => requestLocalRuntimeHttp(`${baseUrl}/api/health`), /Too many redirects/)
+  })
 })

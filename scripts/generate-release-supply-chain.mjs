@@ -97,16 +97,8 @@ async function main() {
       license: packageManifest.license,
       source: `git+https://github.com/RoachWares/RoachNet.git#${args['candidate-sha']}`,
     },
-    runtimePins.node.mode === 'compat-only-not-bundled'
-      ? { name: 'Node.js', version: 'not-bundled', kind: 'deferred-compat-runtime', license: runtimePins.node.license, source: runtimePins.node.artifacts.darwinArm64.url }
-      : {
-          name: 'Node.js',
-          version: runtimePins.node.bundledVersion,
-          kind: 'runtime',
-          license: runtimePins.node.license,
-          source: runtimePins.node.artifacts.darwinArm64.url,
-          sourceSha256: runtimePins.node.artifacts.darwinArm64.sha256,
-        },
+    // Recorded so the SBOM says outright that Node is absent (ROA-78).
+    { name: 'Node.js', version: 'not-bundled', kind: 'not-shipped', license: 'N/A', source: runtimePins.node.source },
     runtimePins.ollama.mode === 'retired-not-bundled'
       ? {
           name: 'Ollama',
@@ -126,7 +118,7 @@ async function main() {
     {
       name: 'OpenClaw',
       version: 'not-bundled',
-      kind: 'deferred-optional-runtime',
+      kind: 'external-optional-runtime',
       license: 'N/A',
       source: runtimePins.openclaw.source,
     },

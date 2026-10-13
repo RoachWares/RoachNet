@@ -1,10 +1,13 @@
 # RoachNet Development Guide
 
-Last verified: 2026-08-23
+Last verified: 2026-10-13
 
 This is the contributor guide for the native RoachNet desktop and runtime lane.
-It separates the public native product from the retained legacy admin/WebUI so
-contributors do not accidentally build or release the wrong application.
+
+RoachNet ships Swift only. RoachNet.app, RoachNet Setup.app and
+`roachnet-runtime` contain and launch no Node or JavaScript, and the builder
+refuses a bundle that carries any. Node is the toolchain for the build, test
+and release scripts in `scripts/`; none of it ships.
 
 ## Source of truth
 
@@ -21,12 +24,14 @@ Current shipping lane:
 - `native/macos/Sources/RoachNetSetup/` — native setup application.
 - `native/macos/Sources/RoachNetCore/` — shared runtime and domain behavior.
 - `native/macos/Sources/RoachNetDesign/` — shared native design system.
-- `scripts/run-roachnet-native-api.mjs` — dependency-free, loopback-only API
-  bridge used by the native app.
-- `scripts/run-roachnet-setup.mjs` — setup backend.
+- `native/macos/Sources/RoachNetRuntime/` and `RoachNetRuntimeHost/` —
+  `roachnet-runtime`, the dependency-free, loopback-only runtime both apps run:
+  the API, the setup service (`--setup`) and the RoachInference model server.
+- `native/macos/Sources/RoachInference/` — the native GGUF inference engine.
 - `scripts/build-native-macos-apps.mjs` — app, setup, archive, signing, and DMG
   packaging automation.
-- `scripts/tests/` — Node API/runtime and packaging regression tests.
+- `scripts/tests/` — contract tests that run against a built `roachnet-runtime`,
+  plus packaging and release-audit tests.
 - `docs/release-gates/` — release-state records and dependency drift inputs.
 
 Reference-only lanes:
@@ -34,8 +39,10 @@ Reference-only lanes:
 - Legacy `admin/` — excluded from the post-v1.0.5 public candidate because its
   retained lock had high/critical vulnerabilities. Tag `v1.0.5` preserves the
   last tracked public tree for migration research.
-- `desktop/` — legacy Electron desktop reference.
-- `installer/` — legacy Electron setup reference.
+- The Electron desktop and setup shells (`desktop/`, `installer/`, `setup-ui/`),
+  the JavaScript runtime (`scripts/run-roachnet*.mjs`, the companion server) and
+  the Docker install lane (`install/`, `ops/`, `Dockerfile`) were removed in
+  1.1.1 (ROA-78). Tag `v1.1.0` keeps them for reference.
 
 Do not add shipping entrypoints, package scripts, installer payloads, or release
 gates that boot a reference-only lane unless the native ownership decision is
@@ -51,11 +58,10 @@ The public website and Apps storefront are maintained separately in the
 - macOS 14 or later for native application execution.
 - Apple Silicon for release packaging.
 - Xcode with Swift 6 support and command-line tools.
-- Node.js `>=26 <27`; `.nvmrc` contains `26`.
-- npm `>=10`.
+- Node.js `>=26 <27` and npm `>=10` for the scripts; `.nvmrc` contains `26`.
 - Network access for dependency installation and release audits.
-- Sufficient free disk space for embedded runtimes, model packs, caches, apps,
-  archives, and the DMG.
+- Sufficient free disk space for model packs, caches, apps, archives, and the
+  DMG.
 
 Use native arm64 Node on Apple Silicon. The release builder rejects a non-arm64
 host by default; `ROACHNET_REQUIRE_APPLE_SILICON_NATIVE=0` is for local
@@ -63,7 +69,7 @@ Intel/Rosetta diagnostics, not public release artifacts.
 
 ### Linux or non-macOS verification
 
-Node tests, TypeScript checks, dependency audit, upstream drift checks, and
+Script tests, TypeScript checks, dependency audit, upstream drift checks, and
 several native-source audits run without Xcode. Linux cannot validate the Swift
 build, Core ML, `ditto` archive behavior, signing, app launch, iOS compatibility,
 or DMG/notarization gates.
@@ -94,19 +100,20 @@ npm ci
 
 Expected Node major: `26`.
 
-`npm ci` installs only the root development dependencies. The native API itself
-uses Node built-ins and starts without the legacy `admin/node_modules` tree.
+`npm ci` installs the development tools the scripts use (TypeScript and the
+Convex CLI). RoachNet itself has no dependencies to install.
 
 Do not create or commit production secrets. Root `.env`, `admin/.env`, runtime
 storage, and local caches are ignored. If a feature requires credentials, use
 the existing secret/configuration lane rather than adding a checked-in value.
 
-## Run the native API bridge
+## Run the runtime
 
-For a predictable local URL and no browser launch:
+Build `roachnet-runtime` and start it on a predictable local URL:
 
 ```bash
-PORT=8080 ROACHNET_NO_BROWSER=1 npm start
+npm run runtime:build
+PORT=8080 npm run runtime:start
 ```
 
 Verify from another terminal:
@@ -115,7 +122,7 @@ Verify from another terminal:
 curl --fail --silent http://127.0.0.1:8080/api/health
 ```
 
-Without `PORT`, the bridge requests an available ephemeral port and records its
+Without `PORT`, the runtime takes a free ephemeral port and records its
 runtime information under the configured storage root. The API refuses
 non-loopback `HOST` values. Do not weaken that boundary for convenience.
 
@@ -125,23 +132,26 @@ Defaults:
 - runtime state: `~/RoachNet/storage/.runtime`
 - logs: `~/RoachNet/storage/logs`
 - RoachTail state: `~/RoachNet/storage/vault/roachtail/state.json`
-- managed Ollama endpoint: `http://127.0.0.1:36434`
-- managed OpenClaw endpoint: `http://127.0.0.1:13001`
+- RoachInference model server: `http://127.0.0.1:36434`
+- OpenClaw compatibility probe: `http://127.0.0.1:13001` (an OpenClaw you run
+  yourself; RoachNet never installs or starts one)
 
 Override storage for isolated development or tests:
 
 ```bash
 ROACHNET_STORAGE_PATH="$(mktemp -d)" \
 PORT=8080 \
-ROACHNET_NO_BROWSER=1 \
-npm start
+npm run runtime:start
 ```
 
-Stop with `Ctrl-C`. The launcher also accepts a direct stop command:
+Stop with `Ctrl-C`, or from another terminal (same storage root):
 
 ```bash
-node scripts/run-roachnet-native-api.mjs --stop
+native/macos/.build/release/roachnet-runtime --stop
 ```
+
+`roachnet-runtime --setup` serves the setup backend RoachNet Setup uses, and
+`roachnet-runtime --help` lists the rest.
 
 Never treat a preserved legacy `admin/storage/` directory outside this candidate
 as disposable fixture data.
@@ -150,10 +160,11 @@ as disposable fixture data.
 
 ### Fast cross-platform gate
 
-Run after Node/API/script changes:
+Run after runtime or script changes:
 
 ```bash
-npm test
+npm run runtime:build
+npm run test:native-runtime
 npm run convex:typecheck
 npm run audit:upstreams
 node scripts/audit-native-parity.mjs
@@ -163,7 +174,8 @@ npm audit --audit-level=high
 
 What these cover:
 
-- Node API/runtime behavior and regressions.
+- runtime contract behavior and regressions, against the built
+  `roachnet-runtime` (plain `npm test` skips those without a build).
 - Convex TypeScript validity.
 - pinned upstream release drift.
 - native-versus-reference surface ownership.
@@ -205,9 +217,10 @@ Primary output directory:
 native/macos/dist/
 ```
 
-The build can download and cache embedded Node/Ollama payloads, build native
-apps, create source/runtime archives, sign code, and build the DMG. It can be
-large and network-dependent. Do not delete a prior release artifact until its
+The build compiles both apps and `roachnet-runtime`, packs the RoachSpeech
+archives, signs code, and builds the DMG. It downloads no runtime payloads and
+fails if either bundle carries Node, JavaScript or RoachNet source. It can be
+large and slow. Do not delete a prior release artifact until its
 version, checksum, and publication provenance are recorded.
 
 Useful controlled build flags:
@@ -222,8 +235,8 @@ Useful controlled build flags:
   configuration.
 
 `ROACHNET_CANDIDATE_BUILD=1` is the credential-independent Gate C build path:
-it requires the reviewed Node/Ollama runtime URLs and SHA-256 values in
-`docs/release-gates/runtime-freshness.json`, but uses only the existing ad-hoc
+it holds the RoachSpeech packs to their recorded digests, but uses only the
+existing ad-hoc
 local signing behavior and never produces notarization evidence. It is not a
 public-release switch. `ROACHNET_RELEASE_BUILD=1` remains the staging-only
 fail-closed mode and requires Developer ID signing, notarization, and DMG
@@ -261,7 +274,7 @@ The aggregate runs, in order:
 2. native release-scope audit;
 3. RoachSpeech Core ML smoke;
 4. native parity audit;
-5. bundled runtime freshness audit;
+5. runtime freshness audit (no Node, Ollama runner or OpenClaw in the apps);
 6. upstream stable-release audit;
 7. macOS setup and Homebrew install-lane smoke;
 8. command-bar smoke;
@@ -278,7 +291,8 @@ A release candidate needs more than a successful build:
 2. Run the cross-platform gate and `git diff --check`.
 3. Run Swift build/tests and the aggregate release gate on Apple Silicon.
 4. Verify app/setup bundle versions match `package.json`.
-5. Verify bundle architecture, embedded runtime portability, and checksums.
+5. Verify bundle architecture, that `roachnet-runtime` links only system
+   libraries, and checksums.
 6. Verify code signatures with `codesign --verify --deep --strict`.
 7. If credentials exist, verify hardened runtime and notarization/stapling.
 8. Perform fresh-install and overwrite-install walkthroughs.
@@ -351,8 +365,7 @@ nvm use 26
 npm ci
 ```
 
-The root lane requires Node 26. The legacy admin lane requires Node 24; do not
-reuse one `node_modules` tree across them.
+The scripts require Node 26.
 
 ### Native commands cannot find Xcode
 
@@ -369,7 +382,7 @@ verification to a target macOS worker rather than weakening the gate.
 Choose another explicit loopback port:
 
 ```bash
-PORT=8081 ROACHNET_NO_BROWSER=1 npm start
+PORT=8081 npm run runtime:start
 ```
 
 ### Runtime uses unexpected data
