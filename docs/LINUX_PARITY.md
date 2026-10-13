@@ -18,7 +18,7 @@ Measured on 2026-10-13, with the ROA-90 fix. The macOS run was on an Apple silic
 
 | Measure | macOS | Linux |
 | --- | --- | --- |
-| Runtime XCTests | 169 run, 0 failures | 159 run, 1 skipped ([ROA-87](https://linear.app/roachwares/issue/ROA-87)), 0 failures. The 10 fewer are Mac-only: the Cluster's 7, and the installer's 3 archive-pack tests, which install macOS-platform packs. |
+| Runtime XCTests | 175 run, 0 failures | 165 run, 1 skipped ([ROA-87](https://linear.app/roachwares/issue/ROA-87)), 0 failures. The 10 fewer are Mac-only: the Cluster's 7, and the installer's 3 archive-pack tests, which install macOS-platform packs. |
 | Inference XCTests | 36 run, 13 skipped (no model files), 0 failures | 36 run, 13 skipped (Metal, model files), 0 failures |
 | Runtime contract tests | 133 tests, run with the model files: 131 pass, 2 skip themselves (the Metal kernel check, which needs a built `roachnet-infer`, and a RoachVoice check that only runs where Core ML tooling is missing), 0 failures | 133 tests: 112 pass, 21 skip themselves, 0 failures |
 
@@ -53,7 +53,7 @@ Status key: ✅ at parity, ⚠️ partly there, ❌ not started.
 | Privacy and security | ⚠️ runtime only | Loopback-only bind, API token and redaction tests pass | Secret Service in place of the Keychain; a Linux packaging and security review | L1, L7 |
 | Authentication and integrations (RoachTail pairing, cloud providers, subscription CLIs) | ⚠️ runtime only | RoachTail join-key and peer-token tests pass; the bring-your-own agent test passes with `curl` installed | Pairing an iPhone with a Linux host, tested; secrets in Secret Service; the Linux package must require `curl`, which the `roachnet-org` helper uses | L1, L5, L7 |
 | Error handling and recovery | ⚠️ | The legacy-time-zone crash is fixed; trace-recovery tests pass | Setup recovery on Linux; a crash-free soak test | L5, L7 |
-| Performance, reliability and stability | ⚠️ | Model memory follows cgroup limits; concurrent requests no longer stall ([ROA-90](https://linear.app/roachwares/issue/ROA-90)) | [ROA-87](https://linear.app/roachwares/issue/ROA-87); Linux benchmarks | L0 to L4 |
+| Performance, reliability and stability | ⚠️ | Model memory follows cgroup limits, and a model loads only into memory that is free now; concurrent requests no longer stall ([ROA-90](https://linear.app/roachwares/issue/ROA-90)) | [ROA-87](https://linear.app/roachwares/issue/ROA-87); Linux benchmarks | L0 to L4 |
 | RoachNet Cluster | ❌ compiled out (`dnssd`, CryptoKit, Metal) | none | swift-crypto links, Avahi discovery, CPU and GPU stages | L3 |
 | RoachSpeech (Whisper, Kokoro, Chatterbox) | ❌ Core ML on the Mac | none | Run on RoachInference instead of Core ML | L6 |
 | App UI (GTK 4 + libadwaita) | ❌ | none | Shell, then each pane checked against the Mac | L5 |
