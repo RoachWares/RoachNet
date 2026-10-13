@@ -1187,7 +1187,8 @@ extension NativeRuntime {
         cleaned = JS.replace("[^A-Za-z0-9_.\\- ]+", in: cleaned, with: "_")
         cleaned = JS.replace("\\s+", in: cleaned, with: "-")
         cleaned = JS.slice(cleaned, 160)
-        return cleaned.isEmpty ? fallback : cleaned
+        // "." and ".." name folders, so a name made only of dots gets the fallback.
+        return cleaned.isEmpty || cleaned.allSatisfy({ $0 == "." }) ? fallback : cleaned
     }
 
     func fileNameForUrl(_ rawUrl: JSON, _ fallback: String) -> String {
