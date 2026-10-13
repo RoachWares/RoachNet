@@ -26,8 +26,13 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 - Optional encryption at rest (Settings › Vault › Encryption), off unless you turn it on. The Vault moves into an AES-256 encrypted disk image made by macOS, with a recovery key shown once, an optional Keychain copy, checked copies both ways and a move that survives being cut off. See `docs/VAULT_ENCRYPTION.md`.
 - A locked Vault is reported as locked by `/api/rag/files` (`vaultLocked`), `/api/companion/vault` (`locked`) and the readiness check.
 
+### Tokens
+
+- Random tokens, salts and secrets (Org invites, Org API keys, the Org's run-token secret, webhook salts) come straight from the system's secure random generator at their full length. They used to be cut from a UUID, which stopped at 32 characters and fixed two of them. Existing tokens keep working.
+
 ### Release builds
 
+- `scripts/tests/release-hardening.test.mjs` checks the packaged helper itself. It covers out-of-range numbers, RoachTail token expiry, the local API token and scopes, and salted webhook secrets.
 - The apps no longer carry the build Mac's file paths: dSYMs are kept out of the bundle, executables are stripped of their debug map before signing, and `scripts/audit-release-privacy.mjs` fails the build if a built file names the build Mac's folders, host names or network addresses.
 
 ## v1.1.0 - 2026-10-12
