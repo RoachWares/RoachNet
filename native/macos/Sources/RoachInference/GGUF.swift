@@ -90,6 +90,26 @@ public struct GGUFTensorInfo {
     public let offset: Int
 
     public var elementCount: Int { shape.reduce(1, *) }
+    /// No GGUF dimension is near this; it keeps every product below Int's range.
+    static let maxDimension = 1 << 40
+
+    /// The tensor's size in bytes, or nil when its shape would overflow.
+    /// The parser refuses such a tensor, so `elementCount` and `byteCount` are safe after it.
+    static func checkedByteCount(shape: [Int], type: GGMLType) -> Int? {
+        var elements = 1
+        for dimension in shape {
+            guard dimension >= 0 else { return nil }
+            let (product, overflow) = elements.multipliedReportingOverflow(by: dimension)
+            if overflow { return nil }
+            elements = product
+        }
+        guard let rowLength = shape.first else { return nil }
+        let rows = elements / max(rowLength, 1)
+        let (rowBytes, rowOverflow) = (rowLength / type.blockSize).multipliedReportingOverflow(by: type.blockBytes)
+        if rowOverflow { return nil }
+        let (bytes, overflow) = rowBytes.multipliedReportingOverflow(by: rows)
+        return overflow ? nil : bytes
+    }
     /// Elements in one contiguous row (`ne0`).
     public var rowLength: Int { shape.first ?? 0 }
     public var rowCount: Int { elementCount / max(rowLength, 1) }
@@ -139,15 +159,16 @@ public final class GGUFFile {
             let version = try reader.u32()
             guard version == 2 || version == 3 else { throw InferenceError.unsupportedVersion(version) }
             self.version = version
-            let tensorCount = Int(try reader.u64())
-            let kvCount = Int(try reader.u64())
-            guard tensorCount < 1_000_000, kvCount < 1_000_000 else { throw InferenceError.invalid("Implausible GGUF header counts.") }
+            // Every number from the file is checked before it becomes an Int: a
+            // hostile or broken GGUF must be refused, never trap the runtime.
+            let tensorCount = try reader.count(below: 1_000_000, "tensor count")
+            let kvCount = try reader.count(below: 1_000_000, "metadata count")
 
             var metadata: [String: GGUFValue] = [:]
             for _ in 0..<kvCount {
                 let key = try reader.string()
                 let type = try reader.u32()
-                metadata[key] = try reader.value(type: type)
+                metadata[key] = try reader.value(type: type, depth: 0)
             }
             self.metadata = metadata
             self.metadataEnd = reader.offset
@@ -164,12 +185,15 @@ public final class GGUFFile {
                 let dims = Int(try reader.u32())
                 guard dims >= 1, dims <= 4 else { throw InferenceError.invalid("Tensor \(name) has \(dims) dimensions.") }
                 var shape: [Int] = []
-                for _ in 0..<dims { shape.append(Int(try reader.u64())) }
+                for _ in 0..<dims { shape.append(try reader.count(below: GGUFTensorInfo.maxDimension + 1, "tensor \(name) dimension")) }
                 let rawType = try reader.u32()
                 guard let type = GGMLType(rawValue: rawType) else { throw InferenceError.unsupportedTensorType(rawType, name) }
-                let offset = Int(try reader.u64())
+                let offset = try reader.count(below: size, "tensor \(name) offset")
                 guard shape[0] % type.blockSize == 0 else {
                     throw InferenceError.invalid("Tensor \(name) row length \(shape[0]) is not a multiple of its block size.")
+                }
+                guard GGUFTensorInfo.checkedByteCount(shape: shape, type: type) != nil else {
+                    throw InferenceError.invalid("Tensor \(name) is too large.")
                 }
                 tensors[name] = GGUFTensorInfo(name: name, shape: shape, type: type, offset: offset)
                 names.append(name)
@@ -178,7 +202,8 @@ public final class GGUFFile {
             self.tensorNames = names
             let dataOffset = (reader.offset + alignment - 1) / alignment * alignment
             self.dataOffset = dataOffset
-            for tensor in tensors.values where dataOffset + tensor.offset + tensor.byteCount > size {
+            guard dataOffset <= size else { throw InferenceError.truncated }
+            for tensor in tensors.values where tensor.offset > size - dataOffset || tensor.byteCount > size - dataOffset - tensor.offset {
                 throw InferenceError.truncated
             }
         } catch {
@@ -228,15 +253,26 @@ struct GGUFReader {
     mutating func u32() throws -> UInt32 { try read(UInt32.self) }
     mutating func u64() throws -> UInt64 { try read(UInt64.self) }
 
+    /// A count or offset from the file, refused unless it is below `limit`.
+    mutating func count(below limit: Int, _ what: String) throws -> Int {
+        let raw = try u64()
+        guard let value = Int(exactly: raw), value < limit else { throw InferenceError.invalid("Implausible GGUF \(what) (\(raw)).") }
+        return value
+    }
+
     mutating func string() throws -> String {
-        let count = Int(try u64())
-        guard count >= 0, offset + count <= length else { throw InferenceError.truncated }
+        let raw = try u64()
+        guard let count = Int(exactly: raw), count <= length - offset else { throw InferenceError.truncated }
         let buffer = UnsafeRawBufferPointer(start: base + offset, count: count)
         offset += count
         return String(decoding: buffer, as: UTF8.self)
     }
 
-    mutating func value(type: UInt32) throws -> GGUFValue {
+    /// Arrays nest at most a few levels; a file nesting thousands would
+    /// otherwise recurse until the stack runs out.
+    static let maxNesting = 4
+
+    mutating func value(type: UInt32, depth: Int) throws -> GGUFValue {
         switch type {
         case 0: return .uint(UInt64(try read(UInt8.self)))
         case 1: return .int(Int64(try read(Int8.self)))
@@ -248,12 +284,14 @@ struct GGUFReader {
         case 7: return .bool(try read(UInt8.self) != 0)
         case 8: return .string(try string())
         case 9:
+            guard depth < Self.maxNesting else { throw InferenceError.invalid("GGUF metadata arrays nest too deeply.") }
             let elementType = try u32()
-            let count = Int(try u64())
-            guard count >= 0, count <= length else { throw InferenceError.truncated }
+            let raw = try u64()
+            // Each element takes at least a byte, so more elements than bytes left is a lie.
+            guard let count = Int(exactly: raw), count <= length - offset else { throw InferenceError.truncated }
             var values: [GGUFValue] = []
-            values.reserveCapacity(count)
-            for _ in 0..<count { values.append(try value(type: elementType)) }
+            values.reserveCapacity(min(count, 1 << 16))
+            for _ in 0..<count { values.append(try value(type: elementType, depth: depth + 1)) }
             return .array(values)
         case 10: return .uint(try u64())
         case 11: return .int(Int64(bitPattern: try u64()))

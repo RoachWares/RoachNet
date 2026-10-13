@@ -72,25 +72,34 @@ func halfToFloat(_ bits: UInt16) -> Float {
     #if arch(arm64)
     return Float(Float16(bitPattern: bits))
     #else
+    return halfToFloatPortable(bits)
+    #endif
+}
+
+/// IEEE half to float in software, for builds without `Float16` (x86_64, Linux).
+/// Kept callable on every architecture so the tests can check it against the hardware.
+@inline(__always)
+func halfToFloatPortable(_ bits: UInt16) -> Float {
     let sign = UInt32(bits & 0x8000) << 16
-    var exponent = UInt32(bits >> 10) & 0x1F
+    let exponent = UInt32(bits >> 10) & 0x1F
     var mantissa = UInt32(bits & 0x3FF)
     if exponent == 0 {
         if mantissa == 0 { return Float(bitPattern: sign) }
-        // Subnormal: normalise.
-        exponent = 1
+        // Subnormal: normalise. The exponent goes below zero for the smallest
+        // values (0x0001 shifts ten times), so it is counted signed; unsigned it
+        // trapped on every x86_64 build.
+        var shifted: Int32 = 1
         while mantissa & 0x400 == 0 {
             mantissa <<= 1
-            exponent -= 1
+            shifted -= 1
         }
         mantissa &= 0x3FF
-        return Float(bitPattern: sign | ((exponent + 112) << 23) | (mantissa << 13))
+        return Float(bitPattern: sign | (UInt32(shifted + 112) << 23) | (mantissa << 13))
     }
     if exponent == 0x1F {
         return Float(bitPattern: sign | 0x7F80_0000 | (mantissa << 13))
     }
     return Float(bitPattern: sign | ((exponent + 112) << 23) | (mantissa << 13))
-    #endif
 }
 
 @inline(__always)

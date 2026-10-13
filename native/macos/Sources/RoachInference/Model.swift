@@ -22,6 +22,8 @@ public struct ModelHyperparameters: Equatable {
     public let ropeBase: Float
     public let ropeDimensions: Int
     public let ropeFrequencyScale: Float
+    /// Llama 3.1-style frequency scaling declared in metadata (used when the file has no `rope_freqs.weight`).
+    public let llama3Scaling: Llama3RopeScaling?
     public let ropeStyle: RopeStyle
     public let vocabularySize: Int
     public let hasQKNorm: Bool
@@ -35,33 +37,75 @@ public struct ModelHyperparameters: Equatable {
         }
         func int(_ key: String) -> Int? { gguf["\(arch).\(key)"]?.intValue }
         func double(_ key: String) -> Double? { gguf["\(arch).\(key)"]?.doubleValue }
-        func required(_ key: String) throws -> Int {
-            guard let value = int(key) else { throw InferenceError.missingKey("\(arch).\(key)") }
+        // Sizes from the file are checked before anything divides or multiplies by
+        // them: a GGUF with a zero head count or a 2^60 width must be refused, not
+        // trap the runtime. The ranges sit well past every model RoachNet runs.
+        func sized(_ key: String, _ value: Int?, _ range: ClosedRange<Int>) throws -> Int {
+            guard let value else { throw InferenceError.missingKey("\(arch).\(key)") }
+            guard range.contains(value) else { throw InferenceError.invalid("Implausible \(arch).\(key) (\(value)).") }
             return value
         }
         architecture = arch
-        contextLength = int("context_length") ?? 2048
-        embeddingLength = try required("embedding_length")
-        blockCount = try required("block_count")
-        feedForwardLength = try required("feed_forward_length")
-        headCount = try required("attention.head_count")
-        headCountKV = int("attention.head_count_kv") ?? headCount
-        headDimension = int("attention.key_length") ?? embeddingLength / headCount
-        valueDimension = int("attention.value_length") ?? headDimension
+        contextLength = try sized("context_length", int("context_length") ?? 2048, 1...(1 << 24))
+        embeddingLength = try sized("embedding_length", int("embedding_length"), 1...(1 << 17))
+        blockCount = try sized("block_count", int("block_count"), 1...1_024)
+        feedForwardLength = try sized("feed_forward_length", int("feed_forward_length"), 1...(1 << 20))
+        headCount = try sized("attention.head_count", int("attention.head_count"), 1...1_024)
+        headCountKV = try sized("attention.head_count_kv", int("attention.head_count_kv") ?? headCount, 1...1_024)
+        headDimension = try sized("attention.key_length", int("attention.key_length") ?? embeddingLength / headCount, 1...4_096)
+        valueDimension = try sized("attention.value_length", int("attention.value_length") ?? headDimension, 1...4_096)
         rmsEpsilon = Float(double("attention.layer_norm_rms_epsilon") ?? 1e-5)
         ropeBase = Float(double("rope.freq_base") ?? 10_000)
-        ropeDimensions = int("rope.dimension_count") ?? headDimension
-        if let type = gguf["\(arch).rope.scaling.type"]?.stringValue, type == "linear", let factor = double("rope.scaling.factor"), factor > 0 {
+        ropeDimensions = try sized("rope.dimension_count", int("rope.dimension_count") ?? headDimension, 0...4_096)
+        let scalingType = gguf["\(arch).rope.scaling.type"]?.stringValue
+        if scalingType == "linear", let factor = double("rope.scaling.factor"), factor > 0, factor.isFinite {
             ropeFrequencyScale = Float(1 / factor)
         } else {
             ropeFrequencyScale = 1
         }
+        // Llama 3.1+ scales low frequencies by `factor` and leaves high ones alone,
+        // blending between. Most GGUFs carry the result as `rope_freqs.weight`;
+        // when one declares the scaling without that tensor, compute it.
+        if scalingType == "llama3", let factor = double("rope.scaling.factor"), factor > 0, factor.isFinite {
+            llama3Scaling = Llama3RopeScaling(
+                factor: factor,
+                lowFrequencyFactor: double("rope.scaling.low_freq_factor") ?? 1,
+                highFrequencyFactor: double("rope.scaling.high_freq_factor") ?? 4,
+                originalContext: double("rope.scaling.original_context_length") ?? 8_192
+            )
+        } else {
+            llama3Scaling = nil
+        }
         ropeStyle = (arch == "qwen2" || arch == "qwen3") ? .neox : .interleaved
-        self.vocabularySize = int("vocab_size") ?? vocabularySize
+        self.vocabularySize = try sized("vocab_size", int("vocab_size") ?? vocabularySize, 1...(1 << 22))
         hasQKNorm = arch == "qwen3"
         guard headCount % headCountKV == 0, ropeDimensions <= headDimension, ropeDimensions % 2 == 0 else {
             throw InferenceError.invalid("Inconsistent attention hyperparameters.")
         }
+    }
+}
+
+/// Llama 3.1's RoPE frequency scaling: wavelengths longer than the original
+/// context / `lowFrequencyFactor` are divided by `factor`, shorter than
+/// original context / `highFrequencyFactor` are kept, and the band between is
+/// blended. Matches Meta's reference and llama.cpp's `rope_freqs` factors.
+public struct Llama3RopeScaling: Equatable {
+    public var factor: Double
+    public var lowFrequencyFactor: Double
+    public var highFrequencyFactor: Double
+    public var originalContext: Double
+
+    /// The divisor for one inverse frequency (1 leaves it as is).
+    public func divisor(forInverseFrequency frequency: Double) -> Double {
+        let lowWavelength = originalContext / lowFrequencyFactor
+        let highWavelength = originalContext / highFrequencyFactor
+        let wavelength = 2 * Double.pi / frequency
+        if wavelength < highWavelength { return 1 }
+        if wavelength > lowWavelength { return factor }
+        guard highFrequencyFactor != lowFrequencyFactor else { return 1 }
+        let smooth = (originalContext / wavelength - lowFrequencyFactor) / (highFrequencyFactor - lowFrequencyFactor)
+        // Scaled frequency is (1 - smooth) * f / factor + smooth * f.
+        return 1 / ((1 - smooth) / factor + smooth)
     }
 }
 
@@ -296,6 +340,7 @@ public final class TransformerModel {
         ropeInverseFrequencies = (0..<half).map { i in
             let base = powf(hp.ropeBase, -2 * Float(i) / Float(hp.ropeDimensions)) * hp.ropeFrequencyScale
             if let factors, i < factors.count { return base / factors[i] }
+            if let scaling = hp.llama3Scaling { return Float(Double(base) / scaling.divisor(forInverseFrequency: Double(base))) }
             return base
         }
     }

@@ -12,6 +12,23 @@ final class ComponentTests: XCTestCase {
         XCTAssertEqual(halfToFloat(floatToHalf(0.333_333)), 0.333_251_95, accuracy: 1e-6)
     }
 
+    /// The software path x86_64 and Linux builds use must agree with the
+    /// hardware for every half, subnormals included (0x0001 used to trap there).
+    func testPortableHalfConversionMatchesTheHardwareForEveryValue() {
+        XCTAssertEqual(halfToFloatPortable(0x0001), 5.960_464_5e-8, accuracy: 1e-12)
+        XCTAssertEqual(halfToFloatPortable(0x8001), -5.960_464_5e-8, accuracy: 1e-12)
+        XCTAssertEqual(halfToFloatPortable(0x03FF), 6.097_555e-5, accuracy: 1e-10)
+        XCTAssertEqual(halfToFloatPortable(0x0400), 6.103_515_6e-5, accuracy: 1e-10)
+        XCTAssertEqual(halfToFloatPortable(0x7C00), .infinity)
+        XCTAssertTrue(halfToFloatPortable(0x7E00).isNaN)
+        #if arch(arm64)
+        for bits in 0...UInt16.max {
+            let hardware = Float(Float16(bitPattern: bits)), software = halfToFloatPortable(bits)
+            if hardware.isNaN { XCTAssertTrue(software.isNaN, String(bits, radix: 16)) } else { XCTAssertEqual(software.bitPattern, hardware.bitPattern, String(bits, radix: 16)) }
+        }
+        #endif
+    }
+
     func testQ8_0BlockDequantizesAndDots() {
         var block = [UInt8](repeating: 0, count: 34)
         let d = floatToHalf(0.5)

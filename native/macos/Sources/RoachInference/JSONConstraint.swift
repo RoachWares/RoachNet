@@ -26,7 +26,8 @@ public indirect enum JSONSchemaNode: Equatable {
     case null
     /// Allowed values, each serialized compactly (`"red"`, `3`, `true`).
     case literals([String])
-    /// One of several types; the first character picks the branch.
+    /// One of several types. Every branch the output so far fits stays open
+    /// until a later character rules it out (two object variants both start with `{`).
     case union([JSONSchemaNode])
 }
 
@@ -34,7 +35,12 @@ public indirect enum JSONSchemaNode: Equatable {
 /// on characters, so it fits any tokenizer: the sampler asks it about each
 /// candidate token's text.
 public final class JSONConstraint: GenerationConstraint {
-    private var state: State
+    /// Every reading of the output so far that the schema still allows. Usually
+    /// one; a union whose branches start alike keeps one per open branch.
+    private var states: [State]
+
+    /// More open readings than this and the newest are dropped; no real schema gets close.
+    static let maxStates = 32
 
     /// `requireObject` is OpenAI's `json_object` and Ollama's `format: "json"`.
     public init(schema: JSONSchemaNode? = nil, requireObject: Bool = false) {
@@ -42,24 +48,49 @@ public final class JSONConstraint: GenerationConstraint {
         if let schema { root = schema } else if requireObject {
             root = .object(properties: [:], order: [], required: [], additional: true)
         } else { root = .any }
-        state = State(stack: [.value(root)])
+        states = [State(stack: [.value(root)])]
     }
 
-    public var isComplete: Bool { state.complete }
+    public var isComplete: Bool { states.contains { $0.complete } }
 
     public var insideFreeText: Bool {
-        if case .string(_, _, let options, _) = state.stack.last { return options == nil }
-        return false
+        states.contains { state in
+            if case .string(_, _, let options, _) = state.stack.last { return options == nil }
+            return false
+        }
     }
 
     public func allows(_ piece: String) -> Bool {
-        var copy = state
-        for character in piece.unicodeScalars where !copy.feed(character) { return false }
+        var current = states
+        for character in piece.unicodeScalars {
+            current = Self.advance(current, character)
+            if current.isEmpty { return false }
+        }
         return true
     }
 
     public func accept(_ piece: String) {
-        for character in piece.unicodeScalars where !state.feed(character) { break }
+        for character in piece.unicodeScalars {
+            let next = Self.advance(states, character)
+            if next.isEmpty { break }
+            states = next
+        }
+    }
+
+    /// The readings `c` leads to: each state that takes it, plus the branches a union opened.
+    static func advance(_ states: [State], _ c: Unicode.Scalar) -> [State] {
+        var next: [State] = []
+        for var state in states {
+            state.forks = []
+            guard state.feed(c) else { continue }
+            let opened = state.forks
+            state.forks = []
+            for candidate in [state] + opened where !next.contains(candidate) {
+                next.append(candidate)
+                if next.count == maxStates { return next }
+            }
+        }
+        return next
     }
 
     // MARK: State machine
@@ -83,6 +114,8 @@ public final class JSONConstraint: GenerationConstraint {
         var stack: [Frame]
         var complete = false
         var whitespace = 0
+        /// Other readings a union opened while feeding the current character; `advance` collects them.
+        var forks: [State] = []
 
         static let maxWhitespace = 48
 
@@ -164,8 +197,23 @@ public final class JSONConstraint: GenerationConstraint {
         private mutating func begin(_ c: Unicode.Scalar, _ schema: JSONSchemaNode) -> Bool {
             switch schema {
             case .union(let options):
-                for option in options where Self.starts(c, option) { return begin(c, option) }
-                return false
+                // Every branch that can start with `c` stays open; this state takes the
+                // first that does, the rest become forks for `advance` to keep.
+                var open: [State] = []
+                for option in options where Self.starts(c, option) {
+                    var branch = self
+                    branch.forks = []
+                    guard branch.begin(c, option) else { continue }
+                    let nested = branch.forks
+                    branch.forks = []
+                    open.append(branch)
+                    open.append(contentsOf: nested)
+                }
+                guard let first = open.first else { return false }
+                let earlier = forks
+                self = first
+                forks = earlier + open.dropFirst()
+                return true
             case .literals(let options):
                 let first = String(c)
                 guard options.contains(where: { $0.hasPrefix(first) }) else { return false }
@@ -395,9 +443,11 @@ public final class JSONConstraint: GenerationConstraint {
 
     /// For the end of generation: a number at the very end is complete if it parses.
     public var canEnd: Bool {
-        if state.complete { return true }
-        // A top-level number has no closing character, so it can only end with the output.
-        if state.stack.count == 2, case .number(let text, let integer) = state.stack[1] { return State.completeNumber(text, integer: integer) }
-        return false
+        states.contains { state in
+            if state.complete { return true }
+            // A top-level number has no closing character, so it can only end with the output.
+            if state.stack.count == 2, case .number(let text, let integer) = state.stack[1] { return State.completeNumber(text, integer: integer) }
+            return false
+        }
     }
 }

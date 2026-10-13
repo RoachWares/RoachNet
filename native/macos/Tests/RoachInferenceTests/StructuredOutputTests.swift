@@ -41,6 +41,31 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertTrue(accepts(JSONConstraint(schema: arrays), "[true, false]"))
     }
 
+    func testUnionBranchesThatStartAlikeStayOpenUntilTheOutputDecides() {
+        // Two object variants both open with `{`; the second key decides which one it is.
+        let card = JSONSchemaNode.object(properties: ["kind": .literals([#""card""#]), "last4": .string], order: ["kind", "last4"],
+                                         required: ["kind", "last4"], additional: false)
+        let bank = JSONSchemaNode.object(properties: ["kind": .literals([#""bank""#]), "iban": .string], order: ["kind", "iban"],
+                                         required: ["kind", "iban"], additional: false)
+        let payment = JSONSchemaNode.union([card, bank])
+        XCTAssertTrue(accepts(JSONConstraint(schema: payment), #"{"kind": "card", "last4": "4242"}"#))
+        XCTAssertTrue(accepts(JSONConstraint(schema: payment), #"{"kind": "bank", "iban": "NL00"}"#), "the second variant is reachable")
+        XCTAssertFalse(accepts(JSONConstraint(schema: payment), #"{"kind": "card", "iban": "NL00"}"#), "branches don't mix")
+        let done = JSONConstraint(schema: payment)
+        XCTAssertTrue(accepts(done, #"{"kind": "bank", "iban": "x"}"#))
+        XCTAssertTrue(done.isComplete)
+
+        // Strings and numbers in one union, and unions inside arrays.
+        let mixed = JSONSchemaNode.array(items: .union([.number(integer: true), .string, .literals(["null"])]), minItems: 0, maxItems: nil)
+        XCTAssertTrue(accepts(JSONConstraint(schema: mixed), #"[1, "two", null, 3]"#))
+        XCTAssertFalse(accepts(JSONConstraint(schema: mixed), #"[1.5]"#))
+        // Arrays of different item types both start with `[`.
+        let lists = JSONSchemaNode.union([.array(items: .number(integer: true), minItems: 0, maxItems: nil), .array(items: .string, minItems: 0, maxItems: nil)])
+        XCTAssertTrue(accepts(JSONConstraint(schema: lists), #"["a", "b"]"#))
+        XCTAssertTrue(accepts(JSONConstraint(schema: lists), "[1, 2]"))
+        XCTAssertFalse(accepts(JSONConstraint(schema: lists), #"[1, "b"]"#))
+    }
+
     func testCompleteValueEndsGeneration() {
         let constraint = JSONConstraint(schema: .number(integer: true))
         XCTAssertTrue(accepts(constraint, "42"))
