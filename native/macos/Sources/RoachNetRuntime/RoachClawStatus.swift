@@ -115,7 +115,9 @@ extension NativeRuntime {
         let target = roachInferenceURL
         let version = urlJoin("/api/version", target)
         guard isReachable(version) else { return startNativeModelServer(at: target, route: route) }
-        if answersAsRoachInference(version) || !Self.isRoachNetOwnModelURL(target) {
+        // An address somebody chose is used whatever answers there, so only
+        // RoachNet's own address needs the second look at who is answering.
+        if !Self.isRoachNetOwnModelURL(target) || answersAsRoachInference(version) {
             if route { useModelServer(at: target) }
             return true
         }
