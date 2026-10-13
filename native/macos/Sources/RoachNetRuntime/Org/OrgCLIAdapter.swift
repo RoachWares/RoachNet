@@ -204,7 +204,9 @@ struct OrgCLIAdapter: OrgAdapter {
         case "metered_api":
             result.billingType = "metered_api"
             if let usd = stream.costUsd {
-                result.costCents = Int((usd * 100).rounded()); result.costStatus = "reported"
+                // A CLI reporting NaN or 1e300 dollars must not trap `Int(Double)`.
+                result.costCents = usd.isFinite ? Int(min(max(usd * 100, 0), Double(OrgLimits.maxAmount)).rounded()) : 0
+                result.costStatus = "reported"
                 if kind == .claude { stream.applyReportedTotal(usd) }
             } else {
                 result.costStatus = "unpriced"

@@ -184,7 +184,7 @@ final class OrgEngine {
                     skip(&company.wakeRequests[wakeIndex], "daily_run_cap"); continue
                 }
                 if let cap = agent.heartbeat.maxDailyCostCents,
-                   company.costEvents.filter({ $0.agentId == agent.id && $0.occurredAt >= dayStart }).reduce(0, { $0 + $1.costCents }) >= cap {
+                   company.costEvents.filter({ $0.agentId == agent.id && $0.occurredAt >= dayStart }).reduce(0, { $0.orgAdding($1.costCents) }) >= cap {
                     skip(&company.wakeRequests[wakeIndex], "daily_cost_cap"); continue
                 }
                 var issue: OrgIssue?
@@ -326,7 +326,7 @@ final class OrgEngine {
             run.sessionIdAfter = result.sessionState?["sessionId"].stringValue ?? run.sessionIdBefore
             company.runs[runIndex] = run
             agentId = run.agentId
-            if let usage = result.usage, usage.inputTokens + usage.outputTokens > 0 || result.costCents > 0 {
+            if let usage = result.usage, usage.inputTokens.orgAdding(usage.outputTokens) > 0 || result.costCents > 0 {
                 let issue = run.issueId.flatMap { id in company.issues.first { $0.id == id } }
                 service.applyCostEvent(&company, OrgCostEvent(
                     id: OrgIDs.make("cost"), companyId: companyId, agentId: run.agentId, issueId: run.issueId, projectId: issue?.projectId, runId: runId,

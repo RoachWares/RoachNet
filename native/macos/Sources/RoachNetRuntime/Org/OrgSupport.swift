@@ -92,6 +92,28 @@ enum OrgIDs {
     }
 }
 
+/// Bounds on the numbers agents and people send the Org engine.
+enum OrgLimits {
+    /// 2^53: the largest whole number a JSON double holds exactly.
+    static let maxExactInteger = 9_007_199_254_740_992.0
+    /// 10^12 tokens, or 10^12 cents ($10 billion), in one event or setting.
+    static let maxAmount = 1_000_000_000_000
+}
+
+extension Int {
+    /// `self + other`, stopping at `Int.max` (or `.min`) instead of trapping.
+    func orgAdding(_ other: Int) -> Int {
+        let (sum, overflow) = addingReportingOverflow(other)
+        return overflow ? (other > 0 ? .max : .min) : sum
+    }
+
+    /// `self * other`, stopping at `Int.max` (or `.min`) instead of trapping.
+    func orgMultiplied(by other: Int) -> Int {
+        let (product, overflow) = multipliedReportingOverflow(by: other)
+        return overflow ? ((self < 0) == (other < 0) ? .max : .min) : product
+    }
+}
+
 /// Typed accessors over request bodies.
 struct OrgBody {
     let raw: JSON
@@ -118,9 +140,17 @@ struct OrgBody {
         if value.isNull { return .some(nil) }
         return .some(string(key, max: max))
     }
+    /// A whole number, or nil when absent, not a number, or beyond ±2^53 (the
+    /// integers JSON carries exactly). `Int(Double)` traps past Int's range, so
+    /// an agent sending `1e100` would otherwise bring the runtime down.
     func int(_ key: String) -> Int? {
-        guard let number = raw[key].numberValue, number.isFinite else { return nil }
+        guard let number = raw[key].numberValue, number.isFinite, abs(number) <= OrgLimits.maxExactInteger else { return nil }
         return Int(number.rounded(.towardZero))
+    }
+    /// A token count or an amount of money: held to 0...10^12, so sums over a
+    /// company's events stay far from Int's limit.
+    func amount(_ key: String) -> Int? {
+        int(key).map { min(max(0, $0), OrgLimits.maxAmount) }
     }
     func bool(_ key: String) -> Bool? { raw[key].boolValue }
     func strings(_ key: String, maxItems: Int = 64) -> [String]? {

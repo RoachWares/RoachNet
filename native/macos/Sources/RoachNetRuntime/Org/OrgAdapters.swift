@@ -44,7 +44,7 @@ final class OrgRunIO {
     func traceCost(_ usage: OrgUsage, billingType: String, centsPerMillion: (input: Int, output: Int)?) -> TraceCost {
         if billingType == "local" { return .local }
         if let rate = centsPerMillion {
-            let cents = Double(usage.inputTokens * rate.input + usage.outputTokens * rate.output) / 1_000_000
+            let cents = (Double(usage.inputTokens) * Double(rate.input) + Double(usage.outputTokens) * Double(rate.output)) / 1_000_000
             return TraceCost(totalUsd: cents / 100, status: "estimated", billingType: billingType)
         }
         return service.runtime.tracer.price(model: usage.model, usage: usage.traceUsage, billingType: billingType)
@@ -132,7 +132,7 @@ struct OrgAgentLoopAdapter: OrgAdapter {
                 turn = try chat(baseURL: baseURL, headers: callHeaders, model: model, messages: messages, config: config, timeoutMs: io.remainingMs)
                 var stepUsage = turn.usage
                 stepUsage.model = model
-                let rate = config.int("inputCentsPerMillion").flatMap { input in config.int("outputCentsPerMillion").map { (input, $0) } }
+                let rate = config.amount("inputCentsPerMillion").flatMap { input in config.amount("outputCentsPerMillion").map { (input, $0) } }
                 generation?.end(output: JSON(turn.content), usage: stepUsage.traceUsage,
                                 cost: plan != nil ? TraceCost(totalUsd: 0, status: "included", billingType: "subscription_included")
                                     : io.traceCost(stepUsage, billingType: mode == .roachClawLocal ? "local" : "metered_api", centsPerMillion: rate))
@@ -143,8 +143,8 @@ struct OrgAgentLoopAdapter: OrgAdapter {
                 result.usage = usage
                 return result
             }
-            usage.inputTokens += turn.usage.inputTokens
-            usage.outputTokens += turn.usage.outputTokens
+            usage.inputTokens = usage.inputTokens.orgAdding(turn.usage.inputTokens)
+            usage.outputTokens = usage.outputTokens.orgAdding(turn.usage.outputTokens)
             io.log("assistant", turn.content)
             messages.append(["role": "assistant", "content": JSON(turn.content)])
             guard let action = OrgAgentLoopAdapter.extractAction(turn.content) else {
@@ -177,8 +177,9 @@ struct OrgAgentLoopAdapter: OrgAdapter {
             result.billingType = localBilling; result.costStatus = plan == nil ? "reported" : "included"; result.costCents = 0
         case .openAICompatible:
             result.billingType = "metered_api"
-            if let input = config.int("inputCentsPerMillion"), let output = config.int("outputCentsPerMillion") {
-                result.costCents = (usage.inputTokens * input + usage.outputTokens * output + 999_999) / 1_000_000
+            if let input = config.amount("inputCentsPerMillion"), let output = config.amount("outputCentsPerMillion") {
+                let priced = usage.inputTokens.orgMultiplied(by: input).orgAdding(usage.outputTokens.orgMultiplied(by: output))
+                result.costCents = min(priced.orgAdding(999_999) / 1_000_000, OrgLimits.maxAmount)
                 result.costStatus = "estimated"
             } else {
                 result.costStatus = "unpriced"

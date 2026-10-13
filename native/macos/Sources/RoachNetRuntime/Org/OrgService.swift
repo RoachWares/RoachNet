@@ -203,7 +203,7 @@ final class OrgService {
         let stamp = now
         let company = OrgCompany(
             id: OrgIDs.make("co"), name: name, description: body.text("description", max: 4_000),
-            issuePrefix: prefix, budgetMonthlyCents: max(0, body.int("budgetMonthlyCents") ?? 0),
+            issuePrefix: prefix, budgetMonthlyCents: body.amount("budgetMonthlyCents") ?? 0,
             requireBoardApprovalForNewAgents: body.bool("requireBoardApprovalForNewAgents") ?? false,
             createdAt: stamp, updatedAt: stamp)
         var state = OrgCompanyState(company: company)
@@ -229,7 +229,7 @@ final class OrgService {
             if let name = body.string("name", max: 120) { state.company.name = name }
             if body.has("description") { state.company.description = body.text("description", max: 4_000) }
             if let value = body.bool("requireBoardApprovalForNewAgents") { state.company.requireBoardApprovalForNewAgents = value }
-            if let cents = body.int("budgetMonthlyCents") {
+            if let cents = body.amount("budgetMonthlyCents") {
                 state.company.budgetMonthlyCents = max(0, cents)
                 upsertImplicitBudget(&state, scopeType: "company", scopeId: state.company.id, cents: max(0, cents))
             }
@@ -458,8 +458,15 @@ final class OrgService {
         guard request.claimedAt == nil else { throw orgConflict("This request was already claimed.") }
         let (key, plaintext) = makeAPIKey(companyId: state.company.id, principalType: "agent", principalId: agentId, name: "join claim")
         try store.mutateCompany(state.company.id) { company in
+            // Checked again inside the serialized change: two claims sent at once
+            // both pass the checks above, and only the first may get a key.
+            guard let index = company.joinRequests.firstIndex(where: { $0.id == requestId }) else { throw orgNotFound("Join request") }
+            guard company.joinRequests[index].status == "approved", company.joinRequests[index].createdAgentId == agentId else {
+                throw orgConflict("This request has not been approved.")
+            }
+            guard company.joinRequests[index].claimedAt == nil else { throw orgConflict("This request was already claimed.") }
             company.apiKeys.append(key)
-            if let index = company.joinRequests.firstIndex(where: { $0.id == requestId }) { company.joinRequests[index].claimedAt = now }
+            company.joinRequests[index].claimedAt = now
         }
         record(state.company.id, actor, "join.claimed", "join_request", requestId)
         return ["apiKey": redactKey(key), "key": JSON(plaintext), "agentId": JSON(agentId), "companyId": JSON(state.company.id)]
@@ -613,10 +620,10 @@ final class OrgService {
             if let value = hb.int("maxConcurrentRuns") { agent.heartbeat.maxConcurrentRuns = min(max(value, 1), 8) }
             if let value = hb.bool("skipTimerWhenNoActionableWork") { agent.heartbeat.skipTimerWhenNoActionableWork = value }
             if hb.has("maxDailyRuns") { agent.heartbeat.maxDailyRuns = hb.int("maxDailyRuns").map { max(0, $0) } }
-            if hb.has("maxDailyCostCents") { agent.heartbeat.maxDailyCostCents = hb.int("maxDailyCostCents").map { max(0, $0) } }
+            if hb.has("maxDailyCostCents") { agent.heartbeat.maxDailyCostCents = hb.amount("maxDailyCostCents") }
             changed.append("heartbeat")
         }
-        if let cents = body.int("budgetMonthlyCents") { agent.budgetMonthlyCents = max(0, cents); changed.append("budgetMonthlyCents") }
+        if let cents = body.amount("budgetMonthlyCents") { agent.budgetMonthlyCents = cents; changed.append("budgetMonthlyCents") }
         if body.has("canCreateAgents") || body.has("canAssignTasks") {
             guard isBoard(state, actor) else { throw orgForbidden("Only the board can change agent permissions.") }
             if let value = body.bool("canCreateAgents") { agent.canCreateAgents = value; changed.append("canCreateAgents") }
@@ -716,7 +723,7 @@ final class OrgService {
             restored.adapterType = config.string("adapterType") ?? restored.adapterType
             restored.adapterConfig = revision.beforeConfig["adapterConfig"].isObject ? revision.beforeConfig["adapterConfig"] : restored.adapterConfig
             if let heartbeat = try? OrgCodec.decode(OrgHeartbeatConfig.self, from: revision.beforeConfig["heartbeat"]) { restored.heartbeat = heartbeat }
-            restored.budgetMonthlyCents = config.int("budgetMonthlyCents") ?? restored.budgetMonthlyCents
+            restored.budgetMonthlyCents = config.amount("budgetMonthlyCents") ?? restored.budgetMonthlyCents
             restored.canCreateAgents = config.bool("canCreateAgents") ?? restored.canCreateAgents
             restored.canAssignTasks = config.bool("canAssignTasks") ?? restored.canAssignTasks
             restored.desiredSkills = config.strings("desiredSkills") ?? restored.desiredSkills
@@ -909,7 +916,7 @@ final class OrgService {
                 project.secretEnv = env
             }
             if let archived = body.bool("archived") { project.archivedAt = archived ? (project.archivedAt ?? now) : nil }
-            if let cents = body.int("budgetMonthlyCents") { upsertImplicitBudget(&company, scopeType: "project", scopeId: project.id, cents: max(0, cents)) }
+            if let cents = body.amount("budgetMonthlyCents") { upsertImplicitBudget(&company, scopeType: "project", scopeId: project.id, cents: cents) }
             project.updatedAt = now
             if let index { company.projects[index] = project } else { company.projects.append(project) }
             return project

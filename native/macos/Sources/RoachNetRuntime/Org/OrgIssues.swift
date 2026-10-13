@@ -320,6 +320,12 @@ extension OrgService {
         let updated: OrgIssue = try store.mutateCompany(companyId) { company in
             guard let index = company.issues.firstIndex(where: { $0.id == issue.id }), var exec = company.issues[index].executionState,
                   let policy = company.issues[index].executionPolicy, let stageIndex = exec.currentStageIndex else { throw orgNotFound("Issue") }
+            // Decide only the stage this caller was checked against. Two approvals
+            // sent at once both pass the check above; the second must not land
+            // on the next stage, whose reviewer may be someone else.
+            guard exec.status == "pending", exec.currentParticipant == participant, stageIndex == execution.currentStageIndex else {
+                throw orgConflict("\(issue.identifier) is no longer waiting for this review.")
+            }
             if let note = body.text("comment", max: 20_000), !note.isEmpty {
                 company.comments.append(OrgComment(id: OrgIDs.make("cmt"), companyId: companyId, issueId: issue.id, authorType: actor.actorType, authorId: actor.actorId, body: note, runId: actor.runId, createdAt: now))
             }

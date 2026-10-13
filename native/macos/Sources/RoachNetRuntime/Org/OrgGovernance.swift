@@ -127,7 +127,7 @@ extension OrgService {
         let start = windowStart(policy)
         var cents = 0, unpriced = 0
         for event in company.costEvents where event.occurredAt >= start && eventMatches(event, policy) {
-            cents += event.costCents
+            cents = cents.orgAdding(event.costCents)
             if event.costStatus == "unpriced" { unpriced += 1 }
         }
         return (cents, unpriced)
@@ -144,7 +144,7 @@ extension OrgService {
             let start = windowStart(policy)
             let (spent, unpriced) = observedSpend(company, policy)
             let incidents = company.budgetIncidents.filter { $0.policyId == policy.id && $0.windowStart == start }
-            if spent * 100 >= policy.amountCents * policy.warnPercent && !incidents.contains(where: { $0.thresholdType == "soft" }) {
+            if spent.orgMultiplied(by: 100) >= policy.amountCents.orgMultiplied(by: policy.warnPercent) && !incidents.contains(where: { $0.thresholdType == "soft" }) {
                 company.budgetIncidents.append(OrgBudgetIncident(id: OrgIDs.make("inc"), companyId: company.company.id, policyId: policy.id, scopeType: policy.scopeType, scopeId: policy.scopeId,
                                                                  windowStart: start, thresholdType: "soft", amountLimit: policy.amountCents, amountObserved: spent, createdAt: now))
             }
@@ -244,9 +244,9 @@ extension OrgService {
                 if scopeType == "company" { scopeId = company.company.id }
                 policy = OrgBudgetPolicy(id: OrgIDs.make("bud"), companyId: companyId, scopeType: scopeType, scopeId: scopeId,
                                          windowKind: try body.oneOf("windowKind", ["calendar_month_utc", "lifetime"]) ?? "calendar_month_utc",
-                                         amountCents: max(0, try body.int("amountCents") ?? { throw requestError("amountCents is required.") }()), createdAt: now, updatedAt: now)
+                                         amountCents: try body.amount("amountCents") ?? { throw requestError("amountCents is required.") }(), createdAt: now, updatedAt: now)
             }
-            if let amount = body.int("amountCents") { policy.amountCents = max(0, amount) }
+            if let amount = body.amount("amountCents") { policy.amountCents = amount }
             if let warn = body.int("warnPercent") { policy.warnPercent = min(max(warn, 1), 100) }
             if let hard = body.bool("hardStopEnabled") { policy.hardStopEnabled = hard }
             if let unpriced = try body.oneOf("unpricedUsagePolicy", ["allow", "block"]) { policy.unpricedUsagePolicy = unpriced }
@@ -286,8 +286,8 @@ extension OrgService {
         let event = OrgCostEvent(id: OrgIDs.make("cost"), companyId: companyId, agentId: agentId, issueId: issueId,
                                  projectId: issueId.flatMap { id in state.issues.first { $0.id == id }?.projectId } ?? body.string("projectId"),
                                  runId: actor.runId ?? body.string("runId"), provider: body.string("provider", max: 80) ?? "external", model: body.string("model", max: 120) ?? "unknown",
-                                 inputTokens: max(0, body.int("inputTokens") ?? 0), outputTokens: max(0, body.int("outputTokens") ?? 0), cachedInputTokens: max(0, body.int("cachedInputTokens") ?? 0),
-                                 costCents: max(0, body.int("costCents") ?? 0), costStatus: body.has("costCents") ? "reported" : "unpriced",
+                                 inputTokens: body.amount("inputTokens") ?? 0, outputTokens: body.amount("outputTokens") ?? 0, cachedInputTokens: body.amount("cachedInputTokens") ?? 0,
+                                 costCents: body.amount("costCents") ?? 0, costStatus: body.has("costCents") ? "reported" : "unpriced",
                                  billingType: try body.oneOf("billingType", ["local", "metered_api", "subscription_included", "unknown"]) ?? "unknown", occurredAt: now)
         try store.mutateCompany(companyId) { applyCostEvent(&$0, event) }
         return ["costEvent": OrgCodec.json(event)]
@@ -310,9 +310,10 @@ extension OrgService {
             default: key = event.agentId ?? "none"
             }
             var group = groups[key] ?? (0, 0, 0, 0)
-            group.cents += event.costCents; group.input += event.inputTokens; group.output += event.outputTokens; group.events += 1
+            group.cents = group.cents.orgAdding(event.costCents); group.input = group.input.orgAdding(event.inputTokens)
+            group.output = group.output.orgAdding(event.outputTokens); group.events += 1
             groups[key] = group
-            total += event.costCents
+            total = total.orgAdding(event.costCents)
         }
         let rows = groups.sorted { $0.value.cents == $1.value.cents ? $0.key < $1.key : $0.value.cents > $1.value.cents }.map { key, value -> JSON in
             var label = key
@@ -679,8 +680,8 @@ extension OrgService {
         var agentsByStatus = JSONObject()
         for agent in state.agents { agentsByStatus[agent.status] = JSON(Int(agentsByStatus[agent.status].numberValue ?? 0) + 1) }
         let monthStart = orgMonthStart()
-        let monthSpend = state.costEvents.filter { $0.occurredAt >= monthStart }.reduce(0) { $0 + $1.costCents }
-        let monthTokens = state.costEvents.filter { $0.occurredAt >= monthStart }.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
+        let monthSpend = state.costEvents.filter { $0.occurredAt >= monthStart }.reduce(0) { $0.orgAdding($1.costCents) }
+        let monthTokens = state.costEvents.filter { $0.occurredAt >= monthStart }.reduce(0) { $0.orgAdding($1.inputTokens).orgAdding($1.outputTokens) }
         return [
             "company": OrgCodec.json(state.company),
             "issuesByStatus": .object(issuesByStatus),

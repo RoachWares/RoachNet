@@ -213,7 +213,8 @@ extension NativeRuntime {
             try org.requireRead(try org.company(cid), actor)
             return ok(try traceDetail(id, companyId: cid))
         case ("POST", "traces", 3) where tail == "scores":
-            try org.requireRead(try org.company(cid), actor)
+            // Adding a score changes the company's evaluations: viewers may read, not write.
+            try org.requireWrite(try org.company(cid), actor)
             return ok(try addTraceScore(id, try body().raw, authorId: actor.userId ?? actor.agentId, companyId: cid), 201)
         case ("POST", "cost-events", 1): return ok(try org.reportCost(actor, cid, try body()), 201)
 

@@ -356,6 +356,69 @@ test('people join over RoachTail with invites; roles gate writes', needsBinary, 
   }
 })
 
+test('out-of-range numbers, racing claims and reviews, and viewer scores are held (ROA-72)', needsBinary, async () => {
+  const runtime = await startRuntime()
+  try {
+    const owner = client(runtime.base)
+    const cid = (await owner.post('/companies', { name: 'Abuse Co' })).json.company.id
+    const agent = (await owner.post(`/companies/${cid}/agents`, { name: 'Chief', adapterType: 'http', adapterConfig: { url: 'https://example.invalid' }, heartbeat: { wakeOnDemand: false } })).json.agent
+    const key = (await owner.post(`/companies/${cid}/keys`, { name: 'chief', agentId: agent.id })).json.key
+    const bot = client(runtime.base, { 'x-roachnet-org-key': key })
+
+    // Numbers past Int's range used to trap `Int(Double)` and take the runtime down.
+    const huge = await bot.post(`/companies/${cid}/cost-events`, { inputTokens: 1e100, outputTokens: 5e12, costCents: 1e300, cachedInputTokens: -1e30 })
+    assert.equal(huge.status, 201)
+    assert.equal(huge.json.costEvent.inputTokens, 0)
+    assert.equal(huge.json.costEvent.outputTokens, 1e12, 'amounts are held to 10^12')
+    assert.equal(huge.json.costEvent.costCents, 0)
+    for (let i = 0; i < 3; i += 1) assert.equal((await bot.post(`/companies/${cid}/cost-events`, { costCents: 9e15 })).status, 201)
+    assert.equal((await owner.post(`/companies/${cid}/budgets`, { amountCents: 1e100 })).status, 400)
+    const costs = await owner.get(`/companies/${cid}/costs`)
+    assert.equal(costs.status, 200)
+    assert.equal(costs.json.totalCents, 3e12)
+    assert.equal((await owner.get(`/companies/${cid}/dashboard`)).status, 200)
+
+    // A one-time claim secret gives one key, however many claims arrive together.
+    const invite = (await owner.post(`/companies/${cid}/invites`, { allowedJoinTypes: 'agent' })).json
+    const join = (await owner.post('/invites/accept', { token: invite.token, requestType: 'agent', agentName: 'Remote Bot' })).json
+    await owner.post(`/companies/${cid}/join-requests/${join.joinRequest.id}/approve`)
+    const claims = await Promise.all(Array.from({ length: 6 }, () => owner.post(`/join-requests/${join.joinRequest.id}/claim`, { claimSecret: join.claimSecret })))
+    assert.deepEqual(claims.map((claim) => claim.status).sort(), [200, 409, 409, 409, 409, 409])
+    assert.equal((await owner.get(`/companies/${cid}/keys`)).json.keys.filter((k) => k.name === 'join claim').length, 1)
+
+    // A reviewer's approvals sent at once decide their own stage, not the next one.
+    const issue = (await owner.post(`/companies/${cid}/issues`, {
+      title: 'Two-stage change', assigneeAgentId: agent.id, status: 'todo',
+      executionPolicy: { stages: [
+        { type: 'review', participants: [{ type: 'agent', id: agent.id }] },
+        { type: 'approval', participants: [{ type: 'user', id: 'user_local_owner' }] },
+      ] },
+    })).json.issue
+    await bot.patch(`/companies/${cid}/issues/${issue.id}`, { status: 'in_progress' })
+    const inReview = (await bot.patch(`/companies/${cid}/issues/${issue.id}`, { status: 'done' })).json.issue
+    assert.equal(inReview.executionState.currentParticipant.id, agent.id)
+    const decisions = await Promise.all(Array.from({ length: 6 }, () => bot.post(`/companies/${cid}/issues/${issue.id}/review`, { decision: 'approve' })))
+    assert.equal(decisions.filter((decision) => decision.status === 200).length, 1)
+    assert.ok(decisions.every((decision) => [200, 403, 409].includes(decision.status)), decisions.map((d) => d.status).join(','))
+    const after = (await owner.get(`/companies/${cid}/issues/${issue.id}`)).json.issue
+    assert.notEqual(after.status, 'done')
+    assert.equal(after.executionState.status, 'pending')
+    assert.equal(after.executionState.currentStageIndex, 1)
+    assert.equal(after.executionState.currentParticipant.id, 'user_local_owner')
+
+    // Viewers read traces but can't score them.
+    const peer = client(runtime.base, { 'x-roachtail-auth-kind': 'peer', 'x-roachtail-peer-id': 'peer-viewer-72' })
+    const viewerInvite = (await owner.post(`/companies/${cid}/invites`, { role: 'viewer' })).json
+    const viewerJoin = (await peer.post('/invites/accept', { token: viewerInvite.token, userName: 'Val' })).json.joinRequest
+    await owner.post(`/companies/${cid}/join-requests/${viewerJoin.id}/approve`)
+    assert.equal((await peer.get(`/companies/${cid}/traces`)).status, 200, 'viewers can read traces')
+    assert.equal((await peer.post(`/companies/${cid}/traces/trace_missing/scores`, { name: 'helpful', value: true })).status, 403, 'viewers cannot score them')
+    assert.equal((await fetch(`${runtime.base}/api/health`)).status, 200, 'the runtime is still up')
+  } finally {
+    await stop(runtime)
+  }
+})
+
 test('routines create issues from webhooks and the API; secrets never leave the vault', needsBinary, async () => {
   const runtime = await startRuntime()
   try {
