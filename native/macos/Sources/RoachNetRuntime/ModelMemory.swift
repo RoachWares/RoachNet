@@ -8,11 +8,22 @@ import RoachInference
 
 /// The machine's memory as model loading sees it.
 enum SystemMemory {
-    static var total: Int { Int(ProcessInfo.processInfo.physicalMemory) }
+    /// The machine's memory, or on Linux the cgroup's limit when it is
+    /// lower (a container, a systemd slice with MemoryMax).
+    static var total: Int {
+        let physical = Int(ProcessInfo.processInfo.physicalMemory)
+        #if canImport(Darwin)
+        return physical
+        #else
+        guard let limit = cgroupMemory()?.limit else { return physical }
+        return min(physical, limit)
+        #endif
+    }
 
     /// What the system could hand out now without paging. On macOS: free,
     /// inactive, purgeable and speculative pages (Activity Monitor's
-    /// "available"). On Linux: the kernel's own estimate, `MemAvailable`.
+    /// "available"). On Linux: the kernel's own estimate, `MemAvailable`, or
+    /// less when a cgroup limit leaves less headroom than that.
     static func available() -> Int {
         #if canImport(Darwin)
         var stats = vm_statistics64()
@@ -25,7 +36,9 @@ enum SystemMemory {
         return pages * Int(getpagesize())
         #else
         let meminfo = try? String(contentsOfFile: "/proc/meminfo", encoding: .utf8)
-        return meminfo.flatMap(memAvailable(meminfo:)) ?? total / 2
+        let host = meminfo.flatMap(memAvailable(meminfo:)) ?? total / 2
+        guard let cgroup = cgroupMemory() else { return host }
+        return min(host, cgroup.available)
         #endif
     }
 
@@ -43,9 +56,9 @@ enum SystemMemory {
     static func gigabytes(_ bytes: Int) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }
 
     /// The memory pressure level: 1 normal, 2 warning, 4 critical; 0 when it
-    /// can't be read. macOS reports its own; on Linux it comes from the
-    /// kernel's pressure stall information, or from `MemAvailable` where that
-    /// isn't there (older kernels, some containers).
+    /// can't be read. macOS reports its own. On Linux it comes from pressure
+    /// stall information, the cgroup's own (cgroup v2) before the whole
+    /// machine's, or from the available share where neither is there.
     static func pressureLevel() -> Int {
         #if canImport(Darwin)
         var level: Int32 = 0
@@ -53,14 +66,41 @@ enum SystemMemory {
         guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else { return 0 }
         return Int(level)
         #else
-        if let psi = try? String(contentsOfFile: "/proc/pressure/memory", encoding: .utf8), let level = pressureLevel(psi: psi) {
-            return level
-        }
-        let meminfo = try? String(contentsOfFile: "/proc/meminfo", encoding: .utf8)
-        guard let available = meminfo.flatMap(memAvailable(meminfo:)), total > 0 else { return 0 }
-        return pressureLevel(available: available, total: total)
+        let psi = cgroupPressure() ?? (try? String(contentsOfFile: "/proc/pressure/memory", encoding: .utf8))
+        if let psi, let level = pressureLevel(psi: psi) { return level }
+        let total = total
+        guard total > 0 else { return 0 }
+        return pressureLevel(available: available(), total: total)
         #endif
     }
+
+    #if !canImport(Darwin)
+    /// The memory limit and headroom from the cgroups this process is in,
+    /// walking up to the root: the lowest limit, and the least headroom under
+    /// any of them. nil when no cgroup sets a limit.
+    static func cgroupMemory() -> (limit: Int, available: Int)? {
+        guard let membership = try? String(contentsOfFile: "/proc/self/cgroup", encoding: .utf8) else { return nil }
+        let (version, directories) = cgroupDirectories(procSelfCgroup: membership)
+        func read(_ path: String) -> String? { try? String(contentsOfFile: path, encoding: .utf8) }
+        let levels: [CgroupLevel] = directories.compactMap { directory in
+            let limitFile = version == 2 ? "memory.max" : "memory.limit_in_bytes"
+            let usageFile = version == 2 ? "memory.current" : "memory.usage_in_bytes"
+            guard let limitText = read(directory + "/" + limitFile), let usageText = read(directory + "/" + usageFile),
+                  let usage = Int(usageText.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            let inactive = read(directory + "/memory.stat").map { inactiveFile(memoryStat: $0, version: version) } ?? 0
+            return CgroupLevel(limit: cgroupLimitValue(limitText, version: version), usage: usage, inactiveFile: inactive)
+        }
+        return cgroupLimit(levels)
+    }
+
+    /// The process's own cgroup v2 pressure stall information, when there is one.
+    static func cgroupPressure() -> String? {
+        guard let membership = try? String(contentsOfFile: "/proc/self/cgroup", encoding: .utf8) else { return nil }
+        let (version, directories) = cgroupDirectories(procSelfCgroup: membership)
+        guard version == 2, let own = directories.first else { return nil }
+        return try? String(contentsOfFile: own + "/memory.pressure", encoding: .utf8)
+    }
+    #endif
 
     /// The system is short of memory (warning or worse): idle request slots hand their caches back sooner.
     static var underPressure: Bool { pressureLevel() >= 2 }
@@ -93,6 +133,80 @@ enum SystemMemory {
         if full >= 10 || some >= 40 { return 4 }
         if some >= 10 { return 2 }
         return 1
+    }
+
+    /// One cgroup on the way from this process to the root.
+    struct CgroupLevel: Equatable {
+        /// nil when this cgroup sets no limit.
+        let limit: Int?
+        let usage: Int
+        /// Page cache the kernel can drop before it would hit the limit.
+        let inactiveFile: Int
+    }
+
+    /// The cgroup folders that bound this process, its own first and the root
+    /// last, from the text of /proc/self/cgroup. A cgroup v1 memory controller
+    /// is used where there is one (hybrid setups); otherwise the v2 tree.
+    static func cgroupDirectories(procSelfCgroup: String, root: String = "/sys/fs/cgroup") -> (version: Int, directories: [String]) {
+        var unified: String?
+        var legacy: String?
+        for line in procSelfCgroup.split(separator: "\n") {
+            let fields = line.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            guard fields.count == 3 else { continue }
+            let controllers = fields[1].split(separator: ",")
+            if fields[0] == "0", fields[1].isEmpty {
+                unified = String(fields[2])
+            } else if controllers.contains("memory") {
+                legacy = String(fields[2])
+            }
+        }
+        func walk(_ base: String, _ path: String) -> [String] {
+            var parts = path.split(separator: "/").map(String.init).filter { $0 != "." && $0 != ".." }
+            var directories: [String] = []
+            while true {
+                directories.append(parts.isEmpty ? base : base + "/" + parts.joined(separator: "/"))
+                if parts.isEmpty { break }
+                parts.removeLast()
+            }
+            return directories
+        }
+        if let legacy { return (1, walk(root + "/memory", legacy)) }
+        if let unified { return (2, walk(root, unified)) }
+        return (2, [])
+    }
+
+    /// A cgroup memory limit in bytes, or nil for none: "max" in cgroup v2, a
+    /// value near Int64.max in cgroup v1.
+    static func cgroupLimitValue(_ text: String, version: Int) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != "max", let value = Int(trimmed), value > 0 else { return nil }
+        if version == 1, value >= 1 << 62 { return nil }
+        return value
+    }
+
+    /// Reclaimable page cache from a cgroup's memory.stat: `inactive_file` in
+    /// cgroup v2, `total_inactive_file` (the whole subtree) in cgroup v1.
+    static func inactiveFile(memoryStat: String, version: Int) -> Int {
+        var found: [String: Int] = [:]
+        for line in memoryStat.split(separator: "\n") {
+            let fields = line.split(separator: " ")
+            guard fields.count == 2, let value = Int(fields[1]), value >= 0 else { continue }
+            found[String(fields[0])] = value
+        }
+        return (version == 1 ? found["total_inactive_file"] : nil) ?? found["inactive_file"] ?? 0
+    }
+
+    /// The lowest limit among `levels`, and the least headroom under any of
+    /// them; nil when none sets a limit.
+    static func cgroupLimit(_ levels: [CgroupLevel]) -> (limit: Int, available: Int)? {
+        var result: (limit: Int, available: Int)?
+        for level in levels {
+            guard let limit = level.limit else { continue }
+            let used = max(0, level.usage - level.inactiveFile)
+            let headroom = max(0, limit - used)
+            result = (min(result?.limit ?? limit, limit), min(result?.available ?? headroom, headroom))
+        }
+        return result
     }
 
     /// A level from how much memory is still available: under 5% critical,

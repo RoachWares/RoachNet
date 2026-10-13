@@ -36,6 +36,50 @@ final class SystemMemoryTests: XCTestCase {
         XCTAssertEqual(SystemMemory.pressureLevel(available: 5, total: 0), 0)
     }
 
+    func testCgroupFoldersAreReadFromTheProcessMembership() {
+        let unified = SystemMemory.cgroupDirectories(procSelfCgroup: "0::/user.slice/user-1000.slice/session-2.scope\n")
+        XCTAssertEqual(unified.version, 2)
+        XCTAssertEqual(unified.directories, [
+            "/sys/fs/cgroup/user.slice/user-1000.slice/session-2.scope",
+            "/sys/fs/cgroup/user.slice/user-1000.slice",
+            "/sys/fs/cgroup/user.slice",
+            "/sys/fs/cgroup",
+        ])
+        // A container sees its own cgroup as the root.
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "0::/\n").directories, ["/sys/fs/cgroup"])
+        // Hybrid: the v1 memory controller is the one that sets limits.
+        let hybrid = SystemMemory.cgroupDirectories(procSelfCgroup: "9:name=systemd:/\n4:memory:/jobs/shell\n2:cpuacct:/jobs\n0::/\n")
+        XCTAssertEqual(hybrid.version, 1)
+        XCTAssertEqual(hybrid.directories, ["/sys/fs/cgroup/memory/jobs/shell", "/sys/fs/cgroup/memory/jobs", "/sys/fs/cgroup/memory"])
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "5:cpu,memory:/a\n").directories, ["/sys/fs/cgroup/memory/a", "/sys/fs/cgroup/memory"])
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "").directories, [])
+    }
+
+    func testCgroupLimitsAndHeadroom() {
+        XCTAssertNil(SystemMemory.cgroupLimitValue("max\n", version: 2))
+        XCTAssertEqual(SystemMemory.cgroupLimitValue("6272172032\n", version: 2), 6_272_172_032)
+        XCTAssertEqual(SystemMemory.cgroupLimitValue("6272172032\n", version: 1), 6_272_172_032)
+        XCTAssertNil(SystemMemory.cgroupLimitValue("9223372036854771712\n", version: 1))
+        XCTAssertNil(SystemMemory.cgroupLimitValue("lots", version: 2))
+        XCTAssertEqual(SystemMemory.inactiveFile(memoryStat: "anon 1\nfile 2\ninactive_file 300\n", version: 2), 300)
+        XCTAssertEqual(SystemMemory.inactiveFile(memoryStat: "inactive_file 5\ntotal_inactive_file 7\n", version: 1), 7)
+        XCTAssertEqual(SystemMemory.inactiveFile(memoryStat: "anon 1\n", version: 2), 0)
+
+        let gb = 1 << 30
+        // The process's own cgroup sets 6 GB, the root none: 1 GB in use, a tenth of it cache.
+        let own = SystemMemory.CgroupLevel(limit: 6 * gb, usage: gb, inactiveFile: gb / 10)
+        let root = SystemMemory.CgroupLevel(limit: nil, usage: 8 * gb, inactiveFile: 0)
+        XCTAssertEqual(SystemMemory.cgroupLimit([own, root])?.limit, 6 * gb)
+        XCTAssertEqual(SystemMemory.cgroupLimit([own, root])?.available, 6 * gb - (gb - gb / 10))
+        // A parent with a lower limit and little headroom wins.
+        let parent = SystemMemory.CgroupLevel(limit: 4 * gb, usage: 4 * gb - gb / 2, inactiveFile: 0)
+        XCTAssertEqual(SystemMemory.cgroupLimit([own, parent, root])?.limit, 4 * gb)
+        XCTAssertEqual(SystemMemory.cgroupLimit([own, parent, root])?.available, gb / 2)
+        // Over the limit means no headroom, not a negative one; no limits means nil.
+        XCTAssertEqual(SystemMemory.cgroupLimit([.init(limit: gb, usage: 2 * gb, inactiveFile: 0)])?.available, 0)
+        XCTAssertNil(SystemMemory.cgroupLimit([root]))
+    }
+
     func testTheRunningSystemReportsSomething() {
         XCTAssertGreaterThan(SystemMemory.total, 0)
         let available = SystemMemory.available()
