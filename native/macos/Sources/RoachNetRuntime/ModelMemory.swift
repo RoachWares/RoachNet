@@ -178,10 +178,10 @@ enum SystemMemory {
         let root: String
     }
 
-    /// The cgroup v2 mount and the mount of the v1 memory controller, from the
-    /// text of /proc/self/mountinfo. The v1 controller can share a mount with
-    /// others ("cpu,memory") and sit anywhere.
-    static func cgroupMounts(mountinfo: String) -> (unified: CgroupMount?, memory: CgroupMount?) {
+    /// The cgroup v2 mounts and the mounts of the v1 memory controller, in
+    /// order, from the text of /proc/self/mountinfo. The v1 controller can
+    /// share a mount with others ("cpu,memory") and sit anywhere.
+    static func cgroupMounts(mountinfo: String) -> (unified: [CgroupMount], memory: [CgroupMount]) {
         // Spaces and the like are written as octal escapes ("\040").
         func unescape(_ field: Substring) -> String {
             var bytes: [UInt8] = []
@@ -198,17 +198,17 @@ enum SystemMemory {
             }
             return String(decoding: bytes, as: UTF8.self)
         }
-        var unified: CgroupMount?
-        var memory: CgroupMount?
+        var unified: [CgroupMount] = []
+        var memory: [CgroupMount] = []
         for line in mountinfo.split(separator: "\n") {
             // "41 37 0:33 / /sys/fs/cgroup/memory rw,relatime - cgroup cgroup rw,memory"
             let fields = line.split(separator: " ")
             guard let dash = fields.firstIndex(of: "-"), dash >= 5, fields.count >= dash + 4 else { continue }
             let mount = CgroupMount(directory: unescape(fields[4]), root: unescape(fields[3]))
-            if fields[dash + 1] == "cgroup2", unified == nil {
-                unified = mount
-            } else if fields[dash + 1] == "cgroup", memory == nil, fields[dash + 3].split(separator: ",").contains("memory") {
-                memory = mount
+            if fields[dash + 1] == "cgroup2" {
+                unified.append(mount)
+            } else if fields[dash + 1] == "cgroup", fields[dash + 3].split(separator: ",").contains("memory") {
+                memory.append(mount)
             }
         }
         return (unified, memory)
@@ -217,8 +217,10 @@ enum SystemMemory {
     /// The cgroup folders that bound this process, its own first and the root
     /// last, from the text of /proc/self/cgroup. A cgroup v1 memory controller
     /// is used where there is one (hybrid setups); otherwise the v2 tree.
-    /// With /proc/self/mountinfo the folders are found where the hierarchy is
-    /// mounted, as far up as that mount shows; without it, under `root`.
+    /// With /proc/self/mountinfo the folders are found under a mount of the
+    /// hierarchy that shows this process's cgroup, as far up as it shows; when
+    /// no mount does, there are none, rather than another cgroup's. Without
+    /// mountinfo they are found under `root`.
     static func cgroupDirectories(procSelfCgroup: String, mountinfo: String? = nil, root: String = "/sys/fs/cgroup") -> (version: Int, directories: [String]) {
         var unified: String?
         var legacy: String?
@@ -243,20 +245,27 @@ enum SystemMemory {
             return directories
         }
         // A cgroup path seen through a mount whose root is `mountRoot`; nil when
-        // the mount doesn't show it, so only the mount's own folder is read.
+        // the mount doesn't show it.
         func relative(_ path: String, to mountRoot: String) -> String? {
             if mountRoot == "/" { return path }
             if path == mountRoot { return "/" }
             return path.hasPrefix(mountRoot + "/") ? String(path.dropFirst(mountRoot.count)) : nil
         }
+        // The folders under the first mount that shows `path`, or none.
+        func folders(_ path: String, in mounts: [CgroupMount]) -> [String] {
+            for mount in mounts {
+                if let inside = relative(path, to: mount.root) { return walk(mount.directory, inside) }
+            }
+            return []
+        }
         let mounts = mountinfo.map(cgroupMounts(mountinfo:))
         if let legacy {
-            guard let mount = mounts?.memory else { return (1, walk(root + "/memory", legacy)) }
-            return (1, relative(legacy, to: mount.root).map { walk(mount.directory, $0) } ?? [mount.directory])
+            guard let mounts else { return (1, walk(root + "/memory", legacy)) }
+            return (1, folders(legacy, in: mounts.memory))
         }
         if let unified {
-            guard let mount = mounts?.unified else { return (2, walk(root, unified)) }
-            return (2, relative(unified, to: mount.root).map { walk(mount.directory, $0) } ?? [mount.directory])
+            guard let mounts else { return (2, walk(root, unified)) }
+            return (2, folders(unified, in: mounts.unified))
         }
         return (2, [])
     }
