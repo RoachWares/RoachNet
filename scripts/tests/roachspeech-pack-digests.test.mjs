@@ -78,3 +78,19 @@ test('the committed digest manifest covers every pack with full SHA-256s', () =>
     assert.ok(Object.values(files).some((record) => record.upstream), `${packID} has no file traced to its upstream commit`)
   }
 })
+
+// CI imports Chatterbox fresh and checks it against the digests. A bundle the
+// digests record but the importer never writes fails that check, so name each
+// recorded bundle in the importer (as a compile target or a recorded copy).
+test('the Chatterbox importer writes every Core ML bundle the digests record', () => {
+  const manifest = readDigestManifest(roachSpeechDigestManifestPath)
+  const recorded = new Set(
+    Object.keys(manifest.packs['roachvoice-chatterbox-coreml'].files)
+      .map((file) => file.match(/^(.*?\.mlmodelc)\//)?.[1])
+      .filter(Boolean)
+  )
+  assert.ok(recorded.size > 0)
+  const importer = readFileSync(path.join(repoRoot, 'scripts', 'import-roachvoice-chatterbox-coreml.mjs'), 'utf8')
+  const missing = [...recorded].filter((bundle) => !importer.includes(`'${bundle}'`))
+  assert.deepEqual(missing, [], 'a fresh import would not write these recorded bundles')
+})

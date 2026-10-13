@@ -31,6 +31,15 @@ const modelPackages = new Map([
   ['mel2wav.mlpackage', 'RoachVoice/Reference/RoachVoiceMelVocoder.mlmodelc'],
 ])
 
+// The pack RoachNet 1.1.0 was built and recorded with
+// (docs/release-gates/roachspeech-pack-digests.json) also has a copy of the
+// text embedding under Reference/, left by an earlier import. Write that copy
+// too, so a fresh import reproduces the recorded pack byte for byte. Drop it
+// together with its digests the next time the pack is re-recorded.
+const recordedCopies = new Map([
+  ['RoachVoice/RoachVoiceEmbedTokens.mlmodelc', 'RoachVoice/Reference/RoachVoiceTextEmbedding.mlmodelc'],
+])
+
 const referenceFiles = new Set([
   'LICENSE',
   'NOTICE',
@@ -215,6 +224,13 @@ async function importChatterbox(args) {
     const destination = path.join(outputRoot, relativeDestination)
     runCoreMLCompiler(packageRoot, path.join(compileRoot, packageName), destination)
     console.log(`Compiled ${packageName} -> ${path.relative(repoRoot, destination)}`)
+  }
+
+  for (const [source, copy] of recordedCopies) {
+    const destination = path.join(outputRoot, copy)
+    fs.rmSync(destination, { recursive: true, force: true })
+    fs.cpSync(path.join(outputRoot, source), destination, { recursive: true })
+    console.log(`Copied ${source} -> ${path.relative(repoRoot, destination)} (recorded layout)`)
   }
 
   for (const file of files.filter((entry) => referenceFiles.has(entry.path))) {
