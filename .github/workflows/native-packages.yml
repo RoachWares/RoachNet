@@ -51,7 +51,7 @@ jobs:
     runs-on: blacksmith-6vcpu-macos-15
     steps:
       - name: Checkout candidate
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -141,13 +141,13 @@ jobs:
           PREVENT_SELF_REVIEW="$(node -e 'const p=JSON.parse(process.argv[1]),r=(p.protection_rules||[]).find(r=>r.type==="required_reviewers"); process.stdout.write(String(r?.prevent_self_review===true))' "$ENVIRONMENT_JSON")"
           [[ "$REVIEWER_COUNT" -ge 1 && "$PREVENT_SELF_REVIEW" == true ]] || { echo 'roachnet-release-staging requires reviewers with prevent-self-review enabled.' >&2; exit 1; }
       - name: Checkout exact candidate
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Checkout exact iOS companion
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: RoachWares/RoachNet-iOS
           ref: ${{ inputs.ios_companion_sha }}
