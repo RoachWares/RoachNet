@@ -15,11 +15,40 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 ### RoachTrace
 
 - `GET /api/traces` (and `/api/traces/metrics`) take `minLatencyMs`, `maxLatencyMs` and `minCostUsd` for finding slow or expensive traces. A trace still running has no latency yet, so a latency bound leaves it out. Bounds that aren't non-negative numbers are ignored.
+- Credential fields are redacted by what their names mean (`access_token`, `client_secret`, `x-api-key`, `private_key`, cookies), not only a few exact names; counts such as `max_tokens` are kept.
+- Two export flushes at once no longer drop a batch that was never sent, and the in-memory trace cap holds while a large day replays at startup.
 
 ### Model server
 
 - Numbers from request bodies and CLI output (`num_predict`, `top_k`, `repeat_last_n`, `seed`, `num_ctx`, embedding dimensions, schema item counts, trace settings, usage counts) are clamped, so NaN, infinity or out-of-range values can't crash the runtime.
 - A new request slot needs twice its size free normally and four times while macOS reports memory pressure, and isn't made at critical pressure. A refused slot pauses growth for a minute instead of capping the model for good, and idle extra slots hand back their memory after 30 seconds under pressure (5 minutes otherwise).
+- A GGUF's counts, sizes, offsets and nesting are checked before use, and its model sizes (heads, widths, context) must be plausible, so a broken or hostile model file is refused instead of crashing the runtime.
+- Llama 3.1-style RoPE scaling declared in a GGUF's metadata is applied when the file has no `rope_freqs` tensor.
+- JSON Schema `anyOf` and `oneOf` keep every branch that still fits until the output decides, so a second object variant (or a second forced tool) can be generated.
+- `/v1/completions` takes one text prompt. Batched or token-array prompts get a 400 instead of being merged into one.
+- A model that fits the memory budget but not beside models busy answering requests is refused with a 503 instead of being loaded past the budget.
+- When another program already answers on RoachNet's own model address, 127.0.0.1:36434 (an older RoachNet's `ollama serve` still running after an upgrade, say), RoachInference takes a free loopback port and RoachNet uses that, instead of quietly sending its requests to the other program. The other program is left running. Any other address set with `OLLAMA_BASE_URL` is still used as configured.
+- Half-precision subnormals decode correctly on Intel builds, where they used to crash.
+
+### Packs and themes
+
+- A pack archive is read before it's unpacked and refused if an entry is absolute, climbs out with `..`, or is a link or special file. It then unpacks into a folder of its own, is checked again, and is merged in without replacing a file the pack already has. (macOS's own tools kept the tested archives inside the folder, but a symbolic link could still point outside it.)
+- RoachSpeech packs install only from RoachNet download descriptors, and a pack the catalog lists must match the catalog's SHA-256 however the install was asked for (Pack Manager, install link or iPhone).
+- A pack installs only when the packs it depends on are installed; if one of them is switched off, the new pack installs switched off. Pack state changes are made in one step, so two installs finishing together both stay recorded.
+- An imported theme's background picture has to be a picture file inside the theme's folder, or the import is refused. A crafted name could copy a file outside the themes folder.
+
+### Org
+
+- Viewers can read traces but can no longer score them.
+- Approvals sent at once decide only the stage they were checked against, so one reviewer can't pass a later stage meant for someone else. A one-time agent claim gives one key however many claims arrive together.
+- Numbers in Org requests beyond what JSON carries exactly are refused instead of crashing the runtime, and token counts and amounts of money are held to 10^12 per event so sums stay in range.
+
+### Downloads, collections and maps
+
+- Response size limits hold while bytes arrive, and up front when a server announces a larger body, for collections, pack catalogs, manifests and download descriptors.
+- A live Wikipedia option other than "none" must have a URL.
+- A map tile's gzip size field can no longer make RoachNet reserve gigabytes, and tiles rendered for a previous set of map packs are dropped.
+- Kiwix catalog: Math & Problem Solving's recommended tier has a book again, four versions match their ZIM files, and "Download recommended" skips a recommended tier with nothing to download.
 
 ### Vault
 
@@ -34,6 +63,7 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 
 - `scripts/tests/release-hardening.test.mjs` checks the packaged helper itself. It covers out-of-range numbers, RoachTail token expiry, the local API token and scopes, and salted webhook secrets.
 - The apps no longer carry the build Mac's file paths: dSYMs are kept out of the bundle, executables are stripped of their debug map before signing, and `scripts/audit-release-privacy.mjs` fails the build if a built file names the build Mac's folders, host names or network addresses.
+- The supply-chain audit expects a scan only for runtimes a release bundles, so a 1.1 candidate (no bundled Ollama or Node.js) can pass promotion.
 
 ## v1.1.0 - 2026-10-12
 
