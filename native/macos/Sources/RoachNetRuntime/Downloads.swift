@@ -618,7 +618,7 @@ extension NativeRuntime {
         return manifest
     }
 
-    /// Extracts with the system `ditto` and atomically swaps the pack into place.
+    /// Unpacks with RoachNet's own ZIP reader and atomically swaps the pack into place.
     func installRoachSpeechPackArchive(_ job: DownloadJob, packID: String, kind: String) throws {
         let packsRoot = modelPacksRootPath()
         try Files.mkdirp(packsRoot)
@@ -634,14 +634,10 @@ extension NativeRuntime {
         }
         do {
             guard Files.isFile(job.filepath) else { throw RuntimeError("Downloaded RoachSpeech pack is not a file: \(job.filepath)") }
-            // Same rules as any pack archive: read it first, then make sure only
-            // plain files and folders came out (see PackArchive).
-            try PackArchive.inspect(job.filepath, format: "zip")
-            let result = Processes.run("/usr/bin/ditto", ["-x", "-k", job.filepath, extractRoot], timeoutMs: 600_000)
-            if result.status != 0 {
-                throw RuntimeError("ditto -x -k \(job.filepath) \(extractRoot) failed with exit code \(result.status)\(result.errorOutput.isEmpty ? "" : ": \(result.errorOutput)")")
-            }
-            try PackArchive.checkExtracted(extractRoot, archiveName: Path.basename(job.filepath))
+            // Same rules as any pack archive: read it first, unpack it with
+            // RoachNet's own ZIP reader, and make sure only plain files and
+            // folders came out (see PackArchive).
+            try PackArchive.unpack(job.filepath, format: "zip", into: extractRoot)
             guard let packRoot = findRoachSpeechPackRoot(extractRoot) else {
                 throw RuntimeError("Downloaded archive did not contain a RoachSpeechPack.json manifest.")
             }

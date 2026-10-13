@@ -8,6 +8,13 @@ enum TestZip {
         var name: String
         var data: Data = Data()
         var mode: UInt32 = 0o100644
+        var method: Int = 0
+        var flags: Int = 0
+        /// false: a local file the directory doesn't list (only tools that walk the local headers see it).
+        var listed = true
+        /// false: no local record of its own; `directoryOffset` points into another file's data.
+        var written = true
+        var directoryOffset: Int?
     }
 
     static func crc32(_ data: Data) -> UInt32 {
@@ -22,26 +29,38 @@ enum TestZip {
         return crc ^ 0xFFFF_FFFF
     }
 
+    private static func u16(_ value: Int, _ into: inout Data) { into.append(UInt8(value & 0xFF)); into.append(UInt8((value >> 8) & 0xFF)) }
+    private static func u32(_ value: UInt32, _ into: inout Data) { for shift in stride(from: 0, to: 32, by: 8) { into.append(UInt8((value >> UInt32(shift)) & 0xFF)) } }
+
+    /// The local file header and data `make` writes for `item`.
+    static func localRecord(_ item: Item) -> Data {
+        var out = Data()
+        let name = Data(item.name.utf8)
+        u32(0x0403_4B50, &out); u16(20, &out); u16(item.flags, &out); u16(item.method, &out); u16(0, &out); u16(0x21, &out)
+        u32(crc32(item.data), &out); u32(UInt32(item.data.count), &out); u32(UInt32(item.data.count), &out)
+        u16(name.count, &out); u16(0, &out); out.append(name); out.append(item.data)
+        return out
+    }
+
     /// `prefix` is written ahead of the first file, with every offset after it shifted to match.
     static func make(_ items: [Item], prefix: Data = Data()) -> Data {
         var out = prefix, directory = Data()
-        func u16(_ value: Int, _ into: inout Data) { into.append(UInt8(value & 0xFF)); into.append(UInt8((value >> 8) & 0xFF)) }
-        func u32(_ value: UInt32, _ into: inout Data) { for shift in stride(from: 0, to: 32, by: 8) { into.append(UInt8((value >> UInt32(shift)) & 0xFF)) } }
+        var listed = 0
         for item in items {
+            let offset = out.count
+            if item.written { out.append(localRecord(item)) }
+            guard item.listed else { continue }
+            listed += 1
             let name = Data(item.name.utf8)
-            let crc = crc32(item.data)
-            let offset = UInt32(out.count)
-            u32(0x0403_4B50, &out); u16(20, &out); u16(0, &out); u16(0, &out); u16(0, &out); u16(0x21, &out)
-            u32(crc, &out); u32(UInt32(item.data.count), &out); u32(UInt32(item.data.count), &out)
-            u16(name.count, &out); u16(0, &out); out.append(name); out.append(item.data)
-            u32(0x0201_4B50, &directory); u16(0x0314, &directory); u16(20, &directory); u16(0, &directory); u16(0, &directory)
-            u16(0, &directory); u16(0x21, &directory); u32(crc, &directory); u32(UInt32(item.data.count), &directory)
+            u32(0x0201_4B50, &directory); u16(0x0314, &directory); u16(20, &directory); u16(item.flags, &directory); u16(item.method, &directory)
+            u16(0, &directory); u16(0x21, &directory); u32(crc32(item.data), &directory); u32(UInt32(item.data.count), &directory)
             u32(UInt32(item.data.count), &directory); u16(name.count, &directory); u16(0, &directory); u16(0, &directory)
-            u16(0, &directory); u16(0, &directory); u32(item.mode << 16, &directory); u32(offset, &directory); directory.append(name)
+            u16(0, &directory); u16(0, &directory); u32(item.mode << 16, &directory)
+            u32(UInt32(item.directoryOffset ?? offset), &directory); directory.append(name)
         }
         let directoryOffset = UInt32(out.count)
         out.append(directory)
-        u32(0x0605_4B50, &out); u16(0, &out); u16(0, &out); u16(items.count, &out); u16(items.count, &out)
+        u32(0x0605_4B50, &out); u16(0, &out); u16(0, &out); u16(listed, &out); u16(listed, &out)
         u32(UInt32(directory.count), &out); u32(directoryOffset, &out); u16(0, &out)
         return out
     }
@@ -152,24 +171,69 @@ final class PackArchiveTests: XCTestCase {
         try refused(TestZip.make([.init(name: "aaaaaa.txt", data: Data("a".utf8))], prefix: Data(repeating: 0x42, count: 16)), "prefix.zip", "before its first file")
     }
 
-    /// Archives real tools write must still read as one directory.
-    /// `ROACHNET_TEST_ZIPS` (colon-separated paths) adds archives from elsewhere, such as built speech packs.
+    /// Archives real tools write must read as one directory and unpack to
+    /// exactly the files that went in. `ROACHNET_TEST_ZIPS` (colon-separated
+    /// paths) adds archives from elsewhere, such as built speech packs.
     func testZipsThatSystemToolsWriteAreRead() throws {
-        var paths = (ProcessInfo.processInfo.environment["ROACHNET_TEST_ZIPS"] ?? "").split(separator: ":").map(String.init)
-        #if os(macOS)
-        let folder = Path.join(root, "made", "pack")
-        try Files.mkdirp(Path.join(folder, "sub"))
+        let made = Path.join(root, "made"), folder = Path.join(root, "made", "pack")
+        try Files.mkdirp(Path.join(folder, "sub", "empty"))
         try Files.write("a", to: Path.join(folder, "a.txt"))
-        try Data((0..<200_000).map { UInt8(truncatingIfNeeded: $0 &* 2_654_435_761 >> 13) }).write(to: URL(fileURLWithPath: Path.join(folder, "sub", "b.bin")))
+        try Files.write("", to: Path.join(folder, "zero.txt"))
+        try Files.write("#!/bin/sh\n", to: Path.join(folder, "run.sh"))
+        XCTAssertEqual(chmod(Path.join(folder, "run.sh"), 0o755), 0)
+        try Data((0..<200_000).map { UInt8(truncatingIfNeeded: ($0 &* 2_654_435_761) >> 13) }).write(to: URL(fileURLWithPath: Path.join(folder, "sub", "b.bin")))
+        try Data(count: 300_000).write(to: URL(fileURLWithPath: Path.join(folder, "sub", "zeros.bin")))
+
+        var archives: [String] = []
+        #if os(macOS)
         let ditto = Path.join(root, "ditto.zip")
         XCTAssertEqual(Processes.run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", folder, ditto]).status, 0)
-        paths.append(ditto)
+        archives.append(ditto)
         #endif
-        for path in paths {
+        if FileManager.default.isExecutableFile(atPath: "/usr/bin/zip") {
+            let plain = Path.join(root, "zip.zip"), streamed = Path.join(root, "streamed.zip")
+            XCTAssertEqual(Processes.run("/usr/bin/zip", ["-q", "-r", plain, "pack"], cwd: made).status, 0)
+            // Written to a pipe, zip can't seek back, so every file gets a data descriptor.
+            XCTAssertEqual(Processes.run("/bin/sh", ["-c", "/usr/bin/zip -q -r - pack | cat > '\(streamed)'"], cwd: made).status, 0)
+            archives += [plain, streamed]
+        }
+        XCTAssertFalse(archives.isEmpty)
+        for archive in archives {
+            let out = Path.join(root, "out-" + Path.basename(archive))
+            try Files.mkdirp(out)
+            XCTAssertNoThrow(try PackArchive.unpack(archive, format: "zip", into: out), archive)
+            XCTAssertEqual(contents(of: Path.join(out, "pack")), contents(of: folder), archive)
+            XCTAssertFalse(Files.exists(Path.join(out, "__MACOSX")), archive)
+            XCTAssertEqual(Files.lstatInfo(Path.join(out, "pack", "run.sh")).map { $0.st_mode & 0o777 }, 0o755, archive)
+            XCTAssertEqual(Files.lstatInfo(Path.join(out, "pack", "a.txt")).map { $0.st_mode & 0o777 }, 0o644, archive)
+        }
+
+        for path in (ProcessInfo.processInfo.environment["ROACHNET_TEST_ZIPS"] ?? "").split(separator: ":").map(String.init) {
             let entries = try PackArchive.zipEntries(atPath: path)
             XCTAssertFalse(entries.isEmpty, path)
-            XCTAssertNoThrow(try PackArchive.inspect(path, format: "zip"), path)
+            let out = Path.join(root, "out-" + Path.basename(path))
+            try Files.mkdirp(out)
+            XCTAssertNoThrow(try PackArchive.unpack(path, format: "zip", into: out), path)
+            let files = entries.filter { !$0.isDirectory && !$0.name.hasPrefix("__MACOSX/") }
+            for entry in files {
+                let size = Files.lstatInfo(Path.join(out, entry.name)).map { UInt64($0.st_size) }
+                XCTAssertEqual(size, entry.uncompressedBytes, entry.name)
+            }
+            Files.remove(out)
         }
+    }
+
+    /// Every file and folder under `folder`, with each file's bytes.
+    private func contents(of folder: String) -> [String: Data] {
+        var result: [String: Data] = [:]
+        let enumerator = FileManager.default.enumerator(atPath: folder)
+        while let relative = enumerator?.nextObject() as? String {
+            let path = Path.join(folder, relative)
+            var isFolder: ObjCBool = false
+            _ = FileManager.default.fileExists(atPath: path, isDirectory: &isFolder)
+            result[relative + (isFolder.boolValue ? "/" : "")] = isFolder.boolValue ? Data() : (FileManager.default.contents(atPath: path) ?? Data())
+        }
+        return result
     }
 
     private func zip(bytes: Data, _ name: String) throws -> String {
@@ -227,9 +291,10 @@ final class PackArchiveTests: XCTestCase {
         XCTAssertThrowsError(try PackArchive.inflatedSize(of: notGzip, format: "tar.gz", limit: 1 << 20))
     }
 
-    func testZipThatUnderstatesItsSizeIsStillMeasured() throws {
+    func testZipWhoseSizesDisagreeWithItsDataIsRefused() throws {
         // ditto and unzip write a stream's whole length whatever the ZIP's size
-        // fields claim, so an entry of 3 MB that claims 100 bytes is measured.
+        // fields claim. RoachNet's reader writes no more than an entry declares,
+        // so a 3 MB stream that claims 100 bytes can't land.
         let input = Path.join(root, "zeros.bin")
         try Data(count: 3 << 20).write(to: URL(fileURLWithPath: input))
         XCTAssertEqual(Processes.run("/usr/bin/gzip", ["-n", "-k", "-f", input]).status, 0)
@@ -237,15 +302,109 @@ final class PackArchiveTests: XCTestCase {
         let gzip = try Data(contentsOf: URL(fileURLWithPath: input + ".gz"))
         let trailer = [UInt8](gzip.suffix(8))
         let crc = UInt32(trailer[0]) | UInt32(trailer[1]) << 8 | UInt32(trailer[2]) << 16 | UInt32(trailer[3]) << 24
-        let path = Path.join(root, "understated.zip")
-        try TestZip.deflated(name: "zeros.bin", stream: gzip.subdata(in: 10..<(gzip.count - 8)), crc: crc, claimedSize: 100)
-            .write(to: URL(fileURLWithPath: path))
-
-        XCTAssertEqual(try PackArchive.zipEntries(atPath: path).map(\.uncompressedBytes), [100], "the directory claims 100 bytes")
-        XCTAssertGreaterThanOrEqual(try PackArchive.inflatedSize(of: path, format: "zip", limit: 64 << 20), 3 << 20)
-        XCTAssertThrowsError(try PackArchive.inspect(path, format: "zip", maxBytes: 1 << 20)) {
-            XCTAssertTrue("\($0)".contains("more than 1 MB"), "\($0)")
+        let stream = gzip.subdata(in: 10..<(gzip.count - 8))
+        /// Why unpacking failed ("" when it didn't), and how much of the file landed.
+        func unpacked(_ name: String, crc: UInt32, claimedSize: UInt32) throws -> (String, Int) {
+            let path = Path.join(root, name + ".zip"), out = Path.join(root, name)
+            try TestZip.deflated(name: "zeros.bin", stream: stream, crc: crc, claimedSize: claimedSize).write(to: URL(fileURLWithPath: path))
+            try Files.mkdirp(out)
+            var failure = ""
+            do { try PackArchive.unpack(path, format: "zip", into: out) } catch { failure = "\(error)" }
+            let written = (try? FileManager.default.attributesOfItem(atPath: Path.join(out, "zeros.bin")))?[.size] as? Int ?? 0
+            return (failure, written)
         }
+
+        let understated = Path.join(root, "probe.zip")
+        try TestZip.deflated(name: "zeros.bin", stream: stream, crc: crc, claimedSize: 100).write(to: URL(fileURLWithPath: understated))
+        XCTAssertEqual(try PackArchive.zipEntries(atPath: understated).map(\.uncompressedBytes), [100], "the directory claims 100 bytes")
+        XCTAssertGreaterThanOrEqual(try PackArchive.inflatedSize(of: understated, format: "zip", limit: 64 << 20), 3 << 20, "unzip -p writes the whole stream")
+
+        // On Linux, where unzip unpacks, the measured size must match instead.
+        let (more, written) = try unpacked("understated", crc: crc, claimedSize: 100)
+        XCTAssertTrue(more.contains("more than the archive says") || more.contains("different size"), more)
+        XCTAssertLessThanOrEqual(written, 100, "nothing past the declared size is written")
+
+        let (less, _) = try unpacked("overstated", crc: crc, claimedSize: (3 << 20) + 10)
+        XCTAssertTrue(less.contains("less than the archive says") || less.contains("different size"), less)
+
+        let (corrupt, _) = try unpacked("bad-crc", crc: crc ^ 1, claimedSize: 3 << 20)
+        XCTAssertFalse(corrupt.isEmpty, "a CRC-32 that doesn't match is refused")
+        let (good, size) = try unpacked("exact", crc: crc, claimedSize: 3 << 20)
+        XCTAssertEqual(good, "")
+        XCTAssertEqual(size, 3 << 20)
+    }
+
+    func testZipFilesTheDirectoryDoesNotListOrThatOverlapAreRefused() throws {
+        // ditto walks the local headers: it unpacked hidden.txt, which the
+        // directory (and so the checks and unzip's size count) never listed.
+        let hidden = TestZip.make([
+            .init(name: "a.txt", data: Data("listed a".utf8)),
+            .init(name: "hidden.txt", data: Data(repeating: 0x68, count: 4_096), listed: false),
+            .init(name: "c.txt", data: Data("listed c".utf8)),
+        ])
+        try refusedZip(hidden, "hidden.zip", "between its files")
+        let trailing = TestZip.make([.init(name: "a.txt", data: Data("a".utf8)), .init(name: "hidden.txt", data: Data("h".utf8), listed: false)])
+        try refusedZip(trailing, "trailing.zip", "between its last file")
+
+        // Two directory entries over the same bytes: b.txt's local record sits
+        // inside a.txt's data (how a non-recursive zip bomb repeats one kernel).
+        let inner = TestZip.Item(name: "b.txt", data: Data("b".utf8))
+        let overlapping = TestZip.make([
+            .init(name: "a.txt", data: TestZip.localRecord(inner)),
+            .init(name: "b.txt", data: inner.data, written: false, directoryOffset: 30 + 5),
+        ])
+        try refusedZip(overlapping, "overlap.zip", "overlap")
+    }
+
+    func testZipFeaturesPacksDoNotUseAreRefused() throws {
+        try refusedZip(TestZip.make([.init(name: "a.txt", data: Data("a".utf8), flags: 1)]), "encrypted.zip", "encrypted")
+        try refusedZip(TestZip.make([.init(name: "a.txt", data: Data("a".utf8), method: 12)]), "bzip2.zip", "method 12")
+        try refusedZip(TestZip.make([.init(name: "Read.txt", data: Data("1".utf8)), .init(name: "read.TXT", data: Data("2".utf8))]), "twice.zip", "twice")
+        try refusedZip(TestZip.make([.init(name: "folder/", data: Data("x".utf8), mode: 0o040755)]), "folder.zip", "folder that holds data")
+    }
+
+    private func refusedZip(_ bytes: Data, _ file: String, _ expected: String) throws {
+        let path = try zip(bytes: bytes, file)
+        XCTAssertThrowsError(try PackArchive.zipEntries(atPath: path), file) { XCTAssertTrue("\($0)".contains(expected), "\(file): \($0)") }
+        let out = Path.join(root, "out-" + file)
+        try Files.mkdirp(out)
+        XCTAssertThrowsError(try PackArchive.unpack(path, format: "zip", into: out), file)
+        XCTAssertEqual(Files.entries(out).count, 0, "\(file): nothing is unpacked")
+    }
+
+    func testCRC32MatchesTheStandard() {
+        var check = CRC32()
+        check.update(Data("123456789".utf8))
+        XCTAssertEqual(check.value, 0xCBF4_3926)
+        let data = Data((0..<100_003).map { UInt8(truncatingIfNeeded: ($0 &* 2_654_435_761) >> 7) })
+        var whole = CRC32()
+        whole.update(data)
+        XCTAssertEqual(whole.value, TestZip.crc32(data))
+        var parts = CRC32()
+        parts.update(data.prefix(7))
+        parts.update(data.dropFirst(7))
+        XCTAssertEqual(parts.value, whole.value)
+    }
+
+    func testFolderThatCannotBeReadIsStillCheckedAndModesComeOutPlain() throws {
+        let tree = Path.join(root, "modes"), locked = Path.join(root, "modes", "locked")
+        try Files.mkdirp(locked)
+        try Files.write("x", to: Path.join(tree, "tool"))
+        try Files.write("y", to: Path.join(tree, "data"))
+        try Files.write("z", to: Path.join(locked, "inner.txt"))
+        XCTAssertEqual(chmod(Path.join(tree, "tool"), 0o4755), 0)
+        XCTAssertEqual(chmod(Path.join(tree, "data"), 0o666), 0)
+        XCTAssertEqual(chmod(locked, 0o000), 0)
+        XCTAssertNoThrow(try PackArchive.checkExtracted(tree, archiveName: "m.tar.gz"))
+        XCTAssertEqual(Files.lstatInfo(Path.join(tree, "tool")).map { $0.st_mode & 0o7777 }, 0o755)
+        XCTAssertEqual(Files.lstatInfo(Path.join(tree, "data")).map { $0.st_mode & 0o7777 }, 0o644)
+        XCTAssertEqual(Files.lstatInfo(locked).map { $0.st_mode & 0o7777 }, 0o755)
+
+        // A link inside a folder nobody could read is still found (it used to look empty).
+        try FileManager.default.createSymbolicLink(atPath: Path.join(locked, "out"), withDestinationPath: "/etc")
+        XCTAssertEqual(chmod(locked, 0o000), 0)
+        XCTAssertThrowsError(try PackArchive.checkExtracted(tree, archiveName: "m.tar.gz")) { XCTAssertTrue("\($0)".contains("link"), "\($0)") }
+        chmod(locked, 0o755)
     }
 
     func testExtractedTreeWithALinkOrHardLinkIsRefused() throws {
@@ -277,7 +436,7 @@ final class PackArchiveTests: XCTestCase {
     }
 
     #if os(macOS)
-    // MARK: Through the installer (ditto)
+    // MARK: Through the installer
 
     private func registry() -> PackRegistry {
         PackRegistry(storageRoot: Path.join(root, "storage"), appVersion: "1.1.0", platform: "macos")

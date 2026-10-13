@@ -133,25 +133,10 @@ public final class PackInstaller {
     /// merged in without replacing anything.
     func extract(_ archivePath: String, archive: String, into directory: String) throws {
         let name = Path.basename(archivePath)
-        try PackArchive.inspect(archivePath, format: archive)
         let scratch = Path.join(directory, ".extract-\(JS.randomHex(8))")
         try Files.mkdirp(scratch)
         defer { Files.remove(scratch) }
-        let result: Processes.Result
-        switch archive {
-        case "tar.gz", "tgz":
-            result = Processes.run("/usr/bin/tar", ["-xzf", archivePath, "-C", scratch], timeoutMs: 600_000)
-        case "zip":
-            #if os(macOS)
-            result = Processes.run("/usr/bin/ditto", ["-x", "-k", archivePath, scratch], timeoutMs: 600_000)
-            #else
-            result = Processes.run("/usr/bin/unzip", ["-q", "-o", archivePath, "-d", scratch], timeoutMs: 600_000)
-            #endif
-        default:
-            throw PackError.installFailed("Unsupported archive type \(archive).")
-        }
-        guard result.status == 0 else { throw PackError.installFailed("Extracting \(name) failed: \(result.errorOutput)") }
-        try PackArchive.checkExtracted(scratch, archiveName: name)
+        try PackArchive.unpack(archivePath, format: archive, into: scratch)
         Files.remove(archivePath)
         try PackArchive.merge(scratch, into: directory, archiveName: name)
     }

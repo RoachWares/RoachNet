@@ -488,11 +488,13 @@ public enum Processes {
     /// Runs a system tool and waits for it. Only used for OS-provided binaries
     /// (`ps`, `ditto`, `open`).
     @discardableResult
-    public static func run(_ executable: String, _ arguments: [String], cwd: String? = nil, timeoutMs: Int = 120_000) -> Result {
+    public static func run(_ executable: String, _ arguments: [String], cwd: String? = nil, timeoutMs: Int = 120_000,
+                           environment: [String: String]? = nil) -> Result {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         if let cwd { process.currentDirectoryURL = URL(fileURLWithPath: cwd) }
+        if let environment { process.environment = environment }
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
@@ -527,5 +529,16 @@ public enum Processes {
             output: String(decoding: outData.value, as: UTF8.self),
             errorOutput: String(decoding: errData.value, as: UTF8.self)
         )
+    }
+
+    /// The runtime's environment without the variables that change how unzip,
+    /// tar and gzip read an archive (`UNZIP=-:` would let unzip keep `..` in
+    /// names, for instance), for every call that reads one.
+    public static var archiveToolEnvironment: [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        for name in ["UNZIP", "UNZIPOPT", "ZIPINFO", "ZIPINFOOPT", "TAR_OPTIONS", "TAR_READER_OPTIONS", "TAR_WRITER_OPTIONS", "GZIP"] {
+            environment.removeValue(forKey: name)
+        }
+        return environment
     }
 }

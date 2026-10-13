@@ -13,7 +13,8 @@ import Glibc
 /// that are absolute or climb out with `..`, links, devices, and how much it
 /// unpacks to), unpacked into an empty folder of its own, walked again with
 /// `lstat`, and only then moved into place, never over a file that is
-/// already there.
+/// already there. A ZIP is unpacked by RoachNet's own reader (`ZipArchive`),
+/// so it unpacks exactly as it was checked.
 enum PackArchive {
     struct Entry: Equatable {
         let name: String
@@ -47,18 +48,31 @@ enum PackArchive {
     /// unpack to more than `maxBytes`.
     static func inspect(_ archivePath: String, format: String, maxBytes: UInt64 = maxUncompressedBytes) throws {
         let label = Path.basename(archivePath)
-        let tooLarge = PackError.integrity("Archive \(label) unpacks to more than \(sizeText(maxBytes)).")
-        let entries: [Entry]
         switch format {
-        case "zip": entries = try zipEntries(atPath: archivePath)
+        case "zip":
+            // RoachNet's own reader writes exactly the sizes the directory
+            // declares, so the declared total is the real one.
+            let declared = try check(try zipEntries(atPath: archivePath), label: label, maxBytes: maxBytes)
+            #if !canImport(Compression)
+            try measureZip(archivePath, declared: declared, maxBytes: maxBytes)
+            #else
+            _ = declared
+            #endif
         case "tar.gz", "tgz":
             // `tar -t` doesn't list sizes the same way on every system, so the
             // gzip stream is measured first: it holds every file's bytes, and
             // the count stops at the limit instead of inflating all of it.
-            guard try inflatedSize(of: archivePath, format: format, limit: maxBytes) <= maxBytes else { throw tooLarge }
-            entries = try tarEntries(atPath: archivePath)
-        default: throw PackError.installFailed("Unsupported archive type \(format).")
+            guard try inflatedSize(of: archivePath, format: format, limit: maxBytes) <= maxBytes else { throw tooLarge(label, maxBytes) }
+            try check(try tarEntries(atPath: archivePath), label: label, maxBytes: maxBytes)
+        default:
+            throw PackError.installFailed("Unsupported archive type \(format).")
         }
+    }
+
+    /// Refuses entries that could land outside the folder or aren't plain
+    /// files and folders, and a declared total past `maxBytes`, which it returns.
+    @discardableResult
+    static func check(_ entries: [Entry], label: String, maxBytes: UInt64) throws -> UInt64 {
         guard entries.count <= maxEntries else { throw PackError.integrity("Archive \(label) has more than \(maxEntries) entries.") }
         var total: UInt64 = 0
         for entry in entries {
@@ -69,15 +83,28 @@ enum PackArchive {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" is a link or a special file.")
             }
             let (sum, overflow) = total.addingReportingOverflow(entry.uncompressedBytes)
-            guard !overflow, sum <= maxBytes else { throw tooLarge }
+            guard !overflow, sum <= maxBytes else { throw tooLarge(label, maxBytes) }
             total = sum
         }
-        if format == "zip" {
-            // A ZIP's size fields can understate what ditto and unzip write
-            // (both write the whole stream), so the real size is measured too.
-            guard try inflatedSize(of: archivePath, format: format, limit: maxBytes) <= maxBytes else { throw tooLarge }
+        return total
+    }
+
+    static func tooLarge(_ label: String, _ maxBytes: UInt64) -> PackError {
+        PackError.integrity("Archive \(label) unpacks to more than \(sizeText(maxBytes)).")
+    }
+
+    #if !canImport(Compression)
+    /// Where unzip unpacks (Linux CI), every stream must inflate to what the
+    /// directory declares: unzip writes an entry's whole stream whatever its
+    /// size fields say.
+    static func measureZip(_ path: String, declared: UInt64, maxBytes: UInt64) throws {
+        let measured = try inflatedSize(of: path, format: "zip", limit: maxBytes)
+        guard measured <= maxBytes else { throw tooLarge(Path.basename(path), maxBytes) }
+        guard measured == declared else {
+            throw PackError.integrity("Archive \(Path.basename(path)) unpacks to a different size than its directory says.")
         }
     }
+    #endif
 
     static func sizeText(_ bytes: UInt64) -> String {
         bytes >= 1 << 30 ? "\(bytes >> 30) GB" : "\(max(1, bytes >> 20)) MB"
@@ -93,6 +120,7 @@ enum PackArchive {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: zip ? "/usr/bin/unzip" : "/usr/bin/gzip")
         process.arguments = zip ? ["-p", path] : ["-dc", path]
+        process.environment = Processes.archiveToolEnvironment
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -122,8 +150,8 @@ enum PackArchive {
     /// The names and types `tar` lists, in archive order. Sizes are left at
     /// zero; `inspect` measures the whole stream instead.
     static func tarEntries(atPath path: String) throws -> [Entry] {
-        let names = Processes.run("/usr/bin/tar", ["-tzf", path], timeoutMs: 600_000)
-        let verbose = Processes.run("/usr/bin/tar", ["-tvzf", path], timeoutMs: 600_000)
+        let names = Processes.run("/usr/bin/tar", ["-tzf", path], timeoutMs: 600_000, environment: Processes.archiveToolEnvironment)
+        let verbose = Processes.run("/usr/bin/tar", ["-tvzf", path], timeoutMs: 600_000, environment: Processes.archiveToolEnvironment)
         guard names.status == 0, verbose.status == 0 else {
             throw PackError.integrity("Archive \(Path.basename(path)) could not be read: \(names.errorOutput.isEmpty ? verbose.errorOutput : names.errorOutput)")
         }
@@ -141,169 +169,72 @@ enum PackArchive {
     }
 
     /// Reads a ZIP's central directory (ZIP64 included) without extracting
-    /// anything, and refuses an archive that tools could read two ways: more
-    /// than one end record, data between the directory and its end record or
-    /// before the first file, or a local file header whose name differs from
-    /// the directory's (ditto unpacks the local name).
+    /// anything; `ZipArchive` refuses an archive that could be read two ways.
     static func zipEntries(atPath path: String) throws -> [Entry] {
-        let label = Path.basename(path)
-        guard let handle = FileHandle(forReadingAtPath: path) else { throw PackError.integrity("Archive \(label) could not be opened.") }
-        defer { try? handle.close() }
-        let size = try handle.seekToEnd()
-        guard size >= 22 else { throw PackError.integrity("Archive \(label) is not a ZIP file.") }
-        func u16(_ bytes: [UInt8], _ at: Int) -> UInt64 { UInt64(bytes[at]) | UInt64(bytes[at + 1]) << 8 }
-        func u32(_ bytes: [UInt8], _ at: Int) -> UInt64 { u16(bytes, at) | u16(bytes, at + 2) << 16 }
-        func u64(_ bytes: [UInt8], _ at: Int) -> UInt64 { u32(bytes, at) | u32(bytes, at + 4) << 32 }
-        func read(_ offset: UInt64, _ count: Int) throws -> [UInt8] {
-            try handle.seek(toOffset: offset)
-            return [UInt8](try handle.read(upToCount: count) ?? Data())
-        }
+        try ZipArchive(path: path).entries.map(\.summary)
+    }
 
-        // The end-of-central-directory record sits in the last 64 KiB + 22 bytes,
-        // and its comment runs exactly to the end of the file. An archive with
-        // two such records (one hidden in the other's comment, say) is refused.
-        let tailLength = min(size, 65_557)
-        let tailStart = size - tailLength
-        let tail = try read(tailStart, Int(tailLength))
-        var candidates: [Int] = []
-        var index = tail.count - 22
-        while index >= 0 {
-            if tail[index] == 0x50, tail[index + 1] == 0x4B, tail[index + 2] == 0x05, tail[index + 3] == 0x06,
-               index + 22 + Int(u16(tail, index + 20)) == tail.count {
-                candidates.append(index)
-            }
-            index -= 1
-        }
-        guard let eocd = candidates.first else { throw PackError.integrity("Archive \(label) has no ZIP directory.") }
-        guard candidates.count == 1 else { throw PackError.integrity("Archive \(label) has more than one ZIP directory.") }
-        let eocdOffset = tailStart + UInt64(eocd)
+    // MARK: Unpacking
 
-        guard u16(tail, eocd + 4) == 0, u16(tail, eocd + 6) == 0 else { throw PackError.integrity("Archive \(label) spans several disks.") }
-        var count = u16(tail, eocd + 10)
-        var directorySize = u32(tail, eocd + 12)
-        var directoryOffset = u32(tail, eocd + 16)
-        var directoryEnd = eocdOffset
-        // ZIP64: a locator just before the end record points at a ZIP64 end
-        // record, which then holds the real counts and follows the directory.
-        let locator = eocd - 20
-        let hasZip64Locator = locator >= 0 && tail[locator] == 0x50 && tail[locator + 1] == 0x4B && tail[locator + 2] == 0x06 && tail[locator + 3] == 0x07
-        if count == 0xFFFF || directorySize == 0xFFFF_FFFF || directoryOffset == 0xFFFF_FFFF || hasZip64Locator {
-            guard hasZip64Locator else { throw PackError.integrity("Archive \(label) has a damaged ZIP64 directory.") }
-            let recordOffset = u64(tail, locator + 8)
-            guard recordOffset < size, size - recordOffset >= 56 else { throw PackError.integrity("Archive \(label) has a damaged ZIP64 directory.") }
-            let record = try read(recordOffset, 56)
-            guard record.count == 56, record[0] == 0x50, record[1] == 0x4B, record[2] == 0x06, record[3] == 0x06 else {
-                throw PackError.integrity("Archive \(label) has a damaged ZIP64 directory.")
-            }
-            // Fields the classic end record doesn't max out must agree with the
-            // ZIP64 record, or tools reading one or the other would differ.
-            let (wide, size64, offset64) = (u64(record, 32), u64(record, 40), u64(record, 48))
-            guard count == 0xFFFF || count == wide, directorySize == 0xFFFF_FFFF || directorySize == size64,
-                  directoryOffset == 0xFFFF_FFFF || directoryOffset == offset64 else {
-                throw PackError.integrity("Archive \(label) has ZIP and ZIP64 directories that disagree.")
-            }
-            count = wide
-            directorySize = size64
-            directoryOffset = offset64
-            directoryEnd = recordOffset
+    /// Checks an archive as `inspect` does and unpacks it into `destination`,
+    /// an empty folder, then walks what came out (`checkExtracted`). A ZIP is
+    /// unpacked by RoachNet's own reader (`ZipArchive`), so what is written is
+    /// exactly what was checked; a .tar.gz by `tar`, which both lists and
+    /// unpacks it.
+    static func unpack(_ archivePath: String, format: String, into destination: String, maxBytes: UInt64 = maxUncompressedBytes) throws {
+        let label = Path.basename(archivePath)
+        switch format {
+        case "zip":
+            let archive = try ZipArchive(path: archivePath)
+            let declared = try check(archive.entries.map(\.summary), label: label, maxBytes: maxBytes)
+            #if !canImport(Compression)
+            try measureZip(archivePath, declared: declared, maxBytes: maxBytes)
+            #else
+            _ = declared
+            #endif
+            try archive.unpack(into: destination)
+        case "tar.gz", "tgz":
+            try inspect(archivePath, format: format, maxBytes: maxBytes)
+            let result = Processes.run("/usr/bin/tar", ["-xzf", archivePath, "-C", destination], timeoutMs: 600_000,
+                                       environment: Processes.archiveToolEnvironment)
+            guard result.status == 0 else { throw PackError.installFailed("Extracting \(label) failed: \(result.errorOutput)") }
+        default:
+            throw PackError.installFailed("Unsupported archive type \(format).")
         }
-        guard count <= UInt64(maxEntries) else { throw PackError.integrity("Archive \(label) has more than \(maxEntries) entries.") }
-        guard directorySize <= 256 << 20, directoryOffset <= size, directorySize <= size - directoryOffset else {
-            throw PackError.integrity("Archive \(label) has a damaged ZIP directory.")
-        }
-        guard directoryOffset + directorySize == directoryEnd else {
-            throw PackError.integrity("Archive \(label) has data between its ZIP directory and the directory's end record.")
-        }
-        guard count > 0 || directoryOffset == 0 else {
-            throw PackError.integrity("Archive \(label) lists no files but holds data.")
-        }
-        let directory = try read(directoryOffset, Int(directorySize))
-        guard directory.count == Int(directorySize) else { throw PackError.integrity("Archive \(label) is truncated.") }
-
-        var entries: [Entry] = []
-        entries.reserveCapacity(Int(min(count, 4_096)))
-        var firstLocalHeader = UInt64.max
-        var cursor = 0
-        for _ in 0..<count {
-            guard cursor + 46 <= directory.count, directory[cursor] == 0x50, directory[cursor + 1] == 0x4B,
-                  directory[cursor + 2] == 0x01, directory[cursor + 3] == 0x02 else {
-                throw PackError.integrity("Archive \(label) has a damaged ZIP directory.")
-            }
-            let madeBy = u16(directory, cursor + 4) >> 8
-            let compressed = u32(directory, cursor + 20)
-            var uncompressed = u32(directory, cursor + 24)
-            let nameLength = Int(u16(directory, cursor + 28))
-            let extraLength = Int(u16(directory, cursor + 30))
-            let commentLength = Int(u16(directory, cursor + 32))
-            let external = u32(directory, cursor + 38)
-            var localOffset = u32(directory, cursor + 42)
-            let nameStart = cursor + 46
-            let extraStart = nameStart + nameLength
-            let next = extraStart + extraLength + commentLength
-            guard next <= directory.count else { throw PackError.integrity("Archive \(label) has a damaged ZIP directory.") }
-            if uncompressed == 0xFFFF_FFFF || compressed == 0xFFFF_FFFF || localOffset == 0xFFFF_FFFF {
-                // The ZIP64 extra block holds, in order, whichever of the
-                // uncompressed size, compressed size and local header offset are full.
-                var extra = extraStart
-                while extra + 4 <= extraStart + extraLength {
-                    let tag = u16(directory, extra), length = Int(u16(directory, extra + 2))
-                    guard extra + 4 + length <= extraStart + extraLength else { break }
-                    if tag == 0x0001 {
-                        var field = extra + 4
-                        let end = extra + 4 + length
-                        if uncompressed == 0xFFFF_FFFF, field + 8 <= end { uncompressed = u64(directory, field); field += 8 }
-                        if compressed == 0xFFFF_FFFF, field + 8 <= end { field += 8 }
-                        if localOffset == 0xFFFF_FFFF, field + 8 <= end { localOffset = u64(directory, field) }
-                        break
-                    }
-                    extra += 4 + length
-                }
-            }
-            let nameBytes = Array(directory[nameStart..<extraStart])
-            let name = String(decoding: nameBytes, as: UTF8.self)
-            // ditto unpacks the name in the local header, so it must be the one checked here.
-            guard localOffset < directoryOffset, directoryOffset - localOffset >= UInt64(30 + nameLength) else {
-                throw PackError.integrity("Archive \(label) has a damaged ZIP directory.")
-            }
-            let local = try read(localOffset, 30 + nameLength)
-            guard local.count == 30 + nameLength, local[0] == 0x50, local[1] == 0x4B, local[2] == 0x03, local[3] == 0x04,
-                  Int(u16(local, 26)) == nameLength, Array(local[30...]) == nameBytes else {
-                throw PackError.integrity("Archive \(label) names a file differently in its directory and its local header (\"\(name)\").")
-            }
-            firstLocalHeader = min(firstLocalHeader, localOffset)
-            // Unix and macOS writers keep the file type in the high half of the external attributes.
-            var special = false
-            if madeBy == 3 || madeBy == 19 {
-                let type = (external >> 16) & 0o170000
-                special = type != 0 && type != 0o100000 && type != 0o040000
-            }
-            entries.append(Entry(name: name, isDirectory: name.hasSuffix("/"), isLinkOrSpecial: special, uncompressedBytes: uncompressed))
-            cursor = next
-        }
-        guard count == 0 || firstLocalHeader == 0 else {
-            throw PackError.integrity("Archive \(label) has data before its first file.")
-        }
-        return entries
+        try checkExtracted(destination, archiveName: label)
     }
 
     // MARK: After extracting
 
     /// Everything under `root` must be a plain folder or a file with no other
-    /// names (no symbolic links, hard links, devices, FIFOs or sockets).
+    /// names (no symbolic links, hard links, devices, FIFOs or sockets). A
+    /// folder that can't be read fails the check rather than passing as empty
+    /// (tar applies an archive's folder modes, 0000 included), and modes come
+    /// out plain: folders 0755, files 0644, or 0755 when executable.
     static func checkExtracted(_ root: String, archiveName: String) throws {
         func walk(_ folder: String, _ relative: String) throws {
-            for entry in Files.entries(folder) {
-                let path = Path.join(folder, entry.name)
-                let shown = relative.isEmpty ? entry.name : relative + "/" + entry.name
-                if entry.isSymbolicLink {
+            guard chmod(folder, 0o755) == 0, let names = try? FileManager.default.contentsOfDirectory(atPath: folder) else {
+                throw PackError.integrity("Archive \(archiveName) holds a folder RoachNet can't read (\(relative.isEmpty ? "." : relative)).")
+            }
+            for name in names {
+                let path = Path.join(folder, name)
+                let shown = relative.isEmpty ? name : relative + "/" + name
+                guard let info = Files.lstatInfo(path) else {
+                    throw PackError.integrity("Archive \(archiveName) holds something RoachNet can't read (\(shown)).")
+                }
+                let type = info.st_mode & S_IFMT
+                if type == S_IFLNK {
                     throw PackError.integrity("Archive \(archiveName) contains a link (\(shown)); packs may only hold files and folders.")
                 }
-                if entry.isDirectory { try walk(path, shown); continue }
-                guard entry.isFile, let info = Files.lstatInfo(path) else {
+                if type == S_IFDIR { try walk(path, shown); continue }
+                guard type == S_IFREG else {
                     throw PackError.integrity("Archive \(archiveName) contains a special file (\(shown)).")
                 }
                 if info.st_nlink > 1 {
                     throw PackError.integrity("Archive \(archiveName) contains a hard link (\(shown)).")
+                }
+                guard chmod(path, info.st_mode & 0o100 != 0 ? 0o755 : 0o644) == 0 else {
+                    throw PackError.integrity("Archive \(archiveName) holds a file RoachNet can't set up (\(shown)).")
                 }
             }
         }
@@ -327,5 +258,11 @@ enum PackArchive {
                 throw PackError.integrity("Archive \(archiveName) would replace \(shown), which the pack already has.")
             }
         }
+    }
+}
+
+extension ZipArchive.Entry {
+    var summary: PackArchive.Entry {
+        PackArchive.Entry(name: name, isDirectory: isDirectory, isLinkOrSpecial: isLinkOrSpecial, uncompressedBytes: uncompressedBytes)
     }
 }

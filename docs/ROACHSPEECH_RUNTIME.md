@@ -72,7 +72,7 @@ https://apps.roachnet.org/downloads/model-packs/roachvoice-kokoro-82m-int8-corem
 https://apps.roachnet.org/downloads/model-packs/roachwhisper-openai-whisper-base-en-coreml.json
 ```
 
-The RoachNet App Store points at those descriptors through `roachspeech-pack` install intents. Downloads are resolved from descriptor sources, staged through `.downloads`, unpacked with the macOS native archive tool, validated against `RoachSpeechPack.json`, and atomically swapped into the active model shelf. A bad archive does not erase a working pack.
+The RoachNet App Store points at those descriptors through `roachspeech-pack` install intents. Downloads are resolved from descriptor sources, staged through `.downloads`, unpacked by RoachNet's own ZIP reader (the same checks as any pack archive: nothing outside the folder, no links, exactly the sizes the archive declares), validated against `RoachSpeechPack.json`, and atomically swapped into the active model shelf. A bad archive does not erase a working pack.
 
 First-party Apps descriptors are chunk-aware for Internet Archive. Each archive part is published as a `ROACHNET-IA-CHUNK-v1` envelope instead of a raw ZIP slice, because IA rejects the first raw slice as a corrupt archive. The default payload part is `8 MiB`, large enough to avoid thousands of brittle PUT requests and small enough to retry without restarting the whole archive. The native API strips the envelope, verifies the part SHA-256, reassembles the payload into the original ZIP, verifies the full archive SHA-256, then installs it. The v1.0.5 public model lane publishes `229` wrapped parts across the three first-party RoachSpeech archives and all parts passed redirect-aware `HEAD` verification with exact encoded byte lengths against:
 
