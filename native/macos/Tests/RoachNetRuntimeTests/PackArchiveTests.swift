@@ -201,6 +201,9 @@ final class PackArchiveTests: XCTestCase {
             ("case-folder-entry.zip", [.init(name: "A/", mode: 0o040755), .init(name: "a/y.json", data: json)]),
             ("normalization-folders.zip", [.init(name: "caf\u{E9}/x.json", data: json, flags: 0x0800),
                                            .init(name: "cafe\u{301}/y.json", data: json, flags: 0x0800)]),
+            // "/" then a combining mark still ends the folder name "A".
+            ("combining-folders.zip", [.init(name: "a/x.json", data: json),
+                                       .init(name: "A/\u{301}y.json", data: json, flags: 0x0800)]),
         ]
         for (file, items) in spelledTwice {
             XCTAssertThrowsError(try ZipArchive(path: try zip(file, items)), file) { error in
@@ -288,9 +291,14 @@ final class PackArchiveTests: XCTestCase {
 
     func testEntryNamesThatLeaveTheFolderAreRefused() {
         for name in ["../escape.txt", "a/../../escape.txt", "/etc/escape.txt", "a\\..\\escape.txt", "C:escape.txt", "",
-                     "a\u{1}.txt", "tab\there.txt", "del\u{7F}.txt"] {
+                     "a\u{1}.txt", "tab\there.txt", "del\u{7F}.txt",
+                     // A combining mark after "/" or a backslash makes one Swift character
+                     // with it, but unpackers and the kernel still see the separator.
+                     "../\u{301}escape.txt", "/\u{301}etc/escape.txt", "a\\\u{301}b.txt"] {
             XCTAssertNotNil(PackArchive.problem(withEntryName: name), name)
         }
+        XCTAssertEqual(PackArchive.components("a/\u{301}b"), ["a", "\u{301}b"])
+        XCTAssertTrue(ZipArchive.isResourceForkCopy("__MACOSX/\u{301}._a.json"), "unzip's pattern matches it too")
         for name in ["themes/a.json", "./themes/", "a..b/c", "...", "themes/.hidden"] {
             XCTAssertNil(PackArchive.problem(withEntryName: name), name)
         }

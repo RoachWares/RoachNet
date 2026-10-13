@@ -548,8 +548,8 @@ test('an upgrade cut off before its copy is in place gives the installed copy it
   }
 })
 
-test('saved choices that would move the installed copy give way to its settings unless an install puts them in place', requiresNativeBinary, async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-setup-saved-choices-'))
+test('Setup keeps the installed copy\'s settings aside until it can write them back', requiresNativeBinary, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-setup-write-back-'))
   const home = path.join(tempRoot, 'home')
   mkdirSync(home, { recursive: true })
   const assets = buildFakeInstallerAssets(tempRoot)
@@ -568,48 +568,38 @@ test('saved choices that would move the installed copy give way to its settings 
   }
   const savedConfig = () => JSON.parse(readFileSync(configPath, 'utf8'))
   const keptAside = `${configPath}.pre-upgrade`
-  const keys = ['installPath', 'installedAppPath', 'storagePath', 'setupCompletedAt']
   let service
   try {
     const first = spawnSync(nativeBinary, ['--install', '--install-path', installPath, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
     assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`)
     const installed = savedConfig()
 
-    // A new storage folder is saved, and Setup is killed before any install.
-    service = await startSetup(env)
-    await saveChoices(service.url, configPath, installPath, { storagePath: movedStorage })
-    assert.equal(savedConfig().storagePath, movedStorage)
-    assert.equal(existsSync(keptAside), true, 'the installed copy\'s settings were kept aside first')
-    await stopSetup(service, 'SIGKILL')
-    service = await startSetup(env)
-    for (const key of keys) assert.deepEqual(savedConfig()[key], installed[key], `after the kill: ${key}`)
-    assert.equal(existsSync(keptAside), false)
-    await stopSetup(service, 'SIGTERM')
+    // An upgrade that moves storage is cut off between moving the installed
+    // copy aside and moving the new one in.
+    service = await startSetup({ ...env, ROACHNET_SETUP_TEST_STOP_AT: 'moved-aside' })
+    assert.equal(await installFromAppUntilStopped(service, configPath, installPath, { storagePath: movedStorage }), 75)
+    service = undefined
+    assert.equal(existsSync(keptAside), true)
 
-    // A choice that leaves the installed copy where it is stays as saved.
-    service = await startSetup(env)
-    await saveChoices(service.url, configPath, installPath, { companionPort: 38999 })
-    assert.equal(existsSync(keptAside), false)
-    await stopSetup(service, 'SIGKILL')
-    service = await startSetup(env)
-    assert.equal(savedConfig().companionPort, 38999)
-    await stopSetup(service, 'SIGTERM')
-
-    // When the settings can't be put back, they stay aside for the next run.
-    service = await startSetup(env)
-    await saveChoices(service.url, configPath, installPath, { storagePath: movedStorage })
-    await stopSetup(service, 'SIGKILL')
+    // When Setup next starts, the config can't be written: the copy comes
+    // back, and its settings stay aside.
     const pending = readFileSync(configPath, 'utf8')
     rmSync(configPath)
     mkdirSync(configPath)
     writeFileSync(path.join(configPath, 'in-the-way'), '')
     service = await startSetup(env)
+    assert.equal(existsSync(path.join(installPath, 'app', 'RoachNet.app')), true, 'the copy moved aside is back')
     assert.equal(existsSync(keptAside), true, 'kept while the config can\'t be written')
     await stopSetup(service, 'SIGTERM')
+    service = undefined
+
+    // Once it can be written, they go back.
     rmSync(configPath, { recursive: true, force: true })
     writeFileSync(configPath, pending)
     service = await startSetup(env)
-    for (const key of keys) assert.deepEqual(savedConfig()[key], installed[key], `once it can be written: ${key}`)
+    for (const key of ['installPath', 'installedAppPath', 'storagePath', 'setupCompletedAt']) {
+      assert.deepEqual(savedConfig()[key], installed[key], key)
+    }
     assert.equal(existsSync(keptAside), false)
   } finally {
     service?.child.kill('SIGTERM')
@@ -647,15 +637,15 @@ test('Setup changes nothing about the installed copy when it can\'t keep that co
     mkdirSync(keptAside)
     writeFileSync(path.join(keptAside, 'notes.txt'), 'keep\n')
     service = await startSetup(env)
-    const refused = await call(`${service.url}/api/config`, 'POST', choicesFor(configPath, installPath, { storagePath: movedStorage }))
-    assert.equal(refused.status, 400, JSON.stringify(refused.body))
-    assert.match(refused.body.error, /couldn't keep the installed copy's settings aside/)
+    // A setting saved before the install stays as it was saved.
+    await saveChoices(service.url, configPath, installPath, { companionPort: 38999 })
     const failed = await installFromApp(service.url, configPath, installPath, { storagePath: movedStorage })
     assert.equal(failed.lastCompletedTask.status, 'failed')
     assert.match(failed.lastCompletedTask.error, /couldn't keep the installed copy's settings aside/)
     for (const key of ['installPath', 'installedAppPath', 'storagePath', 'setupCompletedAt']) {
       assert.deepEqual(savedConfig()[key], installed[key], key)
     }
+    assert.equal(savedConfig().companionPort, 38999, 'nothing was changed, so the saved port stays')
     assert.equal(readFileSync(path.join(keptAside, 'notes.txt'), 'utf8'), 'keep\n', 'the folder is left alone')
     assert.equal(existsSync(path.join(installPath, 'app', 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')), true)
     assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /RoachNet\.(staging|backup)-/)

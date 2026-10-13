@@ -29,6 +29,15 @@ enum PackArchive {
 
     // MARK: Names
 
+    /// The parts of an entry name between slashes, split as unpackers and the
+    /// kernel split it: on the "/" scalar. Swift's own `split` works on
+    /// characters, and "/" followed by a combining mark ("a/\u{301}b") is one
+    /// character there, so it would hide the separator.
+    static func components(_ name: String, omittingEmpty: Bool = true) -> [String] {
+        name.unicodeScalars.split(separator: "/", omittingEmptySubsequences: omittingEmpty)
+            .map { String(String.UnicodeScalarView($0)) }
+    }
+
     /// Why an entry name may not be unpacked, or nil when it is fine.
     static func problem(withEntryName name: String) -> String? {
         if name.isEmpty { return "an entry has no name" }
@@ -39,10 +48,11 @@ enum PackArchive {
         if name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) {
             return "an entry name contains a control character"
         }
-        if name.hasPrefix("/") { return "\"\(name)\" is an absolute path" }
-        if name.contains("\\") { return "\"\(name)\" uses a backslash" }
-        if name.count >= 2, name.dropFirst().first == ":", name.first?.isLetter == true { return "\"\(name)\" names a drive" }
-        if name.split(separator: "/", omittingEmptySubsequences: true).contains("..") { return "\"\(name)\" climbs out with .." }
+        let scalars = Array(name.unicodeScalars)
+        if scalars.first == "/" { return "\"\(name)\" is an absolute path" }
+        if scalars.contains("\\") { return "\"\(name)\" uses a backslash" }
+        if scalars.count >= 2, scalars[1] == ":", scalars[0].properties.isAlphabetic { return "\"\(name)\" names a drive" }
+        if components(name).contains("..") { return "\"\(name)\" climbs out with .." }
         return nil
     }
 
@@ -87,7 +97,7 @@ enum PackArchive {
             if entry.isLinkOrSpecial {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" is a link or a special file.")
             }
-            if !entry.isDirectory, !entry.name.split(separator: "/").contains(where: { $0 != "." }) {
+            if !entry.isDirectory, !components(entry.name).contains(where: { $0 != "." }) {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" names no file.")
             }
             if !entry.isDirectory, endsInDot(entry.name) {
@@ -103,7 +113,7 @@ enum PackArchive {
     /// Whether a name's last component is "." ("a/."). As a file, unzip writes
     /// it as "a/_" and other unpackers as "a", so such a file is refused.
     static func endsInDot(_ name: String) -> Bool {
-        name.split(separator: "/", omittingEmptySubsequences: false).last == "."
+        components(name, omittingEmpty: false).last == "."
     }
 
     static func tooLarge(_ label: String, _ maxBytes: UInt64) -> PackError {

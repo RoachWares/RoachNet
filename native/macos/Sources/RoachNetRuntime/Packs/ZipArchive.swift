@@ -189,7 +189,7 @@ struct ZipArchive {
             guard Self.unicodePathNames(directory, from: extraStart, count: extraLength).allSatisfy({ $0 == nameBytes }) else {
                 throw refused("gives \"\(name)\" a second, different name")
             }
-            let isDirectory = name.hasSuffix("/")
+            let isDirectory = name.unicodeScalars.last == "/"
             // Both unpackers must write the same files. A file entry named "."
             // names no file: this reader would skip it, and unzip writes it as
             // "_", which no check sees. A file entry that ends in "." ("a/.")
@@ -319,7 +319,7 @@ struct ZipArchive {
     /// The path an entry unpacks to, as both unpackers write it: empty and
     /// "." components left out, so "a//./b" is "a/b".
     static func unpackedParts(_ name: String) -> [String] {
-        name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
+        PackArchive.components(name).filter { $0 != "." }
     }
 
     /// The key two paths share when a volume that ignores case would make them
@@ -335,7 +335,7 @@ struct ZipArchive {
     /// unpackers leave out exactly the entries whose names start with it as
     /// written: unzip by its `-x "__MACOSX/*"` pattern, this reader by this test.
     static func isResourceForkCopy(_ name: String) -> Bool {
-        name.hasPrefix("__MACOSX/")
+        name.unicodeScalars.starts(with: "__MACOSX/".unicodeScalars)
     }
 
     /// The names in an extra block's Info-ZIP Unicode path fields (tag
