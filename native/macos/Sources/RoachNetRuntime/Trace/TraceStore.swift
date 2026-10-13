@@ -48,6 +48,12 @@ public final class TraceStore {
     private var traces: [String: TraceRecord] = [:]
     private var observations: [String: [String: ObservationRecord]] = [:]
     private var scores: [String: [ScoreRecord]] = [:]
+    /// The order each trace's observations were first recorded in. It breaks
+    /// ties between observations that start in the same millisecond (a CLI
+    /// agent's turns often do), which their random ids would put in any
+    /// order. Replay rebuilds it, since a trace's lines are appended in order.
+    private var observationOrder: [String: [String: Int]] = [:]
+    private var nextObservationOrder = 0
     private var lastPurgeMs: Int64 = 0
     public private(set) var settings: TraceSettings
 
@@ -106,7 +112,7 @@ public final class TraceStore {
 
     public func upsert(_ observation: ObservationRecord) {
         lock.lock(); defer { lock.unlock() }
-        observations[observation.traceId, default: [:]][observation.id] = observation
+        remember(observation)
         let day = traces[observation.traceId].map { TraceClock.day($0.startMs) } ?? TraceClock.day(observation.startMs)
         append(Line(k: "o", o: observation), day: day)
     }
@@ -124,6 +130,7 @@ public final class TraceStore {
         lock.lock(); defer { lock.unlock() }
         guard let trace = traces.removeValue(forKey: traceId) else { return false }
         observations.removeValue(forKey: traceId)
+        observationOrder.removeValue(forKey: traceId)
         scores.removeValue(forKey: traceId)
         append(Line(k: "d", id: traceId), day: TraceClock.day(trace.startMs))
         return true
@@ -143,7 +150,19 @@ public final class TraceStore {
 
     public func observations(_ traceId: String) -> [ObservationRecord] {
         lock.lock(); defer { lock.unlock() }
-        return (observations[traceId]?.values.map { $0 } ?? []).sorted { ($0.startMs, $0.id) < ($1.startMs, $1.id) }
+        let order = observationOrder[traceId] ?? [:]
+        return (observations[traceId]?.values.map { $0 } ?? []).sorted {
+            ($0.startMs, order[$0.id] ?? Int.max, $0.id) < ($1.startMs, order[$1.id] ?? Int.max, $1.id)
+        }
+    }
+
+    /// Indexes an observation, noting when the store first saw it.
+    private func remember(_ observation: ObservationRecord) {
+        if observations[observation.traceId]?[observation.id] == nil {
+            observationOrder[observation.traceId, default: [:]][observation.id] = nextObservationOrder
+            nextObservationOrder += 1
+        }
+        observations[observation.traceId, default: [:]][observation.id] = observation
     }
 
     public func scores(_ traceId: String) -> [ScoreRecord] {
@@ -216,16 +235,23 @@ public final class TraceStore {
                         // not the file), so trim while replaying, not only before each day.
                         if traces.count > TraceStore.memoryTraceCap + TraceStore.replaySlack { capMemory() }
                     }
-                case "o": if let observation = line.o { observations[observation.traceId, default: [:]][observation.id] = observation }
+                case "o": if let observation = line.o { remember(observation) }
                 case "s": if let score = line.s { scores[score.traceId, default: []].removeAll { $0.id == score.id }; scores[score.traceId, default: []].append(score) }
-                case "d": if let id = line.id { traces.removeValue(forKey: id); observations.removeValue(forKey: id); scores.removeValue(forKey: id) }
+                case "d":
+                    if let id = line.id {
+                        traces.removeValue(forKey: id); observations.removeValue(forKey: id)
+                        observationOrder.removeValue(forKey: id); scores.removeValue(forKey: id)
+                    }
                 default: break
                 }
             }
         }
         capMemory()
         // Observations and scores whose trace was deleted, trimmed or never written.
-        for key in observations.keys where traces[key] == nil { observations.removeValue(forKey: key) }
+        for key in observations.keys where traces[key] == nil {
+            observations.removeValue(forKey: key)
+            observationOrder.removeValue(forKey: key)
+        }
         for key in scores.keys where traces[key] == nil { scores.removeValue(forKey: key) }
         // A trace left "running" by an earlier process will never finish.
         for (id, trace) in traces where trace.status == "running" && trace.endMs == nil {
@@ -243,6 +269,7 @@ public final class TraceStore {
         for trace in drop {
             traces.removeValue(forKey: trace.id)
             observations.removeValue(forKey: trace.id)
+            observationOrder.removeValue(forKey: trace.id)
             scores.removeValue(forKey: trace.id)
         }
     }
@@ -258,7 +285,8 @@ public final class TraceStore {
         }
         let cutoffMs = now - Int64(settings.retentionDays) * 86_400_000
         for (id, trace) in traces where trace.startMs < cutoffMs {
-            traces.removeValue(forKey: id); observations.removeValue(forKey: id); scores.removeValue(forKey: id)
+            traces.removeValue(forKey: id); observations.removeValue(forKey: id)
+            observationOrder.removeValue(forKey: id); scores.removeValue(forKey: id)
         }
     }
 }
