@@ -14,16 +14,22 @@ An area is at parity only when its Linux implementation passes the same tests as
 
 ## Current numbers
 
-Measured on 2026-10-13, at the head of PR #39. The macOS run was on an M2 Pro. The Linux run was on Ubuntu 24.04 x86_64 with 2 CPUs, Swift 6.4.1 and Node 26.11.1.
+Measured on 2026-10-13, at the head of PR #39. The macOS run was on an Apple silicon Mac. The Linux run was on Ubuntu 24.04 x86_64 with 2 CPUs, Swift 6.4.1 and Node 26.11.1. CI's own count follows the table.
 
 | Measure | macOS | Linux |
 | --- | --- | --- |
 | Runtime XCTests | 166 run, 0 failures | 156 run, 1 skipped ([ROA-87](https://linear.app/roachwares/issue/ROA-87)), 0 failures. The 10 fewer are Mac-only: the Cluster's 7, and the installer's 3 archive-pack tests, which install macOS-platform packs. |
 | Inference XCTests | 36 run, 13 skipped (no model files), 0 failures | 36 run, 13 skipped (Metal, model files), 0 failures |
-| Runtime contract tests | 133 tests: 115 pass, 17 skip themselves, 1 timing failure in the disk-image audit under load that passes when run alone | 133 tests: 111 pass, 21 skip themselves, 1 fails ([ROA-90](https://linear.app/roachwares/issue/ROA-90); CI skips it by name) |
+| Runtime contract tests | 133 tests: 115 pass, 17 skip themselves, 1 timing failure in the disk-image audit under load that passes when run alone | 133 tests: 111 pass, 21 skip themselves, 1 fails ([ROA-90](https://linear.app/roachwares/issue/ROA-90)) |
+
+The `Linux runtime` workflow leaves the ROA-90 test out by name, so CI counts 132 tests: 110 pass, 0 fail, 22 skipped. The extra skip is the ROA-72 port test, which skips itself when 127.0.0.1:36434 is already taken. It passes in a local run.
 
 The 21 self-skipping contract tests on Linux:
-- **15 need model files** (`ROACHNET_TEST_MODELS`). They also skip on a Mac without those files.
+- **12 need model files** (`ROACHNET_TEST_MODELS`). They also skip on a Mac without those files. Nothing in them is Mac-specific, and running them on Linux with the files is L2 work.
+- **2 need model files and an Apple silicon Mac:**
+  - the Cluster test, which splits a model across two Macs (L3);
+  - "numbers no client should send get a reply, not a crash", which should also run on Linux (L2).
+- **1 checks the Metal kernels** against the Swift reference (`ROACHNET_INFERENCE_TOOL` and a C++ compiler). It is Mac-only, and the Vulkan kernels need their own version (L4).
 - **6 need macOS tools:**
   - 4 RoachSpeech pack tests that need `ditto`;
   - 1 zipped-app test that needs `ditto`;
@@ -65,3 +71,5 @@ swift test --package-path native/macos --skip-build
 ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/debug/roachnet-runtime" \
   node --test scripts/tests/*.test.mjs
 ```
+
+Until ROA-90 is fixed, CI adds `--test-skip-pattern='coalesces duplicate provider and model probes'` to the `node --test` line.
