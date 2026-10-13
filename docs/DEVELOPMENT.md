@@ -82,7 +82,16 @@ swift test --package-path native/macos --skip-build
 
 The `Linux runtime` workflow runs the same two commands on every change to
 those targets, in the official Swift image. RoachInference uses its CPU
-backend there. The Cluster and RoachSpeech are compiled out.
+backend there. The Cluster and RoachSpeech are compiled out. The workflow
+then runs the runtime contract tests against the Linux build, with Node as
+the test harness only:
+
+```bash
+ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/debug/roachnet-runtime" \
+  node --test scripts/tests/*.test.mjs
+```
+
+`docs/LINUX_PARITY.md` has the current numbers and what each area still needs.
 
 Linux cannot validate the macOS app targets, Core ML, `ditto` archive
 behavior, signing, app launch, iOS compatibility, or DMG/notarization gates.

@@ -1,9 +1,10 @@
 name: Linux runtime
 
-# Builds RoachNet's runtime and inference engine on Linux and runs their
-# tests, so the Linux port (ROA-80) can't quietly break. Nothing here ships:
-# Linux releases come later, through their own gate, once the Linux app
-# matches the Mac app.
+# Builds RoachNet's runtime and inference engine on Linux, runs their tests,
+# then runs the contract tests the Mac gates run against roachnet-runtime,
+# so the Linux port (ROA-80) can't quietly break. Nothing here ships: Linux
+# releases come later, through their own gate, once the Linux app matches the
+# Mac app. docs/LINUX_PARITY.md tracks where it stands.
 
 on:
   pull_request:
@@ -15,6 +16,9 @@ on:
       - 'native/macos/Sources/RoachNetRuntimeHost/**'
       - 'native/macos/Tests/RoachInferenceTests/**'
       - 'native/macos/Tests/RoachNetRuntimeTests/**'
+      - 'scripts/tests/**'
+      - 'scripts/lib/**'
+      - 'collections/**'
       - '.github/workflows/linux-runtime.yml'
   push:
     branches: [main]
@@ -26,6 +30,9 @@ on:
       - 'native/macos/Sources/RoachNetRuntimeHost/**'
       - 'native/macos/Tests/RoachInferenceTests/**'
       - 'native/macos/Tests/RoachNetRuntimeTests/**'
+      - 'scripts/tests/**'
+      - 'scripts/lib/**'
+      - 'collections/**'
       - '.github/workflows/linux-runtime.yml'
   workflow_dispatch:
 
@@ -63,3 +70,20 @@ jobs:
 
       - name: Run the tests
         run: swift test --package-path native/macos --skip-build
+
+      # Node is only the test harness here, as in the macOS gates: the contract
+      # tests drive the Linux build of roachnet-runtime over HTTP. Nothing in
+      # RoachNet ships or launches Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      # One test is skipped by name while ROA-90 is open: on Linux, requests
+      # that wait on each other's probes stall the dispatch pool for seconds.
+      # Tests that need macOS tools (ditto, hdiutil) or model files skip
+      # themselves, as they do on a Mac without them.
+      - name: Run the runtime contract tests against the Linux build
+        run: |
+          ROACHNET_NATIVE_API_BINARY="$PWD/native/macos/.build/debug/roachnet-runtime" \
+            node --test --test-skip-pattern='coalesces duplicate provider and model probes' scripts/tests/*.test.mjs
