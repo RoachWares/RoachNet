@@ -35,7 +35,9 @@ public struct TraceCost: Codable, Equatable {
     public var billingType: String = "unknown"       // local | metered_api | subscription_included | unknown
 
     public init(totalUsd: Double = 0, status: String = "unpriced", billingType: String = "unknown") {
-        self.totalUsd = totalUsd; self.status = status; self.billingType = billingType
+        // A record holding NaN or infinity can't be written as JSON at all.
+        self.totalUsd = totalUsd.isFinite ? max(0, totalUsd) : 0
+        self.status = status; self.billingType = billingType
     }
 
     public static let local = TraceCost(totalUsd: 0, status: "reported", billingType: "local")

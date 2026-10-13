@@ -96,11 +96,14 @@ struct OrgAgentLoopAdapter: OrgAdapter {
         var headers: [String: String] = ["content-type": "application/json"]
         switch mode {
         case .roachClawLocal:
-            baseURL = config.string("baseUrl", max: 512) ?? runtime.modelServerBaseUrl
+            let configured = config.string("baseUrl", max: 512)
+            // Find or start the model server before reading its address: it may
+            // have had to move off a port another program holds.
+            if configured == nil { _ = runtime.ensureOllama() }
+            baseURL = configured ?? runtime.modelServerBaseUrl
             guard OrgAdapters.allowedEndpoint(baseURL, loopbackOnly: true) else {
                 return .failure("roachclaw_local agents only talk to a model server on this Mac.", code: "adapter_config")
             }
-            if config.string("baseUrl") == nil { _ = runtime.ensureOllama() }
         case .openAICompatible:
             guard let configured = config.string("baseUrl", max: 512), OrgAdapters.allowedEndpoint(configured) else {
                 return .failure("openai_compatible agents need an https baseUrl (or http on this Mac).", code: "adapter_config")

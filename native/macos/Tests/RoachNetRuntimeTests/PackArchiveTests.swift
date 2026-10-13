@@ -22,8 +22,9 @@ enum TestZip {
         return crc ^ 0xFFFF_FFFF
     }
 
-    static func make(_ items: [Item]) -> Data {
-        var out = Data(), directory = Data()
+    /// `prefix` is written ahead of the first file, with every offset after it shifted to match.
+    static func make(_ items: [Item], prefix: Data = Data()) -> Data {
+        var out = prefix, directory = Data()
         func u16(_ value: Int, _ into: inout Data) { into.append(UInt8(value & 0xFF)); into.append(UInt8((value >> 8) & 0xFF)) }
         func u32(_ value: UInt32, _ into: inout Data) { for shift in stride(from: 0, to: 32, by: 8) { into.append(UInt8((value >> UInt32(shift)) & 0xFF)) } }
         for item in items {
@@ -120,6 +121,61 @@ final class PackArchiveTests: XCTestCase {
                 XCTAssertTrue("\(error)".contains(expected), "\(file): \(error)")
             }
         }
+    }
+
+    func testZipThatToolsCouldReadTwoWaysIsRefused() throws {
+        let good = TestZip.make([.init(name: "aaaaaa.txt", data: Data("a".utf8))])
+        XCTAssertEqual(try PackArchive.zipEntries(atPath: try zip(bytes: good, "good.zip")).map(\.name), ["aaaaaa.txt"])
+        func refused(_ bytes: Data, _ file: String, _ expected: String) throws {
+            let path = try zip(bytes: bytes, file)
+            XCTAssertThrowsError(try PackArchive.zipEntries(atPath: path), file) { XCTAssertTrue("\($0)".contains(expected), "\(file): \($0)") }
+        }
+
+        // A second, empty end record in the real one's comment: ditto reads the
+        // real directory, a backward scan for the signature finds the empty one.
+        var hidden = good
+        hidden[hidden.count - 2] = 22
+        hidden.append(contentsOf: [0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18))
+        try refused(hidden, "hidden-end.zip", "more than one ZIP directory")
+
+        // The local header says ../aaa.txt where the directory says aaaaaa.txt (ditto unpacks the local name).
+        var renamed = good
+        renamed.replaceSubrange(30..<40, with: Data("../aaa.txt".utf8))
+        try refused(renamed, "renamed.zip", "differently")
+
+        // Bytes between the directory and its end record.
+        var gap = good
+        gap.insert(contentsOf: [UInt8](repeating: 0x41, count: 8), at: gap.count - 22)
+        try refused(gap, "gap.zip", "between its ZIP directory")
+
+        // Data ahead of the first file (a stub, or another archive).
+        try refused(TestZip.make([.init(name: "aaaaaa.txt", data: Data("a".utf8))], prefix: Data(repeating: 0x42, count: 16)), "prefix.zip", "before its first file")
+    }
+
+    /// Archives real tools write must still read as one directory.
+    /// `ROACHNET_TEST_ZIPS` (colon-separated paths) adds archives from elsewhere, such as built speech packs.
+    func testZipsThatSystemToolsWriteAreRead() throws {
+        var paths = (ProcessInfo.processInfo.environment["ROACHNET_TEST_ZIPS"] ?? "").split(separator: ":").map(String.init)
+        #if os(macOS)
+        let folder = Path.join(root, "made", "pack")
+        try Files.mkdirp(Path.join(folder, "sub"))
+        try Files.write("a", to: Path.join(folder, "a.txt"))
+        try Data((0..<200_000).map { UInt8(truncatingIfNeeded: $0 &* 2_654_435_761 >> 13) }).write(to: URL(fileURLWithPath: Path.join(folder, "sub", "b.bin")))
+        let ditto = Path.join(root, "ditto.zip")
+        XCTAssertEqual(Processes.run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", folder, ditto]).status, 0)
+        paths.append(ditto)
+        #endif
+        for path in paths {
+            let entries = try PackArchive.zipEntries(atPath: path)
+            XCTAssertFalse(entries.isEmpty, path)
+            XCTAssertNoThrow(try PackArchive.inspect(path, format: "zip"), path)
+        }
+    }
+
+    private func zip(bytes: Data, _ name: String) throws -> String {
+        let path = Path.join(root, name)
+        try bytes.write(to: URL(fileURLWithPath: path))
+        return path
     }
 
     func testDamagedZipIsRefused() throws {

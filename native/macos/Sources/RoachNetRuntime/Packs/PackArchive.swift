@@ -140,60 +140,89 @@ enum PackArchive {
         }
     }
 
-    /// Reads a ZIP's central directory (ZIP64 included) without extracting anything.
+    /// Reads a ZIP's central directory (ZIP64 included) without extracting
+    /// anything, and refuses an archive that tools could read two ways: more
+    /// than one end record, data between the directory and its end record or
+    /// before the first file, or a local file header whose name differs from
+    /// the directory's (ditto unpacks the local name).
     static func zipEntries(atPath path: String) throws -> [Entry] {
         let label = Path.basename(path)
         guard let handle = FileHandle(forReadingAtPath: path) else { throw PackError.integrity("Archive \(label) could not be opened.") }
         defer { try? handle.close() }
         let size = try handle.seekToEnd()
         guard size >= 22 else { throw PackError.integrity("Archive \(label) is not a ZIP file.") }
-
-        // The end-of-central-directory record sits in the last 64 KiB + 22 bytes.
-        let tailLength = min(size, 65_557)
-        try handle.seek(toOffset: size - tailLength)
-        let tail = [UInt8](try handle.read(upToCount: Int(tailLength)) ?? Data())
-        var eocd = -1
-        var index = tail.count - 22
-        while index >= 0 {
-            if tail[index] == 0x50, tail[index + 1] == 0x4B, tail[index + 2] == 0x05, tail[index + 3] == 0x06 { eocd = index; break }
-            index -= 1
-        }
-        guard eocd >= 0 else { throw PackError.integrity("Archive \(label) has no ZIP directory.") }
         func u16(_ bytes: [UInt8], _ at: Int) -> UInt64 { UInt64(bytes[at]) | UInt64(bytes[at + 1]) << 8 }
         func u32(_ bytes: [UInt8], _ at: Int) -> UInt64 { u16(bytes, at) | u16(bytes, at + 2) << 16 }
         func u64(_ bytes: [UInt8], _ at: Int) -> UInt64 { u32(bytes, at) | u32(bytes, at + 4) << 32 }
+        func read(_ offset: UInt64, _ count: Int) throws -> [UInt8] {
+            try handle.seek(toOffset: offset)
+            return [UInt8](try handle.read(upToCount: count) ?? Data())
+        }
+
+        // The end-of-central-directory record sits in the last 64 KiB + 22 bytes,
+        // and its comment runs exactly to the end of the file. An archive with
+        // two such records (one hidden in the other's comment, say) is refused.
+        let tailLength = min(size, 65_557)
+        let tailStart = size - tailLength
+        let tail = try read(tailStart, Int(tailLength))
+        var candidates: [Int] = []
+        var index = tail.count - 22
+        while index >= 0 {
+            if tail[index] == 0x50, tail[index + 1] == 0x4B, tail[index + 2] == 0x05, tail[index + 3] == 0x06,
+               index + 22 + Int(u16(tail, index + 20)) == tail.count {
+                candidates.append(index)
+            }
+            index -= 1
+        }
+        guard let eocd = candidates.first else { throw PackError.integrity("Archive \(label) has no ZIP directory.") }
+        guard candidates.count == 1 else { throw PackError.integrity("Archive \(label) has more than one ZIP directory.") }
+        let eocdOffset = tailStart + UInt64(eocd)
 
         guard u16(tail, eocd + 4) == 0, u16(tail, eocd + 6) == 0 else { throw PackError.integrity("Archive \(label) spans several disks.") }
         var count = u16(tail, eocd + 10)
         var directorySize = u32(tail, eocd + 12)
         var directoryOffset = u32(tail, eocd + 16)
-        if count == 0xFFFF || directorySize == 0xFFFF_FFFF || directoryOffset == 0xFFFF_FFFF {
-            // ZIP64: the locator sits just before the end record.
-            let locator = eocd - 20
-            guard locator >= 0, tail[locator] == 0x50, tail[locator + 1] == 0x4B, tail[locator + 2] == 0x06, tail[locator + 3] == 0x07 else {
-                throw PackError.integrity("Archive \(label) has a damaged ZIP64 directory.")
-            }
+        var directoryEnd = eocdOffset
+        // ZIP64: a locator just before the end record points at a ZIP64 end
+        // record, which then holds the real counts and follows the directory.
+        let locator = eocd - 20
+        let hasZip64Locator = locator >= 0 && tail[locator] == 0x50 && tail[locator + 1] == 0x4B && tail[locator + 2] == 0x06 && tail[locator + 3] == 0x07
+        if count == 0xFFFF || directorySize == 0xFFFF_FFFF || directoryOffset == 0xFFFF_FFFF || hasZip64Locator {
+            guard hasZip64Locator else { throw PackError.integrity("Archive \(label) has a damaged ZIP64 directory.") }
             let recordOffset = u64(tail, locator + 8)
             guard recordOffset < size, size - recordOffset >= 56 else { throw PackError.integrity("Archive \(label) has a damaged ZIP64 directory.") }
-            try handle.seek(toOffset: recordOffset)
-            let record = [UInt8](try handle.read(upToCount: 56) ?? Data())
+            let record = try read(recordOffset, 56)
             guard record.count == 56, record[0] == 0x50, record[1] == 0x4B, record[2] == 0x06, record[3] == 0x06 else {
                 throw PackError.integrity("Archive \(label) has a damaged ZIP64 directory.")
             }
-            count = u64(record, 32)
-            directorySize = u64(record, 40)
-            directoryOffset = u64(record, 48)
+            // Fields the classic end record doesn't max out must agree with the
+            // ZIP64 record, or tools reading one or the other would differ.
+            let (wide, size64, offset64) = (u64(record, 32), u64(record, 40), u64(record, 48))
+            guard count == 0xFFFF || count == wide, directorySize == 0xFFFF_FFFF || directorySize == size64,
+                  directoryOffset == 0xFFFF_FFFF || directoryOffset == offset64 else {
+                throw PackError.integrity("Archive \(label) has ZIP and ZIP64 directories that disagree.")
+            }
+            count = wide
+            directorySize = size64
+            directoryOffset = offset64
+            directoryEnd = recordOffset
         }
         guard count <= UInt64(maxEntries) else { throw PackError.integrity("Archive \(label) has more than \(maxEntries) entries.") }
         guard directorySize <= 256 << 20, directoryOffset <= size, directorySize <= size - directoryOffset else {
             throw PackError.integrity("Archive \(label) has a damaged ZIP directory.")
         }
-        try handle.seek(toOffset: directoryOffset)
-        let directory = [UInt8](try handle.read(upToCount: Int(directorySize)) ?? Data())
+        guard directoryOffset + directorySize == directoryEnd else {
+            throw PackError.integrity("Archive \(label) has data between its ZIP directory and the directory's end record.")
+        }
+        guard count > 0 || directoryOffset == 0 else {
+            throw PackError.integrity("Archive \(label) lists no files but holds data.")
+        }
+        let directory = try read(directoryOffset, Int(directorySize))
         guard directory.count == Int(directorySize) else { throw PackError.integrity("Archive \(label) is truncated.") }
 
         var entries: [Entry] = []
         entries.reserveCapacity(Int(min(count, 4_096)))
+        var firstLocalHeader = UInt64.max
         var cursor = 0
         for _ in 0..<count {
             guard cursor + 46 <= directory.count, directory[cursor] == 0x50, directory[cursor + 1] == 0x4B,
@@ -201,25 +230,47 @@ enum PackArchive {
                 throw PackError.integrity("Archive \(label) has a damaged ZIP directory.")
             }
             let madeBy = u16(directory, cursor + 4) >> 8
+            let compressed = u32(directory, cursor + 20)
             var uncompressed = u32(directory, cursor + 24)
             let nameLength = Int(u16(directory, cursor + 28))
             let extraLength = Int(u16(directory, cursor + 30))
             let commentLength = Int(u16(directory, cursor + 32))
             let external = u32(directory, cursor + 38)
+            var localOffset = u32(directory, cursor + 42)
             let nameStart = cursor + 46
             let extraStart = nameStart + nameLength
             let next = extraStart + extraLength + commentLength
             guard next <= directory.count else { throw PackError.integrity("Archive \(label) has a damaged ZIP directory.") }
-            if uncompressed == 0xFFFF_FFFF {
-                // The real size is the first field of the ZIP64 extra block.
+            if uncompressed == 0xFFFF_FFFF || compressed == 0xFFFF_FFFF || localOffset == 0xFFFF_FFFF {
+                // The ZIP64 extra block holds, in order, whichever of the
+                // uncompressed size, compressed size and local header offset are full.
                 var extra = extraStart
                 while extra + 4 <= extraStart + extraLength {
                     let tag = u16(directory, extra), length = Int(u16(directory, extra + 2))
-                    if tag == 0x0001, length >= 8, extra + 12 <= extraStart + extraLength { uncompressed = u64(directory, extra + 4); break }
+                    guard extra + 4 + length <= extraStart + extraLength else { break }
+                    if tag == 0x0001 {
+                        var field = extra + 4
+                        let end = extra + 4 + length
+                        if uncompressed == 0xFFFF_FFFF, field + 8 <= end { uncompressed = u64(directory, field); field += 8 }
+                        if compressed == 0xFFFF_FFFF, field + 8 <= end { field += 8 }
+                        if localOffset == 0xFFFF_FFFF, field + 8 <= end { localOffset = u64(directory, field) }
+                        break
+                    }
                     extra += 4 + length
                 }
             }
-            let name = String(decoding: directory[nameStart..<extraStart], as: UTF8.self)
+            let nameBytes = Array(directory[nameStart..<extraStart])
+            let name = String(decoding: nameBytes, as: UTF8.self)
+            // ditto unpacks the name in the local header, so it must be the one checked here.
+            guard localOffset < directoryOffset, directoryOffset - localOffset >= UInt64(30 + nameLength) else {
+                throw PackError.integrity("Archive \(label) has a damaged ZIP directory.")
+            }
+            let local = try read(localOffset, 30 + nameLength)
+            guard local.count == 30 + nameLength, local[0] == 0x50, local[1] == 0x4B, local[2] == 0x03, local[3] == 0x04,
+                  Int(u16(local, 26)) == nameLength, Array(local[30...]) == nameBytes else {
+                throw PackError.integrity("Archive \(label) names a file differently in its directory and its local header (\"\(name)\").")
+            }
+            firstLocalHeader = min(firstLocalHeader, localOffset)
             // Unix and macOS writers keep the file type in the high half of the external attributes.
             var special = false
             if madeBy == 3 || madeBy == 19 {
@@ -228,6 +279,9 @@ enum PackArchive {
             }
             entries.append(Entry(name: name, isDirectory: name.hasSuffix("/"), isLinkOrSpecial: special, uncompressedBytes: uncompressed))
             cursor = next
+        }
+        guard count == 0 || firstLocalHeader == 0 else {
+            throw PackError.integrity("Archive \(label) has data before its first file.")
         }
         return entries
     }

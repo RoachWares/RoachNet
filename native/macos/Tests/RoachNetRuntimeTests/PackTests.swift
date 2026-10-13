@@ -283,6 +283,15 @@ final class PackTests: XCTestCase {
         XCTAssertTrue(try installer.installLocalPackage(at: Path.join(root, "child-3")).isEnabled)
     }
 
+    func testPackWhoseDependencyVanishedBeforeItFinishedInstallsSwitchedOff() throws {
+        // The installer found removed-pack before downloading, and it was uninstalled before this pack was recorded.
+        let registry = registry()
+        let (child, _) = resourcePack(id: "late-pack", payload: Data("l".utf8), dependencies: [PackDependency(id: "removed-pack")])
+        try registry.markInstalled(child, source: "test")
+        XCTAssertEqual(registry.readState().packs["late-pack"]?.installedVersion, "1.0.0")
+        XCTAssertEqual(registry.readState().packs["late-pack"]?.enabled, false, "a dependency that can't be resolved keeps it off")
+    }
+
     func testConcurrentInstallsAllStayInTheStateFile() throws {
         let registry = registry()
         let manifests = (0..<24).map { resourcePack(id: "pack-\($0)", payload: Data("\($0)".utf8)).0 }

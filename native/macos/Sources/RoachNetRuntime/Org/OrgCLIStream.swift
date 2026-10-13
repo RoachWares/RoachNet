@@ -48,6 +48,14 @@ final class OrgCLIStream {
         self.log = log
     }
 
+    /// A cost a CLI reported, in dollars, or nil when it isn't a real amount
+    /// (NaN, infinity such as `1e309`, or negative). Large values are held to
+    /// OrgLimits, so sums and trace records stay finite.
+    static func dollars(_ value: JSON) -> Double? {
+        guard let number = value.numberValue, number.isFinite, number >= 0 else { return nil }
+        return min(number, Double(OrgLimits.maxAmount) / 100)
+    }
+
     /// Puts a cost the CLI reported only as a run total (Claude Code with an
     /// API key) on the last model turn, so the trace's total matches it.
     func applyReportedTotal(_ usd: Double) {
@@ -138,7 +146,7 @@ final class OrgCLIStream {
             endGeneration()
             sessionId = event["session_id"].stringValue ?? sessionId
             finalText = event["result"].stringValue ?? finalText
-            costUsd = event["total_cost_usd"].numberValue ?? costUsd
+            costUsd = Self.dollars(event["total_cost_usd"]) ?? costUsd
             turns = event["num_turns"].clampedInt(0...(1 << 50)) ?? turns
             let tokens = event["usage"]
             if tokens.isObject {
@@ -288,7 +296,7 @@ final class OrgCLIStream {
                                outputTokens: (stats["output_tokens"].clampedInt(0...(1 << 50)) ?? stats["candidates_tokens"].clampedInt(0...(1 << 50)) ?? 0),
                                cachedInputTokens: (stats["cached"].clampedInt(0...(1 << 50)) ?? stats["cached_tokens"].clampedInt(0...(1 << 50)) ?? 0))
             generationUsage = usage
-            costUsd = stats["total_cost_usd"].numberValue ?? costUsd
+            costUsd = Self.dollars(stats["total_cost_usd"]) ?? costUsd
             if let status = event["status"].stringValue, status != "success" {
                 reportedFailure = true
                 errorMessage = event["error"]["message"].stringValue ?? event["error"].stringValue ?? status
@@ -324,7 +332,10 @@ final class OrgCLIStream {
                                   cachedInputTokens: (tokens["cache"]["read"].clampedInt(0...(1 << 50)) ?? 0))
             generationUsage = step
             usage = usage + step
-            if let cost = part["cost"].numberValue { costUsd = (costUsd ?? 0) + cost; stepCost = cost }
+            if let cost = Self.dollars(part["cost"]) {
+                costUsd = min((costUsd ?? 0) + cost, Double(OrgLimits.maxAmount) / 100)
+                stepCost = cost
+            }
             if part["reason"].stringValue == "stop" { sawResult = true }
             endGeneration()
         case "error":

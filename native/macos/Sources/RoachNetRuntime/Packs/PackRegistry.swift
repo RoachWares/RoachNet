@@ -288,8 +288,10 @@ public final class PackRegistry {
     func markInstalled(_ manifest: PackManifest, source: String) throws {
         let all = records()
         let enabledIDs = Set(all.filter(\.isEnabled).map(\.manifest.id))
-        let dependencies = (try? resolveDependencies(of: manifest.id, available: [manifest] + all.map(\.manifest))) ?? []
-        let dependenciesOn = dependencies.allSatisfy { enabledIDs.contains($0.id) }
+        // A dependency that can't be resolved now (removed while this pack was
+        // downloading, say) keeps the pack off rather than counting as none.
+        let dependencies = try? resolveDependencies(of: manifest.id, available: [manifest] + all.map(\.manifest))
+        let dependenciesOn = dependencies?.allSatisfy { enabledIDs.contains($0.id) } ?? false
         let previous: PackState? = try mutateState { state in
             let previous = state.packs[manifest.id]
             state.packs[manifest.id] = PackState(

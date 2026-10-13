@@ -68,6 +68,24 @@ final class OrgCLIAgentTests: XCTestCase {
         XCTAssertEqual(OrgCLIAdapter.classify(parser.errorMessage!.lowercased(), kind: .claude).0, "not_signed_in")
     }
 
+    func testCostsThatAreNotRealAmountsAreDropped() throws {
+        // 1e309 parses as infinity; a record holding it couldn't be written as JSON.
+        for cost in ["1e309", "-4", "1e30"] {
+            let (parser, _, _) = try stream(.claude, [
+                #"{"type":"system","subtype":"init","session_id":"s3","apiKeySource":"ANTHROPIC_API_KEY"}"#,
+                #"{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s3","total_cost_usd":\#(cost)}"#,
+            ])
+            if cost == "1e30" {
+                XCTAssertEqual(parser.costUsd, Double(OrgLimits.maxAmount) / 100, "held to the Org limit")
+            } else {
+                XCTAssertNil(parser.costUsd, cost)
+            }
+        }
+        XCTAssertEqual(TraceCost(totalUsd: .infinity).totalUsd, 0)
+        XCTAssertEqual(TraceCost(totalUsd: .nan).totalUsd, 0)
+        XCTAssertEqual(TraceCost(totalUsd: -1).totalUsd, 0)
+    }
+
     // Shapes recorded from codex-cli 0.152.1 signed in with ChatGPT.
     func testCodexStream() throws {
         let (parser, tracer, traceId) = try stream(.codex, [

@@ -91,6 +91,15 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertTrue(accepts(constraint, "42"))
         XCTAssertFalse(constraint.isComplete, "a number can go on")
         XCTAssertTrue(constraint.canEnd)
+
+        // One fixed value that is the start of another (`1` among `1` and `10`) can still be the whole output.
+        let values = JSONConstraint(schema: .literals(["1", "10"]))
+        XCTAssertTrue(accepts(values, "1"))
+        XCTAssertFalse(values.isComplete, "10 is still possible")
+        XCTAssertTrue(values.canEnd)
+        let partial = JSONConstraint(schema: .literals([#""ab""#, #""abc""#]))
+        XCTAssertTrue(accepts(partial, #""a"#))
+        XCTAssertFalse(partial.canEnd, "\"a is not one of the values")
     }
 
     func testToolCallsParseInEachFamilysFormat() {

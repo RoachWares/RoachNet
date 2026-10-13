@@ -466,6 +466,9 @@ public final class JSONConstraint: GenerationConstraint {
             if state.complete { return true }
             // A top-level number has no closing character, so it can only end with the output.
             if state.stack.count == 2, case .number(let text, let integer) = state.stack[1] { return State.completeNumber(text, integer: integer) }
+            // Nor does a top-level value that is one of several fixed values,
+            // when it may also go on to a longer one (`1` among `1` and `10`).
+            if state.stack.count == 2, case .literal(let text, let options) = state.stack[1] { return options.contains(text) }
             return false
         }
     }
