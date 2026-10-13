@@ -15,6 +15,15 @@ enum TestZip {
         /// false: no local record of its own; `directoryOffset` points into another file's data.
         var written = true
         var directoryOffset: Int?
+        /// The name's bytes as written, when they aren't `name` in UTF-8.
+        var rawName: Data?
+        /// The extra block in the directory, and in the local header unless `localExtra` is set.
+        var extra = Data()
+        var localExtra: Data?
+        /// The local header's flags, when they aren't `flags`.
+        var localFlags: Int?
+
+        var nameBytes: Data { rawName ?? Data(name.utf8) }
     }
 
     static func crc32(_ data: Data) -> UInt32 {
@@ -35,10 +44,11 @@ enum TestZip {
     /// The local file header and data `make` writes for `item`.
     static func localRecord(_ item: Item) -> Data {
         var out = Data()
-        let name = Data(item.name.utf8)
-        u32(0x0403_4B50, &out); u16(20, &out); u16(item.flags, &out); u16(item.method, &out); u16(0, &out); u16(0x21, &out)
+        let name = item.nameBytes
+        let extra = item.localExtra ?? item.extra
+        u32(0x0403_4B50, &out); u16(20, &out); u16(item.localFlags ?? item.flags, &out); u16(item.method, &out); u16(0, &out); u16(0x21, &out)
         u32(crc32(item.data), &out); u32(UInt32(item.data.count), &out); u32(UInt32(item.data.count), &out)
-        u16(name.count, &out); u16(0, &out); out.append(name); out.append(item.data)
+        u16(name.count, &out); u16(extra.count, &out); out.append(name); out.append(extra); out.append(item.data)
         return out
     }
 
@@ -51,12 +61,12 @@ enum TestZip {
             if item.written { out.append(localRecord(item)) }
             guard item.listed else { continue }
             listed += 1
-            let name = Data(item.name.utf8)
+            let name = item.nameBytes
             u32(0x0201_4B50, &directory); u16(0x0314, &directory); u16(20, &directory); u16(item.flags, &directory); u16(item.method, &directory)
             u16(0, &directory); u16(0x21, &directory); u32(crc32(item.data), &directory); u32(UInt32(item.data.count), &directory)
-            u32(UInt32(item.data.count), &directory); u16(name.count, &directory); u16(0, &directory); u16(0, &directory)
+            u32(UInt32(item.data.count), &directory); u16(name.count, &directory); u16(item.extra.count, &directory); u16(0, &directory)
             u16(0, &directory); u16(0, &directory); u32(item.mode << 16, &directory)
-            u32(UInt32(item.directoryOffset ?? offset), &directory); directory.append(name)
+            u32(UInt32(item.directoryOffset ?? offset), &directory); directory.append(name); directory.append(item.extra)
         }
         let directoryOffset = UInt32(out.count)
         out.append(directory)
@@ -103,6 +113,82 @@ final class PackArchiveTests: XCTestCase {
         let path = Path.join(root, name)
         try TestZip.make(items).write(to: URL(fileURLWithPath: path))
         return path
+    }
+
+    /// An Info-ZIP Unicode path field (0x7075): version 1, the CRC-32 of the header's name, the name in UTF-8.
+    private func unicodePath(_ unicode: String, for header: String) -> Data {
+        let crc = TestZip.crc32(Data(header.utf8))
+        var body = Data([1])
+        for shift in stride(from: 0, to: 32, by: 8) { body.append(UInt8((crc >> UInt32(shift)) & 0xFF)) }
+        body.append(Data(unicode.utf8))
+        return Data([0x75, 0x70, UInt8(body.count & 0xFF), UInt8(body.count >> 8)]) + body
+    }
+
+    func testZipNamesSayHowTheyAreEncoded() throws {
+        let cafe = "café.json"
+        let json = Data("{}".utf8)
+        // Without bit 11 the ZIP spec reads a name past ASCII as CP437 and
+        // macOS's tools as UTF-8, so it is refused: plain, with a Unicode path
+        // field that only some tools read, and in legacy CP437 bytes.
+        for (file, item) in [
+            ("legacy.zip", TestZip.Item(name: cafe, data: json)),
+            ("legacy-field.zip", TestZip.Item(name: cafe, data: json, extra: unicodePath(cafe, for: cafe))),
+            ("cp437.zip", TestZip.Item(name: "x", data: json, rawName: Data([0x63, 0x61, 0x66, 0x82, 0x2E, 0x6A]))),
+        ] {
+            XCTAssertThrowsError(try ZipArchive(path: try zip(file, [item])), file) { error in
+                XCTAssertTrue("\(error)".contains("UTF-8"), "\(error)")
+            }
+        }
+        // Bit 11 says UTF-8 and the name is read that way, with or without a field that repeats it.
+        for (file, item) in [
+            ("marked.zip", TestZip.Item(name: cafe, data: json, flags: 0x0800)),
+            ("marked-field.zip", TestZip.Item(name: cafe, data: json, flags: 0x0800, extra: unicodePath(cafe, for: cafe))),
+        ] {
+            XCTAssertEqual(try ZipArchive(path: try zip(file, [item])).entries.map(\.name), [cafe], file)
+        }
+        // Bit 11 on bytes that aren't UTF-8, or in the directory but not the local header.
+        for (file, item) in [
+            ("broken.zip", TestZip.Item(name: "x", data: json, flags: 0x0800, rawName: Data([0x63, 0x61, 0x66, 0xE9, 0x2E, 0x6A]))),
+            ("unmarked-local.zip", TestZip.Item(name: cafe, data: json, flags: 0x0800, localFlags: 0)),
+        ] {
+            XCTAssertThrowsError(try ZipArchive(path: try zip(file, [item])), file)
+        }
+        // A Unicode path field that names the file differently, in the directory
+        // or only in the local header: unzip would unpack it under that name.
+        for (file, item) in [
+            ("renamed.zip", TestZip.Item(name: "a.json", data: json, extra: unicodePath("../b.json", for: "a.json"))),
+            ("renamed-local.zip", TestZip.Item(name: "a.json", data: json, localExtra: unicodePath("../b.json", for: "a.json"))),
+        ] {
+            XCTAssertThrowsError(try ZipArchive(path: try zip(file, [item])), file)
+        }
+        // Plain ASCII names need neither, and other extra fields are left alone.
+        let stamped = TestZip.Item(name: "a.json", data: json, extra: Data([0x55, 0x54, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]))
+        XCTAssertEqual(try ZipArchive(path: try zip("stamped.zip", [stamped])).entries.map(\.name), ["a.json"])
+    }
+
+    /// unzip (the Linux unpacker) writes each stream whole: per-file sizes are
+    /// checked after it, because two files can trade bytes and keep the total.
+    func testFilesAnotherToolUnpackedMustHaveTheDirectorysSizes() throws {
+        let archive = try ZipArchive(path: try zip("sizes.zip", [
+            .init(name: "a/", mode: 0o040755),
+            .init(name: "a/one.txt", data: Data("12345".utf8)),
+            .init(name: "two.txt", data: Data("1234567".utf8)),
+        ]))
+        let destination = Path.join(root, "unpacked")
+        try Files.mkdirp(Path.join(destination, "a"))
+        try Files.write("12345", to: Path.join(destination, "a", "one.txt"))
+        try Files.write("1234567", to: Path.join(destination, "two.txt"))
+        XCTAssertNoThrow(try archive.checkUnpackedSizes(in: destination))
+
+        try Files.write("1234567", to: Path.join(destination, "a", "one.txt"))
+        try Files.write("12345", to: Path.join(destination, "two.txt"))
+        XCTAssertThrowsError(try archive.checkUnpackedSizes(in: destination), "same total, different split")
+
+        try Files.write("12345", to: Path.join(destination, "a", "one.txt"))
+        Files.remove(Path.join(destination, "two.txt"))
+        XCTAssertThrowsError(try archive.checkUnpackedSizes(in: destination), "missing file")
+        try FileManager.default.createSymbolicLink(atPath: Path.join(destination, "two.txt"), withDestinationPath: Path.join(destination, "a", "one.txt"))
+        XCTAssertThrowsError(try archive.checkUnpackedSizes(in: destination), "a link in the file's place")
     }
 
     func testEntryNamesThatLeaveTheFolderAreRefused() {

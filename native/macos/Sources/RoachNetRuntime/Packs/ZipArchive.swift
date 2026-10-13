@@ -16,8 +16,8 @@ import Compression
 /// directory didn't list, which neither the checks nor the size count saw. An
 /// archive is refused when it could be read more than one way: more than one
 /// end record, ZIP and ZIP64 records that disagree, bytes the directory doesn't
-/// account for, files that overlap, or a local header that disagrees with the
-/// directory.
+/// account for, files that overlap, a local header that disagrees with the
+/// directory, or a file name that tools could decode differently.
 struct ZipArchive {
     struct Entry {
         let name: String
@@ -172,7 +172,22 @@ struct ZipArchive {
                 guard found else { throw refused("has a damaged ZIP64 entry") }
             }
             let nameBytes = Array(directory[nameStart..<extraStart])
-            let name = String(decoding: nameBytes, as: UTF8.self)
+            // Bit 11 marks a UTF-8 name. Without it the ZIP spec reads a name
+            // past ASCII as CP437, while macOS's zip and ditto write such names
+            // in UTF-8, so the name is refused rather than unpacked as one the
+            // pack may not have meant. An Info-ZIP Unicode path field (0x7075)
+            // is a second name that unzip prefers and other tools ignore, so it
+            // has to repeat the first one exactly.
+            let plainASCII = nameBytes.allSatisfy { $0 < 0x80 }
+            guard plainASCII || flags & 0x0800 != 0 else {
+                throw refused("doesn't mark \"\(String(decoding: nameBytes, as: UTF8.self))\" as a UTF-8 name; pack archives mark names past ASCII as UTF-8")
+            }
+            guard let name = String(bytes: nameBytes, encoding: .utf8) else {
+                throw refused("marks a file name as UTF-8 that isn't")
+            }
+            guard Self.unicodePathNames(directory, from: extraStart, count: extraLength).allSatisfy({ $0 == nameBytes }) else {
+                throw refused("gives \"\(name)\" a second, different name")
+            }
             let isDirectory = name.hasSuffix("/")
             guard flags & 0x0001 == 0, flags & 0x0040 == 0, flags & 0x2000 == 0 else {
                 throw refused("is encrypted (\"\(name)\"); packs can't be")
@@ -197,16 +212,26 @@ struct ZipArchive {
             let differently = refused("describes a file differently in its directory and its local header (\"\(name)\")")
             guard local.count == 30 + nameLength, local[0] == 0x50, local[1] == 0x4B, local[2] == 0x03, local[3] == 0x04,
                   Int(u16(local, 26)) == nameLength, Array(local[30...]) == nameBytes,
-                  u16(local, 8) == method, u16(local, 6) & 0x0009 == flags & 0x0009 else {
+                  u16(local, 8) == method, u16(local, 6) & 0x0009 == flags & 0x0009,
+                  plainASCII || u16(local, 6) & 0x0800 != 0 else {
                 throw differently
             }
             if flags & 0x0008 == 0, u32(local, 18) != 0xFFFF_FFFF, u32(local, 22) != 0xFFFF_FFFF {
                 // Without a data descriptor the local header carries the sizes too.
                 guard u32(local, 14) == UInt64(crc), u32(local, 18) == compressed, u32(local, 22) == uncompressed else { throw differently }
             }
-            let dataOffset = localOffset + 30 + UInt64(nameLength) + u16(local, 28)
+            let localExtraLength = Int(u16(local, 28))
+            let dataOffset = localOffset + 30 + UInt64(nameLength) + UInt64(localExtraLength)
             guard dataOffset <= directoryOffset, compressed <= directoryOffset - dataOffset else {
                 throw refused("has a damaged ZIP directory")
+            }
+            if localExtraLength > 0 {
+                // A Unicode path field in the local header renames the file just the same.
+                let localExtra = try read(localOffset + 30 + UInt64(nameLength), localExtraLength)
+                guard localExtra.count == localExtraLength,
+                      Self.unicodePathNames(localExtra, from: 0, count: localExtraLength).allSatisfy({ $0 == nameBytes }) else {
+                    throw differently
+                }
             }
             // Unix and macOS writers keep the file type in the high half of the external attributes.
             var special = false, executable = false
@@ -240,6 +265,23 @@ struct ZipArchive {
             throw refused(entries.isEmpty ? "lists no files but holds data" : "has data between its last file and its ZIP directory")
         }
         self.entries = entries
+    }
+
+    /// The names in an extra block's Info-ZIP Unicode path fields (tag
+    /// 0x7075: a version byte, the CRC-32 of the header's name, then the name
+    /// in UTF-8). Every such field counts, whatever its version or CRC says.
+    static func unicodePathNames(_ bytes: [UInt8], from start: Int, count: Int) -> [[UInt8]] {
+        var names: [[UInt8]] = []
+        var at = start
+        let end = start + count
+        while at + 4 <= end {
+            let tag = Int(bytes[at]) | Int(bytes[at + 1]) << 8
+            let length = Int(bytes[at + 2]) | Int(bytes[at + 3]) << 8
+            guard at + 4 + length <= end else { break }
+            if tag == 0x7075 { names.append(length >= 5 ? Array(bytes[(at + 9)..<(at + 4 + length)]) : []) }
+            at += 4 + length
+        }
+        return names
     }
 
     // MARK: Unpacking
@@ -290,13 +332,33 @@ struct ZipArchive {
             guard fchmod(file, mode) == 0 else { throw PackError.installFailed("Unpacking \(entry.name) from \(label) failed: \(String(cString: strerror(errno))).") }
         }
         #else
-        // Without Apple's Compression (Linux CI), unzip unpacks; it reads the
-        // same central directory, and `PackArchive.inspect` has measured that
-        // every stream is exactly as long as the directory says.
+        // Without Apple's Compression (Linux CI), unzip unpacks. It reads the
+        // same central directory and checks each CRC-32; `PackArchive.inspect`
+        // has measured the whole archive against the directory's total, which
+        // caps what unzip can write, and each file's size is checked after.
         let result = Processes.run("/usr/bin/unzip", ["-qq", "-o", path, "-x", "__MACOSX/*", "-d", destination],
                                    timeoutMs: 600_000, environment: Processes.archiveToolEnvironment)
         guard result.status == 0 else { throw PackError.installFailed("Extracting \(label) failed: \(result.errorOutput)") }
+        try checkUnpackedSizes(in: destination)
         #endif
+    }
+
+    /// After another tool unpacked the archive (unzip, on Linux): every file
+    /// the directory lists must be there as a plain file of exactly the size
+    /// the directory gives it. Matching totals aren't enough: two files can
+    /// trade bytes and still add up.
+    func checkUnpackedSizes(in destination: String) throws {
+        let label = Path.basename(path)
+        for entry in entries where !entry.isDirectory {
+            let parts = entry.name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
+            guard let first = parts.first, first != "__MACOSX" else { continue }
+            guard let info = Files.lstatInfo(destination + "/" + parts.joined(separator: "/")), info.st_mode & S_IFMT == S_IFREG else {
+                throw PackError.integrity("Archive \(label): \"\(entry.name)\" wasn't unpacked as a plain file.")
+            }
+            guard UInt64(info.st_size) == entry.uncompressedBytes else {
+                throw PackError.integrity("Archive \(label): \"\(entry.name)\" unpacks to a different size than the archive says.")
+            }
+        }
     }
 
     /// Creates each folder of `parts` under `root` that doesn't exist yet;

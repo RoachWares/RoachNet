@@ -94,9 +94,10 @@ enum PackArchive {
     }
 
     #if !canImport(Compression)
-    /// Where unzip unpacks (Linux CI), every stream must inflate to what the
-    /// directory declares: unzip writes an entry's whole stream whatever its
-    /// size fields say.
+    /// Where unzip unpacks (Linux CI), the streams must inflate to the total
+    /// the directory declares: unzip writes an entry's whole stream whatever
+    /// its size fields say. This caps what unzip can write;
+    /// `ZipArchive.checkUnpackedSizes` then checks each file.
     static func measureZip(_ path: String, declared: UInt64, maxBytes: UInt64) throws {
         let measured = try inflatedSize(of: path, format: "zip", limit: maxBytes)
         guard measured <= maxBytes else { throw tooLarge(Path.basename(path), maxBytes) }
