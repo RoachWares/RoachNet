@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "convex": "^1.46.0",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "ws": "8.21.3"
