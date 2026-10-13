@@ -202,13 +202,13 @@ public final class JSONConstraint: GenerationConstraint {
                 return number(c, text, integer)
             case .literal(let text, let options):
                 let next = text + String(c)
-                if options.contains(where: { $0.hasPrefix(next) }) {
+                if options.contains(where: { $0.startsWithScalars(of: next) }) {
                     stack[stack.count - 1] = .literal(text: next, options: options)
-                    if options.contains(next) && !options.contains(where: { $0 != next && $0.hasPrefix(next) }) { pop() }
+                    if options.containsScalars(next) && !options.contains(where: { !$0.hasSameScalars(as: next) && $0.startsWithScalars(of: next) }) { pop() }
                     return true
                 }
                 // A complete literal that is also a prefix of a longer one (`1` vs `10`) ends here.
-                if options.contains(text) {
+                if options.containsScalars(text) {
                     pop()
                     return feed(c)
                 }
@@ -272,9 +272,9 @@ public final class JSONConstraint: GenerationConstraint {
                 return true
             case .literals(let options):
                 let first = String(c)
-                guard options.contains(where: { $0.hasPrefix(first) }) else { return false }
+                guard options.contains(where: { $0.startsWithScalars(of: first) }) else { return false }
                 stack.append(.literal(text: first, options: options))
-                if options == [first] { pop() }
+                if options.count == 1 && options[0].hasSameScalars(as: first) { pop() }
                 return true
             default:
                 break
@@ -431,7 +431,7 @@ public final class JSONConstraint: GenerationConstraint {
                 return true
             }
             if c == "\"" {
-                if let options, !options.contains(text) { return false }
+                if let options, !options.containsScalars(text) { return false }
                 if isKey {
                     stack.removeLast()
                     if case .object(let schema, let used, let phase, _) = stack[stack.count - 1] {
@@ -447,7 +447,7 @@ public final class JSONConstraint: GenerationConstraint {
         }
 
         private mutating func extend(_ text: String, escape: Int, options: [String]?, isKey: Bool) -> Bool {
-            if let options, !options.contains(where: { $0.hasPrefix(text) }) { return false }
+            if let options, !options.contains(where: { $0.startsWithScalars(of: text) }) { return false }
             stack[stack.count - 1] = .string(text: text, escape: escape, options: options, isKey: isKey)
             return true
         }
@@ -505,8 +505,22 @@ public final class JSONConstraint: GenerationConstraint {
             if state.stack.count == 2, case .number(let text, let integer) = state.stack[1] { return State.completeNumber(text, integer: integer) }
             // Nor does a top-level value that is one of several fixed values,
             // when it may also go on to a longer one (`1` among `1` and `10`).
-            if state.stack.count == 2, case .literal(let text, let options) = state.stack[1] { return options.contains(text) }
+            if state.stack.count == 2, case .literal(let text, let options) = state.stack[1] { return options.containsScalars(text) }
             return false
         }
     }
+}
+
+// JSON compares strings code point by code point, and output arrives one
+// scalar at a time. Swift's own string comparisons work on whole characters,
+// so a value whose character is several scalars (an emoji with a skin tone, a
+// letter with a combining accent, a Devanagari conjunct) never matched its
+// first scalar.
+extension String {
+    func startsWithScalars(of prefix: String) -> Bool { unicodeScalars.starts(with: prefix.unicodeScalars) }
+    func hasSameScalars(as other: String) -> Bool { unicodeScalars.elementsEqual(other.unicodeScalars) }
+}
+
+extension Array where Element == String {
+    func containsScalars(_ text: String) -> Bool { contains { $0.hasSameScalars(as: text) } }
 }

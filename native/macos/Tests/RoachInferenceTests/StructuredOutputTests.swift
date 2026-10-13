@@ -132,6 +132,42 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertFalse(keys.admits(Array("x".utf8) + [e[0]], after: fresh))
     }
 
+    /// JSON compares strings code point by code point. A fixed value or a key
+    /// whose character is several code points (an emoji with a skin tone, a
+    /// letter with a combining accent, a Devanagari conjunct) can be written a
+    /// code point or a byte at a time, and the same text spelled with other
+    /// code points is another value.
+    func testFixedValuesAndKeysMatchCodePointByCodePoint() {
+        let thumbs = "\u{1F44D}\u{1F3FD}"      // one character, two code points
+        let decomposed = "cafe\u{301}"         // "é" as "e" and a combining accent
+        let hindi = "\u{928}\u{92E}\u{938}\u{94D}\u{924}\u{947}"
+        for value in [thumbs, decomposed, hindi] {
+            let schema = JSONSchemaNode.literals(["\"\(value)\"", #""no""#])
+            XCTAssertTrue(accepts(JSONConstraint(schema: schema), "\"\(value)\""), value)
+            let byCodePoint = JSONConstraint(schema: schema)
+            for scalar in "\"\(value)\"".unicodeScalars {
+                XCTAssertTrue(byCodePoint.allows(String(scalar)), "\(value): U+\(String(scalar.value, radix: 16, uppercase: true))")
+                byCodePoint.accept(String(scalar))
+            }
+            XCTAssertTrue(byCodePoint.isComplete, value)
+            let keys = JSONConstraint(schema: .object(properties: [value: .string], order: [value], required: [value], additional: false))
+            XCTAssertTrue(accepts(keys, "{\"\(value)\": \"x\"}"), value)
+        }
+
+        // Byte by byte, as tokens that split those characters arrive.
+        let values = JSONConstraint(schema: .literals(["\"\(thumbs)\""]))
+        values.accept("\"")
+        var decoder = StreamingDecoder()
+        for byte in Array(thumbs.utf8) {
+            XCTAssertTrue(values.admits([byte], after: decoder), String(byte, radix: 16))
+            let piece = decoder.append([byte])
+            if !piece.isEmpty { values.accept(piece) }
+        }
+        XCTAssertTrue(values.allows("\""))
+
+        XCTAssertFalse(accepts(JSONConstraint(schema: .literals(["\"\(decomposed)\""])), "\"caf\u{E9}\""), "\u{E9} is another value")
+    }
+
     func testCompleteValueEndsGeneration() {
         let constraint = JSONConstraint(schema: .number(integer: true))
         XCTAssertTrue(accepts(constraint, "42"))
