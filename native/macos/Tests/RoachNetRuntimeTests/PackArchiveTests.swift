@@ -205,6 +205,9 @@ final class PackArchiveTests: XCTestCase {
         let cases: [(String, [TestZip.Item], String)] = [
             ("dot.zip", [.init(name: ".", data: json), .init(name: "a.json", data: json)], "names no file"),
             ("dot-dot.zip", [.init(name: "./.", data: json)], "names no file"),
+            // unzip writes "a/." as "a/_"; this reader would write "a".
+            ("ends-in-dot.zip", [.init(name: "a/.", data: json)], "ends in"),
+            ("ends-in-dot-deeper.zip", [.init(name: "a/b/./.", data: json)], "ends in"),
             ("dotted-rsrc.zip", [.init(name: "a.json", data: json), .init(name: "./__MACOSX/._a.json", data: json)], "__MACOSX"),
             ("rsrc-file.zip", [.init(name: "__MACOSX", data: json)], "__MACOSX"),
             ("rsrc-case.zip", [.init(name: "__macosx/._a.json", data: json)], "__MACOSX"),
@@ -230,6 +233,10 @@ final class PackArchiveTests: XCTestCase {
         // A tar listing is held to the same rule.
         let noFile = PackArchive.Entry(name: "./.", isDirectory: false, isLinkOrSpecial: false, uncompressedBytes: 1)
         XCTAssertThrowsError(try PackArchive.check([noFile], label: "listing", maxBytes: 64))
+        let endsInDot = PackArchive.Entry(name: "a/.", isDirectory: false, isLinkOrSpecial: false, uncompressedBytes: 1)
+        XCTAssertThrowsError(try PackArchive.check([endsInDot], label: "listing", maxBytes: 64))
+        let throughDot = PackArchive.Entry(name: "a/./b.json", isDirectory: false, isLinkOrSpecial: false, uncompressedBytes: 1)
+        XCTAssertNoThrow(try PackArchive.check([throughDot], label: "listing", maxBytes: 64), "a dot inside the path is fine")
         let itself = PackArchive.Entry(name: "./", isDirectory: true, isLinkOrSpecial: false, uncompressedBytes: 0)
         XCTAssertNoThrow(try PackArchive.check([itself], label: "listing", maxBytes: 64))
     }

@@ -440,12 +440,12 @@ public final class SetupEngine {
     }
 
     func startInstall(_ payload: JSON, synchronous: Bool) throws -> JSON {
-        let config = defaultConfig(payload)
-        if config["dryRun"].truthy {
+        let requested = defaultConfig(payload)
+        if requested["dryRun"].truthy {
             var preview = newTask()
             preview["status"] = "completed"
             preview["finishedAt"] = JSON(JS.isoNow())
-            preview["result"] = ["installPath": config["installPath"], "appPath": config["installedAppPath"], "url": nil]
+            preview["result"] = ["installPath": requested["installPath"], "appPath": requested["installedAppPath"], "url": nil]
             preview["logs"] = ["Preview mode is enabled. No changes were made."]
             synchronized { lastCompletedTask = preview }
             return ["ok": true, "task": preview]
@@ -457,6 +457,12 @@ public final class SetupEngine {
             activeTask = newTask()
             lastCompletedTask = nil
         }
+        // An upgrade cut off mid-swap is put back before anything reads the
+        // folders, so the config built for this install still sees the copy
+        // that is installed, with its settings.
+        let roots = [normalizeInputPath(loadPersistedConfig()["installPath"] || JSON(defaultInstallPath())), normalizeInputPath(requested["installPath"])]
+        for root in Set(roots) { recoverInterruptedInstall(finalRoot: root) }
+        let config = defaultConfig(payload)
         let plan = InstallPlan(
             installPath: normalizeInputPath(config["installPath"]),
             appPath: canonicalAppPath(normalizeInputPath(config["installPath"])),
@@ -475,13 +481,12 @@ public final class SetupEngine {
 
     func runInstall(_ plan: InstallPlan) {
         var stagingRoot: String?
-        // When this run would replace a finished install and fails before the
-        // swap, the saved config goes back to the installed copy's, so it still
+        // When this run would replace an install and fails before the swap,
+        // the saved config goes back to the installed copy's, so it still
         // describes the copy that stays installed. A first install keeps the
         // choices it was given, ready for a retry.
         let previousConfig = synchronized { installedConfig } ?? loadPersistedConfig()
-        let restoreConfigOnFailure = previousConfig["setupCompletedAt"].stringValue != nil
-            && installLooksPresent(previousConfig["installPath"].stringValue ?? "", appPath: previousConfig["installedAppPath"].stringValue ?? "")
+        let restoreConfigOnFailure = describesInstalledCopy(previousConfig)
         var swapped = false
         do {
             saveConfig(plan.config)
@@ -529,6 +534,12 @@ public final class SetupEngine {
             try finalizeInstallRoot(staging: staging, finalRoot: plan.installPath, storagePath: plan.storagePath)
             swapped = true
             stagingRoot = nil
+            // From here the new copy is the installed one. If a later step
+            // fails, a retry that fails before its swap puts this back, not the
+            // settings of the copy this install replaced.
+            var swappedConfig = plan.config
+            swappedConfig["installedAppPath"] = JSON(plan.appPath)
+            synchronized { installedConfig = swappedConfig }
             try Files.mkdirp(plan.storagePath)
 
             setPhase("Arming RoachTail local alias", 94)
@@ -944,13 +955,20 @@ public final class SetupEngine {
         }
     }
 
-    /// Remembers the saved config when it describes a finished install that is
-    /// still there, before the Setup app can save new choices over it.
+    /// Remembers the saved config when it describes a copy that is installed,
+    /// before the Setup app can save new choices over it. An upgrade cut off
+    /// mid-swap is put back first, so a copy only moved aside still counts.
     func rememberInstalledConfig() {
         let current = loadPersistedConfig()
-        guard current["setupCompletedAt"].stringValue != nil,
-              installLooksPresent(current["installPath"].stringValue ?? "", appPath: current["installedAppPath"].stringValue ?? "") else { return }
+        if let root = current["installPath"].stringValue, !root.isEmpty { recoverInterruptedInstall(finalRoot: root) }
+        guard describesInstalledCopy(current) else { return }
         synchronized { installedConfig = current }
+    }
+
+    /// Whether `config` points at a copy of RoachNet that is installed now.
+    func describesInstalledCopy(_ config: JSON) -> Bool {
+        guard let root = config["installPath"].stringValue, !root.isEmpty else { return false }
+        return installLooksPresent(root, appPath: config["installedAppPath"].stringValue ?? canonicalAppPath(root))
     }
 
     /// Starts the loopback setup service and writes the ready file the Setup

@@ -192,13 +192,16 @@ struct ZipArchive {
             let isDirectory = name.hasSuffix("/")
             // Both unpackers must write the same files. A file entry named "."
             // names no file: this reader would skip it, and unzip writes it as
-            // "_", which no check sees. `__MACOSX/` is left out only when a
+            // "_", which no check sees. A file entry that ends in "." ("a/.")
+            // is refused too: unzip writes it as "a/_", this reader as "a".
+            // `__MACOSX/` is left out only when a
             // name starts with it as written (that is what unzip's pattern
             // matches), so any other spelling of that folder, such as
             // "./__MACOSX/a" or a file named __MACOSX, is refused.
             let parts = Self.unpackedParts(name)
             if !Self.isResourceForkCopy(name) {
                 guard isDirectory || !parts.isEmpty else { throw refused("has a file entry that names no file (\"\(name)\")") }
+                guard isDirectory || !PackArchive.endsInDot(name) else { throw refused("has a file entry whose name ends in \".\" (\"\(name)\")") }
                 guard parts.first?.lowercased() != "__macosx" else {
                     throw refused("names \"\(name)\" under __MACOSX, which is kept for ditto's resource-fork copies")
                 }

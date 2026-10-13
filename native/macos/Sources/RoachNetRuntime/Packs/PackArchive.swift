@@ -90,11 +90,20 @@ enum PackArchive {
             if !entry.isDirectory, !entry.name.split(separator: "/").contains(where: { $0 != "." }) {
                 throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" names no file.")
             }
+            if !entry.isDirectory, endsInDot(entry.name) {
+                throw PackError.integrity("Archive \(label) can't be unpacked: the file name \"\(entry.name)\" ends in \".\".")
+            }
             let (sum, overflow) = total.addingReportingOverflow(entry.uncompressedBytes)
             guard !overflow, sum <= maxBytes else { throw tooLarge(label, maxBytes) }
             total = sum
         }
         return total
+    }
+
+    /// Whether a name's last component is "." ("a/."). As a file, unzip writes
+    /// it as "a/_" and other unpackers as "a", so such a file is refused.
+    static func endsInDot(_ name: String) -> Bool {
+        name.split(separator: "/", omittingEmptySubsequences: false).last == "."
     }
 
     static func tooLarge(_ label: String, _ maxBytes: UInt64) -> PackError {
