@@ -165,9 +165,13 @@ public final class InferenceEngine {
             if let constraint {
                 let tokenizer = self.tokenizer
                 let current = decoder
+                // The last token there is room for (the token limit or the
+                // context) must not stop inside a character: nothing could
+                // finish it, and the held bytes would end the output as "\u{FFFD}".
+                let finishing = generated.count + 1 >= limit || session.cachedTokens.count >= session.contextLength
                 guard let chosen = sampler.sample(logits, history: session.cachedTokens, allowed: { id in
                     if tokenizer.isEndOfGeneration(id) { return constraint.canEnd }
-                    return constraint.admits(tokenizer.piece(id), after: current)
+                    return constraint.admits(tokenizer.piece(id), after: current, finishing: finishing)
                 }) else {
                     reason = .endOfGeneration
                     break

@@ -168,6 +168,38 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertFalse(accepts(JSONConstraint(schema: .literals(["\"\(decomposed)\""])), "\"caf\u{E9}\""), "\u{E9} is another value")
     }
 
+    /// The last token there is room for can't stop inside a character even
+    /// where one may come: nothing could come after it to finish it.
+    func testTheLastTokenCantStopInsideACharacter() {
+        let lead: [UInt8] = [0xE2]      // the first of the three bytes of "“"
+        let fresh = StreamingDecoder()
+        let json = JSONConstraint(schema: .object(properties: ["color": .string], order: ["color"], required: ["color"], additional: false))
+        json.accept("{\"color\": \"")
+        XCTAssertTrue(json.admits(lead, after: fresh))
+        XCTAssertFalse(json.admits(lead, after: fresh, finishing: true))
+        XCTAssertFalse(json.admits(Array("red ".utf8) + lead, after: fresh, finishing: true))
+        XCTAssertTrue(json.admits(Array("red".utf8), after: fresh, finishing: true))
+        var held = StreamingDecoder()
+        _ = held.append(lead)
+        XCTAssertTrue(json.admits([0x80, 0x9C], after: held, finishing: true), "a token that finishes the character can still come")
+        XCTAssertFalse(json.admits([0x80], after: held, finishing: true))
+    }
+
+    /// Union branches that differ only in how a key is spelled (an accent
+    /// precomposed in one, "e" and a combining accent in the other) both stay
+    /// open, though Swift's own comparison takes the two as equal.
+    func testUnionBranchesSpelledDifferentlyBothStayOpen() {
+        let composed = "caf\u{E9}"
+        let decomposed = "cafe\u{301}"
+        func object(_ key: String) -> JSONSchemaNode {
+            .object(properties: [key: .string], order: [key], required: [key], additional: false)
+        }
+        for key in [composed, decomposed] {
+            let either = JSONConstraint(schema: .union([object(composed), object(decomposed)]))
+            XCTAssertTrue(accepts(either, "{\"\(key)\": \"x\"}"), key.unicodeScalars.map { String($0.value, radix: 16) }.joined(separator: " "))
+        }
+    }
+
     func testCompleteValueEndsGeneration() {
         let constraint = JSONConstraint(schema: .number(integer: true))
         XCTAssertTrue(accepts(constraint, "42"))

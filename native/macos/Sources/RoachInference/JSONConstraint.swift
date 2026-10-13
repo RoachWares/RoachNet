@@ -20,13 +20,14 @@ extension GenerationConstraint {
     /// `decoder` already holds. A token that stops partway through a character
     /// may come only where a character that starts that way can come: anywhere
     /// else no token could finish it, and the held bytes would end the output
-    /// as "\u{FFFD}".
-    public func admits(_ bytes: [UInt8], after decoder: StreamingDecoder) -> Bool {
+    /// as "\u{FFFD}". When `finishing`, this is the last token there is room
+    /// for, so it may not stop inside a character at all.
+    public func admits(_ bytes: [UInt8], after decoder: StreamingDecoder, finishing: Bool = false) -> Bool {
         guard !bytes.isEmpty else { return false }
         var probe = decoder
         let piece = probe.append(bytes)
         guard probe.holdsPartialCharacter else { return !piece.isEmpty && allows(piece) }
-        return allows(piece, thenPartial: probe.partialCharacter)
+        return !finishing && allows(piece, thenPartial: probe.partialCharacter)
     }
 }
 
@@ -141,7 +142,7 @@ public final class JSONConstraint: GenerationConstraint {
             guard state.feed(c) else { continue }
             let opened = state.forks
             state.forks = []
-            for candidate in [state] + opened where !next.contains(candidate) {
+            for candidate in [state] + opened where !next.contains(where: { $0.isSame(as: candidate) }) {
                 next.append(candidate)
                 if next.count == maxStates { return next }
             }
@@ -523,4 +524,59 @@ extension String {
 
 extension Array where Element == String {
     func containsScalars(_ text: String) -> Bool { contains { $0.hasSameScalars(as: text) } }
+}
+
+extension JSONConstraint.State {
+    /// Equal, and spelled with the same code points. Two readings that differ
+    /// only in how a key or value is spelled (union branches with the keys
+    /// "caf\u{E9}" and "cafe\u{301}") are equal to Swift, and both stay open.
+    func isSame(as other: Self) -> Bool {
+        guard self == other else { return false }
+        var mine: [Unicode.Scalar] = [], theirs: [Unicode.Scalar] = []
+        for frame in stack { frame.spell(into: &mine) }
+        for frame in other.stack { frame.spell(into: &theirs) }
+        return mine == theirs
+    }
+}
+
+extension JSONConstraint.Frame {
+    /// Every string in the frame, code point by code point.
+    func spell(into out: inout [Unicode.Scalar]) {
+        func add(_ text: String) { out.append(contentsOf: text.unicodeScalars); out.append("\u{0}") }
+        switch self {
+        case .value(let schema): schema.spell(into: &out)
+        case .object(let schema, let used, _, let pendingKey):
+            schema.spell(into: &out)
+            used.forEach(add)
+            pendingKey.map(add)
+        case .array(let items, _, _, _, _): items.spell(into: &out)
+        case .string(let text, _, let options, _):
+            add(text)
+            options?.forEach(add)
+        case .number(let text, _): add(text)
+        case .literal(let text, let options):
+            add(text)
+            options.forEach(add)
+        }
+    }
+}
+
+extension JSONSchemaNode {
+    /// Every string in the schema, code point by code point, in a fixed order.
+    func spell(into out: inout [Unicode.Scalar]) {
+        func add(_ text: String) { out.append(contentsOf: text.unicodeScalars); out.append("\u{0}") }
+        switch self {
+        case .object(let properties, let order, let required, _):
+            let keys = order + properties.keys.filter { !order.contains($0) }.sorted()
+            for key in keys {
+                add(key)
+                properties[key]?.spell(into: &out)
+            }
+            required.sorted().forEach(add)
+        case .array(let items, _, _): items.spell(into: &out)
+        case .literals(let options): options.forEach(add)
+        case .union(let options): options.forEach { $0.spell(into: &out) }
+        case .any, .string, .number, .boolean, .null: break
+        }
+    }
 }
