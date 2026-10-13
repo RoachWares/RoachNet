@@ -110,7 +110,13 @@ final class AfterThinkingConstraint: GenerationConstraint {
 
     var isComplete: Bool { done && inner.isComplete }
     var canEnd: Bool { done && inner.canEnd }
-    var insideFreeText: Bool { !done || inner.insideFreeText }
+
+    func allows(_ piece: String, thenPartial partial: [UInt8]) -> Bool {
+        guard !done else { return inner.allows(piece, thenPartial: partial) }
+        // The reasoning before `</think>` is free text; after it, the format holds.
+        guard let rest = split(piece) else { return true }
+        return inner.allows(rest, thenPartial: partial)
+    }
 }
 
 /// Collects a streamed reply: thinking and content split, tool calls held back.

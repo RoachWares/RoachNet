@@ -86,6 +86,120 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertTrue(accepts(JSONConstraint(schema: many), #"{"k0": false}"#))
     }
 
+    /// A token can stop partway through a character. It may come only where a
+    /// character that starts that way can come: otherwise no token can finish
+    /// it, and the held bytes end the output as "�" (ROA-93).
+    func testATokenStopsInsideACharacterOnlyWhereThatCharacterCanCome() {
+        let lead: [UInt8] = [0xE2]      // the first of the three bytes of "“"
+        let rest: [UInt8] = [0x80, 0x9C]
+        let fresh = StreamingDecoder()
+        let schema = JSONSchemaNode.object(properties: ["color": .string], order: ["color"], required: ["color"], additional: false)
+
+        // Before the value: whitespace may come, a character it can't finish may not.
+        let json = JSONConstraint(schema: schema)
+        XCTAssertTrue(json.admits(Array("  ".utf8), after: fresh))
+        XCTAssertFalse(json.admits(Array("  ".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(lead, after: fresh))
+
+        // Inside a string any character can come, in pieces too.
+        json.accept("{\"color\": \"")
+        XCTAssertTrue(json.admits(lead, after: fresh))
+        XCTAssertTrue(json.admits(Array("red ".utf8) + lead, after: fresh))
+        var held = StreamingDecoder()
+        _ = held.append(lead)
+        XCTAssertTrue(json.admits(rest, after: held))
+        // Not once the string has closed, nor inside an escape, where only ASCII comes.
+        XCTAssertFalse(json.admits(Array("red\"".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(Array("red\"}".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(Array("a\\".utf8) + lead, after: fresh))
+        XCTAssertFalse(json.admits(Array("a\\u00".utf8) + lead, after: fresh))
+
+        // In a fixed value or a known key, such a character can come where an option goes on with it.
+        let e = Array("\u{E9}".utf8)    // "é": C3 A9
+        let values = JSONConstraint(schema: .literals(["\"caf\u{E9}\"", #""cola""#]))
+        values.accept("\"")
+        XCTAssertTrue(values.admits(Array("caf".utf8) + [e[0]], after: fresh))
+        XCTAssertFalse(values.admits(Array("co".utf8) + [e[0]], after: fresh))
+        XCTAssertFalse(values.admits(lead, after: fresh), "no option goes on with that character")
+        values.accept("caf")
+        XCTAssertTrue(values.admits([e[0]], after: fresh))
+        var heldE = StreamingDecoder()
+        _ = heldE.append([e[0]])
+        XCTAssertTrue(values.admits([e[1]] + Array("\"".utf8), after: heldE))
+        let keys = JSONConstraint(schema: .object(properties: ["caf\u{E9}": .string], order: ["caf\u{E9}"], required: [], additional: false))
+        keys.accept("{\"")
+        XCTAssertTrue(keys.admits(Array("caf".utf8) + [e[0]], after: fresh))
+        XCTAssertFalse(keys.admits(Array("x".utf8) + [e[0]], after: fresh))
+    }
+
+    /// JSON compares strings code point by code point. A fixed value or a key
+    /// whose character is several code points (an emoji with a skin tone, a
+    /// letter with a combining accent, a Devanagari conjunct) can be written a
+    /// code point or a byte at a time, and the same text spelled with other
+    /// code points is another value.
+    func testFixedValuesAndKeysMatchCodePointByCodePoint() {
+        let thumbs = "\u{1F44D}\u{1F3FD}"      // one character, two code points
+        let decomposed = "cafe\u{301}"         // "é" as "e" and a combining accent
+        let hindi = "\u{928}\u{92E}\u{938}\u{94D}\u{924}\u{947}"
+        for value in [thumbs, decomposed, hindi] {
+            let schema = JSONSchemaNode.literals(["\"\(value)\"", #""no""#])
+            XCTAssertTrue(accepts(JSONConstraint(schema: schema), "\"\(value)\""), value)
+            let byCodePoint = JSONConstraint(schema: schema)
+            for scalar in "\"\(value)\"".unicodeScalars {
+                XCTAssertTrue(byCodePoint.allows(String(scalar)), "\(value): U+\(String(scalar.value, radix: 16, uppercase: true))")
+                byCodePoint.accept(String(scalar))
+            }
+            XCTAssertTrue(byCodePoint.isComplete, value)
+            let keys = JSONConstraint(schema: .object(properties: [value: .string], order: [value], required: [value], additional: false))
+            XCTAssertTrue(accepts(keys, "{\"\(value)\": \"x\"}"), value)
+        }
+
+        // Byte by byte, as tokens that split those characters arrive.
+        let values = JSONConstraint(schema: .literals(["\"\(thumbs)\""]))
+        values.accept("\"")
+        var decoder = StreamingDecoder()
+        for byte in Array(thumbs.utf8) {
+            XCTAssertTrue(values.admits([byte], after: decoder), String(byte, radix: 16))
+            let piece = decoder.append([byte])
+            if !piece.isEmpty { values.accept(piece) }
+        }
+        XCTAssertTrue(values.allows("\""))
+
+        XCTAssertFalse(accepts(JSONConstraint(schema: .literals(["\"\(decomposed)\""])), "\"caf\u{E9}\""), "\u{E9} is another value")
+    }
+
+    /// The last token there is room for can't stop inside a character even
+    /// where one may come: nothing could come after it to finish it.
+    func testTheLastTokenCantStopInsideACharacter() {
+        let lead: [UInt8] = [0xE2]      // the first of the three bytes of "“"
+        let fresh = StreamingDecoder()
+        let json = JSONConstraint(schema: .object(properties: ["color": .string], order: ["color"], required: ["color"], additional: false))
+        json.accept("{\"color\": \"")
+        XCTAssertTrue(json.admits(lead, after: fresh))
+        XCTAssertFalse(json.admits(lead, after: fresh, finishing: true))
+        XCTAssertFalse(json.admits(Array("red ".utf8) + lead, after: fresh, finishing: true))
+        XCTAssertTrue(json.admits(Array("red".utf8), after: fresh, finishing: true))
+        var held = StreamingDecoder()
+        _ = held.append(lead)
+        XCTAssertTrue(json.admits([0x80, 0x9C], after: held, finishing: true), "a token that finishes the character can still come")
+        XCTAssertFalse(json.admits([0x80], after: held, finishing: true))
+    }
+
+    /// Union branches that differ only in how a key is spelled (an accent
+    /// precomposed in one, "e" and a combining accent in the other) both stay
+    /// open, though Swift's own comparison takes the two as equal.
+    func testUnionBranchesSpelledDifferentlyBothStayOpen() {
+        let composed = "caf\u{E9}"
+        let decomposed = "cafe\u{301}"
+        func object(_ key: String) -> JSONSchemaNode {
+            .object(properties: [key: .string], order: [key], required: [key], additional: false)
+        }
+        for key in [composed, decomposed] {
+            let either = JSONConstraint(schema: .union([object(composed), object(decomposed)]))
+            XCTAssertTrue(accepts(either, "{\"\(key)\": \"x\"}"), key.unicodeScalars.map { String($0.value, radix: 16) }.joined(separator: " "))
+        }
+    }
+
     func testCompleteValueEndsGeneration() {
         let constraint = JSONConstraint(schema: .number(integer: true))
         XCTAssertTrue(accepts(constraint, "42"))

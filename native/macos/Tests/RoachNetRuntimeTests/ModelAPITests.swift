@@ -163,6 +163,15 @@ final class ModelAPITests: XCTestCase {
         after.accept("ink>\n{")
         after.accept("}")
         XCTAssertTrue(after.isComplete)
+
+        // A token may stop partway through a character while the model
+        // reasons, but not where the answer starts (ROA-93).
+        let lead: [UInt8] = [0xE2]
+        let reasoning = AfterThinkingConstraint(JSONConstraint(requireObject: true))
+        XCTAssertTrue(reasoning.admits(Array("<think>a quote: ".utf8) + lead, after: StreamingDecoder()))
+        XCTAssertFalse(reasoning.admits(Array("<think>done</think>".utf8) + lead, after: StreamingDecoder()))
+        XCTAssertFalse(reasoning.admits(Array("<think>done</think>\n".utf8) + lead, after: StreamingDecoder()))
+        XCTAssertTrue(reasoning.admits(Array("<think>done</think>{\"q\": \"".utf8) + lead, after: StreamingDecoder()))
     }
 
     func testSmallHelpers() {

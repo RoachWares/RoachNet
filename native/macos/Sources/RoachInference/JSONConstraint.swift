@@ -10,9 +10,25 @@ public protocol GenerationConstraint: AnyObject {
     var isComplete: Bool { get }
     /// Whether the end of generation may come now.
     var canEnd: Bool { get }
-    /// Whether a token that ends partway through a UTF-8 character may come now
-    /// (inside free text, such as a JSON string).
-    var insideFreeText: Bool { get }
+    /// Whether `piece` can follow and then a character that starts with the
+    /// bytes `partial`: the end of a token that stops partway through one.
+    func allows(_ piece: String, thenPartial partial: [UInt8]) -> Bool
+}
+
+extension GenerationConstraint {
+    /// Whether a token with these bytes may come next, after the bytes
+    /// `decoder` already holds. A token that stops partway through a character
+    /// may come only where a character that starts that way can come: anywhere
+    /// else no token could finish it, and the held bytes would end the output
+    /// as "\u{FFFD}". When `finishing`, this is the last token there is room
+    /// for, so it may not stop inside a character at all.
+    public func admits(_ bytes: [UInt8], after decoder: StreamingDecoder, finishing: Bool = false) -> Bool {
+        guard !bytes.isEmpty else { return false }
+        var probe = decoder
+        let piece = probe.append(bytes)
+        guard probe.holdsPartialCharacter else { return !piece.isEmpty && allows(piece) }
+        return !finishing && allows(piece, thenPartial: probe.partialCharacter)
+    }
 }
 
 /// The part of JSON Schema structured outputs use.
@@ -72,9 +88,31 @@ public final class JSONConstraint: GenerationConstraint {
 
     public var isComplete: Bool { states.contains { $0.complete } }
 
-    public var insideFreeText: Bool {
-        states.contains { state in
-            if case .string(_, _, let options, _) = state.stack.last { return options == nil }
+    public func allows(_ piece: String, thenPartial partial: [UInt8]) -> Bool {
+        var current = states
+        for character in piece.unicodeScalars {
+            current = Self.advance(current, character)
+            if current.isEmpty { return false }
+        }
+        return current.contains { Self.canStart(partial, in: $0) }
+    }
+
+    /// Whether a character that starts with the bytes `partial` can come next:
+    /// anywhere in free text, and in a fixed value or key where one of the
+    /// options goes on with such a character. Never inside an escape, where
+    /// only ASCII can come.
+    static func canStart(_ partial: [UInt8], in state: State) -> Bool {
+        func someOption(_ options: [String], after text: String) -> Bool {
+            let start = Array(text.utf8) + partial
+            return options.contains { Array($0.utf8).starts(with: start) }
+        }
+        switch state.stack.last {
+        case .string(let text, let escape, let options, _)?:
+            guard escape == 0 else { return false }
+            return options.map { someOption($0, after: text) } ?? true
+        case .literal(let text, let options)?:
+            return someOption(options, after: text)
+        default:
             return false
         }
     }
@@ -104,7 +142,7 @@ public final class JSONConstraint: GenerationConstraint {
             guard state.feed(c) else { continue }
             let opened = state.forks
             state.forks = []
-            for candidate in [state] + opened where !next.contains(candidate) {
+            for candidate in [state] + opened where !next.contains(where: { $0.isSame(as: candidate) }) {
                 next.append(candidate)
                 if next.count == maxStates { return next }
             }
@@ -165,13 +203,13 @@ public final class JSONConstraint: GenerationConstraint {
                 return number(c, text, integer)
             case .literal(let text, let options):
                 let next = text + String(c)
-                if options.contains(where: { $0.hasPrefix(next) }) {
+                if options.contains(where: { $0.startsWithScalars(of: next) }) {
                     stack[stack.count - 1] = .literal(text: next, options: options)
-                    if options.contains(next) && !options.contains(where: { $0 != next && $0.hasPrefix(next) }) { pop() }
+                    if options.containsScalars(next) && !options.contains(where: { !$0.hasSameScalars(as: next) && $0.startsWithScalars(of: next) }) { pop() }
                     return true
                 }
                 // A complete literal that is also a prefix of a longer one (`1` vs `10`) ends here.
-                if options.contains(text) {
+                if options.containsScalars(text) {
                     pop()
                     return feed(c)
                 }
@@ -235,9 +273,9 @@ public final class JSONConstraint: GenerationConstraint {
                 return true
             case .literals(let options):
                 let first = String(c)
-                guard options.contains(where: { $0.hasPrefix(first) }) else { return false }
+                guard options.contains(where: { $0.startsWithScalars(of: first) }) else { return false }
                 stack.append(.literal(text: first, options: options))
-                if options == [first] { pop() }
+                if options.count == 1 && options[0].hasSameScalars(as: first) { pop() }
                 return true
             default:
                 break
@@ -394,7 +432,7 @@ public final class JSONConstraint: GenerationConstraint {
                 return true
             }
             if c == "\"" {
-                if let options, !options.contains(text) { return false }
+                if let options, !options.containsScalars(text) { return false }
                 if isKey {
                     stack.removeLast()
                     if case .object(let schema, let used, let phase, _) = stack[stack.count - 1] {
@@ -410,7 +448,7 @@ public final class JSONConstraint: GenerationConstraint {
         }
 
         private mutating func extend(_ text: String, escape: Int, options: [String]?, isKey: Bool) -> Bool {
-            if let options, !options.contains(where: { $0.hasPrefix(text) }) { return false }
+            if let options, !options.contains(where: { $0.startsWithScalars(of: text) }) { return false }
             stack[stack.count - 1] = .string(text: text, escape: escape, options: options, isKey: isKey)
             return true
         }
@@ -468,8 +506,77 @@ public final class JSONConstraint: GenerationConstraint {
             if state.stack.count == 2, case .number(let text, let integer) = state.stack[1] { return State.completeNumber(text, integer: integer) }
             // Nor does a top-level value that is one of several fixed values,
             // when it may also go on to a longer one (`1` among `1` and `10`).
-            if state.stack.count == 2, case .literal(let text, let options) = state.stack[1] { return options.contains(text) }
+            if state.stack.count == 2, case .literal(let text, let options) = state.stack[1] { return options.containsScalars(text) }
             return false
+        }
+    }
+}
+
+// JSON compares strings code point by code point, and output arrives one
+// scalar at a time. Swift's own string comparisons work on whole characters,
+// so a value whose character is several scalars (an emoji with a skin tone, a
+// letter with a combining accent, a Devanagari conjunct) never matched its
+// first scalar.
+extension String {
+    func startsWithScalars(of prefix: String) -> Bool { unicodeScalars.starts(with: prefix.unicodeScalars) }
+    func hasSameScalars(as other: String) -> Bool { unicodeScalars.elementsEqual(other.unicodeScalars) }
+}
+
+extension Array where Element == String {
+    func containsScalars(_ text: String) -> Bool { contains { $0.hasSameScalars(as: text) } }
+}
+
+extension JSONConstraint.State {
+    /// Equal, and spelled with the same code points. Two readings that differ
+    /// only in how a key or value is spelled (union branches with the keys
+    /// "caf\u{E9}" and "cafe\u{301}") are equal to Swift, and both stay open.
+    func isSame(as other: Self) -> Bool {
+        guard self == other else { return false }
+        var mine: [Unicode.Scalar] = [], theirs: [Unicode.Scalar] = []
+        for frame in stack { frame.spell(into: &mine) }
+        for frame in other.stack { frame.spell(into: &theirs) }
+        return mine == theirs
+    }
+}
+
+extension JSONConstraint.Frame {
+    /// Every string in the frame, code point by code point.
+    func spell(into out: inout [Unicode.Scalar]) {
+        func add(_ text: String) { out.append(contentsOf: text.unicodeScalars); out.append("\u{0}") }
+        switch self {
+        case .value(let schema): schema.spell(into: &out)
+        case .object(let schema, let used, _, let pendingKey):
+            schema.spell(into: &out)
+            used.forEach(add)
+            pendingKey.map(add)
+        case .array(let items, _, _, _, _): items.spell(into: &out)
+        case .string(let text, _, let options, _):
+            add(text)
+            options?.forEach(add)
+        case .number(let text, _): add(text)
+        case .literal(let text, let options):
+            add(text)
+            options.forEach(add)
+        }
+    }
+}
+
+extension JSONSchemaNode {
+    /// Every string in the schema, code point by code point, in a fixed order.
+    func spell(into out: inout [Unicode.Scalar]) {
+        func add(_ text: String) { out.append(contentsOf: text.unicodeScalars); out.append("\u{0}") }
+        switch self {
+        case .object(let properties, let order, let required, _):
+            let keys = order + properties.keys.filter { !order.contains($0) }.sorted()
+            for key in keys {
+                add(key)
+                properties[key]?.spell(into: &out)
+            }
+            required.sorted().forEach(add)
+        case .array(let items, _, _): items.spell(into: &out)
+        case .literals(let options): options.forEach(add)
+        case .union(let options): options.forEach { $0.spell(into: &out) }
+        case .any, .string, .number, .boolean, .null: break
         }
     }
 }
