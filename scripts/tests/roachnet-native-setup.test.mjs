@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -169,6 +169,45 @@ test('native setup refuses an install with no app payload and leaves no staging 
     assert.doesNotMatch(siblings, /staging/)
   } finally {
     child.kill('SIGTERM')
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('native setup refuses an app payload without its runtime helper and keeps the installed copy', requiresNativeBinary, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-setup-nohelper-'))
+  const home = path.join(tempRoot, 'home')
+  mkdirSync(home, { recursive: true })
+  const assets = buildFakeInstallerAssets(tempRoot)
+  const installPath = path.join(home, 'RoachNet')
+  const env = {
+    PATH: process.env.PATH,
+    HOME: home,
+    ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
+    ROACHNET_INSTALLER_CONFIG_PATH: path.join(home, 'installer.json'),
+    ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+    ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
+    ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
+    ROACHNET_HOSTS_FILE: path.join(tempRoot, 'hosts'),
+  }
+  const install = () =>
+    spawnSync(nativeBinary, ['--install', '--install-path', installPath, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
+  try {
+    const first = install()
+    assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`)
+    const installedHelper = path.join(installPath, 'app', 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')
+    const before = readFileSync(installedHelper)
+
+    // The app starts its runtime only through the helper. Setup refuses a
+    // payload without one before it replaces anything, instead of installing
+    // it and skipping the verification step.
+    rmSync(path.join(assets, 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime'))
+    const second = install()
+    assert.notEqual(second.status, 0, second.stdout)
+    assert.match(second.stderr, /no runtime helper/)
+    assert.doesNotMatch(second.stdout, /Skipped runtime verification|Phase: Verifying contained runtime/)
+    assert.equal(readFileSync(installedHelper).equals(before), true)
+    assert.doesNotMatch(spawnSync('ls', [home]).stdout.toString(), /RoachNet\.(backup|staging)-/)
+  } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }
 })

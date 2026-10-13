@@ -705,21 +705,29 @@ public final class SetupEngine {
         defer { Files.remove(scratch) }
         let source = try resolveAppSource(scratch: scratch)
         try SetupPlatform.copyDirectory(source, to: stagedApp)
-        let helper = Path.join(stagedApp, "Contents", "Helpers", appHelperName)
-        if Files.exists(helper) {
-            log("Native runtime helper is present in the app bundle.")
-        } else {
-            log("This RoachNet build has no native runtime helper; it will fall back to its compatibility launcher.")
+        // RoachNet starts its runtime only through this helper, so an app
+        // without it can't run. It's refused here, while the install is still
+        // staged and the installed copy hasn't been touched.
+        guard hasRuntimeHelper(stagedApp) else {
+            throw RuntimeError("This RoachNet app payload has no runtime helper (Contents/Helpers/\(appHelperName)), so it couldn't start. Download a fresh copy of RoachNet Setup and try again.")
         }
+        log("Native runtime helper is present in the app bundle.")
         SetupPlatform.prepareForLaunch(stagedApp, log: log)
+    }
+
+    /// Whether `app` holds the runtime helper as an executable file.
+    func hasRuntimeHelper(_ app: String) -> Bool {
+        let helper = Path.join(app, "Contents", "Helpers", appHelperName)
+        var isFolder: ObjCBool = false
+        return FileManager.default.fileExists(atPath: helper, isDirectory: &isFolder) && !isFolder.boolValue
+            && FileManager.default.isExecutableFile(atPath: helper)
     }
 
     /// Boots the staged app's native runtime against scratch storage and waits for health.
     func smokeTestRuntime(appPath: String, scratchRoot: String) throws {
         let helper = Path.join(appPath, "Contents", "Helpers", appHelperName)
-        guard FileManager.default.isExecutableFile(atPath: helper) else {
-            log("Skipped runtime verification: no native runtime helper in this app build.")
-            return
+        guard hasRuntimeHelper(appPath) else {
+            throw RuntimeError("The staged RoachNet app has no runtime helper to verify.")
         }
         defer { Files.remove(scratchRoot) }
         try Files.mkdirp(scratchRoot)
