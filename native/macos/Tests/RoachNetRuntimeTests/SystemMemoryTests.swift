@@ -55,6 +55,36 @@ final class SystemMemoryTests: XCTestCase {
         XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "").directories, [])
     }
 
+    /// The folders come from where each hierarchy is mounted, as
+    /// /proc/self/mountinfo says, not from a fixed path.
+    func testCgroupFoldersFollowTheMounts() {
+        // cgroup v1 with the memory controller sharing a mount with cpu.
+        let shared = "30 25 0:26 / /sys/fs/cgroup/cpu,memory rw,nosuid shared:9 - cgroup cgroup rw,cpu,memory\n"
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "5:cpu,memory:/a/b\n", mountinfo: shared).directories,
+                       ["/sys/fs/cgroup/cpu,memory/a/b", "/sys/fs/cgroup/cpu,memory/a", "/sys/fs/cgroup/cpu,memory"])
+        // A container on cgroup v1: its own cgroup is the mount's root, so the
+        // mount's folder is the container's cgroup and nothing above shows.
+        let container = "41 37 0:33 /docker/abc /sys/fs/cgroup/memory ro,nosuid master:15 - cgroup cgroup rw,memory\n"
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/docker/abc\n", mountinfo: container).directories,
+                       ["/sys/fs/cgroup/memory"])
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/docker/abc/job\n", mountinfo: container).directories,
+                       ["/sys/fs/cgroup/memory/job", "/sys/fs/cgroup/memory"])
+        // A cgroup the mount doesn't show: only the mount's folder is read.
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/elsewhere\n", mountinfo: container).directories,
+                       ["/sys/fs/cgroup/memory"])
+        // cgroup v2 mounted somewhere unusual, with a space in the path.
+        let unified = "47 37 0:39 / /run/cg\\040two rw,relatime - cgroup2 cgroup2 rw\n"
+        let v2 = SystemMemory.cgroupDirectories(procSelfCgroup: "0::/user.slice\n", mountinfo: unified)
+        XCTAssertEqual(v2.version, 2)
+        XCTAssertEqual(v2.directories, ["/run/cg two/user.slice", "/run/cg two"])
+        // Hybrid: the v1 memory mount wins over the v2 one, as before.
+        let hybrid = shared.replacingOccurrences(of: "cpu,memory", with: "memory") + unified
+        XCTAssertEqual(SystemMemory.cgroupDirectories(procSelfCgroup: "4:memory:/x\n0::/\n", mountinfo: hybrid).directories,
+                       ["/sys/fs/cgroup/memory/x", "/sys/fs/cgroup/memory"])
+        // Lines that aren't cgroup mounts are skipped.
+        XCTAssertEqual(SystemMemory.cgroupMounts(mountinfo: "22 1 8:1 / / rw - ext4 /dev/sda1 rw\nbroken\n").memory, nil)
+    }
+
     func testCgroupLimitsAndHeadroom() {
         XCTAssertNil(SystemMemory.cgroupLimitValue("max\n", version: 2))
         XCTAssertEqual(SystemMemory.cgroupLimitValue("6272172032\n", version: 2), 6_272_172_032)
