@@ -66,6 +66,26 @@ final class StructuredOutputTests: XCTestCase {
         XCTAssertFalse(accepts(JSONConstraint(schema: lists), #"[1, "b"]"#))
     }
 
+    func testOpenReadingsBoundAddsBranchesAndKeepsEveryOneReachable() {
+        let variant = { (kind: String) -> JSONSchemaNode in
+            .object(properties: ["kind": .literals(["\"\(kind)\""]), "note": .union([.string, .null])],
+                    order: ["kind", "note"], required: ["kind"], additional: false)
+        }
+        XCTAssertEqual(JSONConstraint.mostOpenReadings(.string), 1)
+        XCTAssertEqual(JSONConstraint.mostOpenReadings(variant("a")), 2, "an object is inside one value at a time")
+        XCTAssertEqual(JSONConstraint.mostOpenReadings(.union([variant("a"), variant("b"), .null])), 5, "a union's branches add up")
+        XCTAssertEqual(JSONConstraint.mostOpenReadings(.array(items: .union([.string, .boolean]), minItems: 0, maxItems: nil)), 2)
+
+        // As many object variants as are followed at once, all opening with `{"k`: the last stays reachable.
+        let width = JSONConstraint.maxStates
+        let many = JSONSchemaNode.union((0..<width).map { index -> JSONSchemaNode in
+            .object(properties: ["k\(index)": .boolean], order: ["k\(index)"], required: ["k\(index)"], additional: false)
+        })
+        XCTAssertEqual(JSONConstraint.mostOpenReadings(many), width)
+        XCTAssertTrue(accepts(JSONConstraint(schema: many), "{\"k\(width - 1)\": true}"), "the last branch is still open")
+        XCTAssertTrue(accepts(JSONConstraint(schema: many), #"{"k0": false}"#))
+    }
+
     func testCompleteValueEndsGeneration() {
         let constraint = JSONConstraint(schema: .number(integer: true))
         XCTAssertTrue(accepts(constraint, "42"))

@@ -305,39 +305,79 @@ struct ModelRequest {
 
     // MARK: JSON Schema → constraint
 
+    /// Parts a schema may have once its `$ref`s are expanded. A recursive
+    /// definition that refers to itself more than once doubles at every level.
+    static let maxSchemaParts = 10_000
+
     static func schema(_ value: JSON) throws -> JSONSchemaNode {
         guard value.isObject else { throw requestError("A JSON schema must be an object.", 400) }
-        return node(value, root: value, depth: 0)
+        var budget = maxSchemaParts
+        let built = try node(value, root: value, depth: 0, budget: &budget)
+        // Readings past the constraint's limit would be dropped while sampling,
+        // and the output could then never take the branches that were cut.
+        let open = JSONConstraint.mostOpenReadings(built)
+        guard open <= JSONConstraint.maxStates else {
+            throw requestError("This JSON schema can leave \(open) anyOf/oneOf branches open at once, and RoachInference follows up to "
+                               + "\(JSONConstraint.maxStates). Use enum for plain alternatives, or fewer branches that start alike.", 400)
+        }
+        return built
     }
 
-    private static func node(_ value: JSON, root: JSON, depth: Int) -> JSONSchemaNode {
+    /// One node for a list of alternatives. Alternatives that are fixed values
+    /// become one list of values, so a `oneOf` of many `const`s is one choice.
+    static func union(_ branches: [JSONSchemaNode]) -> JSONSchemaNode {
+        if branches.contains(.any) { return .any }
+        var values: [String] = []
+        var seen = Set<String>()
+        var others: [JSONSchemaNode] = []
+        for branch in branches {
+            if case .literals(let options) = branch {
+                for option in options where seen.insert(option).inserted { values.append(option) }
+            } else {
+                others.append(branch)
+            }
+        }
+        let merged = values.isEmpty ? others : [.literals(values)] + others
+        return merged.count == 1 ? merged[0] : .union(merged)
+    }
+
+    private static func node(_ value: JSON, root: JSON, depth: Int, budget: inout Int) throws -> JSONSchemaNode {
+        budget -= 1
+        guard budget >= 0 else {
+            throw requestError("This JSON schema is too large: more than \(maxSchemaParts) parts once its references are expanded.", 400)
+        }
         guard depth < 24, value.isObject else { return .any }
         if let ref = value["$ref"].stringValue {
             // Local references only: #/$defs/Name and #/definitions/Name.
             let parts = ref.split(separator: "/").map(String.init)
             guard parts.first == "#", parts.count == 3 else { return .any }
-            return node(root[parts[1]][parts[2]], root: root, depth: depth + 1)
+            return try node(root[parts[1]][parts[2]], root: root, depth: depth + 1, budget: &budget)
         }
         if !value["const"].isUndefined { return .literals([value["const"].serialized()]) }
         if !value["enum"].array.isEmpty { return .literals(value["enum"].array.map { $0.serialized() }) }
         for key in ["anyOf", "oneOf"] where !value[key].array.isEmpty {
-            let branches = value[key].array.map { node($0, root: root, depth: depth + 1) }
-            return branches.contains(.any) ? .any : .union(branches)
+            var branches: [JSONSchemaNode] = []
+            for branch in value[key].array { branches.append(try node(branch, root: root, depth: depth + 1, budget: &budget)) }
+            return union(branches)
         }
-        if !value["allOf"].array.isEmpty, value["allOf"].array.count == 1 { return node(value["allOf"][0], root: root, depth: depth + 1) }
+        if !value["allOf"].array.isEmpty, value["allOf"].array.count == 1 {
+            return try node(value["allOf"][0], root: root, depth: depth + 1, budget: &budget)
+        }
         if !value["type"].array.isEmpty {
             var copy = value.object
-            return .union(value["type"].array.compactMap { type in
+            var branches: [JSONSchemaNode] = []
+            for type in value["type"].array {
                 copy["type"] = type
-                return node(.object(copy), root: root, depth: depth + 1)
-            })
+                branches.append(try node(.object(copy), root: root, depth: depth + 1, budget: &budget))
+            }
+            return union(branches)
         }
         switch value["type"].stringValue {
         case "object":
             var properties: [String: JSONSchemaNode] = [:]
             var order: [String] = []
             for (key, property) in value["properties"].object {
-                properties[key] = node(property, root: root, depth: depth + 1)
+                properties[key] = try node(property, root: root, depth: depth + 1, budget: &budget)
                 order.append(key)
             }
             let required = Set(value["required"].array.compactMap(\.stringValue))
@@ -345,7 +385,7 @@ struct ModelRequest {
             let additional = value["additionalProperties"].boolValue == true || value["additionalProperties"].isObject || properties.isEmpty
             return .object(properties: properties, order: order, required: required, additional: additional)
         case "array":
-            let items = value["items"].isObject ? node(value["items"], root: root, depth: depth + 1) : .any
+            let items = value["items"].isObject ? try node(value["items"], root: root, depth: depth + 1, budget: &budget) : .any
             return .array(items: items, minItems: value["minItems"].clampedInt(0...Int(Int32.max)) ?? 0, maxItems: value["maxItems"].clampedInt(0...Int(Int32.max)))
         case "string": return .string
         case "integer": return .number(integer: true)
@@ -356,7 +396,7 @@ struct ModelRequest {
             if value["properties"].isObject {
                 var copy = value.object
                 copy["type"] = "object"
-                return node(.object(copy), root: root, depth: depth + 1)
+                return try node(.object(copy), root: root, depth: depth + 1, budget: &budget)
             }
             return .any
         }

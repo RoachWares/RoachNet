@@ -120,6 +120,33 @@ final class ModelAPITests: XCTestCase {
         XCTAssertFalse(additional)
     }
 
+    func testUnionsOfValuesMergeAndSchemasTooWideOrLargeAreRefused() throws {
+        // A oneOf of consts is one list of values, however long.
+        let colors = (0..<100).map { #"{"const": "c\#($0)"}"# }.joined(separator: ",")
+        guard case .literals(let values) = try ModelRequest.schema(JSON.parse(#"{"oneOf": [\#(colors)]}"#)) else {
+            return XCTFail("the values weren't merged")
+        }
+        XCTAssertEqual(values.count, 100)
+        XCTAssertEqual(values.last, #""c99""#)
+
+        // More object variants than RoachInference follows at once: refused, not quietly cut.
+        let variants = (0...JSONConstraint.maxStates).map {
+            #"{"type": "object", "properties": {"k\#($0)": {"type": "boolean"}}, "required": ["k\#($0)"]}"#
+        }
+        XCTAssertThrowsError(try ModelRequest.schema(JSON.parse(#"{"anyOf": [\#(variants.joined(separator: ","))]}"#))) { error in
+            XCTAssertEqual((error as? RuntimeError)?.statusCode, 400)
+            XCTAssertTrue("\(error)".contains("anyOf/oneOf"), "\(error)")
+        }
+        XCTAssertNoThrow(try ModelRequest.schema(JSON.parse(#"{"anyOf": [\#(variants.dropLast().joined(separator: ","))]}"#)))
+
+        // A definition that refers to itself twice doubles at every level.
+        let tree = ##"{"$defs": {"T": {"type": "object", "properties": {"l": {"$ref": "#/$defs/T"}, "r": {"$ref": "#/$defs/T"}}}}, "$ref": "#/$defs/T"}"##
+        XCTAssertThrowsError(try ModelRequest.schema(JSON.parse(tree))) { error in
+            XCTAssertEqual((error as? RuntimeError)?.statusCode, 400)
+            XCTAssertTrue("\(error)".contains("too large"), "\(error)")
+        }
+    }
+
     func testForcedCallSchemaAndThinkingFirst() {
         let tool = ToolSpec(name: "weather", parameters: #"{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}"#)
         let constraint = JSONConstraint(schema: NativeModelServer.callSchema([tool]))

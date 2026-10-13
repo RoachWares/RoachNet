@@ -39,8 +39,27 @@ public final class JSONConstraint: GenerationConstraint {
     /// one; a union whose branches start alike keeps one per open branch.
     private var states: [State]
 
-    /// More open readings than this and the newest are dropped; no real schema gets close.
-    static let maxStates = 32
+    /// The most readings followed at once. Requests are refused when
+    /// `mostOpenReadings` of their schema is larger, so the cut in `advance`
+    /// is only a last guard and never drops a branch a schema allows.
+    public static let maxStates = 64
+
+    /// The most readings `node` can keep open at once, as an upper bound: all
+    /// of a union's branches can be open together, so their counts add up,
+    /// while an object or array is inside one value at a time, so the largest
+    /// count wins. Branches usually part ways within a character or two.
+    public static func mostOpenReadings(_ node: JSONSchemaNode) -> Int {
+        switch node {
+        case .union(let branches):
+            return branches.reduce(0) { min($0 + mostOpenReadings($1), Int(Int32.max)) }
+        case .object(let properties, _, _, _):
+            return properties.values.reduce(1) { max($0, mostOpenReadings($1)) }
+        case .array(let items, _, _):
+            return mostOpenReadings(items)
+        default:
+            return 1
+        }
+    }
 
     /// `requireObject` is OpenAI's `json_object` and Ollama's `format: "json"`.
     public init(schema: JSONSchemaNode? = nil, requireObject: Bool = false) {
