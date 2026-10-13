@@ -228,6 +228,55 @@ final class PackTests: XCTestCase {
         XCTAssertNoThrow(try registry.uninstall("base-pack"))
     }
 
+    func testDependencyListedInTheCatalogButNotInstalledBlocksTheInstall() throws {
+        let registry = registry()
+        let (base, _) = resourcePack(id: "base-pack", payload: Data("b".utf8))
+        registry.catalogPacks = [base]
+        let (child, files) = resourcePack(id: "child-pack", payload: Data("c".utf8), dependencies: [PackDependency(id: "base-pack")])
+        try writePackage(child, files: files, at: Path.join(root, "child"))
+        XCTAssertThrowsError(try PackInstaller(registry: registry).installLocalPackage(at: Path.join(root, "child"))) {
+            XCTAssertTrue("\($0)".contains("not installed"), "\($0)")
+        }
+        XCTAssertNil(registry.record("child-pack"))
+        XCTAssertThrowsError(try PackInstaller(registry: registry).installFromManifest(child, source: "test") { _, _, _, _ in }) {
+            XCTAssertTrue("\($0)".contains("not installed"), "\($0)")
+        }
+    }
+
+    func testPackWhoseDependencyIsOffInstallsSwitchedOff() throws {
+        let registry = registry()
+        let installer = PackInstaller(registry: registry)
+        let (base, f1) = resourcePack(id: "base-pack", payload: Data("b".utf8))
+        try writePackage(base, files: f1, at: Path.join(root, "base"))
+        _ = try installer.installLocalPackage(at: Path.join(root, "base"))
+        _ = try registry.disable("base-pack")
+        let (child, f2) = resourcePack(id: "child-pack", payload: Data("c".utf8), dependencies: [PackDependency(id: "base-pack")])
+        try writePackage(child, files: f2, at: Path.join(root, "child"))
+        let record = try installer.installLocalPackage(at: Path.join(root, "child"))
+        XCTAssertTrue(record.isInstalled)
+        XCTAssertFalse(record.isEnabled, "it waits until what it needs is on")
+        _ = try registry.enable("child-pack")
+        XCTAssertTrue(registry.record("base-pack")!.isEnabled, "enabling it turns its dependency on")
+    }
+
+    func testConcurrentInstallsAllStayInTheStateFile() throws {
+        let registry = registry()
+        let manifests = (0..<24).map { resourcePack(id: "pack-\($0)", payload: Data("\($0)".utf8)).0 }
+        DispatchQueue.concurrentPerform(iterations: manifests.count) { index in
+            try? registry.markInstalled(manifests[index], source: "test")
+        }
+        let state = registry.readState()
+        for manifest in manifests { XCTAssertEqual(state.packs[manifest.id]?.installedVersion, "1.0.0", manifest.id) }
+        let reloaded = self.registry().readState()
+        XCTAssertEqual(Set(reloaded.packs.keys).intersection(manifests.map(\.id)).count, manifests.count, "every pack is on disk too")
+    }
+
+    func testOversizedResourceIsRefused() throws {
+        var manifest = resourcePack(payload: Data("abc".utf8)).0
+        manifest.resources[0].bytes = Int.max
+        XCTAssertThrowsError(try manifest.validate()) { XCTAssertTrue("\($0)".contains("1 TB"), "\($0)") }
+    }
+
     func testCapabilityPacksCannotBeInstalledFromPackagesOrUninstalled() throws {
         let registry = registry()
         let manifest = PackCatalog.bundledCapabilityPacks[0]

@@ -212,12 +212,21 @@ extension NativeRuntime {
         try downloadFile(job)
     }
 
+    /// `expectedSha256` pins the file to a digest the caller already trusts (a
+    /// catalog entry, say). A descriptor that names a different one is refused,
+    /// and with no descriptor digest the pinned one is still checked.
     func queueResolvedDownload(_ rawUrl: JSON, _ destinationDirectory: String, _ filetype: String,
+                               expectedSha256: String? = nil,
                                afterDownload: ((DownloadJob) throws -> Void)? = nil) throws -> DownloadJob? {
+        let pinned = expectedSha256?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let pinned, !JS.matches("^[a-f0-9]{64}$", pinned) { throw requestError("The expected checksum is not a SHA-256.", 422) }
         let resolved = try resolveDownloadDescriptor(rawUrl)
         guard let url = resolved.url else { return nil }
+        if let pinned, let descriptorSha = resolved.sha256, pinned != descriptorSha {
+            throw requestError("The download descriptor's checksum does not match the catalog.", 422)
+        }
         return queueDownload(url, destinationDirectory, filetype, filename: resolved.filename, descriptorUrl: resolved.descriptorUrl,
-                             expectedSha256: resolved.sha256, parts: resolved.parts, afterDownload: afterDownload)
+                             expectedSha256: pinned ?? resolved.sha256, parts: resolved.parts, afterDownload: afterDownload)
     }
 
     // MARK: Transfer
@@ -625,10 +634,14 @@ extension NativeRuntime {
         }
         do {
             guard Files.isFile(job.filepath) else { throw RuntimeError("Downloaded RoachSpeech pack is not a file: \(job.filepath)") }
+            // Same rules as any pack archive: read it first, then make sure only
+            // plain files and folders came out (see PackArchive).
+            try PackArchive.inspect(job.filepath, format: "zip")
             let result = Processes.run("/usr/bin/ditto", ["-x", "-k", job.filepath, extractRoot], timeoutMs: 600_000)
             if result.status != 0 {
                 throw RuntimeError("ditto -x -k \(job.filepath) \(extractRoot) failed with exit code \(result.status)\(result.errorOutput.isEmpty ? "" : ": \(result.errorOutput)")")
             }
+            try PackArchive.checkExtracted(extractRoot, archiveName: Path.basename(job.filepath))
             guard let packRoot = findRoachSpeechPackRoot(extractRoot) else {
                 throw RuntimeError("Downloaded archive did not contain a RoachSpeechPack.json manifest.")
             }
@@ -657,11 +670,25 @@ extension NativeRuntime {
         }
     }
 
-    func queueRoachSpeechPackDownload(_ body: JSON) throws -> (job: DownloadJob?, packID: String, kind: String) {
+    /// A RoachSpeech pack is CoreML models this Mac will run, so it comes only
+    /// from a RoachNet download descriptor, and a pack the catalog lists must
+    /// match the catalog's SHA-256 however the install was asked for (the Pack
+    /// Manager, an install link, the iPhone). `expectedSha256` is the catalog
+    /// digest when the caller already has it.
+    func queueRoachSpeechPackDownload(_ body: JSON, expectedSha256: String? = nil) throws -> (job: DownloadJob?, packID: String, kind: String) {
         let packID = safeFileName(body["packID"] || body["pack"] || "roachspeech-pack", "roachspeech-pack")
         let kind = safeFileName(body["kind"] || "roachVoice", "roachVoice")
         let destination = Path.join(storageRoot, "RoachSpeech", "ModelPacks", ".downloads", kind, packID)
-        let job = try queueResolvedDownload(body["url"], destination, "roachspeech-pack") { [unowned self] downloadJob in
+        let rawURL = (body["url"].isNullish ? "" : body["url"].jsString).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !rawURL.isEmpty, !isAppsDownloadDescriptorUrl(rawURL) {
+            throw requestError("RoachSpeech packs install only from RoachNet download descriptors (\(config.appsDownloadsBaseUrl)/…json).", 400)
+        }
+        let catalogEntry = packRegistry.catalogPacks.first { manifest in
+            manifest.install?.handler == PackInstallHandler.roachSpeechPack
+                && (manifest.id == packID || manifest.resources.contains { $0.url == rawURL })
+        }
+        let pinned = expectedSha256 ?? catalogEntry?.resources.first?.sha256
+        let job = try queueResolvedDownload(body["url"], destination, "roachspeech-pack", expectedSha256: pinned) { [unowned self] downloadJob in
             try self.installRoachSpeechPackArchive(downloadJob, packID: packID, kind: kind)
         }
         upsertRoachSpeechPackRegistry([

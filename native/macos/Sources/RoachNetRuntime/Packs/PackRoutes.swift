@@ -17,10 +17,13 @@ extension NativeRuntime {
                     return ["success": true, "status": "installed", "pack": packRegistry.recordJSON(record)]
                 }
                 try packRegistry.checkCompatibility(manifest)
+                try installer.requireInstalledDependencies(of: manifest)
                 if let install = manifest.install, install.handler == PackInstallHandler.roachSpeechPack, let resource = manifest.resources.first {
-                    // The RoachSpeech shelf installer already resolves the chunked
-                    // descriptor, verifies the checksum and swaps the pack in.
-                    let queued = try queueRoachSpeechPackDownload(["url": JSON(resource.url ?? ""), "packID": JSON(manifest.id), "kind": JSON(install.kind ?? "roachVoice")])
+                    // The RoachSpeech shelf installer resolves the chunked descriptor,
+                    // checks the archive against the catalog's SHA-256 (the descriptor
+                    // must agree with it) and swaps the pack in.
+                    let queued = try queueRoachSpeechPackDownload(["url": JSON(resource.url ?? ""), "packID": JSON(manifest.id), "kind": JSON(install.kind ?? "roachVoice")],
+                                                                  expectedSha256: resource.sha256)
                     return ["success": true, "status": "queued", "packID": JSON(queued.packID), "download": queued.job?.json ?? .null]
                 }
                 let job = try installer.installFromManifest(manifest, source: "catalog", fetch: packResourceFetch)

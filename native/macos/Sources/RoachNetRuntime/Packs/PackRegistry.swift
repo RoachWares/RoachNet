@@ -116,9 +116,22 @@ public final class PackRegistry {
         cachedState = state
     }
 
+    /// Reads, changes and writes the state file as one step under the lock,
+    /// so two installs finishing at once can't each write back a copy that
+    /// lacks the other's pack. Nothing is written when `change` throws.
+    @discardableResult
+    func mutateState<Result>(_ change: (inout PackStateFile) throws -> Result) throws -> Result {
+        lock.lock(); defer { lock.unlock() }
+        var state = readState()
+        let result = try change(&state)
+        try writeState(state)
+        return result
+    }
+
     /// First-run defaults: existing installs (any pack state missing) keep every
     /// bundled pack on, so upgrading never hides a feature someone used.
     func ensureDefaults() throws {
+        lock.lock(); defer { lock.unlock() }
         var state = readState()
         var changed = false
         for pack in bundledPacks where state.packs[pack.id] == nil {
@@ -234,19 +247,19 @@ public final class PackRegistry {
         guard record.isInstalled else { throw PackError.unknownPack("\(record.manifest.name) is not installed.") }
         try checkCompatibility(record.manifest)
         let dependencies = try resolveDependencies(of: id)
-        var state = readState()
-        for dependency in dependencies where state.packs[dependency.id]?.enabled != true {
-            guard state.packs[dependency.id]?.installedVersion != nil || bundledPacks.contains(where: { $0.id == dependency.id }) else {
-                throw PackError.dependencyMissing("\(record.manifest.name) needs \(dependency.name), which is not installed.")
+        try mutateState { state in
+            for dependency in dependencies where state.packs[dependency.id]?.enabled != true {
+                guard state.packs[dependency.id]?.installedVersion != nil || bundledPacks.contains(where: { $0.id == dependency.id }) else {
+                    throw PackError.dependencyMissing("\(record.manifest.name) needs \(dependency.name), which is not installed.")
+                }
+                state.packs[dependency.id]?.enabled = true
+                state.packs[dependency.id]?.updatedAt = JS.isoNow()
             }
-            state.packs[dependency.id]?.enabled = true
-            state.packs[dependency.id]?.updatedAt = JS.isoNow()
+            var current = state.packs[id] ?? PackState(enabled: false, installedVersion: record.manifest.version, installedAt: JS.isoNow(), source: record.bundled ? "bundled" : "local")
+            current.enabled = true
+            current.updatedAt = JS.isoNow()
+            state.packs[id] = current
         }
-        var current = state.packs[id] ?? PackState(enabled: false, installedVersion: record.manifest.version, installedAt: JS.isoNow(), source: record.bundled ? "bundled" : "local")
-        current.enabled = true
-        current.updatedAt = JS.isoNow()
-        state.packs[id] = current
-        try writeState(state)
         onChange?(id, "enabled")
         return self.record(id)!
     }
@@ -257,29 +270,35 @@ public final class PackRegistry {
         if !dependents.isEmpty {
             throw PackError.dependentsEnabled("Turn off \(dependents.map(\.name).joined(separator: ", ")) first; they depend on \(record.manifest.name).")
         }
-        var state = readState()
-        var current = state.packs[id] ?? PackState(enabled: false)
-        current.enabled = false
-        current.updatedAt = JS.isoNow()
-        state.packs[id] = current
-        try writeState(state)
+        try mutateState { state in
+            var current = state.packs[id] ?? PackState(enabled: false)
+            current.enabled = false
+            current.updatedAt = JS.isoNow()
+            state.packs[id] = current
+        }
         onChange?(id, "disabled")
         return self.record(id)!
     }
 
     /// Records a resource pack that the installer has already placed at its
-    /// install root. Enabled immediately when its dependencies are satisfied.
+    /// install root. Enabled immediately when everything it depends on is on;
+    /// otherwise it waits switched off (enabling it turns those on too).
     func markInstalled(_ manifest: PackManifest, source: String) throws {
-        var state = readState()
-        let previous = state.packs[manifest.id]
-        state.packs[manifest.id] = PackState(
-            enabled: previous?.enabled ?? true,
-            installedVersion: manifest.version,
-            installedAt: previous?.installedAt ?? JS.isoNow(),
-            source: source,
-            updatedAt: JS.isoNow()
-        )
-        try writeState(state)
+        let all = records()
+        let enabledIDs = Set(all.filter(\.isEnabled).map(\.manifest.id))
+        let dependencies = (try? resolveDependencies(of: manifest.id, available: [manifest] + all.map(\.manifest))) ?? []
+        let dependenciesOn = dependencies.allSatisfy { enabledIDs.contains($0.id) }
+        let previous: PackState? = try mutateState { state in
+            let previous = state.packs[manifest.id]
+            state.packs[manifest.id] = PackState(
+                enabled: previous?.enabled ?? dependenciesOn,
+                installedVersion: manifest.version,
+                installedAt: previous?.installedAt ?? JS.isoNow(),
+                source: source,
+                updatedAt: JS.isoNow()
+            )
+            return previous
+        }
         onChange?(manifest.id, previous?.installedVersion == nil ? "installed" : "updated")
     }
 
@@ -319,9 +338,7 @@ public final class PackRegistry {
                 report.retiredDataRoots.append(target)
             }
         }
-        var state = readState()
-        state.packs.removeValue(forKey: id)
-        try writeState(state)
+        try mutateState { state in _ = state.packs.removeValue(forKey: id) }
         onChange?(id, "uninstalled")
         return report
     }

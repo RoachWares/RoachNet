@@ -113,6 +113,8 @@ public struct PackManifest: Codable, Equatable {
             guard seenPaths.insert(resource.path).inserted else { throw PackError.invalidManifest("Pack \(id) lists resource \"\(resource.path)\" twice.") }
             guard JS.matches("^[a-f0-9]{64}$", resource.sha256) else { throw PackError.invalidManifest("Pack \(id) resource \"\(resource.path)\" has no SHA-256.") }
             guard resource.bytes > 0 else { throw PackError.invalidManifest("Pack \(id) resource \"\(resource.path)\" has no byte size.") }
+            // Sizes are summed and doubled for download limits; keep them far from overflow.
+            guard resource.bytes <= Self.maxResourceBytes else { throw PackError.invalidManifest("Pack \(id) resource \"\(resource.path)\" is larger than 1 TB.") }
             if let url = resource.url {
                 guard let parsed = WebURL(url), parsed.scheme == "https" || (parsed.scheme == "http" && CompanionProxy.isLoopback(parsed.bareHostname)) else {
                     throw PackError.invalidManifest("Pack \(id) resource \"\(resource.path)\" must download over https.")
@@ -143,6 +145,9 @@ public struct PackManifest: Codable, Equatable {
     public static func isValidID(_ value: String) -> Bool {
         JS.matches("^[a-z0-9][a-z0-9.-]{1,63}$", value)
     }
+
+    /// 1 TB; no RoachNet pack resource comes close.
+    public static let maxResourceBytes = 1 << 40
 
     /// Relative, no traversal, no absolute path, no hidden segments.
     public static func isSafeRelativePath(_ value: String) -> Bool {

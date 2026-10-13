@@ -5785,6 +5785,15 @@ async function queueRoachSpeechPackDownload(body) {
   const packID = safeFileName(body.packID || body.pack || 'roachspeech-pack', 'roachspeech-pack')
   const kind = safeFileName(body.kind || 'roachVoice', 'roachVoice')
   const destination = path.join(storageRoot, 'RoachSpeech', 'ModelPacks', '.downloads', kind, packID)
+  // A RoachSpeech pack is models this Mac will run: only RoachNet download
+  // descriptors (which carry the archive's SHA-256) are accepted, as in Swift.
+  const rawUrl = String(body.url ?? '').trim()
+  if (rawUrl && !isAppsDownloadDescriptorUrl(rawUrl)) {
+    throw new NativeApiRequestError(
+      `RoachSpeech packs install only from RoachNet download descriptors (${appsDownloadsBaseUrl}/…json).`,
+      400
+    )
+  }
   const job = await queueResolvedDownload(body.url, destination, 'roachspeech-pack', {
     afterDownload: (downloadJob) => installRoachSpeechPackArchive(downloadJob, packID, kind),
   })

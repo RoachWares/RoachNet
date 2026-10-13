@@ -1329,7 +1329,7 @@ test('native API cancels active download jobs and removes partial files', async 
   }
 })
 
-test('native API installs downloaded RoachSpeech packs into the active model shelf', macOSDittoTest, async () => {
+test('native API installs RoachSpeech packs only from RoachNet download descriptors', macOSDittoTest, async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachspeech-test-'))
   const packID = 'test-roachvoice-pack'
   const archivePath = await createTestRoachSpeechPackZip(tempRoot, packID)
@@ -1353,34 +1353,24 @@ test('native API installs downloaded RoachSpeech packs into the active model she
 
   try {
     await waitForHealth(`http://127.0.0.1:${port}/api/health`, child)
-    const queued = await requestJson(`http://127.0.0.1:${port}/api/roachspeech/model-packs/download`, {
-      method: 'POST',
-      body: {
-        url: `http://127.0.0.1:${downloadPort}/test-roachvoice-pack.zip`,
-        packID,
-        kind: 'roachVoice',
-      },
-    })
-    assert.equal(queued.success, true)
-    assert.equal(queued.packID, packID)
-
-    let jobs = []
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      jobs = await requestJson(`http://127.0.0.1:${port}/api/downloads/jobs`)
-      if (jobs[0]?.status === 'completed' || jobs[0]?.status === 'failed') {
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 150))
+    // A bare archive URL carries no checksum and could be any host: refused,
+    // through the owner API and the iPhone's install route alike.
+    for (const [route, body] of [
+      ['/api/roachspeech/model-packs/download', { url: `http://127.0.0.1:${downloadPort}/test-roachvoice-pack.zip`, packID, kind: 'roachVoice' }],
+      ['/api/companion/install', { action: 'roachspeech-pack', url: `http://127.0.0.1:${downloadPort}/test-roachvoice-pack.zip`, pack: packID, kind: 'roachVoice' }],
+    ]) {
+      const refused = await requestHttp(`http://127.0.0.1:${port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        timeoutMs: 5_000,
+      })
+      assert.equal(refused.status, 400, route)
+      assert.match(JSON.parse(await refused.text()).error, /download descriptors/, route)
     }
-    assert.equal(jobs[0]?.status, 'completed')
-    assert.equal(jobs[0]?.installStatus, 'installed')
-    assert.equal(existsSync(path.join(storagePath, 'RoachSpeech', 'ModelPacks', packID, 'RoachSpeechPack.json')), true)
-
-    const packs = await requestJson(`http://127.0.0.1:${port}/api/roachspeech/model-packs`)
-    const installedPack = packs.packs.find((pack) => pack.packID === packID)
-    assert.equal(installedPack?.installed, true)
-    assert.equal(installedPack.manifest.kind, 'roachVoice')
-    assert.equal(packs.registry[0].status, 'installed')
+    const jobs = await requestJson(`http://127.0.0.1:${port}/api/downloads/jobs`)
+    assert.equal(jobs.length, 0)
+    assert.equal(existsSync(path.join(storagePath, 'RoachSpeech', 'ModelPacks', packID)), false)
   } finally {
     await stopNativeApi(child, env)
     await rm(tempRoot, { recursive: true, force: true })
@@ -1458,6 +1448,54 @@ test('native API resolves Apps download descriptors before installing RoachSpeec
     await stopNativeApi(child, env)
     await rm(tempRoot, { recursive: true, force: true })
     await new Promise((resolve) => packServer.close(resolve))
+    await new Promise((resolve) => descriptorServer.close(resolve))
+  }
+})
+
+// Swift runtime only (`swiftOnly` is declared further down).
+test('native API holds catalog RoachSpeech packs to the catalog digest', nativeApiBinary ? {} : { skip: 'Swift runtime behaviour; set ROACHNET_NATIVE_API_BINARY to a built roachnet-runtime.' }, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'roachnet-native-api-roachspeech-pin-test-'))
+  // A real catalog pack id, served by a descriptor that names a different archive digest.
+  const packID = 'roachvoice-kokoro-82m-int8-coreml'
+  const descriptorPort = await resolveAvailablePort()
+  const descriptorPath = path.join(tempRoot, 'descriptor.json')
+  writeFileSync(
+    descriptorPath,
+    JSON.stringify({
+      schema: 'org.roachnet.apps.download-descriptor.v1',
+      id: packID,
+      filename: `${packID}.zip`,
+      sha256: 'ab'.repeat(32),
+      sources: [{ type: 'test-source', url: `http://127.0.0.1:${descriptorPort}/elsewhere.zip` }],
+    })
+  )
+  const descriptorServer = await startStaticFileServer(descriptorPort, `/downloads/model-packs/${packID}.json`, descriptorPath)
+  const port = await resolveAvailablePort()
+  const env = {
+    ...process.env,
+    ROACHNET_STORAGE_PATH: path.join(tempRoot, 'storage'),
+    ROACHNET_RUNTIME_STATE_ROOT: path.join(tempRoot, 'state'),
+    ROACHNET_APPS_DOWNLOADS_BASE_URL: `http://127.0.0.1:${descriptorPort}/downloads`,
+    ROACHNET_PACK_CATALOG_URL: '',
+    HOST: '127.0.0.1',
+    PORT: String(port),
+  }
+  const child = spawn(...nativeApiCommand(), { cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/health`, child)
+    const response = await requestHttp(`http://127.0.0.1:${port}/api/roachspeech/model-packs/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ url: `http://127.0.0.1:${descriptorPort}/downloads/model-packs/${packID}.json`, packID, kind: 'roachVoice' }),
+      timeoutMs: 10_000,
+    })
+    assert.equal(response.status, 422)
+    assert.match(JSON.parse(await response.text()).error, /does not match the catalog/)
+    const jobs = await requestJson(`http://127.0.0.1:${port}/api/downloads/jobs`)
+    assert.equal(jobs.length, 0)
+  } finally {
+    await stopNativeApi(child, env)
+    await rm(tempRoot, { recursive: true, force: true })
     await new Promise((resolve) => descriptorServer.close(resolve))
   }
 })

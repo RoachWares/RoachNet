@@ -30,7 +30,7 @@ public final class PackInstaller {
             throw PackError.installFailed("\(manifest.name) is a capability pack; it ships with RoachNet and cannot be installed from a package.")
         }
         try registry.checkCompatibility(manifest)
-        _ = try registry.resolveDependencies(of: manifest.id, available: registry.records().map(\.manifest) + [manifest])
+        try requireInstalledDependencies(of: manifest)
 
         let staging = try makeStaging(for: manifest)
         do {
@@ -61,7 +61,7 @@ public final class PackInstaller {
         try manifest.validate()
         guard manifest.kind != .capability else { throw PackError.installFailed("\(manifest.name) ships with RoachNet.") }
         try registry.checkCompatibility(manifest)
-        _ = try registry.resolveDependencies(of: manifest.id, available: registry.records().map(\.manifest) + [manifest])
+        try requireInstalledDependencies(of: manifest)
         for resource in manifest.resources where resource.url == nil {
             throw PackError.installFailed("\(manifest.name) resource \(resource.path) has no download URL.")
         }
@@ -123,32 +123,45 @@ public final class PackInstaller {
             }
             if let archive = resource.archive {
                 try extract(path, archive: archive, into: Path.dirname(path))
-                Files.remove(path)
             }
         }
     }
 
+    /// Unpacks a verified archive next to itself. An archive may not reach
+    /// outside its folder or carry links (see `PackArchive`): it is read
+    /// first, unpacked into an empty folder of its own, checked again, and
+    /// merged in without replacing anything.
     func extract(_ archivePath: String, archive: String, into directory: String) throws {
+        let name = Path.basename(archivePath)
+        try PackArchive.inspect(archivePath, format: archive)
+        let scratch = Path.join(directory, ".extract-\(JS.randomHex(8))")
+        try Files.mkdirp(scratch)
+        defer { Files.remove(scratch) }
         let result: Processes.Result
         switch archive {
         case "tar.gz", "tgz":
-            result = Processes.run("/usr/bin/tar", ["-xzf", archivePath, "-C", directory], timeoutMs: 600_000)
+            result = Processes.run("/usr/bin/tar", ["-xzf", archivePath, "-C", scratch], timeoutMs: 600_000)
         case "zip":
             #if os(macOS)
-            result = Processes.run("/usr/bin/ditto", ["-x", "-k", archivePath, directory], timeoutMs: 600_000)
+            result = Processes.run("/usr/bin/ditto", ["-x", "-k", archivePath, scratch], timeoutMs: 600_000)
             #else
-            result = Processes.run("/usr/bin/unzip", ["-q", "-o", archivePath, "-d", directory], timeoutMs: 600_000)
+            result = Processes.run("/usr/bin/unzip", ["-q", "-o", archivePath, "-d", scratch], timeoutMs: 600_000)
             #endif
         default:
             throw PackError.installFailed("Unsupported archive type \(archive).")
         }
-        guard result.status == 0 else { throw PackError.installFailed("Extracting \(Path.basename(archivePath)) failed: \(result.errorOutput)") }
-        // An archive may not reach outside its folder.
-        if let enumerator = FileManager.default.enumerator(atPath: directory) {
-            for case let entry as String in enumerator where entry.split(separator: "/").contains("..") {
-                throw PackError.integrity("Archive \(Path.basename(archivePath)) contains a path that escapes the pack folder.")
-            }
-        }
+        guard result.status == 0 else { throw PackError.installFailed("Extracting \(name) failed: \(result.errorOutput)") }
+        try PackArchive.checkExtracted(scratch, archiveName: name)
+        Files.remove(archivePath)
+        try PackArchive.merge(scratch, into: directory, archiveName: name)
+    }
+
+    /// A pack installs only when everything it depends on is installed (or
+    /// ships with RoachNet): a catalog entry for a dependency is not the
+    /// dependency, and installing would switch the pack on without it.
+    func requireInstalledDependencies(of manifest: PackManifest) throws {
+        let installed = registry.records().filter { $0.isInstalled && $0.manifest.id != manifest.id }.map(\.manifest)
+        _ = try registry.resolveDependencies(of: manifest.id, available: installed + [manifest])
     }
 
     func writeReceipt(_ manifest: PackManifest, in staging: String, source: String) throws {
