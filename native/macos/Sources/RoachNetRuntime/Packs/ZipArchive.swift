@@ -265,6 +265,10 @@ struct ZipArchive {
         }
         for entry in entries {
             let parts = entry.name.split(separator: "/", omittingEmptySubsequences: true).map(String.init).filter { $0 != "." }
+            // `PackArchive.check` refuses these names first; this never relies on it.
+            guard !parts.contains(".."), !entry.name.unicodeScalars.contains(where: { $0.value == 0 }) else {
+                throw PackError.integrity("Archive \(label) can't be unpacked: \"\(entry.name)\" isn't a plain name inside the folder.")
+            }
             guard let first = parts.first, first != "__MACOSX" else { continue }
             if entry.isDirectory {
                 try makeFolders(parts, in: destination)
