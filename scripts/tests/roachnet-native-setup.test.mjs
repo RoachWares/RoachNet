@@ -36,6 +36,8 @@ function buildFakeInstallerAssets(root) {
 
 async function startSetup(env) {
   const readyFile = path.join(env.HOME, 'setup-ready.json')
+  // A service that was stopped mid-install leaves its ready file behind.
+  rmSync(readyFile, { force: true })
   const child = spawn(nativeBinary, ['--setup'], { env: { ...env, ROACHNET_SETUP_READY_FILE: readyFile }, stdio: 'ignore' })
   const deadline = Date.now() + 15_000
   while (Date.now() < deadline) {
@@ -75,7 +77,7 @@ async function runInstall(url, config) {
 
 // What the Setup app's Install button does: it writes its config file, saves
 // the same choices through /api/config, then asks for the install.
-async function installFromApp(url, configPath, folder) {
+async function saveFromApp(url, configPath, folder, overrides = {}) {
   const choices = {
     ...JSON.parse(readFileSync(configPath, 'utf8')),
     installPath: folder,
@@ -83,11 +85,34 @@ async function installFromApp(url, configPath, folder) {
     storagePath: path.join(folder, 'storage'),
     autoLaunch: false,
     installRoachClaw: false,
+    ...overrides,
   }
   writeFileSync(configPath, JSON.stringify(choices, null, 2))
   const saved = await call(`${url}/api/config`, 'POST', choices)
   assert.equal(saved.status, 200, JSON.stringify(saved.body))
-  return runInstall(url, choices)
+  return choices
+}
+
+async function installFromApp(url, configPath, folder, overrides = {}) {
+  return runInstall(url, await saveFromApp(url, configPath, folder, overrides))
+}
+
+// The same, from a Setup service that ROACHNET_SETUP_TEST_STOP_AT ends during
+// the install as a power cut would. Resolves with the service's exit code.
+async function installFromAppUntilStopped(service, configPath, folder, overrides = {}) {
+  const exited = new Promise((resolve) => service.child.once('exit', resolve))
+  const choices = await saveFromApp(service.url, configPath, folder, overrides)
+  const started = await call(`${service.url}/api/install`, 'POST', choices)
+  assert.equal(started.status, 200, JSON.stringify(started.body))
+  let timer
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('the install did not stop')), 90_000)
+  })
+  try {
+    return await Promise.race([exited, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 test('native setup installs, verifies, and upgrades RoachNet without Node', requiresNativeBinary, async () => {
@@ -424,6 +449,83 @@ test('Setup puts back an upgrade cut off mid-swap before reading the install, so
     for (const key of ['installPath', 'setupCompletedAt', 'pendingLaunchIntro', 'pendingRoachClawSetup']) {
       assert.deepEqual(savedConfig()[key], installed[key], `command line: ${key}`)
     }
+  } finally {
+    service?.child.kill('SIGTERM')
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('an upgrade cut off before its copy is in place gives the installed copy its settings back, though it saved new ones', requiresNativeBinary, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'rn-native-setup-pre-upgrade-'))
+  const home = path.join(tempRoot, 'home')
+  mkdirSync(home, { recursive: true })
+  const assets = buildFakeInstallerAssets(tempRoot)
+  const installPath = path.join(home, 'RoachNet')
+  const elsewhere = path.join(home, 'RoachNet-elsewhere')
+  const movedStorage = path.join(home, 'RoachNet-storage')
+  const configPath = path.join(home, 'installer.json')
+  const env = {
+    PATH: process.env.PATH,
+    HOME: home,
+    ROACHNET_SETUP_APP_BUNDLE: path.join(assets, 'setup-assets.marker'),
+    ROACHNET_INSTALLER_CONFIG_PATH: configPath,
+    ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST: '1',
+    ROACHNET_SETUP_TEST_MIN_FREE_BYTES: String(256 * 1024 * 1024),
+    ROACHNET_STORAGE_PATH: path.join(tempRoot, 'setup-logs'),
+    ROACHNET_HOSTS_FILE: path.join(tempRoot, 'hosts'),
+  }
+  const payloadHelper = path.join(assets, 'RoachNet.app', 'Contents', 'Helpers', 'roachnet-runtime')
+  const savedConfig = () => JSON.parse(readFileSync(configPath, 'utf8'))
+  const keptAside = `${configPath}.pre-upgrade`
+  const stoppingAt = (point) => ({ ...env, ROACHNET_SETUP_TEST_STOP_AT: point })
+  let service
+  try {
+    const first = spawnSync(nativeBinary, ['--install', '--install-path', installPath, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
+    assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`)
+    const installed = savedConfig()
+    assert.equal(typeof installed.setupCompletedAt, 'string')
+
+    // An upgrade in place that moves storage loses power between moving the
+    // installed copy aside and moving the new one in.
+    service = await startSetup(stoppingAt('moved-aside'))
+    assert.equal(await installFromAppUntilStopped(service, configPath, installPath, { storagePath: movedStorage }), 75)
+    service = undefined
+    assert.equal(existsSync(installPath), false, 'the installed copy is aside')
+    assert.equal(savedConfig().storagePath, movedStorage, 'the upgrade saved its choices first')
+    service = await startSetup(env)
+    assert.equal(existsSync(path.join(installPath, 'app', 'RoachNet.app')), true, 'Setup put the install back')
+    for (const key of ['installPath', 'storagePath', 'setupCompletedAt', 'pendingLaunchIntro']) {
+      assert.deepEqual(savedConfig()[key], installed[key], `in place: ${key}`)
+    }
+    assert.equal(existsSync(keptAside), false)
+    service.child.kill('SIGTERM')
+    service = undefined
+
+    // A move to another folder is cut off before its copy lands. The command
+    // line retries it with a payload that fails before its swap.
+    service = await startSetup(stoppingAt('swap'))
+    assert.equal(await installFromAppUntilStopped(service, configPath, elsewhere), 75)
+    service = undefined
+    assert.equal(savedConfig().installPath, elsewhere)
+    rmSync(payloadHelper)
+    const retried = spawnSync(nativeBinary, ['--install', '--install-path', elsewhere, '--no-roachclaw'], { env, encoding: 'utf8', timeout: 90_000 })
+    assert.notEqual(retried.status, 0, retried.stdout)
+    assert.match(retried.stdout, /Put back the saved settings of the copy that is installed/)
+    for (const key of ['installPath', 'storagePath', 'setupCompletedAt', 'pendingLaunchIntro']) {
+      assert.deepEqual(savedConfig()[key], installed[key], `moved: ${key}`)
+    }
+    assert.equal(existsSync(elsewhere), false)
+    assert.equal(existsSync(keptAside), false)
+    cpSync(nativeBinary, payloadHelper)
+    chmodSync(payloadHelper, 0o755)
+
+    // A move cut off once its copy is in place keeps that copy's settings.
+    service = await startSetup(stoppingAt('moved-in'))
+    assert.equal(await installFromAppUntilStopped(service, configPath, elsewhere), 75)
+    service = await startSetup(env)
+    assert.equal(existsSync(path.join(elsewhere, 'app', 'RoachNet.app')), true)
+    assert.equal(savedConfig().installPath, elsewhere, 'the copy that landed keeps its settings')
+    assert.equal(existsSync(keptAside), false)
   } finally {
     service?.child.kill('SIGTERM')
     await rm(tempRoot, { recursive: true, force: true })
