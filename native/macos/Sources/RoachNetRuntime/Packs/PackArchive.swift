@@ -55,7 +55,7 @@ enum PackArchive {
             // `tar -t` doesn't list sizes the same way on every system, so the
             // gzip stream is measured first: it holds every file's bytes, and
             // the count stops at the limit instead of inflating all of it.
-            guard try inflatedSize(ofGzip: archivePath, limit: maxBytes) <= maxBytes else { throw tooLarge }
+            guard try inflatedSize(of: archivePath, format: format, limit: maxBytes) <= maxBytes else { throw tooLarge }
             entries = try tarEntries(atPath: archivePath)
         default: throw PackError.installFailed("Unsupported archive type \(format).")
         }
@@ -72,19 +72,27 @@ enum PackArchive {
             guard !overflow, sum <= maxBytes else { throw tooLarge }
             total = sum
         }
+        if format == "zip" {
+            // A ZIP's size fields can understate what ditto and unzip write
+            // (both write the whole stream), so the real size is measured too.
+            guard try inflatedSize(of: archivePath, format: format, limit: maxBytes) <= maxBytes else { throw tooLarge }
+        }
     }
 
     static func sizeText(_ bytes: UInt64) -> String {
         bytes >= 1 << 30 ? "\(bytes >> 30) GB" : "\(max(1, bytes >> 20)) MB"
     }
 
-    /// How many bytes a gzip file inflates to. Counting stops once it passes
-    /// `limit`, so an archive that inflates to terabytes costs only the time
-    /// to inflate `limit` bytes, and nothing is written to disk.
-    static func inflatedSize(ofGzip path: String, limit: UInt64) throws -> UInt64 {
+    /// How many bytes an archive inflates to, found by inflating it into a
+    /// pipe and counting (`gzip -dc` for a .tar.gz, `unzip -p` for a zip).
+    /// Counting stops once it passes `limit`, so an archive that inflates to
+    /// terabytes costs only the time to inflate `limit` bytes, and nothing is
+    /// written to disk.
+    static func inflatedSize(of path: String, format: String, limit: UInt64) throws -> UInt64 {
+        let zip = format == "zip"
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/gzip")
-        process.arguments = ["-dc", path]
+        process.executableURL = URL(fileURLWithPath: zip ? "/usr/bin/unzip" : "/usr/bin/gzip")
+        process.arguments = zip ? ["-p", path] : ["-dc", path]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -103,8 +111,10 @@ enum PackArchive {
         }
         try? reader.close()
         process.waitUntilExit()
-        if !stopped, process.terminationStatus != 0 {
-            throw PackError.integrity("Archive \(Path.basename(path)) isn't a readable gzip file.")
+        // unzip's 1 means warnings only: everything was still read.
+        let finished = process.terminationStatus == 0 || (zip && process.terminationStatus == 1)
+        if !stopped, !finished {
+            throw PackError.integrity("Archive \(Path.basename(path)) couldn't be read to measure it.")
         }
         return total
     }

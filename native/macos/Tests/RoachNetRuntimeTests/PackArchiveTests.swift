@@ -44,6 +44,27 @@ enum TestZip {
         u32(UInt32(directory.count), &out); u32(directoryOffset, &out); u16(0, &out)
         return out
     }
+
+    /// One DEFLATE entry (method 8) whose size fields claim `claimedSize`,
+    /// whatever `stream` inflates to.
+    static func deflated(name: String, stream: Data, crc: UInt32, claimedSize: UInt32) -> Data {
+        var out = Data(), directory = Data()
+        func u16(_ value: Int, _ into: inout Data) { into.append(UInt8(value & 0xFF)); into.append(UInt8((value >> 8) & 0xFF)) }
+        func u32(_ value: UInt32, _ into: inout Data) { for shift in stride(from: 0, to: 32, by: 8) { into.append(UInt8((value >> UInt32(shift)) & 0xFF)) } }
+        let nameData = Data(name.utf8)
+        u32(0x0403_4B50, &out); u16(20, &out); u16(0, &out); u16(8, &out); u16(0, &out); u16(0x21, &out)
+        u32(crc, &out); u32(UInt32(stream.count), &out); u32(claimedSize, &out)
+        u16(nameData.count, &out); u16(0, &out); out.append(nameData); out.append(stream)
+        u32(0x0201_4B50, &directory); u16(0x0314, &directory); u16(20, &directory); u16(0, &directory); u16(8, &directory)
+        u16(0, &directory); u16(0x21, &directory); u32(crc, &directory); u32(UInt32(stream.count), &directory)
+        u32(claimedSize, &directory); u16(nameData.count, &directory); u16(0, &directory); u16(0, &directory)
+        u16(0, &directory); u16(0, &directory); u32(0o100644 << 16, &directory); u32(0, &directory); directory.append(nameData)
+        let directoryOffset = UInt32(out.count)
+        out.append(directory)
+        u32(0x0605_4B50, &out); u16(0, &out); u16(0, &out); u16(1, &out); u16(1, &out)
+        u32(UInt32(directory.count), &out); u32(directoryOffset, &out); u16(0, &out)
+        return out
+    }
 }
 
 final class PackArchiveTests: XCTestCase {
@@ -135,9 +156,9 @@ final class PackArchiveTests: XCTestCase {
         let archive = Path.join(root, "big.tar.gz")
         XCTAssertEqual(Processes.run("/usr/bin/tar", ["-czf", archive, "-C", source, "zeros.bin"]).status, 0)
 
-        let whole = try PackArchive.inflatedSize(ofGzip: archive, limit: 64 << 20)
+        let whole = try PackArchive.inflatedSize(of: archive, format: "tar.gz", limit: 64 << 20)
         XCTAssertGreaterThanOrEqual(whole, 3 << 20)
-        let capped = try PackArchive.inflatedSize(ofGzip: archive, limit: 1 << 20)
+        let capped = try PackArchive.inflatedSize(of: archive, format: "tar.gz", limit: 1 << 20)
         XCTAssertGreaterThan(capped, 1 << 20)
         XCTAssertLessThan(capped, whole, "the count stops at the limit")
         XCTAssertThrowsError(try PackArchive.inspect(archive, format: "tar.gz", maxBytes: 1 << 20)) {
@@ -147,7 +168,28 @@ final class PackArchiveTests: XCTestCase {
 
         let notGzip = Path.join(root, "plain.tar.gz")
         try Files.write("not gzip at all", to: notGzip)
-        XCTAssertThrowsError(try PackArchive.inflatedSize(ofGzip: notGzip, limit: 1 << 20))
+        XCTAssertThrowsError(try PackArchive.inflatedSize(of: notGzip, format: "tar.gz", limit: 1 << 20))
+    }
+
+    func testZipThatUnderstatesItsSizeIsStillMeasured() throws {
+        // ditto and unzip write a stream's whole length whatever the ZIP's size
+        // fields claim, so an entry of 3 MB that claims 100 bytes is measured.
+        let input = Path.join(root, "zeros.bin")
+        try Data(count: 3 << 20).write(to: URL(fileURLWithPath: input))
+        XCTAssertEqual(Processes.run("/usr/bin/gzip", ["-n", "-k", "-f", input]).status, 0)
+        // gzip -n: a 10-byte header, the raw DEFLATE stream, then CRC-32 and size.
+        let gzip = try Data(contentsOf: URL(fileURLWithPath: input + ".gz"))
+        let trailer = [UInt8](gzip.suffix(8))
+        let crc = UInt32(trailer[0]) | UInt32(trailer[1]) << 8 | UInt32(trailer[2]) << 16 | UInt32(trailer[3]) << 24
+        let path = Path.join(root, "understated.zip")
+        try TestZip.deflated(name: "zeros.bin", stream: gzip.subdata(in: 10..<(gzip.count - 8)), crc: crc, claimedSize: 100)
+            .write(to: URL(fileURLWithPath: path))
+
+        XCTAssertEqual(try PackArchive.zipEntries(atPath: path).map(\.uncompressedBytes), [100], "the directory claims 100 bytes")
+        XCTAssertGreaterThanOrEqual(try PackArchive.inflatedSize(of: path, format: "zip", limit: 64 << 20), 3 << 20)
+        XCTAssertThrowsError(try PackArchive.inspect(path, format: "zip", maxBytes: 1 << 20)) {
+            XCTAssertTrue("\($0)".contains("more than 1 MB"), "\($0)")
+        }
     }
 
     func testExtractedTreeWithALinkOrHardLinkIsRefused() throws {
