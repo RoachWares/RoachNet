@@ -19,9 +19,10 @@ Security maintenance release for 1.1.0: the download fix below and related downl
   - A cancel that stops a download leaves the file that was there. Once the new file is taking its place, a cancel is refused.
 - **What changes with them.** A second request for a file that is already downloading from another source is refused (409) instead of sharing its partial file. An install already running can't be cancelled. A collection queues each of its items on its own, so one that can't be queued doesn't stop the rest.
 
-### Tests
+### Tests and release builds
 
 - The Metal kernel host check compiles again, so release qualification runs it instead of failing (ROA-97). Test-only: no kernel or app code changed.
+- A fresh import of the RoachVoice Chatterbox pack writes the pack its recorded digests describe again, so the release build can verify it (ROA-79). Build tooling only: the published pack doesn't change.
 
 ## v1.1.0 - 2026-10-12
 
