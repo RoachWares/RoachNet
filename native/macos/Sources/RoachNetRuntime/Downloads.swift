@@ -173,6 +173,10 @@ extension NativeRuntime {
         var chosen = safeFileName(JSON(filename ?? fileNameForUrl(JSON(url), fallbackName)), fallbackName)
         // The file goes directly in the destination folder, whatever the name says.
         if Path.basename(Path.join(destinationDirectory, chosen)) != chosen { chosen = fallbackName }
+        // "<file>.part" and "<file>.part.json" are a download's own temporaries,
+        // so no download may be given one of those names as its file (ROA-95).
+        let lowered = chosen.lowercased()
+        if lowered.hasSuffix(".part") || lowered.hasSuffix(".part.json") { chosen = fallbackName }
         let filepath = Path.join(destinationDirectory, chosen)
         return try withState { () throws -> DownloadJob in
             // One download per file at a time: two would share one partial file.
@@ -347,10 +351,17 @@ extension NativeRuntime {
                 self?.updateProgress(job, received: progress.receivedBytes, total: progress.expectedBytes)
                 if progress.expectedBytes != nil { self?.withState { job.totalBytes = progress.expectedBytes } }
             }
-            withState {
+            let cancelled = withState { () -> Bool in
                 job.activeTransfer = transfer
                 job.attempts = attempt
                 job.resumedFrom = offset > 0 ? offset : job.resumedFrom
+                return job.status == "cancelled"
+            }
+            // A cancel that came before this transfer existed couldn't stop it,
+            // so it is honoured here, before anything is fetched.
+            if cancelled {
+                withState { job.activeTransfer = nil }
+                throw RuntimeError("This operation was aborted", statusCode: 499)
             }
             let remaining = Int(deadline.timeIntervalSinceNow * 1000)
             if remaining <= 0 { throw RuntimeError("The operation was aborted due to timeout", statusCode: 504) }
@@ -395,9 +406,9 @@ extension NativeRuntime {
             Files.removeFile(resumeMarkerPath(job))
         }
         withState { job.updatedAt = JS.isoNow() }
-        if job.parts.isEmpty && job.resumable { writeResumeMarker(job) }
         let descriptor = try openPartialFile(job, resuming: resuming)
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        if job.parts.isEmpty && job.resumable { writeResumeMarker(job) }
         var handleOpen = true
         func closeHandle() { if handleOpen { try? handle.close(); handleOpen = false } }
         // Whether this download's file has taken its place. Until then a file
@@ -421,6 +432,17 @@ extension NativeRuntime {
                 }
                 withState { job.sha256 = actual }
             }
+            // Cancelling and taking the file's place are one decision, made
+            // under the lock: from here on the job is "installing", which a
+            // cancel refuses. So a cancel that was accepted always leaves the
+            // file already at the path (ROA-95).
+            let committing = withState { () -> Bool in
+                guard job.status != "cancelled" else { return false }
+                job.status = "installing"
+                job.updatedAt = JS.isoNow()
+                return true
+            }
+            guard committing else { throw RuntimeError("This operation was aborted", statusCode: 499) }
             try Files.rename(job.partialFilepath, job.filepath)
             placed = true
             Files.removeFile(resumeMarkerPath(job))

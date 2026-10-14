@@ -22,16 +22,19 @@ final class DownloadSafetyTests: XCTestCase {
     }
 
     /// Descriptors `/downloads/zim/<name>.json` point to `/<name>.zim` and name
-    /// `names[name]`, or `item.zim`. A `slow` file waits before it answers; a
-    /// `missing` one is a 404.
-    private func runtime(slow: Set<String> = [], names: [String: String] = [:], missing: Set<String> = []) throws -> NativeRuntime {
+    /// `names[name]`, or `item.zim`. A file serves `bodies[name]`, or the small
+    /// payload; its descriptor carries the SHA-256 when `name` is in `withSha`.
+    /// A `slow` file waits before it answers; a `missing` one is a 404.
+    private func runtime(slow: Set<String> = [], names: [String: String] = [:], missing: Set<String> = [],
+                         bodies: [String: Data] = [:], withSha: Set<String> = []) throws -> NativeRuntime {
         let port = LockedBox<Int>(0)
-        let body = payload
+        let small = payload
         let server = LoopbackHTTPServer(host: "127.0.0.1", port: 0, maxBodyBytes: 1024) { request in
             let target = request.target
             if target.hasPrefix("/downloads/zim/"), target.hasSuffix(".json") {
                 let name = String(target.dropFirst("/downloads/zim/".count).dropLast(".json".count))
-                let descriptor: JSON = ["url": JSON("http://127.0.0.1:\(port.value)/\(name).zim"), "filename": JSON(names[name] ?? "item.zim")]
+                var descriptor: JSON = ["url": JSON("http://127.0.0.1:\(port.value)/\(name).zim"), "filename": JSON(names[name] ?? "item.zim")]
+                if withSha.contains(name) { descriptor["sha256"] = JSON(SHA256Digest.hex(bodies[name] ?? small)) }
                 let data = Data(descriptor.serialized().utf8)
                 var response = HTTPResponse(status: 200, headers: [("content-type", "application/json"), ("content-length", String(data.count))])
                 response.body = data
@@ -41,6 +44,7 @@ final class DownloadSafetyTests: XCTestCase {
                 let name = String(target.dropFirst().dropLast(4))
                 if missing.contains(name) { return HTTPResponse(status: 404, headers: [("content-length", "0")]) }
                 if slow.contains(name) { Thread.sleep(forTimeInterval: 1.5) }
+                let body = bodies[name] ?? small
                 var response = HTTPResponse(status: 200, headers: [("content-type", "application/octet-stream"), ("content-length", String(body.count))])
                 response.body = body
                 return response
@@ -206,4 +210,75 @@ final class DownloadSafetyTests: XCTestCase {
         XCTAssertEqual(finish(upper, on: runtime), "completed")
     }
     #endif
+
+    /// A cancel is either refused (the file is already taking its place) or it
+    /// leaves the file that was there: never accepted and then overwritten.
+    func testAnAcceptedCancelNeverReplacesTheInstalledFile() throws {
+        var bytes = [UInt8](repeating: 0, count: 32 * 1024 * 1024)
+        for index in stride(from: 0, to: bytes.count, by: 4096) { bytes[index] = UInt8(truncatingIfNeeded: index / 4096) }
+        let big = Data(bytes)
+        let runtime = try runtime(bodies: ["big": big], withSha: ["big"])
+        let destination = Path.join(storage, "zim")
+        let installed = Path.join(destination, "item.zim")
+        let earlier = Data("the copy already installed".utf8)
+        try Files.write(earlier, to: installed)
+        let job = try XCTUnwrap(runtime.queueResolvedDownload(descriptor("big"), destination, "zim"))
+        // Cancel once every byte has arrived: the worker is checking the
+        // download and about to move it into place.
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            let (received, transfer) = runtime.withState { (job.bytesReceived, job.activeTransfer) }
+            if received == Int64(big.count), transfer == nil { break }
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+        // The status and the cancel are read and made under one lock.
+        let (statusAtCancel, accepted) = runtime.withState { (job.status, runtime.cancelDownloadJob(job.jobId)) }
+        waitForWriters(runtime)
+        if ["queued", "downloading"].contains(statusAtCancel) {
+            XCTAssertTrue(accepted)
+            XCTAssertEqual(runtime.withState { job.status }, "cancelled")
+            XCTAssertEqual(FileManager.default.contents(atPath: installed), earlier, "an accepted cancel leaves the installed file")
+        } else {
+            // Too late to cancel: the file was already taking its place.
+            XCTAssertEqual(runtime.withState { job.status }, "completed")
+            XCTAssertEqual(FileManager.default.contents(atPath: installed), big)
+        }
+        XCTAssertFalse(Files.exists(job.partialFilepath))
+    }
+
+    /// "<file>.part" is another download's partial file and "<file>.part.json"
+    /// its resume marker, so a download given one of those names gets the
+    /// generated name instead, and the two downloads keep their own files.
+    func testADownloadIsNeverNamedLikeAnotherDownloadsTemporaryFile() throws {
+        let runtime = try runtime(names: ["a": "item.zim.part", "b": "item.zim", "c": "ITEM.ZIM.PART.JSON"],
+                                  bodies: ["a": Data("file A".utf8), "b": Data("file B".utf8), "c": Data("file C".utf8)])
+        let destination = Path.join(storage, "zim")
+        let a = try XCTUnwrap(runtime.queueResolvedDownload(descriptor("a"), destination, "zim"))
+        XCTAssertEqual(finish(a, on: runtime), "completed")
+        let c = try XCTUnwrap(runtime.queueResolvedDownload(descriptor("c"), destination, "zim"))
+        XCTAssertEqual(finish(c, on: runtime), "completed")
+        for job in [a, c] {
+            XCTAssertFalse(Path.basename(job.filepath).lowercased().contains(".part"), job.filepath)
+            XCTAssertEqual(Path.dirname(job.filepath), destination)
+        }
+        waitForWriters(runtime)
+        let b = try XCTUnwrap(runtime.queueResolvedDownload(descriptor("b"), destination, "zim"))
+        XCTAssertEqual(finish(b, on: runtime), "completed")
+        XCTAssertEqual(FileManager.default.contents(atPath: a.filepath), Data("file A".utf8), "b's start and cleanup left a's file alone")
+        XCTAssertEqual(FileManager.default.contents(atPath: c.filepath), Data("file C".utf8))
+        XCTAssertEqual(FileManager.default.contents(atPath: b.filepath), Data("file B".utf8))
+    }
+
+    /// A folder where the partial file goes fails the download, keeps the
+    /// folder and what's in it, and leaves no resume marker behind.
+    func testAFolderAtThePartialPathIsLeftAlone() throws {
+        let runtime = try runtime()
+        let partial = Path.join(storage, "zim", "item.zim.part")
+        try Files.mkdirp(partial)
+        try Files.write(Data("inside".utf8), to: Path.join(partial, "inner.txt"))
+        let job = try XCTUnwrap(runtime.queueResolvedDownload(descriptor("first"), Path.join(storage, "zim"), "zim"))
+        XCTAssertEqual(finish(job, on: runtime), "failed")
+        XCTAssertEqual(FileManager.default.contents(atPath: Path.join(partial, "inner.txt")), Data("inside".utf8))
+        XCTAssertFalse(Files.exists(partial + ".json"), "no resume marker is left")
+    }
 }
