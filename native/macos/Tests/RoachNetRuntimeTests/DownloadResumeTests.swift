@@ -151,6 +151,18 @@ final class DownloadResumeTests: XCTestCase {
         XCTAssertEqual(requests.value.first, "bytes=\(kept)-")
     }
 
+    /// A download that is cut off for good leaves the copy already installed,
+    /// and keeps its bytes so far for the next attempt (ROA-95).
+    func testAnInterruptedDownloadLeavesTheInstalledCopy() throws {
+        let url = try startServer(stallAfter: 16 * 1024, stallRanges: true)
+        let download = job(url)
+        let installed = Data("the copy already installed".utf8)
+        try Files.write(installed, to: download.filepath)
+        XCTAssertThrowsError(try runtime(attempts: 2).downloadFile(download))
+        XCTAssertEqual(FileManager.default.contents(atPath: download.filepath), installed)
+        XCTAssertTrue(download.partialKept)
+    }
+
     func testChecksumMismatchDiscardsEverything() throws {
         let url = try startServer(stallAfter: nil)
         let download = DownloadJob(url: url, filepath: Path.join(root, "pack.pmtiles"), filetype: "pmtiles",

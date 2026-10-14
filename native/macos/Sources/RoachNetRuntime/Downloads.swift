@@ -166,7 +166,7 @@ extension NativeRuntime {
     @discardableResult
     func queueDownload(_ rawUrl: String, _ destinationDirectory: String, _ filetype: String,
                        filename: String? = nil, descriptorUrl: String? = nil, expectedSha256: String? = nil,
-                       parts: [JSON] = [], afterDownload: ((DownloadJob) throws -> Void)? = nil) -> DownloadJob? {
+                       parts: [JSON] = [], afterDownload: ((DownloadJob) throws -> Void)? = nil) throws -> DownloadJob? {
         guard let url = parseDownloadUrl(JSON(rawUrl)) else { return nil }
         try? Files.mkdirp(destinationDirectory)
         let fallbackName = "\(JS.randomUUID()).\(filetype.isEmpty ? "download" : filetype)"
@@ -174,14 +174,19 @@ extension NativeRuntime {
         // The file goes directly in the destination folder, whatever the name says.
         if Path.basename(Path.join(destinationDirectory, chosen)) != chosen { chosen = fallbackName }
         let filepath = Path.join(destinationDirectory, chosen)
-        return withState { () -> DownloadJob in
-            if let active = downloadJobs.first(where: { $0.url == url && $0.filepath == filepath && ["queued", "downloading"].contains($0.status) }) {
-                return active
+        return try withState { () throws -> DownloadJob in
+            // One download per file at a time: two would share one partial file.
+            if let writer = downloadWriters[downloadPathKey(filepath)] {
+                if writer.url == url, writer.filepath.unicodeScalars.elementsEqual(filepath.unicodeScalars),
+                   Self.activeDownloadStatuses.contains(writer.status) { return writer }
+                throw requestError("A download to \(Path.basename(filepath)) is already running.", 409)
             }
             let job = DownloadJob(url: url, filepath: filepath, filetype: filetype, descriptorUrl: descriptorUrl, expectedSha256: expectedSha256, parts: parts)
             job.afterDownload = afterDownload
-            downloadJobs = Array(([job] + downloadJobs).prefix(200))
+            downloadWriters[downloadPathKey(filepath)] = job
+            downloadJobs = Self.trimmedDownloadJobs([job] + downloadJobs)
             DispatchQueue.global(qos: .utility).async {
+                defer { self.releaseDownloadWriter(job) }
                 do {
                     try self.downloadFile(job)
                 } catch {
@@ -210,16 +215,65 @@ extension NativeRuntime {
         try Files.mkdirp(Path.dirname(filepath))
         let job = DownloadJob(url: url, filepath: filepath, filetype: filetype, descriptorUrl: resolved.descriptorUrl,
                               expectedSha256: expectedSha256?.lowercased() ?? resolved.sha256, parts: resolved.parts)
-        withState { downloadJobs = Array(([job] + downloadJobs).prefix(200)) }
-        try downloadFile(job)
+        try withState { () throws in
+            if downloadWriters[downloadPathKey(filepath)] != nil {
+                throw requestError("A download to \(Path.basename(filepath)) is already running.", 409)
+            }
+            downloadWriters[downloadPathKey(filepath)] = job
+            downloadJobs = Self.trimmedDownloadJobs([job] + downloadJobs)
+        }
+        defer { releaseDownloadWriter(job) }
+        do {
+            try downloadFile(job)
+        } catch {
+            withState {
+                job.status = "failed"
+                job.failedReason = "\(error)"
+                job.progress = 0
+            }
+            throw error
+        }
+        if withState({ job.status }) != "completed" { throw RuntimeError("The download of \(Path.basename(filepath)) was cancelled.", statusCode: 499) }
+    }
+
+    static let activeDownloadStatuses: Set<String> = ["queued", "downloading", "installing"]
+
+    /// One key per file a volume holds: on macOS, names that differ only in
+    /// case or Unicode normalization form are one file on a default APFS
+    /// volume, so they share a key (ROA-95).
+    func downloadPathKey(_ filepath: String) -> String {
+        let normalized = Path.normalize(filepath)
+        #if canImport(Darwin)
+        return normalized.decomposedStringWithCanonicalMapping.folding(options: [.caseInsensitive], locale: nil)
+        #else
+        return normalized
+        #endif
+    }
+
+    func releaseDownloadWriter(_ job: DownloadJob) {
+        withState {
+            let key = downloadPathKey(job.filepath)
+            if downloadWriters[key] === job { downloadWriters[key] = nil }
+        }
+    }
+
+    /// The newest 200 finished jobs, and every job still running: trimming the
+    /// list never hides a download that is still writing.
+    static func trimmedDownloadJobs(_ jobs: [DownloadJob], keeping limit: Int = 200) -> [DownloadJob] {
+        var finished = 0
+        return jobs.filter { job in
+            if activeDownloadStatuses.contains(job.status) { return true }
+            finished += 1
+            return finished <= limit
+        }
     }
 
     func queueResolvedDownload(_ rawUrl: JSON, _ destinationDirectory: String, _ filetype: String,
                                afterDownload: ((DownloadJob) throws -> Void)? = nil) throws -> DownloadJob? {
         let resolved = try resolveDownloadDescriptor(rawUrl)
         guard let url = resolved.url else { return nil }
-        return queueDownload(url, destinationDirectory, filetype, filename: resolved.filename, descriptorUrl: resolved.descriptorUrl,
-                             expectedSha256: resolved.sha256, parts: resolved.parts, afterDownload: afterDownload)
+        return try queueDownload(url, destinationDirectory, filetype, filename: resolved.filename, descriptorUrl: resolved.descriptorUrl,
+                                 expectedSha256: resolved.sha256, parts: resolved.parts, afterDownload: afterDownload)
     }
 
     // MARK: Transfer
@@ -241,7 +295,8 @@ extension NativeRuntime {
 
     /// A partial file is reused only for the same URL and the same expected checksum.
     func partialIsResumable(_ job: DownloadJob) -> Bool {
-        guard job.resumable, job.parts.isEmpty, Files.isFile(job.partialFilepath),
+        // A link at the partial path is never written through (ROA-95).
+        guard job.resumable, job.parts.isEmpty, Files.isRegularFile(job.partialFilepath),
               let text = Files.readText(resumeMarkerPath(job)), let marker = try? JSON.parse(text) else { return false }
         return marker["url"].stringValue == job.url && marker["sha256"].stringValue == job.expectedSha256
     }
@@ -326,7 +381,13 @@ extension NativeRuntime {
     }
 
     func downloadFile(_ job: DownloadJob) throws {
-        withState { job.status = "downloading" }
+        let started = withState { () -> Bool in
+            // A job cancelled while it waited for a worker stays cancelled.
+            guard job.status != "cancelled" else { return false }
+            job.status = "downloading"
+            return true
+        }
+        guard started else { return }
         let deadline = Date().addingTimeInterval(Double(config.downloadTimeoutMs) / 1000)
         let resuming = partialIsResumable(job)
         if !resuming {
@@ -334,13 +395,9 @@ extension NativeRuntime {
             Files.removeFile(resumeMarkerPath(job))
         }
         withState { job.updatedAt = JS.isoNow() }
-        if !Files.exists(job.partialFilepath) {
-            _ = FileManager.default.createFile(atPath: job.partialFilepath, contents: nil)
-        }
         if job.parts.isEmpty && job.resumable { writeResumeMarker(job) }
-        guard let handle = FileHandle(forWritingAtPath: job.partialFilepath) else {
-            throw RuntimeError("Download from \(job.url) failed: unable to open \(job.partialFilepath)")
-        }
+        let descriptor = try openPartialFile(job, resuming: resuming)
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         var handleOpen = true
         func closeHandle() { if handleOpen { try? handle.close(); handleOpen = false } }
         // Whether this download's file has taken its place. Until then a file
@@ -417,6 +474,31 @@ extension NativeRuntime {
         }
     }
 
+    /// Opens the partial file so the download writes only a file of its own
+    /// (ROA-95). A link at the path is never followed (O_NOFOLLOW). A partial
+    /// it resumes must be a plain file with no other name: a hard link would
+    /// let the download write into a file elsewhere. Anything else is removed
+    /// (only that name; a linked file elsewhere keeps its bytes), and the
+    /// download starts over in a file it creates itself (O_EXCL).
+    func openPartialFile(_ job: DownloadJob, resuming: Bool) throws -> Int32 {
+        if resuming {
+            let descriptor = open(job.partialFilepath, O_WRONLY | O_NOFOLLOW | O_CLOEXEC)
+            if descriptor >= 0 {
+                var info = stat()
+                if fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 { return descriptor }
+                close(descriptor)
+            }
+            log("download \(job.jobId): the partial file can't be resumed safely; starting over")
+        }
+        for _ in 0..<3 {
+            Files.removeFile(job.partialFilepath)
+            let descriptor = open(job.partialFilepath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o644)
+            if descriptor >= 0 { return descriptor }
+            if errno != EEXIST { break }
+        }
+        throw RuntimeError("Download from \(job.url) failed: unable to create \(job.partialFilepath): \(String(cString: strerror(errno)))")
+    }
+
     func decodeChunkPayload(_ part: JSON, _ body: Data) throws -> Data {
         guard part["encoding"].stringValue == "roachnet-ia-chunk-v1" else { return body }
         let header = Data((part["header"] || "").jsString.utf8)
@@ -467,18 +549,22 @@ extension NativeRuntime {
         }
     }
 
+    /// Stops a queued or running download, or clears a finished one from the
+    /// list. An install already running can't be stopped halfway, so that is
+    /// refused. A stopped download's worker removes its own partial file, and
+    /// the file stays claimed until that worker has finished (ROA-95).
     func cancelDownloadJob(_ jobId: String) -> Bool {
         withState {
-            let job = downloadJobs.first { $0.jobId == jobId }
-            if let job, ["queued", "downloading"].contains(job.status) {
+            guard let job = downloadJobs.first(where: { $0.jobId == jobId }) else { return false }
+            if job.status == "installing" { return false }
+            if ["queued", "downloading"].contains(job.status) {
                 job.status = "cancelled"
                 job.failedReason = nil
                 job.updatedAt = JS.isoNow()
                 job.activeTransfer?.cancel()
-                Files.removeFile(job.partialFilepath)
             }
             downloadJobs.removeAll { $0.jobId == jobId }
-            return job != nil
+            return true
         }
     }
 
@@ -508,7 +594,7 @@ extension NativeRuntime {
             withState { systemUpdateStatus = NativeRuntime.updateStatus("error", 0, message) }
             return ["success": false, "error": JSON(message), "note": release["pageUrl"]]
         }
-        guard let job = queueDownload(assetUrl, Path.join(storageRoot, "updates"), "dmg", expectedSha256: expectedSha256) else {
+        guard let job = try? queueDownload(assetUrl, Path.join(storageRoot, "updates"), "dmg", expectedSha256: expectedSha256) else {
             withState { systemUpdateStatus = NativeRuntime.updateStatus("error", 0, "Update download could not be queued.") }
             return ["success": false, "error": "Update download could not be queued."]
         }
@@ -718,8 +804,22 @@ extension NativeRuntime {
         return category["tiers"].array.flatMap { $0["resources"].array }.filter { $0["id"] == resourceId }
     }
 
+    /// Queues each resource on its own: one that can't be queued doesn't stop
+    /// the others, or hide the jobs already started. It fails only when none
+    /// could be queued.
     func queueResources(_ resources: [JSON], _ destination: String, _ filetype: String) throws -> [DownloadJob] {
-        try resources.compactMap { try queueResolvedDownload($0["descriptorUrl"] || $0["url"], destination, filetype) }
+        var jobs: [DownloadJob] = []
+        var firstError: Error?
+        for resource in resources {
+            do {
+                if let job = try queueResolvedDownload(resource["descriptorUrl"] || resource["url"], destination, filetype) { jobs.append(job) }
+            } catch {
+                firstError = firstError ?? error
+                log("could not queue \((resource["descriptorUrl"] || resource["url"]).jsString): \(error)")
+            }
+        }
+        if jobs.isEmpty, let firstError { throw firstError }
+        return jobs
     }
 
     func appStoreInstallResponse(_ action: String, _ jobs: [DownloadJob], _ message: String, _ extra: JSONObject = JSONObject()) -> JSON {

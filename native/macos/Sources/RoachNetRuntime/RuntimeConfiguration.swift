@@ -359,6 +359,12 @@ public enum Files {
         }
     }
 
+    /// A regular file itself, not a link to one (`lstat`).
+    public static func isRegularFile(_ path: String) -> Bool {
+        guard let info = lstatInfo(path) else { return false }
+        return info.st_mode & S_IFMT == S_IFREG
+    }
+
     public static func lstatInfo(_ path: String) -> stat? {
         var info = stat()
         return lstat(path, &info) == 0 ? info : nil
