@@ -19,6 +19,10 @@ Security maintenance release for 1.1.0: the download fix below and related downl
   - A cancel that stops a download leaves the file that was there. Once the new file is taking its place, a cancel is refused.
 - **What changes with them.** A second request for a file that is already downloading from another source is refused (409) instead of sharing its partial file. An install already running can't be cancelled. A collection queues each of its items on its own, so one that can't be queued doesn't stop the rest.
 
+### Setup and recovery
+
+- An upgrade cut off after the old install was moved aside now comes back with the person's data. Setup logs to `setup.log` beside the installer config (`~/Library/Application Support/roachnet/setup.log`), not the install's `storage/logs`: writing that log recreated `~/RoachNet`, and with it an install root that an interrupted upgrade had moved aside, before Setup looked for it, so Setup kept the backup instead of restoring it and RoachNet came back empty (the data stayed in `~/RoachNet.backup-…`). Recovery now decides what it finds before it logs anything, and puts the install back when the root holds only Setup's own files (the Setup app the Homebrew cask put back, and an older Setup's log, which are both kept). The folders an interrupted run left are matched the way the install's volume matches names: exactly on a case- and form-sensitive volume, and in either Unicode form or either case where the volume ignores them.
+
 ### Tests and release builds
 
 - The Metal kernel host check compiles again, so release qualification runs it instead of failing (ROA-97). Test-only: no kernel or app code changed.

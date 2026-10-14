@@ -240,19 +240,31 @@ public enum RuntimeBuildInfo {
 
 public enum RuntimeLog {
     private static let lock = NSLock()
+    private static var redirectedPath: String?
+
+    /// Sends this process's log to `path` instead of `<storage>/logs`. Setup's
+    /// modes (`--setup`, `--install`) log beside the installer config: the
+    /// default sits inside the install root, and a log line there recreates a
+    /// root that an interrupted upgrade moved aside before Setup can put it
+    /// back (ROA-94). nil goes back to the default.
+    public static func redirect(to path: String?) {
+        lock.lock()
+        redirectedPath = path
+        lock.unlock()
+    }
 
     public static func write(_ line: String) {
-        let config = RuntimeConfiguration.shared
         let entry = "[\(JS.isoNow())] \(line)\n"
         lock.lock()
         defer { lock.unlock() }
-        try? FileManager.default.createDirectory(atPath: config.logRoot, withIntermediateDirectories: true)
-        if let handle = FileHandle(forWritingAtPath: config.logPath) {
+        let logPath = redirectedPath ?? RuntimeConfiguration.shared.logPath
+        try? FileManager.default.createDirectory(atPath: Path.dirname(logPath), withIntermediateDirectories: true)
+        if let handle = FileHandle(forWritingAtPath: logPath) {
             handle.seekToEndOfFile()
             handle.write(Data(entry.utf8))
             try? handle.close()
         } else {
-            _ = FileManager.default.createFile(atPath: config.logPath, contents: Data(entry.utf8))
+            _ = FileManager.default.createFile(atPath: logPath, contents: Data(entry.utf8))
         }
     }
 }

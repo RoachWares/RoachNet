@@ -82,6 +82,7 @@ if arguments.contains("--provision-alias") {
 
 if arguments.contains("--install") {
     let engine = SetupEngine()
+    RuntimeLog.redirect(to: engine.setupLogPath)
     var payload = JSONObject()
     if let installPath = argumentValue("--install-path") { payload["installPath"] = JSON(installPath) }
     if let storagePath = argumentValue("--storage-path") { payload["storagePath"] = JSON(storagePath) }
@@ -108,6 +109,7 @@ if arguments.contains("--install") {
 if arguments.contains("--setup") {
     // RoachNet Setup backend (replaces the former Node installer service).
     let engine = SetupEngine()
+    RuntimeLog.redirect(to: engine.setupLogPath)
     do {
         let setupServer = try engine.serve()
         // Exit with the Setup app (SIGTERM, or reparenting to launchd once it is

@@ -181,4 +181,13 @@ public enum SetupPlatform {
         try FileManager.default.copyItem(atPath: source, toPath: destination)
         Files.remove(source)
     }
+
+    static func namesIgnoreCase(in directory: String) -> Bool {
+        #if canImport(Darwin)
+        let values = try? URL(fileURLWithPath: directory).resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+        return values?.volumeSupportsCaseSensitiveNames == false
+        #else
+        return false
+        #endif
+    }
 }
