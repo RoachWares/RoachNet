@@ -75,6 +75,7 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 - `scripts/tests/release-hardening.test.mjs` checks the packaged helper itself. It covers out-of-range numbers, RoachTail token expiry, the local API token and scopes, and salted webhook secrets.
 - The apps no longer carry the build Mac's file paths: dSYMs are kept out of the bundle, executables are stripped of their debug map before signing, and `scripts/audit-release-privacy.mjs` fails the build if a built file names the build Mac's folders, host names or network addresses.
 - The supply-chain audit expects a scan only for runtimes a release bundles, so a 1.1 candidate (no bundled Ollama or Node.js) can pass promotion.
+- Diagnostic and release builds fetch the RoachSpeech model files and the parity audio in a step of their own, so an upstream that can't be reached fails that step and not a build or test. Dropped or stalled connections and HTTP 408, 425, 429 and 5xx are retried a bounded number of times, with exponential backoff and jitter, honoring `Retry-After` up to five minutes; no request keeps trying for more than fifteen. `docs/release-gates/roachspeech-upstream-inputs.json` records the size and digest of every file in the pinned Hugging Face commits. A file is used only once its bytes match, whether it was just downloaded or cached, and the importers no longer ask Hugging Face for file listings. Diagnostic builds keep the verified files in the Actions cache.
 
 ## v1.1.0 - 2026-10-12
 

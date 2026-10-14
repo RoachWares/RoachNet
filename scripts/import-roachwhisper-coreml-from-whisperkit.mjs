@@ -6,6 +6,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { verifyImportedUpstreamFiles } from './lib/roachspeech_pack_digests.mjs'
+import { exitForError, fetchUpstreamFile, listUpstreamFiles, readUpstreamInputs, upstreamCacheRoot } from './lib/roachspeech_upstream_fetch.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -13,6 +14,17 @@ const repoRoot = path.resolve(__dirname, '..')
 const defaultRepository = 'argmaxinc/whisperkit-coreml'
 const defaultRevision = '0f63a7800b00dd0226abd051b906c246e1907482'
 const defaultModel = 'openai_whisper-base.en'
+const upstreamInputsPath = path.join(repoRoot, 'docs', 'release-gates', 'roachspeech-upstream-inputs.json')
+const tokenizerFiles = [
+  'tokenizer.json',
+  'tokenizer_config.json',
+  'vocab.json',
+  'merges.txt',
+  'normalizer.json',
+  'added_tokens.json',
+  'special_tokens_map.json',
+  'preprocessor_config.json',
+]
 const tokenizerModelMap = new Map([
   ['openai_whisper-base.en', 'openai/whisper-base.en'],
   ['openai_whisper-base', 'openai/whisper-base'],
@@ -44,36 +56,6 @@ function parseArgs(argv) {
 
 function resolveRepoPath(value) {
   return path.isAbsolute(value) ? value : path.resolve(repoRoot, value)
-}
-
-function encodePathSegment(filePath) {
-  return filePath.split('/').map(encodeURIComponent).join('/')
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'RoachNet-RoachWhisper-Importer/1.0',
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`Request failed ${response.status}: ${url}`)
-  }
-  return response.json()
-}
-
-async function downloadFile(url, destinationPath) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'RoachNet-RoachWhisper-Importer/1.0',
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`Download failed ${response.status}: ${url}`)
-  }
-  fs.mkdirSync(path.dirname(destinationPath), { recursive: true })
-  const data = Buffer.from(await response.arrayBuffer())
-  fs.writeFileSync(destinationPath, data)
 }
 
 function writeJson(destinationPath, value) {
@@ -113,33 +95,27 @@ function targetPathForModelFile(modelFilePath, modelName, outputRoot) {
   return path.join(outputRoot, 'RoachWhisper', 'Reference', relativePath)
 }
 
-async function downloadTokenizerAssets(args, modelName, outputRoot) {
+/** Fetches and verifies the tokenizer files into the cache. */
+async function fetchTokenizerAssets(args, modelName, cacheRoot, manifest) {
   const tokenizerRepository = tokenizerRepositoryForModel(modelName, args)
   const tokenizerRevision = tokenizerRevisionForModel(modelName, args)
   if (!tokenizerRepository || !tokenizerRevision) {
     throw new Error(`No immutable tokenizer source is configured for ${modelName}. Supply --tokenizer-repository and --tokenizer-revision.`)
   }
-
-  const tokenizerFiles = [
-    'tokenizer.json',
-    'tokenizer_config.json',
-    'vocab.json',
-    'merges.txt',
-    'normalizer.json',
-    'added_tokens.json',
-    'special_tokens_map.json',
-    'preprocessor_config.json',
-  ]
-
+  const source = { repository: tokenizerRepository, revision: tokenizerRevision }
+  const listed = new Map((await listUpstreamFiles(source, { manifest })).map((entry) => [entry.path, entry]))
+  const cached = []
   for (const tokenizerFile of tokenizerFiles) {
-    const sourceURL = `https://huggingface.co/${tokenizerRepository}/resolve/${tokenizerRevision}/${encodePathSegment(tokenizerFile)}`
-    const destination = tokenizerFile === 'tokenizer.json'
-      ? path.join(outputRoot, 'RoachWhisper', 'RoachWhisperTokenizer.json')
-      : path.join(outputRoot, 'RoachWhisper', 'Reference', 'Tokenizer', tokenizerFile)
-    await downloadFile(sourceURL, destination)
+    const entry = listed.get(tokenizerFile)
+    if (!entry) throw new Error(`${tokenizerRepository}@${tokenizerRevision} has no ${tokenizerFile}.`)
+    cached.push([tokenizerFile, await fetchUpstreamFile(cacheRoot, source, entry)])
   }
+  return { tokenizerRepository, tokenizerRevision, cached }
+}
 
-  return { tokenizerRepository, tokenizerRevision }
+function copyInto(sourcePath, destinationPath) {
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true })
+  fs.copyFileSync(sourcePath, destinationPath)
 }
 
 async function importWhisperKitCoreML(args) {
@@ -148,24 +124,37 @@ async function importWhisperKitCoreML(args) {
   const revision = typeof args.revision === 'string' ? args.revision : defaultRevision
   const packID = typeof args['pack-id'] === 'string' ? args['pack-id'] : packIDForModel(modelName)
   const outputRoot = resolveRepoPath(args.output || `native/macos/Vendor/RoachSpeech/ModelPacks/${packID}`)
-  const treeURL = `https://huggingface.co/api/models/${repository}/tree/${revision}/${encodePathSegment(modelName)}?recursive=1`
-  const files = (await fetchJson(treeURL)).filter((entry) => entry.type === 'file')
+  const source = { repository, revision, subpath: modelName }
+  const cacheRoot = upstreamCacheRoot(repoRoot)
+  const manifest = readUpstreamInputs(upstreamInputsPath)
+  const files = await listUpstreamFiles(source, { manifest })
 
   if (files.length === 0) {
     throw new Error(`No files found for ${repository}/${modelName}@${revision}`)
   }
 
+  // Every file is fetched and verified before the pack is touched.
+  const cached = []
+  for (const file of files) {
+    cached.push([file, await fetchUpstreamFile(cacheRoot, source, file)])
+  }
+  const tokenizerSource = await fetchTokenizerAssets(args, modelName, cacheRoot, manifest)
+  if (args['fetch-only'] === true) {
+    console.log(`RoachWhisper: ${files.length + tokenizerSource.cached.length} upstream files verified in ${path.relative(repoRoot, cacheRoot) || cacheRoot}.`)
+    return
+  }
+
   fs.rmSync(outputRoot, { recursive: true, force: true })
   fs.mkdirSync(outputRoot, { recursive: true })
 
-  for (const file of files) {
-    const sourcePath = file.path
-    const destinationPath = targetPathForModelFile(sourcePath, modelName, outputRoot)
-    const sourceURL = `https://huggingface.co/${repository}/resolve/${revision}/${encodePathSegment(sourcePath)}`
-    await downloadFile(sourceURL, destinationPath)
+  for (const [file, cachedPath] of cached) {
+    copyInto(cachedPath, targetPathForModelFile(file.path, modelName, outputRoot))
   }
-
-  const tokenizerSource = await downloadTokenizerAssets(args, modelName, outputRoot)
+  for (const [tokenizerFile, cachedPath] of tokenizerSource.cached) {
+    copyInto(cachedPath, tokenizerFile === 'tokenizer.json'
+      ? path.join(outputRoot, 'RoachWhisper', 'RoachWhisperTokenizer.json')
+      : path.join(outputRoot, 'RoachWhisper', 'Reference', 'Tokenizer', tokenizerFile))
+  }
   writeJson(path.join(outputRoot, 'RoachWhisper', 'RoachWhisperParity.json'), {
     status: 'staged',
     validated: false,
@@ -207,6 +196,5 @@ try {
   }
   await importWhisperKitCoreML(args)
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error)
-  process.exit(1)
+  exitForError(error)
 }

@@ -20,6 +20,10 @@ const whisperPackRoot = path.join(
   'roachwhisper-openai-whisper-base-en-coreml'
 )
 
+// An importer exits 3 when an upstream file couldn't be fetched or didn't
+// verify (ROA-96); that status is passed on, so CI can tell it apart.
+const dependencyFailure = 3
+
 function run(script, args = []) {
   const result = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', script), ...args], {
     cwd: repoRoot,
@@ -27,7 +31,9 @@ function run(script, args = []) {
     stdio: 'inherit',
   })
   if (result.status !== 0) {
-    throw new Error(`${script} failed with exit code ${result.status}`)
+    const error = new Error(`${script} failed with exit code ${result.status}`)
+    error.exitCode = result.status === dependencyFailure ? dependencyFailure : 1
+    throw error
   }
 }
 
@@ -97,7 +103,20 @@ function promoteWhisperPackToReleaseReady() {
   })
 }
 
+/**
+ * --fetch-only downloads and verifies every pinned upstream file into the
+ * cache, and builds nothing: CI runs it as its own step, so an upstream that
+ * can't be reached shows up as that step failing, not as a build or test.
+ */
+function fetchOnly() {
+  run('import-roachvoice-chatterbox-coreml.mjs', ['--fetch-only'])
+  run('import-roachvoice-kokoro-coreml.mjs', ['--fetch-only'])
+  run('import-roachwhisper-coreml-from-whisperkit.mjs', ['--model', 'openai_whisper-base.en', '--fetch-only'])
+  console.log('RoachSpeech upstream files fetched and verified.')
+}
+
 function main() {
+  if (process.argv.includes('--fetch-only')) return fetchOnly()
   run('import-roachvoice-chatterbox-coreml.mjs', ['--check-compiler'])
   run('import-roachvoice-chatterbox-coreml.mjs', ['--version', releaseVersion])
   run('import-roachvoice-kokoro-coreml.mjs', ['--version', releaseVersion])
@@ -115,5 +134,5 @@ try {
   main()
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
-  process.exit(1)
+  process.exit(error?.exitCode ?? 1)
 }

@@ -7,6 +7,14 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { verifyImportedUpstreamFiles } from './lib/roachspeech_pack_digests.mjs'
+import {
+  cachedUpstreamPath,
+  exitForError,
+  fetchUpstreamFile,
+  listUpstreamFiles,
+  readUpstreamInputs,
+  upstreamCacheRoot,
+} from './lib/roachspeech_upstream_fetch.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -14,6 +22,7 @@ const repoRoot = path.resolve(__dirname, '..')
 const defaultRepository = 'yepher/screen-cut-pro-tts-coreml'
 const defaultRevision = 'f4fae0751b59970c170ca8d40cbf0c53dc20ad37'
 const defaultPackID = 'roachvoice-chatterbox-coreml'
+const upstreamInputsPath = path.join(repoRoot, 'docs', 'release-gates', 'roachspeech-upstream-inputs.json')
 
 const modelPackages = new Map([
   ['t3_text_emb.mlpackage', 'RoachVoice/RoachVoiceEmbedTokens.mlmodelc'],
@@ -72,38 +81,6 @@ function parseArgs(argv) {
 
 function resolveRepoPath(value) {
   return path.isAbsolute(value) ? value : path.resolve(repoRoot, value)
-}
-
-function encodePathSegment(filePath) {
-  return filePath.split('/').map(encodeURIComponent).join('/')
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'RoachNet-RoachVoice-Chatterbox-Importer/1.0',
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`Request failed ${response.status}: ${url}`)
-  }
-  return response.json()
-}
-
-async function downloadFile(url, destinationPath) {
-  if (fs.existsSync(destinationPath) && fs.statSync(destinationPath).size > 0) {
-    return
-  }
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'RoachNet-RoachVoice-Chatterbox-Importer/1.0',
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`Download failed ${response.status}: ${url}`)
-  }
-  fs.mkdirSync(path.dirname(destinationPath), { recursive: true })
-  fs.writeFileSync(destinationPath, Buffer.from(await response.arrayBuffer()))
 }
 
 function copyFile(sourcePath, destinationPath) {
@@ -186,18 +163,26 @@ function targetPathForReferenceFile(sourcePath, outputRoot) {
   return path.join(outputRoot, 'RoachVoice', 'Reference', sourcePath)
 }
 
-async function downloadPackage(repository, revision, packageName, files, stagingRoot) {
-  const packageFiles = files.filter((entry) => entry.path.startsWith(`${packageName}/`))
-  if (packageFiles.length === 0) {
-    throw new Error(`Missing ${packageName} in ${repository}@${revision}`)
+/**
+ * The upstream files this importer reads, each downloaded into the cache and
+ * verified against the pinned commit (or found there already verified).
+ */
+async function fetchUpstreamInputs(source, cacheRoot) {
+  const files = await listUpstreamFiles(source, { manifest: readUpstreamInputs(upstreamInputsPath) })
+  if (files.length === 0) {
+    throw new Error(`No Core ML files found for ${source.repository}@${source.revision}`)
   }
-  const packageRoot = path.join(stagingRoot, packageName)
-  for (const file of packageFiles) {
-    const sourceURL = `https://huggingface.co/${repository}/resolve/${revision}/${encodePathSegment(file.path)}`
-    const destination = path.join(stagingRoot, file.path)
-    await downloadFile(sourceURL, destination)
+  for (const packageName of modelPackages.keys()) {
+    if (!files.some((entry) => entry.path.startsWith(`${packageName}/`))) {
+      throw new Error(`Missing ${packageName} in ${source.repository}@${source.revision}`)
+    }
   }
-  return packageRoot
+  const wanted = files.filter((entry) =>
+    [...modelPackages.keys()].some((packageName) => entry.path.startsWith(`${packageName}/`)) || referenceFiles.has(entry.path))
+  for (const file of wanted) {
+    await fetchUpstreamFile(cacheRoot, source, file)
+  }
+  return wanted
 }
 
 async function importChatterbox(args) {
@@ -205,22 +190,22 @@ async function importChatterbox(args) {
   const revision = typeof args.revision === 'string' ? args.revision : defaultRevision
   const packID = typeof args['pack-id'] === 'string' ? args['pack-id'] : defaultPackID
   const outputRoot = resolveRepoPath(args.output || `native/macos/Vendor/RoachSpeech/ModelPacks/${packID}`)
-  const stagingRoot = resolveRepoPath(args.staging || `.tmp/roachvoice-chatterbox-coreml/${revision}`)
-  const compileRoot = path.join(stagingRoot, '.compiled')
-  requireCoreMLCompiler()
-  const treeURL = `https://huggingface.co/api/models/${repository}/tree/${revision}?recursive=1`
-  const files = (await fetchJson(treeURL)).filter((entry) => entry.type === 'file')
-
-  if (files.length === 0) {
-    throw new Error(`No Core ML files found for ${repository}@${revision}`)
+  const source = { repository, revision }
+  const cacheRoot = args.staging ? resolveRepoPath(args.staging) : upstreamCacheRoot(repoRoot)
+  const compileRoot = resolveRepoPath(`.tmp/roachvoice-chatterbox-coreml/${revision}/.compiled`)
+  if (args['fetch-only'] === true) {
+    const fetched = await fetchUpstreamInputs(source, cacheRoot)
+    console.log(`Chatterbox: ${fetched.length} upstream files verified in ${path.relative(repoRoot, cacheRoot) || cacheRoot}.`)
+    return
   }
+  requireCoreMLCompiler()
+  const files = await fetchUpstreamInputs(source, cacheRoot)
 
   fs.rmSync(outputRoot, { recursive: true, force: true })
   fs.mkdirSync(outputRoot, { recursive: true })
-  fs.mkdirSync(stagingRoot, { recursive: true })
 
   for (const [packageName, relativeDestination] of modelPackages) {
-    const packageRoot = await downloadPackage(repository, revision, packageName, files, stagingRoot)
+    const packageRoot = cachedUpstreamPath(cacheRoot, source, packageName)
     const destination = path.join(outputRoot, relativeDestination)
     runCoreMLCompiler(packageRoot, path.join(compileRoot, packageName), destination)
     console.log(`Compiled ${packageName} -> ${path.relative(repoRoot, destination)}`)
@@ -234,10 +219,7 @@ async function importChatterbox(args) {
   }
 
   for (const file of files.filter((entry) => referenceFiles.has(entry.path))) {
-    const sourceURL = `https://huggingface.co/${repository}/resolve/${revision}/${encodePathSegment(file.path)}`
-    const stagingPath = path.join(stagingRoot, file.path)
-    await downloadFile(sourceURL, stagingPath)
-    copyFile(stagingPath, targetPathForReferenceFile(file.path, outputRoot))
+    copyFile(cachedUpstreamPath(cacheRoot, source, file.path), targetPathForReferenceFile(file.path, outputRoot))
   }
 
   writeJson(path.join(outputRoot, 'RoachVoice', 'RoachVoiceEmbedding.json'), {
@@ -292,6 +274,5 @@ try {
     await importChatterbox(args)
   }
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error)
-  process.exit(1)
+  exitForError(error)
 }

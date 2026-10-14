@@ -1,0 +1,820 @@
+{
+  "schema": "org.roachnet.roachspeech-upstream-inputs.v1",
+  "note": "Size and digest of every file in the pinned Hugging Face commits the RoachSpeech importers read: SHA-256 for LFS files, the git blob id for the rest. Importers verify each file they download against this, and list a recorded commit from it with no request.",
+  "recordedAt": "2026-10-14",
+  "trees": {
+    "argmaxinc/whisperkit-coreml@0f63a7800b00dd0226abd051b906c246e1907482:openai_whisper-base.en": [
+      {
+        "path": "openai_whisper-base.en/AudioEncoder.mlmodelc/analytics/coremldata.bin",
+        "bytes": 243,
+        "sha256": "c4e096b2abd561f00b9b698401df3fbe1a0d0c8d2476ff19cb4e1995680e827e"
+      },
+      {
+        "path": "openai_whisper-base.en/AudioEncoder.mlmodelc/coremldata.bin",
+        "bytes": 347,
+        "sha256": "e316980638e2099e83cb1a93b903717dc12b3c2168d0ab69113764c3767696ba"
+      },
+      {
+        "path": "openai_whisper-base.en/AudioEncoder.mlmodelc/metadata.json",
+        "bytes": 1863,
+        "gitBlobSha1": "1b82ac5a57544279ce9f5c82c78f6fa5891520cc"
+      },
+      {
+        "path": "openai_whisper-base.en/AudioEncoder.mlmodelc/model.mil",
+        "bytes": 579125,
+        "gitBlobSha1": "31b155b9b8384df140e6f7080248842f9aea1c90"
+      },
+      {
+        "path": "openai_whisper-base.en/AudioEncoder.mlmodelc/model.mlmodel",
+        "bytes": 79853,
+        "sha256": "1d42038f84b508da5ce9b953302387ffedc097c346d36a56b765109002b6080e"
+      },
+      {
+        "path": "openai_whisper-base.en/AudioEncoder.mlmodelc/weights/weight.bin",
+        "bytes": 41189632,
+        "sha256": "74f15e6d2f7694af54e90227cbf22fd6c04082638f163b78a909967b16edc1c7"
+      },
+      {
+        "path": "openai_whisper-base.en/MelSpectrogram.mlmodelc/analytics/coremldata.bin",
+        "bytes": 243,
+        "sha256": "7f77e6457285248f99cd7aa3fd4cc2efbb17733e63e7023ac53abe1f95785d07"
+      },
+      {
+        "path": "openai_whisper-base.en/MelSpectrogram.mlmodelc/coremldata.bin",
+        "bytes": 328,
+        "sha256": "dabdc5aa69f6ef4d97dc9499f5c30514e00e96b53b750b33a5a6471363c71662"
+      },
+      {
+        "path": "openai_whisper-base.en/MelSpectrogram.mlmodelc/metadata.json",
+        "bytes": 1848,
+        "gitBlobSha1": "022c382ec7041de63c59dd98893c3134d01b23aa"
+      },
+      {
+        "path": "openai_whisper-base.en/MelSpectrogram.mlmodelc/model.mil",
+        "bytes": 10176,
+        "gitBlobSha1": "a63d7fa99d6d86db1b76a1f53640cb4aa25e0210"
+      },
+      {
+        "path": "openai_whisper-base.en/MelSpectrogram.mlmodelc/weights/weight.bin",
+        "bytes": 354080,
+        "sha256": "ee77f9b67765f7abc33f16374081b2389cf1d3a89536187b241950c5a2e5d6c1"
+      },
+      {
+        "path": "openai_whisper-base.en/TextDecoder.mlmodelc/analytics/coremldata.bin",
+        "bytes": 243,
+        "sha256": "e870aac5de88676c1ad93cb3939f257e6de30e5235c3f9d7686398ebecafdb8d"
+      },
+      {
+        "path": "openai_whisper-base.en/TextDecoder.mlmodelc/coremldata.bin",
+        "bytes": 633,
+        "sha256": "4b23ff9d9fe376f2b86f9cf55af3218560a4e4d692041360510fbad490c0db43"
+      },
+      {
+        "path": "openai_whisper-base.en/TextDecoder.mlmodelc/metadata.json",
+        "bytes": 4753,
+        "gitBlobSha1": "3da2721e50228dc78a6b79cd010041f5f9c6855d"
+      },
+      {
+        "path": "openai_whisper-base.en/TextDecoder.mlmodelc/model.mil",
+        "bytes": 200444,
+        "gitBlobSha1": "ea1a8b7ddbb9a4104ef627712ef0ceb6fa1d8da2"
+      },
+      {
+        "path": "openai_whisper-base.en/TextDecoder.mlmodelc/model.mlmodel",
+        "bytes": 160348,
+        "sha256": "72f1214f7c8b26e467dd8233572eaa5cbe200f30a36b918d4c289f9fc8c4f401"
+      },
+      {
+        "path": "openai_whisper-base.en/TextDecoder.mlmodelc/weights/weight.bin",
+        "bytes": 104121136,
+        "sha256": "4649599bd2d97f87ffc716e6da2f61a06c06ac5a9424dd23edc3d4bf66fb6221"
+      },
+      {
+        "path": "openai_whisper-base.en/config.json",
+        "bytes": 1454,
+        "gitBlobSha1": "7af931c5fd7052d3211621654d93a2a3e33dd307"
+      },
+      {
+        "path": "openai_whisper-base.en/generation_config.json",
+        "bytes": 982,
+        "gitBlobSha1": "cc2edd4b48ab2b8389169e32f930abd8dd8b209d"
+      }
+    ],
+    "openai/whisper-base.en@911407f4214e0e1d82085af863093ec0b66f9cd6": [
+      {
+        "path": ".gitattributes",
+        "bytes": 1438,
+        "gitBlobSha1": "3476589a58942b0e9ef94ae0efb29355707f95bb"
+      },
+      {
+        "path": "README.md",
+        "bytes": 14846,
+        "gitBlobSha1": "3ab94a9aa98899b9eac2e38231e0f36cea5760ef"
+      },
+      {
+        "path": "added_tokens.json",
+        "bytes": 34604,
+        "gitBlobSha1": "0b661e7eeafa60f4366f802cc18d99a08574861c"
+      },
+      {
+        "path": "config.json",
+        "bytes": 1937,
+        "gitBlobSha1": "0e9af059a5d452f97d3493ffb4da98712c8fd711"
+      },
+      {
+        "path": "flax_model.msgpack",
+        "bytes": 290382449,
+        "sha256": "e2dd00fb9f37f497421bdd7a8b17b5378f95e7543e6b50f79b936ccdd55b7815"
+      },
+      {
+        "path": "generation_config.json",
+        "bytes": 1531,
+        "gitBlobSha1": "1cde9fc2a32ad94f4db760e67a2375e229215f58"
+      },
+      {
+        "path": "merges.txt",
+        "bytes": 456318,
+        "gitBlobSha1": "226b0752cac7789c48f0cb3ec53eda48b7be36cc"
+      },
+      {
+        "path": "model.safetensors",
+        "bytes": 290401888,
+        "sha256": "d4dd5542fd6a1d35639e21384238f3bfe6c557c849d392b5905d33ee29e71db5"
+      },
+      {
+        "path": "normalizer.json",
+        "bytes": 52666,
+        "gitBlobSha1": "dd6ae819ad738ac1a546e9f9282ef325c33b9ea0"
+      },
+      {
+        "path": "preprocessor_config.json",
+        "bytes": 184990,
+        "gitBlobSha1": "c2048dfa9fd94a052e62e908d2c4dfb18534b4d2"
+      },
+      {
+        "path": "pytorch_model.bin",
+        "bytes": 290451159,
+        "sha256": "404fa07b37813e1a425ae22348db6f7d0b359f72acd8d457927cc0d029beb278"
+      },
+      {
+        "path": "special_tokens_map.json",
+        "bytes": 1830,
+        "gitBlobSha1": "7e6b5b4f006274b7085b597005a9ad73c639eb80"
+      },
+      {
+        "path": "tf_model.h5",
+        "bytes": 290659576,
+        "sha256": "40ecea6544a8a7a684d822c7519d05aa2b9cadff93113b7a01a25f0135b30149"
+      },
+      {
+        "path": "tokenizer.json",
+        "bytes": 2405679,
+        "gitBlobSha1": "b5bd266de2f9b9a68efe13fb48ac6830ca71c0bb"
+      },
+      {
+        "path": "tokenizer_config.json",
+        "bytes": 805,
+        "gitBlobSha1": "6b53d4f2b480c9267ffc419c7628159d25f3072a"
+      },
+      {
+        "path": "vocab.json",
+        "bytes": 798156,
+        "gitBlobSha1": "84ef7fb594b5c0979e48bdeddb60a0adef33df0b"
+      }
+    ],
+    "aufklarer/Kokoro-82M-CoreML-INT8@4bc7df470ea4612a5b6539af16ebf301a027f491": [
+      {
+        "path": ".gitattributes",
+        "bytes": 1519,
+        "gitBlobSha1": "a6344aac8c09253b3b630fb776ae94478aa0275b"
+      },
+      {
+        "path": "G2PDecoder.mlmodelc/analytics/coremldata.bin",
+        "bytes": 243,
+        "sha256": "dbf1767747fdc188222d467a45b04608b396c76c71db3abb18a5fb3680ef9827"
+      },
+      {
+        "path": "G2PDecoder.mlmodelc/coremldata.bin",
+        "bytes": 545,
+        "sha256": "607e960f19b4d9a30317a5a11869fcce84b300a909fcab2cc756c0d98e2dacd9"
+      },
+      {
+        "path": "G2PDecoder.mlmodelc/metadata.json",
+        "bytes": 3064,
+        "gitBlobSha1": "14a7991cc66167e7d70ad3cae487e9f272e1a337"
+      },
+      {
+        "path": "G2PDecoder.mlmodelc/model.mil",
+        "bytes": 19737,
+        "gitBlobSha1": "1ebf9a6a97bafe433918f7104acf7e81cd62ba51"
+      },
+      {
+        "path": "G2PDecoder.mlmodelc/weights/weight.bin",
+        "bytes": 828030,
+        "sha256": "cbaeb4e743359f607ab161af0c6d8a817462fdaec622ee788ef8ef952c5f8214"
+      },
+      {
+        "path": "G2PEncoder.mlmodelc/analytics/coremldata.bin",
+        "bytes": 243,
+        "sha256": "cf7fbd7e7a65529b2d2bf3941e458a0ab6dff7a298bf48e205a1727c81c26a99"
+      },
+      {
+        "path": "G2PEncoder.mlmodelc/coremldata.bin",
+        "bytes": 398,
+        "sha256": "0f14d46ca9fd06c68b4717294575b2b99449e67d40b7a2c56f926bf05cd90b11"
+      },
+      {
+        "path": "G2PEncoder.mlmodelc/metadata.json",
+        "bytes": 2034,
+        "gitBlobSha1": "a6976b81bf2ac9adedef1dfe76950e5bc67f510e"
+      },
+      {
+        "path": "G2PEncoder.mlmodelc/model.mil",
+        "bytes": 20392,
+        "gitBlobSha1": "aa1fcfca108654608989936bd1412d3d416c7457"
+      },
+      {
+        "path": "G2PEncoder.mlmodelc/weights/weight.bin",
+        "bytes": 694592,
+        "sha256": "6926bcd2827d21fec82839487b987e06f85fd8a6a5bb896bc4f6062461d014ec"
+      },
+      {
+        "path": "README.md",
+        "bytes": 3424,
+        "gitBlobSha1": "3d7ec6a8f05db81cd26b0b14fe337516267f7c8d"
+      },
+      {
+        "path": "config.json",
+        "bytes": 0,
+        "gitBlobSha1": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+      },
+      {
+        "path": "g2p_vocab.json",
+        "bytes": 1665,
+        "gitBlobSha1": "32f4c8035afbfe2ff30b5a4ff39b4441de876c7b"
+      },
+      {
+        "path": "kokoro_5s.mlmodelc/analytics/coremldata.bin",
+        "bytes": 243,
+        "sha256": "b23a957d09f0e3f450f3e3ba1f99d2b9ded01f4c3ec2ed4248e5ef14865e9ee7"
+      },
+      {
+        "path": "kokoro_5s.mlmodelc/coremldata.bin",
+        "bytes": 478,
+        "sha256": "ac531805ce987d3c9482879f5f94b8f8ea8f14ab2ce13d1a3530643550399c6c"
+      },
+      {
+        "path": "kokoro_5s.mlmodelc/model.mil",
+        "bytes": 849632,
+        "gitBlobSha1": "630fbc2abd9d0c537c5dcef297cbad2c88dd27a3"
+      },
+      {
+        "path": "kokoro_5s.mlmodelc/weights/weight.bin",
+        "bytes": 81762944,
+        "sha256": "b7f39486fedf500970b00a896a13fa051cf9b9368f63b20efd2b7691e5941a1c"
+      },
+      {
+        "path": "pipeline_config.json",
+        "bytes": 317,
+        "gitBlobSha1": "3d579fe820c48f55018d5706909804bcf9b38c9d"
+      },
+      {
+        "path": "us_gold.json",
+        "bytes": 3001196,
+        "gitBlobSha1": "a7c7b8aa19e0a6bb26db521ff540f6fd00f5b895"
+      },
+      {
+        "path": "us_silver.json",
+        "bytes": 3105352,
+        "gitBlobSha1": "f464207dc6b0bd5c785eae556fc6a16a53c0ee4b"
+      },
+      {
+        "path": "vocab_index.json",
+        "bytes": 2034,
+        "gitBlobSha1": "edf8a1ea2660b4044dfd9e44884386a1f1eec6a4"
+      },
+      {
+        "path": "voices/af_alloy.json",
+        "bytes": 5494,
+        "gitBlobSha1": "722f9bd585766482b18d62fa642eff98b0995a81"
+      },
+      {
+        "path": "voices/af_aoede.json",
+        "bytes": 5507,
+        "gitBlobSha1": "7117c8bd5a68690f34585707d41889c1bf870a8f"
+      },
+      {
+        "path": "voices/af_bella.json",
+        "bytes": 5505,
+        "gitBlobSha1": "3d2c2197c56898b50bd03a34564a76824d49a5b5"
+      },
+      {
+        "path": "voices/af_heart.json",
+        "bytes": 5517,
+        "gitBlobSha1": "233b8346ca9ae3705ed110595b7ece26021a0595"
+      },
+      {
+        "path": "voices/af_jessica.json",
+        "bytes": 5484,
+        "gitBlobSha1": "f3e25d2b6b93b6a11230d0269b4e005a0ea1b2bc"
+      },
+      {
+        "path": "voices/af_kore.json",
+        "bytes": 5516,
+        "gitBlobSha1": "fbeaf51e28d63ddbd87f7276e5ff63714773e9ee"
+      },
+      {
+        "path": "voices/af_nicole.json",
+        "bytes": 5515,
+        "gitBlobSha1": "31d0cf01e831491e0e518ea9886bc04095385360"
+      },
+      {
+        "path": "voices/af_nova.json",
+        "bytes": 5503,
+        "gitBlobSha1": "23600deb5a2e58ae6b52bc4c8638179246acd1c6"
+      },
+      {
+        "path": "voices/af_river.json",
+        "bytes": 5486,
+        "gitBlobSha1": "9797e0036baeb7454c9e4ea4b9be92522c617e1f"
+      },
+      {
+        "path": "voices/af_sarah.json",
+        "bytes": 5504,
+        "gitBlobSha1": "2f7f505110f15d28d8aa31cf5c87f534d2373a68"
+      },
+      {
+        "path": "voices/af_sky.json",
+        "bytes": 5500,
+        "gitBlobSha1": "23ee1b345397dde04c8ab86e65a57488b56f167a"
+      },
+      {
+        "path": "voices/am_adam.json",
+        "bytes": 5501,
+        "gitBlobSha1": "c719abef895ee2be25c565c5ac8edda2bc92bb5d"
+      },
+      {
+        "path": "voices/am_echo.json",
+        "bytes": 5478,
+        "gitBlobSha1": "8922abf45f13601baa1037ca8c1d8d865c95f9d2"
+      },
+      {
+        "path": "voices/am_eric.json",
+        "bytes": 5466,
+        "gitBlobSha1": "852d1ebc453860c19e131a0fc0f36a48dd4378dc"
+      },
+      {
+        "path": "voices/am_fenrir.json",
+        "bytes": 5515,
+        "gitBlobSha1": "364671dd26a8e1e06603888f72f07a25b855b785"
+      },
+      {
+        "path": "voices/am_liam.json",
+        "bytes": 5481,
+        "gitBlobSha1": "c1266851aae273e6cf01eb440e66d43329814649"
+      },
+      {
+        "path": "voices/am_michael.json",
+        "bytes": 5477,
+        "gitBlobSha1": "e648f689f291621ace96490108dbe5740ab3cc2b"
+      },
+      {
+        "path": "voices/am_onyx.json",
+        "bytes": 5503,
+        "gitBlobSha1": "cbc549aca88edff0c8cf1f42492770dce598cad2"
+      },
+      {
+        "path": "voices/am_puck.json",
+        "bytes": 5505,
+        "gitBlobSha1": "51818327695bb14f49ee4ff38c32404e9d0297b5"
+      },
+      {
+        "path": "voices/am_santa.json",
+        "bytes": 5508,
+        "gitBlobSha1": "138e9f2a86f2c86b10a2124960b06dd7bc7113d0"
+      },
+      {
+        "path": "voices/bf_alice.json",
+        "bytes": 5477,
+        "gitBlobSha1": "bc00dbf8787a08f40286748712668ad9d3962132"
+      },
+      {
+        "path": "voices/bf_emma.json",
+        "bytes": 5507,
+        "gitBlobSha1": "839cd665357728bfc1d3ed3abca0cc78a771010d"
+      },
+      {
+        "path": "voices/bf_isabella.json",
+        "bytes": 5502,
+        "gitBlobSha1": "38ea089e8140842da6a5a38518ce70692fb08979"
+      },
+      {
+        "path": "voices/bf_lily.json",
+        "bytes": 5472,
+        "gitBlobSha1": "9e2a4e772c9ad99db34032a4e2de7ac98e49df69"
+      },
+      {
+        "path": "voices/bm_daniel.json",
+        "bytes": 5475,
+        "gitBlobSha1": "adbf39bc8d06f34dfd0b4550661c6822ce50c0d2"
+      },
+      {
+        "path": "voices/bm_fable.json",
+        "bytes": 5458,
+        "gitBlobSha1": "cfeaa0e49df18ddf99892deee4b84c0a392564eb"
+      },
+      {
+        "path": "voices/bm_george.json",
+        "bytes": 5492,
+        "gitBlobSha1": "b695118a1cf73e36d338278f589ba473d98470b7"
+      },
+      {
+        "path": "voices/bm_lewis.json",
+        "bytes": 5481,
+        "gitBlobSha1": "e0b4139893f688c4ecf5b2dec5977ea92786fcda"
+      },
+      {
+        "path": "voices/ef_dora.json",
+        "bytes": 5523,
+        "gitBlobSha1": "826560eb2bf6b45c16b69627655fd5b504e9a0cb"
+      },
+      {
+        "path": "voices/em_alex.json",
+        "bytes": 5513,
+        "gitBlobSha1": "5b7703c25e6d58a7e9d247467b849d6b6e54d66c"
+      },
+      {
+        "path": "voices/em_santa.json",
+        "bytes": 5515,
+        "gitBlobSha1": "783d18356704da3d69e1a8e00a15934a145be408"
+      },
+      {
+        "path": "voices/ff_siwis.json",
+        "bytes": 5490,
+        "gitBlobSha1": "c2a87abf6386bd2a05bd5fe14355c3aff0cce032"
+      },
+      {
+        "path": "voices/hf_alpha.json",
+        "bytes": 5499,
+        "gitBlobSha1": "00b646833ee98286097bd306949c4a0de6b3d646"
+      },
+      {
+        "path": "voices/hf_beta.json",
+        "bytes": 5497,
+        "gitBlobSha1": "34cdd0e58fa345ff363b6e05eb14d1bd68078eb7"
+      },
+      {
+        "path": "voices/hm_omega.json",
+        "bytes": 5509,
+        "gitBlobSha1": "3bdacfa113db76f8f8fa11abf4fdef23884d47be"
+      },
+      {
+        "path": "voices/hm_psi.json",
+        "bytes": 5483,
+        "gitBlobSha1": "2fbede6df6e8615b3513b4ea24ce7f4801bc1c99"
+      },
+      {
+        "path": "voices/if_sara.json",
+        "bytes": 5495,
+        "gitBlobSha1": "2d1967ea5a734e63d96d0307cd30459226234dd4"
+      },
+      {
+        "path": "voices/im_nicola.json",
+        "bytes": 5459,
+        "gitBlobSha1": "bf04f9cc53665f2a9aa848b88f965288f979d7e1"
+      },
+      {
+        "path": "voices/jf_alpha.json",
+        "bytes": 5493,
+        "gitBlobSha1": "6714a07f3cf432e78e0efa5005b3e80551a1b944"
+      },
+      {
+        "path": "voices/jf_gongitsune.json",
+        "bytes": 5490,
+        "gitBlobSha1": "4afa4a0439be39e2a5af9f46b1475d8c510c933e"
+      },
+      {
+        "path": "voices/jf_nezumi.json",
+        "bytes": 5483,
+        "gitBlobSha1": "e7126fba7825c0b58b31c0cf6be46cae0b69ede8"
+      },
+      {
+        "path": "voices/jf_tebukuro.json",
+        "bytes": 5450,
+        "gitBlobSha1": "fc4a4327283afd0f2978e25dd30f049b7273df2a"
+      },
+      {
+        "path": "voices/jm_kumo.json",
+        "bytes": 5512,
+        "gitBlobSha1": "e24ebe6aa44f9eed30321a275bca2b532c80e93f"
+      },
+      {
+        "path": "voices/pf_dora.json",
+        "bytes": 5525,
+        "gitBlobSha1": "143258092e88bf9e583c6731eabaf63ca1a24f4e"
+      },
+      {
+        "path": "voices/pm_alex.json",
+        "bytes": 5513,
+        "gitBlobSha1": "4846d50930d24c4ff68d7ebdf4ec71eb546d41dd"
+      },
+      {
+        "path": "voices/pm_santa.json",
+        "bytes": 5524,
+        "gitBlobSha1": "36c7f1dafd69160a54c0764959a17c793ebfedc1"
+      },
+      {
+        "path": "voices/zf_xiaobei.json",
+        "bytes": 5496,
+        "gitBlobSha1": "5e8df7066dd2762891364494e0d79902a2ba0249"
+      },
+      {
+        "path": "voices/zf_xiaoni.json",
+        "bytes": 5500,
+        "gitBlobSha1": "f499bb83e9db6eb8b8d097f9da7e62c1339a6965"
+      },
+      {
+        "path": "voices/zf_xiaoxiao.json",
+        "bytes": 5493,
+        "gitBlobSha1": "703a204288a9c0ec9e0125667668fdcfb9a01628"
+      },
+      {
+        "path": "voices/zf_xiaoyi.json",
+        "bytes": 5516,
+        "gitBlobSha1": "df701554853cc3a7d2501380511bc637c3d51162"
+      },
+      {
+        "path": "voices/zm_yunjian.json",
+        "bytes": 5490,
+        "gitBlobSha1": "e222d8544fccf8e5ca138787e27d01efe94356eb"
+      },
+      {
+        "path": "voices/zm_yunxi.json",
+        "bytes": 5513,
+        "gitBlobSha1": "e0a70a36f22cb9b260b6ef962910f0cd0cf797c8"
+      },
+      {
+        "path": "voices/zm_yunxia.json",
+        "bytes": 5497,
+        "gitBlobSha1": "747c147155be85a01de08b775dfa799ec1c92cd9"
+      },
+      {
+        "path": "voices/zm_yunyang.json",
+        "bytes": 5485,
+        "gitBlobSha1": "6b287c3614af1b27f07d42aff2740d5d6cf100b1"
+      }
+    ],
+    "yepher/screen-cut-pro-tts-coreml@f4fae0751b59970c170ca8d40cbf0c53dc20ad37": [
+      {
+        "path": ".gitattributes",
+        "bytes": 686,
+        "gitBlobSha1": "b8cdb9382857d855c486cf24e4ce7d98463c48d7"
+      },
+      {
+        "path": "LICENSE",
+        "bytes": 1068,
+        "gitBlobSha1": "742cc388b79c5d96484ab3ac63719a21aff4baad"
+      },
+      {
+        "path": "NOTICE",
+        "bytes": 1902,
+        "gitBlobSha1": "5600d5074160465c6eede0cd69a3207125552127"
+      },
+      {
+        "path": "README.md",
+        "bytes": 4314,
+        "gitBlobSha1": "faed403c3b8b76f89f4936410aeb3224c58769fb"
+      },
+      {
+        "path": "campplus.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 839303,
+        "sha256": "00dfb61716d9c13d78873abae6ee0666471656f8945f75bb3a870ac105685551"
+      },
+      {
+        "path": "campplus.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 13854912,
+        "sha256": "058c317b6a768cac30fcf89b46676d7df1aa1915357c44ecc7ada4e5b7c11590"
+      },
+      {
+        "path": "campplus.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "20cce907646d4fb338d07d7d26cb1221416cbf96c43ff6bde1a0e3bc7c4f498f"
+      },
+      {
+        "path": "default_flow_prompt_feat.bin",
+        "bytes": 100480,
+        "sha256": "7a711eaa94b9840690970f5a1d1e49ef73e13927aceb3b4be05ed58e43551531"
+      },
+      {
+        "path": "default_flow_prompt_token.bin",
+        "bytes": 628,
+        "sha256": "68691e3e117b00cbce53a31759c069eb9a9559ca4d55bead57c2aca221552dc6"
+      },
+      {
+        "path": "default_flow_speaker_embedding.bin",
+        "bytes": 768,
+        "sha256": "b17e082542db0f3d826626cc8a1d2e752899e16e02bab55db511cd9a36579ac6"
+      },
+      {
+        "path": "default_t3_cond_prompt_tokens.bin",
+        "bytes": 600,
+        "sha256": "47fd3482f943d97ac25e213bed97288e75ad27c2201d075a320e3345bb1d5010"
+      },
+      {
+        "path": "default_t3_speaker_emb.bin",
+        "bytes": 1024,
+        "sha256": "e7557a2e0b48b76704ae48d2d3f21417161d932089789ff8fc474acd2d040541"
+      },
+      {
+        "path": "flow_encoder.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 152792,
+        "sha256": "34da148a74e5483cf0b28aa37d2c4813420bf9572b9012981ffda16802ef7ab9"
+      },
+      {
+        "path": "flow_encoder.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 177470976,
+        "sha256": "5a9a69972da456b5c63eb63c65a5dfd0ed36c1a2a3e63ea6adee8fa8ee3f3be5"
+      },
+      {
+        "path": "flow_encoder.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "ed67ac4e10a97b93f1d40f0b9b3390f301bcec597a54d685452341811bbf59d1"
+      },
+      {
+        "path": "flow_estimator.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 649194,
+        "sha256": "fbf3b7499c8ee35758bf5547871767fd7a23dbd3320c910f07a8c3675328d73b"
+      },
+      {
+        "path": "flow_estimator.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 285271040,
+        "sha256": "464e6ed3edc5027c2a28148feca07388067222571157f75de202427fd5ba66e7"
+      },
+      {
+        "path": "flow_estimator.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "982ab426cb848859966850216ba03d8a5a5bd354f86713ef0f5dd8eb12b96406"
+      },
+      {
+        "path": "mel2wav.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 265663,
+        "sha256": "a42efbf87fddc97d62e954c53bc147878a4e3cb10d27f385ea17ebcfe922a77b"
+      },
+      {
+        "path": "mel2wav.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 59351872,
+        "sha256": "bd7f58d462153e189987b8ba3696de26fc5c0b5a5e19e14d66def43b361cbac4"
+      },
+      {
+        "path": "mel2wav.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "3ee5863a38e5ddd062ed33a158db2728f126f7fd82477b20f3583dff70d6fc36"
+      },
+      {
+        "path": "metadata.json",
+        "bytes": 1704,
+        "gitBlobSha1": "baa7364210124dcf6e69d7535835831b2bd3bca0"
+      },
+      {
+        "path": "s3_tokenizer.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 101022,
+        "sha256": "204ed9d105d04a494abd24d2131b3eb07549745c2c81445ee07c9228175ec907"
+      },
+      {
+        "path": "s3_tokenizer.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 247630400,
+        "sha256": "447cf6b85d2c1f14ee0ee0e41005a374894a106cf48ab02b8c7c5aeff0937dbd"
+      },
+      {
+        "path": "s3_tokenizer.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "79c9d1c8e84269a820933be113c8ec014434d0b0780b70073875dc9dd658416d"
+      },
+      {
+        "path": "t3_cond_enc.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 14009,
+        "sha256": "68b616bc2ba7fa29aa40e6c616c0204d3b68822399ed695425071f37d654e7db"
+      },
+      {
+        "path": "t3_cond_enc.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 9063488,
+        "sha256": "22d63452cf224c0a68e5531912b5bbe90419e57b83985bc9961c4a744ada1ea5"
+      },
+      {
+        "path": "t3_cond_enc.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "979bd5c69670bc8c626c08148252dd24823f6b03297333cf7112fa362ea67ac5"
+      },
+      {
+        "path": "t3_speech_emb.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 2701,
+        "sha256": "ac349c1227a4a1bda161f46b25d1a6e0d205cf17e880fa586cedea4b1f8cdef8"
+      },
+      {
+        "path": "t3_speech_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 16781440,
+        "sha256": "e61b8816b4c2e5a93f17d1c0c450c905e2b11d1a0011d89c501e44d829bdb05f"
+      },
+      {
+        "path": "t3_speech_emb.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "6b75006078518033c965249d41c9a43dc587bb6feff3e9124ea976b40165e7f2"
+      },
+      {
+        "path": "t3_speech_head.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 1066,
+        "sha256": "0f983f7f0400d772d7e2019d0e37134e50fba5b772d7aa0eb7a477559176daaf"
+      },
+      {
+        "path": "t3_speech_head.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 16797892,
+        "sha256": "a62b8c63de39a92fa798973cf459a4d8be4efb23bc8d2581da04c73ead276f68"
+      },
+      {
+        "path": "t3_speech_head.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "90caab5eda1c6253ef32e5c4f2f88b5dde778dfe7b073ad28e523d0cd598bda4"
+      },
+      {
+        "path": "t3_speech_pos_emb.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 2701,
+        "sha256": "bf47064278174eea0f671efe18b4b33b22ca318b01da8825b7dfbef0f375641d"
+      },
+      {
+        "path": "t3_speech_pos_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 8396928,
+        "sha256": "42ef3648346ef6affacb3e9280ef9f19545481f9a42b64ce89b31f9773849b9e"
+      },
+      {
+        "path": "t3_speech_pos_emb.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "ed47386d6060fb65ab8224a5c76dfc4238328f5ae0b35e67e45d308425f08573"
+      },
+      {
+        "path": "t3_text_emb.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 2701,
+        "sha256": "bce2d29b3e5c4c1282c682f0f4041384055934f4e8914f81a84147e6652188e8"
+      },
+      {
+        "path": "t3_text_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 1441920,
+        "sha256": "e7ac5f96426245aa70e470c10d0d4b220448c3d9e7d3aec8c8a2a03f2035e4fd"
+      },
+      {
+        "path": "t3_text_emb.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "d6f39044db8cef493ed81f7c89ef4c9e7d2cda92f218ce2f5b1610ba4a9ce44f"
+      },
+      {
+        "path": "t3_text_pos_emb.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 2701,
+        "sha256": "807b4f014a2b09600fb9c33a69240419daf9183ff6f06a3fccf736ccb36ba4eb"
+      },
+      {
+        "path": "t3_text_pos_emb.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 4198528,
+        "sha256": "e419c0c490a9808b8fe3bb56ef13b01284d13e514ffccebf19af644f7385a70b"
+      },
+      {
+        "path": "t3_text_pos_emb.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "4bea056fcc4d08ea422d91ad5c369d0c086e5a035e9c8e268fc4d4e10452dc12"
+      },
+      {
+        "path": "t3_tfmr.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 552007,
+        "sha256": "6cd18ec7bc84b9793f2c2f481942fea5ca37ae2611531b4c14a8b7aa260c9c71"
+      },
+      {
+        "path": "t3_tfmr.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 1006785792,
+        "sha256": "c177ef5b3a97bfd212d934c81a986c122ef2931c4aea4530c32a191718fb1758"
+      },
+      {
+        "path": "t3_tfmr.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "f0dd496ade4467229edf9b111d8b33fb786c42c5d36f0e37883a5c1eed025f54"
+      },
+      {
+        "path": "tokenizer.json",
+        "bytes": 33207,
+        "gitBlobSha1": "5e20b9866a0a05556a595330955fccb484a67f7f"
+      },
+      {
+        "path": "voice_encoder.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+        "bytes": 9327,
+        "sha256": "38819ca2ed514536319ff0c7dd71ead2245800cbacee54645d90f28063288c7a"
+      },
+      {
+        "path": "voice_encoder.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+        "bytes": 2842432,
+        "sha256": "6e563d4711691ad3258de020c21c67a439ae323c5f21b6b0315aa253f4f6c2e3"
+      },
+      {
+        "path": "voice_encoder.mlpackage/Manifest.json",
+        "bytes": 617,
+        "sha256": "25cdf07ccf73b4a01ad88cd85a67b78b5e8cd660905761af71cc31c764c8fa53"
+      }
+    ]
+  }
+}
