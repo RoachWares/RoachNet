@@ -170,7 +170,9 @@ extension NativeRuntime {
         guard let url = parseDownloadUrl(JSON(rawUrl)) else { return nil }
         try? Files.mkdirp(destinationDirectory)
         let fallbackName = "\(JS.randomUUID()).\(filetype.isEmpty ? "download" : filetype)"
-        let chosen = safeFileName(JSON(filename ?? fileNameForUrl(JSON(url), fallbackName)), fallbackName)
+        var chosen = safeFileName(JSON(filename ?? fileNameForUrl(JSON(url), fallbackName)), fallbackName)
+        // The file goes directly in the destination folder, whatever the name says.
+        if Path.basename(Path.join(destinationDirectory, chosen)) != chosen { chosen = fallbackName }
         let filepath = Path.join(destinationDirectory, chosen)
         return withState { () -> DownloadJob in
             if let active = downloadJobs.first(where: { $0.url == url && $0.filepath == filepath && ["queued", "downloading"].contains($0.status) }) {
@@ -328,8 +330,8 @@ extension NativeRuntime {
         let deadline = Date().addingTimeInterval(Double(config.downloadTimeoutMs) / 1000)
         let resuming = partialIsResumable(job)
         if !resuming {
-            Files.remove(job.partialFilepath)
-            Files.remove(resumeMarkerPath(job))
+            Files.removeFile(job.partialFilepath)
+            Files.removeFile(resumeMarkerPath(job))
         }
         withState { job.updatedAt = JS.isoNow() }
         if !Files.exists(job.partialFilepath) {
@@ -341,6 +343,9 @@ extension NativeRuntime {
         }
         var handleOpen = true
         func closeHandle() { if handleOpen { try? handle.close(); handleOpen = false } }
+        // Whether this download's file has taken its place. Until then a file
+        // at that path is an earlier download's, and stays.
+        var placed = false
 
         do {
             if !job.parts.isEmpty {
@@ -350,16 +355,18 @@ extension NativeRuntime {
             }
             closeHandle()
             if withState({ job.status }) == "cancelled" { throw RuntimeError("This operation was aborted", statusCode: 499) }
-            try Files.rename(job.partialFilepath, job.filepath)
-            Files.remove(resumeMarkerPath(job))
+            // Checked before the file takes its place, so a bad download never
+            // replaces one that is already there.
             if let expected = job.expectedSha256 {
-                let actual = try SHA256Digest.hexOfFile(atPath: job.filepath)
+                let actual = try SHA256Digest.hexOfFile(atPath: job.partialFilepath)
                 if actual != expected {
-                    Files.remove(job.filepath)
                     throw RuntimeError("Checksum mismatch for \(job.url). Expected \(expected), found \(actual).", statusCode: 422)
                 }
                 withState { job.sha256 = actual }
             }
+            try Files.rename(job.partialFilepath, job.filepath)
+            placed = true
+            Files.removeFile(resumeMarkerPath(job))
             if let afterDownload = job.afterDownload {
                 withState {
                     job.status = "installing"
@@ -383,10 +390,10 @@ extension NativeRuntime {
             let keepPartial = !wasCancelled && job.resumable && job.parts.isEmpty && isTransientDownloadError(error)
                 && fileSize(job.partialFilepath) > 0
             if !keepPartial {
-                Files.remove(job.partialFilepath)
-                Files.remove(resumeMarkerPath(job))
+                Files.removeFile(job.partialFilepath)
+                Files.removeFile(resumeMarkerPath(job))
             }
-            Files.remove(job.filepath)
+            if placed { Files.removeFile(job.filepath) }
             withState {
                 job.activeTransfer = nil
                 job.updatedAt = JS.isoNow()
@@ -468,7 +475,7 @@ extension NativeRuntime {
                 job.failedReason = nil
                 job.updatedAt = JS.isoNow()
                 job.activeTransfer?.cancel()
-                Files.remove(job.partialFilepath)
+                Files.removeFile(job.partialFilepath)
             }
             downloadJobs.removeAll { $0.jobId == jobId }
             return job != nil

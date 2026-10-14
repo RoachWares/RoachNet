@@ -322,6 +322,14 @@ public enum Files {
         try? FileManager.default.removeItem(atPath: path)
     }
 
+    /// Removes the file or link at `path`, and never a folder: for paths that
+    /// should only ever hold a file, such as a download.
+    public static func removeFile(_ path: String) {
+        guard let type = (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType,
+              type != .typeDirectory else { return }
+        unlink(path)
+    }
+
     public static func readText(_ path: String) -> String? {
         guard let data = FileManager.default.contents(atPath: path) else { return nil }
         return String(data: data, encoding: .utf8)
