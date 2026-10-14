@@ -40,15 +40,20 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: roachnet-public-release
-  cancel-in-progress: false
-
+# Concurrency is set per job (ROA-96). Diagnostic runs have a group of their
+# own, so one never cancels, or waits behind, another ref's diagnostic or a
+# release run. Staging keeps the shared roachnet-public-release lock with
+# release.yml, so staging and promotion stay serialized.
 jobs:
   diagnostic:
     name: Diagnostic native build (never stable)
     if: ${{ github.event_name == 'push' || inputs.mode == 'diagnostic' }}
     runs-on: blacksmith-6vcpu-macos-15
+    # A push to main gets a group per commit, so quick merges each keep their
+    # diagnostic; a dispatch gets one per ref.
+    concurrency:
+      group: roachnet-native-diagnostic-${{ github.event_name == 'push' && github.sha || github.ref }}
+      cancel-in-progress: false
     steps:
       - name: Checkout candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,6 +101,10 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'stage' }}
     runs-on: blacksmith-6vcpu-macos-15
     environment: roachnet-release-staging
+    # Shared with release.yml: staging and promotion never run at once.
+    concurrency:
+      group: roachnet-public-release
+      cancel-in-progress: false
     permissions:
       contents: read
     # Apple signing and notary secrets are scoped to the steps that use them
