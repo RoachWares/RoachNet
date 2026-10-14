@@ -23,6 +23,11 @@ public final class SetupEngine {
     let environment: [String: String]
     /// Mirrors task log lines (used by the headless `--install` CLI).
     public var onLog: ((String) -> Void)?
+
+    /// How recovery moves an install folder into place. The default is the
+    /// atomic move; a test overrides it to drive an interrupted restore at the
+    /// move boundaries (ROA-94). Production never sets it.
+    var moveIntoPlace: (String, String) throws -> Void = { try SetupPlatform.moveItem($0, $1) }
     let version: String
     private let lock = NSRecursiveLock()
     private var activeTask: JSON?
@@ -649,10 +654,17 @@ public final class SetupEngine {
     func restoreBackup(_ backup: String, over root: String) throws -> [String] {
         let stamp = Int(JS.nowMs())
         let aside = "\(root).setup-files-\(stamp)"
-        try SetupPlatform.moveItem(root, aside)
+        try moveIntoPlace(root, aside)
         do {
-            try SetupPlatform.moveItem(backup, root)
+            try moveIntoPlace(backup, root)
         } catch {
+            // A move that failed part-way (only the cross-device copy fallback;
+            // a same-volume move is an atomic rename) can leave a partial root.
+            // Clear it so the root the recovery moved aside goes back and the
+            // next run finds a setup-only root to retry over, not a half-restored
+            // one it would leave alone. The backup is untouched: a failed move
+            // never removed it.
+            Files.remove(root)
             try? SetupPlatform.moveItem(aside, root)
             throw error
         }

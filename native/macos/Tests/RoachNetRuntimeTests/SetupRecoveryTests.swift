@@ -112,6 +112,56 @@ final class SetupRecoveryTests: XCTestCase {
         Files.remove(Path.join(root, SetupEngine.installManifestName))
         XCTAssertFalse(engine.holdsOnlySetupFiles(root), "a folder inside storage/logs isn't Setup's")
     }
+
+    private struct InjectedFailure: Error {}
+
+    /// A restore interrupted part-way (the cross-device copy fallback can leave a
+    /// partial root) keeps the person's data in the backup and leaves a setup-only
+    /// root, so a later run restores the install rather than leaving it half-done.
+    func testARestoreInterruptedPartWayKeepsTheDataAndRetries() throws {
+        let backup = try installMovedAside()
+        try Files.mkdirp(Path.join(root, "setup", "RoachNet Setup.app"))
+        try Files.write("newer setup", to: Path.join(root, "setup", "RoachNet Setup.app", "marker"))
+        let engine = self.engine
+        engine.moveIntoPlace = { source, destination in
+            if Path.basename(source).hasPrefix("RoachNet.backup-") {
+                // Some of the backup reached the root, then the move failed.
+                try Files.mkdirp(Path.join(destination, "storage", "Vault", "notes"))
+                try Files.write("half", to: Path.join(destination, "storage", "Vault", "notes", "keep.md"))
+                throw InjectedFailure()
+            }
+            try SetupPlatform.moveItem(source, destination)
+        }
+        engine.recoverInterruptedInstall(finalRoot: root)
+        XCTAssertEqual(Files.readText(Path.join(backup, "storage", "Vault", "notes", "keep.md")), "the person's note", "the data is preserved in the backup")
+        XCTAssertTrue(self.engine.holdsOnlySetupFiles(root), "the root is left setup-only, so it can be retried")
+        // The next run, uninterrupted, restores the install.
+        self.engine.recoverInterruptedInstall(finalRoot: root)
+        XCTAssertEqual(Files.readText(Path.join(root, "storage", "Vault", "notes", "keep.md")), "the person's note", "the retry restored the install")
+        XCTAssertFalse(Files.exists(backup))
+    }
+
+    /// If the root can't even be moved aside, recovery changes nothing: the
+    /// setup-only root and the backup are both left in place and a later run can
+    /// still restore the install.
+    func testARestoreThatCannotMoveTheRootAsideLeavesEverythingSafe() throws {
+        let backup = try installMovedAside()
+        try Files.mkdirp(Path.join(root, "setup"))
+        let engine = self.engine
+        engine.moveIntoPlace = { source, destination in
+            if Path.basename(destination).hasPrefix("RoachNet.setup-files-") { throw InjectedFailure() }
+            try SetupPlatform.moveItem(source, destination)
+        }
+        var lines: [String] = []
+        engine.onLog = { lines.append($0) }
+        engine.recoverInterruptedInstall(finalRoot: root)
+        XCTAssertTrue(Files.isDirectory(Path.join(root, "setup")), "the setup-only root is untouched")
+        XCTAssertTrue(Files.exists(backup), "the backup is kept")
+        XCTAssertTrue(lines.contains { $0.contains("could not be restored") }, "\(lines)")
+        self.engine.recoverInterruptedInstall(finalRoot: root)
+        XCTAssertEqual(Files.readText(Path.join(root, "storage", "Vault", "notes", "keep.md")), "the person's note", "a later run restores it")
+        XCTAssertFalse(Files.exists(backup))
+    }
 }
 
 /// ROA-94: Setup's own log stays outside every install root, so a log line

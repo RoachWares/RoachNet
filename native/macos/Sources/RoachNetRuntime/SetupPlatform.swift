@@ -184,8 +184,15 @@ public enum SetupPlatform {
 
     static func namesIgnoreCase(in directory: String) -> Bool {
         #if canImport(Darwin)
-        let values = try? URL(fileURLWithPath: directory).resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
-        return values?.volumeSupportsCaseSensitiveNames == false
+        // When the volume's case behavior is known, follow it. When it can't be
+        // read, assume the volume ignores case: the common macOS volume does, and
+        // the safer miss is to match a backup the restore then verifies rather
+        // than to miss one and leave the person's data in it (ROA-94).
+        if let caseSensitive = (try? URL(fileURLWithPath: directory)
+            .resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?.volumeSupportsCaseSensitiveNames {
+            return !caseSensitive
+        }
+        return true
         #else
         return false
         #endif
