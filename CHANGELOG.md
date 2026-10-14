@@ -78,6 +78,7 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 - `npm run qualify:mac` runs every test on an Apple-silicon Mac with the models and fixtures it needs: the Metal GPU parity tests, model-backed inference and tokenizer tests, the Whisper transcript check and a full state map pack.
   - It checks each pinned input in `docs/release-gates/qualification-fixtures.json` by size and SHA-256 before use. `--fetch` downloads a missing one.
   - It fails on any test failure, and on any skip that `docs/release-gates/qualification-skips.json` doesn't allow on a Mac. `scripts/check-test-skips.mjs` lists every skip with its recorded reason, so a model-backed test can't drop out of a run unnoticed.
+  - It always builds before it tests. Its `summary.json` names the commit and lists every file that differs from it, untracked ones included.
 
 ## v1.1.0 - 2026-10-12
 

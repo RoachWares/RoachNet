@@ -2,7 +2,7 @@
 // The macOS qualification run: every test, with every model and fixture it
 // needs, and no skip that hasn't been accounted for.
 //
-//   node scripts/qualify-macos.mjs [--fixtures DIR] [--fetch] [--out DIR] [--skip-build]
+//   node scripts/qualify-macos.mjs [--fixtures DIR] [--fetch] [--out DIR]
 //
 // 1. Checks the pinned fixtures in docs/release-gates/qualification-fixtures.json
 //    by size and SHA-256. --fetch downloads a missing one and verifies it
@@ -12,11 +12,14 @@
 //    stages it).
 // 3. Builds, runs the XCTests with the models, the Whisper sample and the
 //    state map pack, then runs the contract tests with the built runtime and
-//    roachnet-infer.
+//    roachnet-infer. It always builds first, so what it tests is what the
+//    checkout holds.
 // 4. Fails on any test failure, and on any skip that
 //    docs/release-gates/qualification-skips.json doesn't allow in a
 //    qualification run.
 // Logs and summary.json go to --out (default .tmp/qualification/<UTC time>).
+// summary.json names the commit and its tree, and lists every file that
+// differs from them, untracked ones included.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -117,13 +120,36 @@ function run(command, args, { env = process.env, log, cwd = repoRoot } = {}) {
   }
 }
 
+/** Paths in `git status --porcelain=v1 -z` output: changed, staged, deleted
+ *  and untracked files. Paths at or under `exclude` are left out. */
+export function changedPaths(porcelain, exclude = []) {
+  const entries = porcelain.split('\0')
+  const paths = new Set()
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]
+    if (entry.length < 4) continue
+    paths.add(entry.slice(3))
+    // A rename or copy is followed by the path it came from.
+    if (/[RC]/.test(entry.slice(0, 2))) paths.add(entries[++index])
+  }
+  return [...paths].filter((file) => file && !exclude.some((dir) => file === dir || file.startsWith(`${dir}/`))).sort()
+}
+
+/** What in the checkout at `root` differs from HEAD, untracked files
+ *  included (ignored ones aren't listed), or null when git can't tell. */
+export function uncommittedPaths(root, exclude = []) {
+  const result = spawnSync('git', ['--no-optional-locks', 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+    { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26 })
+  return result.status === 0 ? changedPaths(result.stdout, exclude) : null
+}
+
 function capture(command, args) {
   const result = spawnSync(command, args, { cwd: repoRoot, encoding: 'utf8' })
   return result.status === 0 ? result.stdout.trim() : null
 }
 
-function parseArgs(argv) {
-  const args = { fetch: false, skipBuild: false }
+export function parseArgs(argv) {
+  const args = { fetch: false }
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index]
     const value = () => {
@@ -134,7 +160,6 @@ function parseArgs(argv) {
     if (flag === '--fixtures') args.fixtures = path.resolve(value())
     else if (flag === '--out') args.out = path.resolve(value())
     else if (flag === '--fetch') args.fetch = true
-    else if (flag === '--skip-build') args.skipBuild = true
     else throw new Error(`unknown option ${flag}`)
   }
   args.fixtures ??= path.join(repoRoot, '.tmp', 'qualification-fixtures')
@@ -148,12 +173,19 @@ async function main() {
     throw new Error('The macOS qualification needs an Apple-silicon Mac: the Metal parity tests run on its GPU.')
   }
   fs.mkdirSync(args.out, { recursive: true })
+  // The run's own output and fixtures don't count as changes to the checkout.
+  const inside = (dir) => {
+    const relative = path.relative(repoRoot, dir)
+    return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative.split(path.sep).join('/') : null
+  }
+  const uncommitted = uncommittedPaths(repoRoot, [args.out, args.fixtures].map(inside).filter(Boolean))
   const summary = {
     schema: 'org.roachnet.qualification-run.v1',
     started: new Date().toISOString(),
     commit: capture('git', ['rev-parse', 'HEAD']),
     tree: capture('git', ['rev-parse', 'HEAD^{tree}']),
-    uncommittedFiles: (capture('git', ['status', '--porcelain', '--untracked-files=no']) ?? '').split('\n').filter(Boolean).length,
+    uncommittedFiles: uncommitted?.length ?? null,
+    uncommitted,
     macOS: capture('sw_vers', ['-productVersion']),
     swift: capture('xcrun', ['swift', '--version'])?.split('\n')[0] ?? null,
     node: process.version,
@@ -190,13 +222,11 @@ async function main() {
   }
   if (summary.failures.length) return finish(summary, args)
 
-  // 3. Build and test.
-  if (!args.skipBuild) {
-    summary.build = run('xcrun', ['swift', 'build', '--package-path', 'native/macos', '--build-tests'], { log: path.join(args.out, 'build.log') })
-    if (summary.build !== 0) {
-      summary.failures.push('the build failed (see build.log)')
-      return finish(summary, args)
-    }
+  // 3. Build, always: the tests run what's in .build/debug.
+  summary.build = run('xcrun', ['swift', 'build', '--package-path', 'native/macos', '--build-tests'], { log: path.join(args.out, 'build.log') })
+  if (summary.build !== 0) {
+    summary.failures.push('the build failed (see build.log)')
+    return finish(summary, args)
   }
   const xctestLog = path.join(args.out, 'xctest.log')
   summary.xctestExit = run('xcrun', ['swift', 'test', '--package-path', 'native/macos', '--skip-build'], { env, log: xctestLog })
@@ -225,7 +255,9 @@ function finish(summary, args) {
   summary.finished = new Date().toISOString()
   summary.result = summary.failures.length ? 'FAIL' : 'PASS'
   fs.writeFileSync(path.join(args.out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
-  console.log(`Qualification ${summary.result} at ${summary.commit ?? 'unknown commit'} (tree ${summary.tree ?? '?'})`)
+  const changes = summary.uncommittedFiles === null ? ', uncommitted files unknown'
+    : summary.uncommittedFiles ? `, plus ${summary.uncommittedFiles} uncommitted file${summary.uncommittedFiles === 1 ? '' : 's'} listed in summary.json` : ''
+  console.log(`Qualification ${summary.result} at ${summary.commit ?? 'unknown commit'} (tree ${summary.tree ?? '?'}${changes})`)
   for (const bundle of summary.xctest ?? []) {
     console.log(`  ${bundle.bundle}: ${bundle.tests} tests, ${bundle.skipped} skipped, ${bundle.failures} failures (${bundle.result})`)
   }

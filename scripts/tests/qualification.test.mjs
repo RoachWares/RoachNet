@@ -8,7 +8,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { judgeSkips, readDispositions, skipReport, tapSkips, xctestSkips } from '../lib/test_skips.mjs'
-import { checkFixture, readFixtures, tapTotals, xctestTotals } from '../qualify-macos.mjs'
+import { changedPaths, checkFixture, parseArgs, readFixtures, tapTotals, uncommittedPaths, xctestTotals } from '../qualify-macos.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const dispositionsFile = path.join(repoRoot, 'docs', 'release-gates', 'qualification-skips.json')
@@ -165,4 +165,37 @@ test('qualification fixtures are pinned, and a file is used only when its bytes 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('the summary counts untracked files and leaves out the run\'s own output', () => {
+  assert.deepEqual(changedPaths(' M a.txt\0?? new.test.mjs\0R  b2.txt\0b.txt\0?? .tmp/q/summary.json\0', ['.tmp/q']),
+    ['a.txt', 'b.txt', 'b2.txt', 'new.test.mjs'])
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rn-qualify-git-'))
+  try {
+    const git = (...args) => {
+      const result = spawnSync('git', ['-c', 'user.name=Qualification test', '-c', 'user.email=test@example.invalid',
+        '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd: root, encoding: 'utf8' })
+      assert.equal(result.status, 0, result.stderr)
+    }
+    git('init', '-q')
+    fs.writeFileSync(path.join(root, 'a.txt'), 'one\n')
+    git('add', 'a.txt')
+    git('commit', '-q', '-m', 'first')
+    assert.deepEqual(uncommittedPaths(root), [])
+    fs.writeFileSync(path.join(root, 'a.txt'), 'two\n')
+    // An untracked test file is picked up by the test run, so it counts.
+    fs.mkdirSync(path.join(root, 'tests'))
+    fs.writeFileSync(path.join(root, 'tests', 'new.test.mjs'), '')
+    fs.mkdirSync(path.join(root, 'out'))
+    fs.writeFileSync(path.join(root, 'out', 'summary.json'), '{}')
+    assert.deepEqual(uncommittedPaths(root, ['out']), ['a.txt', 'tests/new.test.mjs'])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('qualification always builds what it tests', () => {
+  assert.throws(() => parseArgs(['--skip-build']), /unknown option --skip-build/)
+  assert.equal(parseArgs(['--fetch']).fetch, true)
 })
