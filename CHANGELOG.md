@@ -72,6 +72,7 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 
 ### Release builds
 
+- A diagnostic native build no longer shares the release lock. Each push to `main` and each dispatched diagnostic has a concurrency group of its own, so a diagnostic never cancels, or waits behind, another ref's diagnostic or a waiting stage or promotion run. Staging keeps the shared `roachnet-public-release` lock with promotion, and the release audit checks both (ROA-96).
 - `scripts/tests/release-hardening.test.mjs` checks the packaged helper itself. It covers out-of-range numbers, RoachTail token expiry, the local API token and scopes, and salted webhook secrets.
 - The apps no longer carry the build Mac's file paths: dSYMs are kept out of the bundle, executables are stripped of their debug map before signing, and `scripts/audit-release-privacy.mjs` fails the build if a built file names the build Mac's folders, host names or network addresses.
 - The supply-chain audit expects a scan only for runtimes a release bundles, so a 1.1 candidate (no bundled Ollama or Node.js) can pass promotion.

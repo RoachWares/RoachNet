@@ -101,6 +101,34 @@ function auditActionPins(failures, source, label) {
   }
 }
 
+/** The text of `name`'s block under `jobs:` in a workflow, or '' when absent. */
+export function workflowJob(source, name) {
+  const lines = source.split('\n')
+  const start = lines.findIndex((line) => line === `  ${name}:`)
+  if (start < 0) return ''
+  let end = start + 1
+  while (end < lines.length && !/^ {2}[A-Za-z0-9_-]+:\s*$/.test(lines[end]) && !/^\S/.test(lines[end])) end += 1
+  return lines.slice(start, end).join('\n')
+}
+
+/** Staging holds the shared release lock; diagnostics never do (ROA-96). */
+export function auditNativeConcurrency(nativeWorkflow) {
+  const failures = []
+  if (/^concurrency:/m.test(nativeWorkflow)) {
+    failures.push('native-packages.yml must set concurrency per job: a workflow-level group puts diagnostics in the release lock.')
+  }
+  const stage = workflowJob(nativeWorkflow, 'stage-release')
+  if (!/\n {4}concurrency:\n {6}group:\s*roachnet-public-release\s*\n {6}cancel-in-progress:\s*false/.test(stage)) {
+    failures.push('Staging lacks the serialized public-release concurrency lock.')
+  }
+  const diagnostic = workflowJob(nativeWorkflow, 'diagnostic')
+  const group = /\n {4}concurrency:\n {6}group:\s*([^\n]+)/.exec(diagnostic)?.[1]?.trim()
+  if (!group || /^roachnet-public-release\s*$/.test(group) || !/github\.(?:ref|sha)/.test(group)) {
+    failures.push('Diagnostic runs need a concurrency group of their own, per ref or commit, outside the release lock.')
+  }
+  return failures
+}
+
 export function auditReleaseConfiguration() {
   const failures = []
   const nativeWorkflow = read('.github/workflows/native-packages.yml')
@@ -134,7 +162,7 @@ export function auditReleaseConfiguration() {
 
   requirePattern(failures, nativeWorkflow, /environment:\s*roachnet-release-staging/, 'Staging requires the protected roachnet-release-staging environment.')
   requirePattern(failures, promotionWorkflow, /environment:\s*roachnet-release-production/, 'Promotion requires the protected roachnet-release-production environment.')
-  requirePattern(failures, nativeWorkflow, /group:\s*roachnet-public-release/, 'Staging lacks the serialized public-release concurrency lock.')
+  failures.push(...auditNativeConcurrency(nativeWorkflow))
   requirePattern(failures, promotionWorkflow, /group:\s*roachnet-public-release/, 'Promotion lacks the serialized public-release concurrency lock.')
   requirePattern(failures, nativeWorkflow, /DEPLOYMENT_AUTHORIZED_USERS/, 'Staging lacks an exact actor allowlist gate.')
   requirePattern(failures, promotionWorkflow, /DEPLOYMENT_AUTHORIZED_USERS/, 'Promotion lacks an exact actor allowlist gate.')

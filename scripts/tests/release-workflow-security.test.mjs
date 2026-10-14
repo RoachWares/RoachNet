@@ -5,9 +5,11 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  auditNativeConcurrency,
   auditReleaseConfiguration,
   exactActorIsAuthorized,
   validateCandidateIdentity,
+  workflowJob,
 } from '../audit-release-configuration.mjs'
 import { resolveBuildModes, resolveSourceCommit } from '../build-native-macos-apps.mjs'
 
@@ -16,6 +18,24 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 test('public release configuration has no unsigned stable publication bypass', () => {
   const failures = auditReleaseConfiguration()
   assert.deepEqual(failures, [])
+})
+
+test('diagnostic runs have their own concurrency group and staging keeps the release lock (ROA-96)', () => {
+  const workflow = readFileSync(path.join(repoRoot, '.github', 'workflows', 'native-packages.yml'), 'utf8')
+  assert.deepEqual(auditNativeConcurrency(workflow), [])
+  assert.match(workflowJob(workflow, 'stage-release'), /group: roachnet-public-release/)
+  assert.doesNotMatch(workflowJob(workflow, 'diagnostic'), /group: roachnet-public-release/)
+
+  const workflowLevel = workflow.replace('jobs:\n', 'concurrency:\n  group: roachnet-public-release\n  cancel-in-progress: false\n\njobs:\n')
+  assert.ok(auditNativeConcurrency(workflowLevel).some((failure) => failure.includes('per job')))
+
+  const sharedDiagnostic = workflow.replace(/(\n {4}concurrency:\n {6}group: )roachnet-native-diagnostic-[^\n]+/, '$1roachnet-public-release')
+  assert.notEqual(sharedDiagnostic, workflow)
+  assert.ok(auditNativeConcurrency(sharedDiagnostic).some((failure) => failure.includes('Diagnostic runs')))
+
+  const unlockedStage = workflow.replace(/(stage-release:[\s\S]*?\n {4}concurrency:\n {6}group: )roachnet-public-release/, '$1roachnet-stage')
+  assert.notEqual(unlockedStage, workflow)
+  assert.ok(auditNativeConcurrency(unlockedStage).some((failure) => failure.includes('Staging lacks')))
 })
 
 test('release authorization compares complete actor names', () => {
