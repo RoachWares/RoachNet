@@ -7,11 +7,13 @@
 // an incomplete, corrupted or substituted file is never accepted.
 //
 // Requests are retried a bounded number of times when the failure is
-// transient: a dropped or stalled connection, or HTTP 408, 425, 429 or 5xx.
-// Backoff is exponential with jitter, and Retry-After is honored up to five
-// minutes; no request keeps trying for more than fifteen. Anything else fails
-// at once. Failures throw DependencyFetchError, so callers
-// can tell an upstream that couldn't be reached from a build or test failure.
+// transient: a dropped or stalled connection, HTTP 408, 425 or 429, or any 5xx
+// but 501 and 505. Backoff is exponential with jitter, and Retry-After is
+// honored up to five minutes; no request keeps trying, or transferring, for
+// more than fifteen (ROACHNET_UPSTREAM_FETCH_BUDGET_MINUTES changes that, for
+// a slow connection). Anything else fails at once. Failures throw
+// DependencyFetchError, so callers can tell an upstream that couldn't be
+// reached from a build or test failure.
 
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -31,15 +33,20 @@ export class DependencyFetchError extends Error {
   }
 }
 
-const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
+const transientStatuses = new Set([408, 425, 429])
 const transientCodes = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN', 'ENOTFOUND',
   'ENETUNREACH', 'ENETDOWN', 'EHOSTUNREACH', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT',
   'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_CLOSED',
 ])
 
+/**
+ * 408, 425, 429, and every 5xx but 501 and 505, which say the request itself
+ * can't be served. The CDN in front of Hugging Face adds 5xx codes of its own.
+ */
 export function isTransientStatus(status) {
-  return transientStatuses.has(status)
+  if (transientStatuses.has(status)) return true
+  return Number.isInteger(status) && status >= 500 && status <= 599 && status !== 501 && status !== 505
 }
 
 /** A dropped, refused, reset or stalled connection, looking through `cause`. */
@@ -75,18 +82,21 @@ const defaults = {
   maxRetryAfterMs: 300_000,
   budgetMs: 15 * 60_000,
   stallMs: 60_000,
+  maxJsonBytes: 64 * 1024 * 1024,
   userAgent: 'RoachNet-RoachSpeech-Importer/2.0',
 }
 
 function settings(options = {}) {
   const env = process.env
   const number = (value, fallback) => {
+    if (value === undefined || String(value).trim() === '') return fallback
     const parsed = Number(value)
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
   }
   return {
     ...defaults,
     attempts: Math.max(1, Math.floor(number(env.ROACHNET_UPSTREAM_FETCH_ATTEMPTS, defaults.attempts))),
+    budgetMs: Math.max(1, number(env.ROACHNET_UPSTREAM_FETCH_BUDGET_MINUTES, defaults.budgetMs / 60_000)) * 60_000,
     fetchImpl: globalThis.fetch,
     sleep: sleepMs,
     random: Math.random,
@@ -107,7 +117,9 @@ function statusError(response, url) {
 /**
  * Runs `operation(signal, attempt)` until it succeeds, a failure isn't
  * transient, or the attempts run out. The signal aborts when no bytes have
- * arrived for `stallMs`; the operation calls `signal.touch()` as data comes in.
+ * arrived for `stallMs`, and when `budgetMs` has passed since the first
+ * attempt began, even mid-transfer; the operation calls `signal.touch()` as
+ * data comes in.
  */
 async function withRetries(url, options, operation) {
   const opts = settings(options)
@@ -125,6 +137,10 @@ async function withRetries(url, options, operation) {
     const signal = controller.signal
     signal.touch = touch
     touch()
+    const budget = setTimeout(
+      () => controller.abort(new DependencyFetchError(`${url} was still transferring after the ${Math.round(opts.budgetMs / 1000)} s one file may take`, { url, transient: true })),
+      Math.max(0, started + opts.budgetMs - Date.now()),
+    )
     try {
       return await operation(signal, attempt, opts)
     } catch (caught) {
@@ -151,6 +167,7 @@ async function withRetries(url, options, operation) {
       await opts.sleep(wait)
     } finally {
       clearTimeout(timer)
+      clearTimeout(budget)
     }
   }
   throw new DependencyFetchError(`Couldn't fetch ${url} (${used} attempt${used === 1 ? '' : 's'}): ${lastError?.message}`, {
@@ -172,11 +189,26 @@ async function request(url, signal, opts) {
   return response
 }
 
+/** Reads the body as it arrives, so a long listing that keeps coming isn't taken for a stall. */
 export async function fetchJsonWithRetry(url, options = {}) {
   return withRetries(url, options, async (signal, _attempt, opts) => {
     const response = await request(url, signal, opts)
     signal.touch()
-    return response.json()
+    const chunks = []
+    let received = 0
+    for await (const chunk of response.body ?? []) {
+      signal.touch()
+      received += chunk.length
+      if (received > opts.maxJsonBytes) {
+        throw new DependencyFetchError(`${url} sent more than ${opts.maxJsonBytes} bytes of JSON`, { url, transient: false })
+      }
+      chunks.push(chunk)
+    }
+    try {
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    } catch (error) {
+      throw new DependencyFetchError(`${url} didn't answer with JSON: ${error.message}`, { url, transient: false, cause: error })
+    }
   })
 }
 

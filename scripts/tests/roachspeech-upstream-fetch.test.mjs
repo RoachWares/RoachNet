@@ -13,6 +13,7 @@ import {
   cachedUpstreamPath,
   downloadVerified,
   expectationFor,
+  fetchJsonWithRetry,
   isTransientNetworkError,
   isTransientStatus,
   listUpstreamFiles,
@@ -58,6 +59,26 @@ const stalls = (_request, response) => {
   response.writeHead(200, { 'content-length': body.length })
   response.write(body.subarray(0, 10))
 }
+/** Sends `payload` in `pieces` parts, `gapMs` apart. */
+const slowly = (payload, pieces, gapMs) => (_request, response) => {
+  response.writeHead(200, { 'content-length': payload.length })
+  const size = Math.ceil(payload.length / pieces)
+  let offset = 0
+  const next = () => {
+    if (response.destroyed) return
+    response.write(payload.subarray(offset, offset + size))
+    offset += size
+    if (offset < payload.length) setTimeout(next, gapMs)
+    else response.end()
+  }
+  next()
+}
+/** One byte every 50 ms, never finishing. */
+const trickles = (_request, response) => {
+  response.writeHead(200, { 'content-length': body.length })
+  const timer = setInterval(() => (response.destroyed ? clearInterval(timer) : response.write('x')), 50)
+  response.on('close', () => clearInterval(timer))
+}
 
 function workdir() {
   return mkdtempSync(path.join(os.tmpdir(), 'roachspeech-fetch-'))
@@ -87,8 +108,8 @@ test('Retry-After, backoff and transient classification (ROA-96)', () => {
     }
   }
 
-  for (const code of [408, 425, 429, 500, 502, 503, 504]) assert.ok(isTransientStatus(code), String(code))
-  for (const code of [400, 401, 403, 404, 410, 416, 451]) assert.ok(!isTransientStatus(code), String(code))
+  for (const code of [408, 425, 429, 500, 502, 503, 504, 520, 522, 524, 599]) assert.ok(isTransientStatus(code), String(code))
+  for (const code of [400, 401, 403, 404, 410, 416, 451, 501, 505, 600]) assert.ok(!isTransientStatus(code), String(code))
   assert.ok(isTransientNetworkError(new TypeError('fetch failed', { cause: Object.assign(new Error('read'), { code: 'ECONNRESET' }) })))
   assert.ok(isTransientNetworkError(new TypeError('terminated')))
   assert.ok(isTransientNetworkError(Object.assign(new Error('timed out'), { name: 'TimeoutError' })))
@@ -197,6 +218,60 @@ test('a stalled transfer is cut off and retried', async () => {
   } finally {
     await server.close()
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('no transfer runs past the time budget, even one that never stalls', async () => {
+  const dir = workdir()
+  const server = await serve([trickles])
+  try {
+    const destination = path.join(dir, 'file.bin')
+    const started = Date.now()
+    await assert.rejects(downloadVerified(server.url, destination, lfs, { ...quiet(), stallMs: 1_000, budgetMs: 400 }), (error) => {
+      assert.ok(error instanceof DependencyFetchError)
+      assert.match(error.message, /still transferring after/)
+      return true
+    })
+    assert.ok(Date.now() - started < 3_000, `took ${Date.now() - started} ms`)
+    assert.equal(server.requests.length, 1, 'the budget is spent, so nothing is retried')
+    assert.ok(!existsSync(destination))
+    assert.deepEqual(leftovers(dir), [])
+  } finally {
+    await server.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a listing that keeps arriving is read to the end; one over the cap is refused', async () => {
+  const listing = Buffer.from(JSON.stringify([{ type: 'file', path: 'a.bin', size: 1, oid: 'd'.repeat(40) }]))
+  const steady = await serve([slowly(listing, 6, 100)])
+  const huge = await serve([ok(Buffer.from(JSON.stringify(Array.from({ length: 200 }, (_, index) => ({ index })))))])
+  const garbled = await serve([ok(Buffer.from('{"not json'))])
+  try {
+    assert.deepEqual(await fetchJsonWithRetry(steady.url, { ...quiet(), stallMs: 250 }), JSON.parse(listing))
+    assert.equal(steady.requests.length, 1, 'a body that keeps coming is not taken for a stall')
+    await assert.rejects(fetchJsonWithRetry(huge.url, { ...quiet(), maxJsonBytes: 1_000 }), (error) => error instanceof DependencyFetchError && !error.transient && /more than 1000 bytes/.test(error.message))
+    assert.equal(huge.requests.length, 1)
+    await assert.rejects(fetchJsonWithRetry(garbled.url, quiet()), (error) => error instanceof DependencyFetchError && !error.transient && /didn't answer with JSON/.test(error.message))
+    assert.equal(garbled.requests.length, 1)
+  } finally {
+    await steady.close()
+    await huge.close()
+    await garbled.close()
+  }
+})
+
+test('an empty setting means the default', async () => {
+  const server = await serve([status(502)])
+  const saved = process.env.ROACHNET_UPSTREAM_FETCH_ATTEMPTS
+  process.env.ROACHNET_UPSTREAM_FETCH_ATTEMPTS = ''
+  try {
+    await assert.rejects(fetchJsonWithRetry(server.url, quiet()), /6 attempts/)
+    assert.equal(server.requests.length, 6)
+  } finally {
+    if (saved === undefined) delete process.env.ROACHNET_UPSTREAM_FETCH_ATTEMPTS
+    else process.env.ROACHNET_UPSTREAM_FETCH_ATTEMPTS = saved
+    await server.close()
   }
 })
 
