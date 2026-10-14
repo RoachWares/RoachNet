@@ -231,16 +231,19 @@ final class DownloadSafetyTests: XCTestCase {
             // Cancel once every byte has arrived: the worker is checking the
             // download and about to move it into place.
             let deadline = Date().addingTimeInterval(30)
-            while Date() < deadline {
+            var arrived = false
+            while !arrived, Date() < deadline {
                 let (received, transfer) = runtime.withState { (job.bytesReceived, job.activeTransfer) }
-                if received == Int64(big.count), transfer == nil { break }
-                Thread.sleep(forTimeInterval: 0.001)
+                arrived = received == Int64(big.count) && transfer == nil
+                if !arrived { Thread.sleep(forTimeInterval: 0.001) }
             }
+            XCTAssertTrue(arrived, "the transfer finished before the cancel (attempt \(attempt))")
             // The status and the cancel are read and made under one lock.
             let (statusAtCancel, accepted) = runtime.withState { (job.status, runtime.cancelDownloadJob(job.jobId)) }
             waitForWriters(runtime)
             if ["queued", "downloading"].contains(statusAtCancel) {
-                acceptedOnce = true
+                // Counted only when the cancel reached the check before the move.
+                acceptedOnce = arrived
                 XCTAssertTrue(accepted, "attempt \(attempt)")
                 XCTAssertEqual(runtime.withState { job.status }, "cancelled", "attempt \(attempt)")
                 XCTAssertEqual(FileManager.default.contents(atPath: installed), earlier, "an accepted cancel leaves the installed file (attempt \(attempt))")
