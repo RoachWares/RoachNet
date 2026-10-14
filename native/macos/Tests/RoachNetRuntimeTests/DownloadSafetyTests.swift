@@ -71,9 +71,10 @@ final class DownloadSafetyTests: XCTestCase {
         return runtime.withState { job.status }
     }
 
-    private func waitForWriters(_ runtime: NativeRuntime) {
-        let deadline = Date().addingTimeInterval(20)
+    private func waitForWriters(_ runtime: NativeRuntime, file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(60)
         while !runtime.withState({ runtime.downloadWriters.isEmpty }), Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        XCTAssertTrue(runtime.withState { runtime.downloadWriters.isEmpty }, "every download's worker has finished", file: file, line: line)
     }
 
     private func linkCount(_ path: String) -> Int { Int(Files.lstatInfo(path)?.st_nlink ?? 0) }
@@ -221,29 +222,36 @@ final class DownloadSafetyTests: XCTestCase {
         let destination = Path.join(storage, "zim")
         let installed = Path.join(destination, "item.zim")
         let earlier = Data("the copy already installed".utf8)
-        try Files.write(earlier, to: installed)
-        let job = try XCTUnwrap(runtime.queueResolvedDownload(descriptor("big"), destination, "zim"))
-        // Cancel once every byte has arrived: the worker is checking the
-        // download and about to move it into place.
-        let deadline = Date().addingTimeInterval(30)
-        while Date() < deadline {
-            let (received, transfer) = runtime.withState { (job.bytesReceived, job.activeTransfer) }
-            if received == Int64(big.count), transfer == nil { break }
-            Thread.sleep(forTimeInterval: 0.001)
+        // A few tries, so the cancel lands while the download is checked at
+        // least once, not only after it has taken its place.
+        var acceptedOnce = false
+        for attempt in 1...5 where !acceptedOnce {
+            try Files.write(earlier, to: installed)
+            let job = try XCTUnwrap(runtime.queueResolvedDownload(descriptor("big"), destination, "zim"))
+            // Cancel once every byte has arrived: the worker is checking the
+            // download and about to move it into place.
+            let deadline = Date().addingTimeInterval(30)
+            while Date() < deadline {
+                let (received, transfer) = runtime.withState { (job.bytesReceived, job.activeTransfer) }
+                if received == Int64(big.count), transfer == nil { break }
+                Thread.sleep(forTimeInterval: 0.001)
+            }
+            // The status and the cancel are read and made under one lock.
+            let (statusAtCancel, accepted) = runtime.withState { (job.status, runtime.cancelDownloadJob(job.jobId)) }
+            waitForWriters(runtime)
+            if ["queued", "downloading"].contains(statusAtCancel) {
+                acceptedOnce = true
+                XCTAssertTrue(accepted, "attempt \(attempt)")
+                XCTAssertEqual(runtime.withState { job.status }, "cancelled", "attempt \(attempt)")
+                XCTAssertEqual(FileManager.default.contents(atPath: installed), earlier, "an accepted cancel leaves the installed file (attempt \(attempt))")
+            } else {
+                // Too late to cancel: the file was already taking its place.
+                XCTAssertEqual(runtime.withState { job.status }, "completed", "attempt \(attempt)")
+                XCTAssertEqual(FileManager.default.contents(atPath: installed), big, "attempt \(attempt)")
+            }
+            XCTAssertFalse(Files.exists(job.partialFilepath), "attempt \(attempt)")
         }
-        // The status and the cancel are read and made under one lock.
-        let (statusAtCancel, accepted) = runtime.withState { (job.status, runtime.cancelDownloadJob(job.jobId)) }
-        waitForWriters(runtime)
-        if ["queued", "downloading"].contains(statusAtCancel) {
-            XCTAssertTrue(accepted)
-            XCTAssertEqual(runtime.withState { job.status }, "cancelled")
-            XCTAssertEqual(FileManager.default.contents(atPath: installed), earlier, "an accepted cancel leaves the installed file")
-        } else {
-            // Too late to cancel: the file was already taking its place.
-            XCTAssertEqual(runtime.withState { job.status }, "completed")
-            XCTAssertEqual(FileManager.default.contents(atPath: installed), big)
-        }
-        XCTAssertFalse(Files.exists(job.partialFilepath))
+        XCTAssertTrue(acceptedOnce, "a cancel landed while the download was still being checked")
     }
 
     /// "<file>.part" is another download's partial file and "<file>.part.json"

@@ -2,20 +2,21 @@
 
 ## v1.1.1 - not yet released
 
-Security maintenance release for 1.1.0: the download fix below and related download safeguards. Nothing else in the app changes, apart from the download behaviour those safeguards need.
+Security maintenance release for 1.1.0: the download fix below and related download safeguards. Nothing else in the app changes, apart from the download behavior those safeguards need.
 
 ### Security
 
 - **A malformed catalog download could delete RoachNet's storage folder (1.0.6, 1.0.7 and 1.1.0).**
   - When a download catalog entry gave a file name that refers to a folder, RoachNet took that folder for the download's file. A failed download, or moving the finished file into place, then removed the folder and everything in it. For a ZIM, that was the whole storage folder.
   - Such a name now gets a generated one, and a download always lands inside its destination folder.
-  - A download's cleanup removes only files, never a folder. A failed, interrupted, cancelled or mismatched download leaves a file already at its path in place, because the checksum is checked before the new file takes its place.
+  - A download's cleanup removes only files, never a folder.
+  - A failed, interrupted, cancelled or mismatched download leaves a file already at its path in place. The new file moves into place only at the end, after its checksum is checked, and a cancel is decided under the same lock as that move. The one exception: when a RoachSpeech pack's install step fails, the pack's earlier downloaded archive isn't kept; the installed pack is.
   - 1.0.7 and 1.1.0 follow download descriptors only from RoachNet's catalog address. 1.0.6 followed them from any address.
 - **Related download safeguards.** Each keeps a download from writing into, or replacing, a file it doesn't own.
   - A link at a download's partial file, symbolic or hard, is removed, never written through.
   - One download writes a given file at a time, until its work has stopped, a cancelled one included. Names that differ only in case or Unicode normalization count as one file.
-  - A download can't be given the name of another download's partial file or resume marker.
-  - A cancel is either accepted before the new file starts taking its place, and then leaves the file that was there, or it is refused.
+  - A catalog or web download can't be given the name of another download's partial file or resume marker.
+  - A cancel that stops a download leaves the file that was there. Once the new file is taking its place, a cancel is refused.
 - **What changes with them.** A second request for a file that is already downloading from another source is refused (409) instead of sharing its partial file. An install already running can't be cancelled. A collection queues each of its items on its own, so one that can't be queued doesn't stop the rest.
 
 ### Tests
