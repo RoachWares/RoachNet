@@ -81,7 +81,8 @@ export function judgeSkips(skips, dispositions, platform, mode = 'qualification'
 
 /** A Markdown report, for a terminal or a GitHub job summary. */
 export function skipReport({ allowed, unrecorded }, platform, mode = 'qualification') {
-  const cell = (value) => String(value || '(none given)').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
+  // Backslashes first, so a "\|" in a test name can't undo the escaped pipe.
+  const cell = (value) => String(value || '(none given)').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
   const lines = [`### Skipped tests (${platform}, ${mode})`, '']
   if (!allowed.length && !unrecorded.length) return [...lines, 'No test was skipped.', ''].join('\n')
   if (unrecorded.length) {

@@ -7,7 +7,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { judgeSkips, readDispositions, tapSkips, xctestSkips } from '../lib/test_skips.mjs'
+import { judgeSkips, readDispositions, skipReport, tapSkips, xctestSkips } from '../lib/test_skips.mjs'
 import { checkFixture, readFixtures, tapTotals, xctestTotals } from '../qualify-macos.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -76,6 +76,11 @@ test('a qualification run allows only skips of tests that cannot run on the plat
   // A disposition for one platform doesn't cover another.
   assert.equal(judgeSkips(skips, dispositions, 'linux', 'ci').allowed.length, 0)
   assert.throws(() => judgeSkips(skips, dispositions, 'windows'), /unknown platform/)
+
+  // Table cells stay one cell whatever a name holds.
+  const report = skipReport({ allowed: [], unrecorded: [{ kind: 'tap', id: 'a \\| b | c', reason: 'line one\nline two' }] }, 'macos')
+  const row = report.split('\n').find((line) => line.startsWith('| a'))
+  assert.equal(row, '| a \\\\\\| b \\| c | line one line two |')
 })
 
 test('the recorded dispositions are complete and unambiguous', () => {
