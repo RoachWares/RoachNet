@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.1 - not yet released
+
+Security maintenance release for 1.1.0. It changes nothing else.
+
+### Security
+
+- **A malformed catalog download could delete RoachNet's storage folder (1.0.6, 1.0.7 and 1.1.0).**
+  - When a download catalog entry gave a file name that refers to a folder (`.` or `..`), RoachNet took that folder for the download's file. A failed download, or moving the finished file into place, then removed the folder and everything in it. For a ZIM, that was the whole storage folder.
+  - Such a name now gets a generated one, and a download always lands inside its destination folder.
+  - Cleanup removes only files, never a folder. A failed, cancelled or mismatched download leaves a file already at its path in place, because the checksum is checked before the new file takes its place.
+  - 1.0.7 and 1.1.0 follow download descriptors only from RoachNet's catalog address. 1.0.6 followed them from any address.
+
 ## v1.1.0 - 2026-10-12
 
 Feature release. Includes every fix in 1.0.6 and 1.0.7. Ad-hoc signed, not Apple-notarized.

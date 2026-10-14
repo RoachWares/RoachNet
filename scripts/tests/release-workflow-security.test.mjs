@@ -28,9 +28,9 @@ test('release authorization compares complete actor names', () => {
 test('candidate identity requires a new exact version, build, tag, and SHA', () => {
   assert.deepEqual(
     validateCandidateIdentity({
-      version: '1.1.0',
-      buildNumber: 110,
-      tag: 'v1.1.0',
+      version: '1.1.1',
+      buildNumber: 111,
+      tag: 'v1.1.1',
       candidateSha: 'a'.repeat(40),
       checkoutSha: 'a'.repeat(40),
       tagSha: 'a'.repeat(40),
@@ -39,15 +39,15 @@ test('candidate identity requires a new exact version, build, tag, and SHA', () 
   )
 
   const failures = validateCandidateIdentity({
-    version: '1.0.7',
-    buildNumber: 107,
-    tag: 'v1.0.7',
+    version: '1.1.0',
+    buildNumber: 110,
+    tag: 'v1.1.0',
     candidateSha: 'a'.repeat(40),
     checkoutSha: 'b'.repeat(40),
     tagSha: 'c'.repeat(40),
   })
-  assert.ok(failures.some((failure) => failure.includes('greater than 1.0.7')))
-  assert.ok(failures.some((failure) => failure.includes('greater than 107')))
+  assert.ok(failures.some((failure) => failure.includes('greater than 1.1.0')))
+  assert.ok(failures.some((failure) => failure.includes('greater than 110')))
   assert.ok(failures.some((failure) => failure.includes('candidate SHA')))
   assert.ok(failures.some((failure) => failure.includes('tag target')))
 })

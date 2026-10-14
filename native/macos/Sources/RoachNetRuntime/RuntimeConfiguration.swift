@@ -204,7 +204,7 @@ public enum RuntimeBuildInfo {
         return Files.realpath(launchedAs) ?? launchedAs
     }
     /// Fallback when neither package metadata nor an app bundle is present.
-    public static let version = "1.1.0"
+    public static let version = "1.1.1"
     public static let executableName = "roachnet-runtime"
 
     /// The source commit this build came from (ROA-40): `ROACHNET_SOURCE_COMMIT`,
