@@ -16,6 +16,10 @@ Security maintenance release for 1.1.0: the download fix below, two related down
   - One download writes a given file at a time, until its work has stopped, a cancelled one included. A second source for the same file is refused (409). Names that differ only in case or Unicode normalization count as one file.
   - An install already running can't be cancelled halfway, and a collection queues each of its items on its own, so one that can't be queued doesn't stop the rest.
 
+### Tests
+
+- The Metal kernel host check compiles again, so release qualification runs it instead of failing (ROA-97). Test-only: no kernel or app code changed.
+
 ## v1.1.0 - 2026-10-12
 
 Feature release. Includes every fix in 1.0.6 and 1.0.7. Ad-hoc signed, not Apple-notarized.
