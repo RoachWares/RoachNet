@@ -1,0 +1,46 @@
+{
+  "schema": "org.roachnet.qualification-fixtures.v1",
+  "note": "Pinned inputs the model- and fixture-backed tests need. scripts/qualify-macos.mjs checks each file's size and SHA-256 before a qualification run, and downloads a missing one with --fetch. Sources are pinned by commit or release tag.",
+  "models": [
+    {
+      "file": "stories15M-q4_0.gguf",
+      "url": "https://huggingface.co/ggml-org/models/resolve/499bc8821c6b12b4e53c5bffcb21ec206f212d81/tinyllamas/stories15M-q4_0.gguf",
+      "bytes": 19077344,
+      "sha256": "66967fbece6dbe97886593fdbb73589584927e29119ec31f08090732d1861739"
+    },
+    {
+      "file": "smollm2-135m-q8_0.gguf",
+      "url": "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/09816acd5d99df7be770d85ea30822623dab342c/SmolLM2-135M-Instruct-Q8_0.gguf",
+      "bytes": 144811360,
+      "sha256": "5a1395716f7913741cc51d98581b9b1228d80987a9f7d3664106742eb06bba83"
+    },
+    {
+      "file": "qwen2.5-0.5b-q4_k_m.gguf",
+      "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "bytes": 491400032,
+      "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+    },
+    {
+      "file": "qwen3-0.6b-q8_0.gguf",
+      "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf",
+      "bytes": 639446688,
+      "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
+    }
+  ],
+  "files": [
+    {
+      "env": "ROACHNET_WHISPER_PARITY_AUDIO",
+      "file": "jfk.wav",
+      "url": "https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.8.4/samples/jfk.wav",
+      "bytes": 352078,
+      "sha256": "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e"
+    },
+    {
+      "env": "ROACHNET_TEST_MAP_PACK",
+      "file": "delaware_2026-10.pmtiles",
+      "url": "https://github.com/RoachWares/RoachNet-Maps/releases/download/maps-2026-10/delaware_2026-10.pmtiles",
+      "bytes": 34631533,
+      "sha256": "f490b01ec318c4abb52b4b2f95654378c55095ae471da6a7cbcf2974f59a1281"
+    }
+  ]
+}

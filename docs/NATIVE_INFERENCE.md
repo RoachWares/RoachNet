@@ -191,6 +191,14 @@ Reference models (file names the tests expect):
 | `qwen2.5-0.5b-q4_k_m.gguf` | `Qwen/Qwen2.5-0.5B-Instruct-GGUF` → q4_k_m |
 | `qwen3-0.6b-q8_0.gguf` | `Qwen/Qwen3-0.6B-GGUF` → Q8_0 |
 
+`docs/release-gates/qualification-fixtures.json` pins each one by commit, size and SHA-256. A release qualification runs every test with them on an Apple-silicon Mac:
+
+```
+npm run qualify:mac -- --fetch
+```
+
+It fails when any test fails or when a model-backed test skips.
+
 The tests check:
 
 - **Tokenization:** token ids match a reference runtime exactly on a 15-string corpus (Unicode, code, whitespace, special tokens).

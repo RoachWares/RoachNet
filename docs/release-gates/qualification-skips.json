@@ -1,0 +1,547 @@
+{
+  "schema": "org.roachnet.qualification-skips.v1",
+  "note": "Every test a run may skip, and why. scope \"always\": the test can't run on that platform, so the skip is expected everywhere. scope \"ci\": CI lacks the models or fixtures, so the skip is expected there, but a qualification run must run the test and fails if it skips. scripts/check-test-skips.mjs reads this file; a skip not listed here, or not allowed for the run's platform and mode, is reported, and fails a qualification run.",
+  "skips": [
+    {
+      "kind": "tap",
+      "id": "RoachVoice hydration fails clearly before any download when Core ML tooling is unavailable",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "always",
+      "why": "It covers a machine without Core ML tooling. Every Mac has that tooling, so the test skips itself on macOS.",
+      "disposition": "Runs on Linux, where it passes."
+    },
+    {
+      "kind": "xctest",
+      "id": "FootprintTests.testFootprintFromMetadataAlone",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testBatchedPrefillMatchesTokenByToken",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testMetalMatchesCPUOnReferenceModels",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testSiblingSlotsKeepTheirOwnCacheAndAdoptPrefixes",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testSplitAttentionMatchesFusedOnLongContexts",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "ModelStageTests.testShardedStagesMatchTheWholeModel",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "ModelRoomTests.testAnIdleCopyOfTheModelIsReleasedBeforeItsMemoryCounts",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "TokenizerParityTests.testQwen2BytePairMatchesReference",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "TokenizerParityTests.testSentencePieceMatchesReference",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "TokenizerParityTests.testSmolLMBytePairMatchesReference",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testPrefixReuseKeepsCachedTokens",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testPromptLogitsAndGreedyContinuationsMatchReference",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testSeededSamplingIsReproducible",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testStopSequencesTrimOutputAndStreamMatchesResult",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "RoachMapTilesTests.testFullPackStreetLevelTile",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs a full state map pack (ROACHNET_TEST_MAP_PACK, 35 MB) to reach the leaf directories that the small fixture lacks.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "RoachWhisperNativeEngineTests.testLocalJFKFixtureDecodesExpectedTextWhenProvided",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the whisper.cpp JFK sample (ROACHNET_WHISPER_PARITY_AUDIO).",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "RoachWhisperNativeEngineTests.testLocalStagedCoreMLPackRunsSmokeAndGreedyDecodeWhenPresent",
+      "platforms": [
+        "macos"
+      ],
+      "scope": "ci",
+      "why": "Needs the RoachWhisper Core ML pack staged in the checkout.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "tap",
+      "id": "Metal kernel dot products match the Swift reference for every quantization type",
+      "platforms": [
+        "macos",
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs a built roachnet-infer (ROACHNET_INFERENCE_TOOL) and the reference models.",
+      "disposition": "Runs in the macOS qualification (npm run qualify:mac), which supplies the pinned fixtures and fails if this test skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testBatchedPrefillMatchesTokenByToken",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Metal isn't available on Linux.",
+      "disposition": "Runs on Apple-silicon Macs in the macOS qualification, which fails if it skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testMetalMatchesCPUOnReferenceModels",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Metal isn't available on Linux.",
+      "disposition": "Runs on Apple-silicon Macs in the macOS qualification, which fails if it skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testSiblingSlotsKeepTheirOwnCacheAndAdoptPrefixes",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Metal isn't available on Linux.",
+      "disposition": "Runs on Apple-silicon Macs in the macOS qualification, which fails if it skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "MetalParityTests.testSplitAttentionMatchesFusedOnLongContexts",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Metal isn't available on Linux.",
+      "disposition": "Runs on Apple-silicon Macs in the macOS qualification, which fails if it skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "ModelStageTests.testShardedStagesMatchTheWholeModel",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Metal isn't available on Linux.",
+      "disposition": "Runs on Apple-silicon Macs in the macOS qualification, which fails if it skips."
+    },
+    {
+      "kind": "xctest",
+      "id": "HTTPClientLimitTests.testEndlessBodyStopsAtTheLimitInsteadOfBufferingFirst",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "On a CPU-starved Linux machine the size limit can trip late (ROA-87), so the test skips itself there.",
+      "disposition": "Runs and passes on macOS. ROA-87 must be fixed before any Linux release."
+    },
+    {
+      "kind": "tap",
+      "id": "details inside a zipped app are found",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Needs ditto, which is macOS-only.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "tap",
+      "id": "details on a disk image are found",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Needs hdiutil, which is macOS-only.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "tap",
+      "id": "native API installs RoachSpeech packs only from RoachNet download descriptors",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Relies on macOS ditto archive semantics.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "tap",
+      "id": "native API resolves Apps download descriptors before installing RoachSpeech packs",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Relies on macOS ditto archive semantics.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "tap",
+      "id": "native API refuses a RoachSpeech pack archive that holds a link",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Relies on macOS ditto archive semantics.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "tap",
+      "id": "native API reassembles chunked Apps descriptors before installing RoachSpeech packs",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Relies on macOS ditto archive semantics.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "tap",
+      "id": "a model split across two Macs answers exactly as one Mac does",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Needs Apple-silicon Macs.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "tap",
+      "id": "numbers no client should send get a reply, not a crash",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "always",
+      "why": "Needs an Apple-silicon Mac and the reference models.",
+      "disposition": "Runs in the macOS qualification."
+    },
+    {
+      "kind": "xctest",
+      "id": "FootprintTests.testFootprintFromMetadataAlone",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "ModelRoomTests.testAnIdleCopyOfTheModelIsReleasedBeforeItsMemoryCounts",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "TokenizerParityTests.testQwen2BytePairMatchesReference",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "TokenizerParityTests.testSentencePieceMatchesReference",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "TokenizerParityTests.testSmolLMBytePairMatchesReference",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testPrefixReuseKeepsCachedTokens",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testPromptLogitsAndGreedyContinuationsMatchReference",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testSeededSamplingIsReproducible",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "xctest",
+      "id": "TransformerParityTests.testStopSequencesTrimOutputAndStreamMatchesResult",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the reference models (ROACHNET_TEST_MODELS, about 1.3 GB), which CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "Ollama chat: structured output, thinking and tool calls",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "Ollama generate: raw prompts, JSON mode and load-only calls",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "OpenAI chat completions: forced tool call streamed, usage and errors",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "OpenAI completions and responses",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "Anthropic messages: text, tool use, streaming and token counts",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "embeddings on all three routes",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "create, show, copy and delete made models without copying weights",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "models are fitted into memory: a shorter context first, then a clear refusal",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "a model that fits only once a busy one finishes is refused, not squeezed in (ROA-72)",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "requests run side by side in slots, and each conversation keeps its cache",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "existing Ollama models are served in place, streamed and OpenAI-compatible",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    },
+    {
+      "kind": "tap",
+      "id": "pull downloads, verifies sha256, installs, and rejects tampered files",
+      "platforms": [
+        "linux"
+      ],
+      "scope": "ci",
+      "why": "Needs the built runtime and the reference models, which Linux CI doesn't download.",
+      "disposition": "Runs in the macOS qualification. A Linux qualification with the same models must run it before any Linux release (ROA-80)."
+    }
+  ]
+}

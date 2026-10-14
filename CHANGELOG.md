@@ -75,6 +75,10 @@ Not released yet. This lists what is on `dev/1.1.1` so far; nothing here ships u
 - `scripts/tests/release-hardening.test.mjs` checks the packaged helper itself. It covers out-of-range numbers, RoachTail token expiry, the local API token and scopes, and salted webhook secrets.
 - The apps no longer carry the build Mac's file paths: dSYMs are kept out of the bundle, executables are stripped of their debug map before signing, and `scripts/audit-release-privacy.mjs` fails the build if a built file names the build Mac's folders, host names or network addresses.
 - The supply-chain audit expects a scan only for runtimes a release bundles, so a 1.1 candidate (no bundled Ollama or Node.js) can pass promotion.
+- `npm run qualify:mac` runs every test on an Apple-silicon Mac with the models and fixtures it needs: the Metal GPU parity tests, model-backed inference and tokenizer tests, the Whisper transcript check and a full state map pack.
+  - It checks each pinned input in `docs/release-gates/qualification-fixtures.json` by size and SHA-256 before use. `--fetch` downloads a missing one.
+  - It fails on any test failure, and on any skip that `docs/release-gates/qualification-skips.json` doesn't allow on a Mac. `scripts/check-test-skips.mjs` lists every skip with its recorded reason, so a model-backed test can't drop out of a run unnoticed.
+  - It always builds before it tests. Its `summary.json` names the commit and lists every file that differs from it, untracked ones included.
 
 ## v1.1.0 - 2026-10-12
 
