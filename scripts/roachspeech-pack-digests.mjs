@@ -5,6 +5,8 @@
 //   node scripts/roachspeech-pack-digests.mjs --check-upstream  compare the local packs with the pinned
 //                                                               Hugging Face commits (needs the network)
 //   node scripts/roachspeech-pack-digests.mjs --write           record the local packs (after a check)
+//   node scripts/roachspeech-pack-digests.mjs --record-inputs   record the pinned commits' file sizes and
+//                                                               digests (needs the network)
 
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -20,9 +22,11 @@ import {
   sha256File,
   verifyPackAgainstManifest,
 } from './lib/roachspeech_pack_digests.mjs'
+import { exitForError, listUpstreamFiles, readUpstreamInputs, upstreamInputsSchema, upstreamKey } from './lib/roachspeech_upstream_fetch.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export const roachSpeechDigestManifestPath = path.join(repoRoot, 'docs', 'release-gates', 'roachspeech-pack-digests.json')
+export const roachSpeechUpstreamInputsPath = path.join(repoRoot, 'docs', 'release-gates', 'roachspeech-upstream-inputs.json')
 const packsRoot = path.join(repoRoot, 'native', 'macos', 'Vendor', 'RoachSpeech', 'ModelPacks')
 
 // The commits each importer pins (its defaultRepository / defaultRevision);
@@ -40,12 +44,40 @@ export const roachSpeechUpstreams = {
   ],
 }
 
-async function upstreamTree({ repository, revision }) {
-  const url = `https://huggingface.co/api/models/${repository}/tree/${revision}?recursive=1`
-  const response = await fetch(url, { headers: { 'User-Agent': 'RoachNet-RoachSpeech-Digests/1.0' } })
-  if (!response.ok) throw new Error(`${url} answered ${response.status}`)
-  const entries = await response.json()
-  return entries.filter((entry) => entry.type === 'file')
+// The listings the importers read: each pinned commit, and for WhisperKit the
+// one model folder it takes. Their files' sizes and digests are recorded in
+// roachspeech-upstream-inputs.json, so imports need no listing request and can
+// verify every file they download (ROA-96).
+export const roachSpeechUpstreamListings = [
+  { repository: 'argmaxinc/whisperkit-coreml', revision: '0f63a7800b00dd0226abd051b906c246e1907482', subpath: 'openai_whisper-base.en' },
+  { repository: 'openai/whisper-base.en', revision: '911407f4214e0e1d82085af863093ec0b66f9cd6' },
+  { repository: 'aufklarer/Kokoro-82M-CoreML-INT8', revision: '4bc7df470ea4612a5b6539af16ebf301a027f491' },
+  { repository: 'yepher/screen-cut-pro-tts-coreml', revision: 'f4fae0751b59970c170ca8d40cbf0c53dc20ad37' },
+]
+
+async function upstreamTree(source) {
+  return listUpstreamFiles(source, { manifest: readUpstreamInputs(roachSpeechUpstreamInputsPath) })
+}
+
+async function recordUpstreamInputs() {
+  const trees = {}
+  for (const source of roachSpeechUpstreamListings) {
+    const files = await listUpstreamFiles(source)
+    trees[upstreamKey(source)] = files
+      .map((entry) => entry.lfs?.oid
+        ? { path: entry.path, bytes: entry.lfs.size, sha256: entry.lfs.oid }
+        : { path: entry.path, bytes: entry.size, gitBlobSha1: entry.oid })
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    console.log(`${upstreamKey(source)}: ${files.length} files`)
+  }
+  const manifest = {
+    schema: upstreamInputsSchema,
+    note: 'Size and digest of every file in the pinned Hugging Face commits the RoachSpeech importers read: SHA-256 for LFS files, the git blob id for the rest. Importers verify each file they download against this, and list a recorded commit from it with no request.',
+    recordedAt: new Date().toISOString().slice(0, 10),
+    trees,
+  }
+  writeFileSync(roachSpeechUpstreamInputsPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  console.log(`Wrote ${path.relative(repoRoot, roachSpeechUpstreamInputsPath)}`)
 }
 
 /** Matches every local file to an upstream file by SHA-256 (LFS) or git blob id. */
@@ -74,6 +106,10 @@ async function checkUpstream(packID) {
 async function main() {
   const mode = process.argv[2]
   const packIDs = Object.keys(roachSpeechUpstreams)
+  if (mode === '--record-inputs') {
+    await recordUpstreamInputs()
+    return
+  }
   if (mode === '--verify') {
     const manifest = readDigestManifest(roachSpeechDigestManifestPath)
     for (const packID of packIDs) {
@@ -108,13 +144,10 @@ async function main() {
     }
     return
   }
-  console.error('usage: roachspeech-pack-digests.mjs --verify | --check-upstream | --write')
+  console.error('usage: roachspeech-pack-digests.mjs --verify | --check-upstream | --write | --record-inputs')
   process.exitCode = 2
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((error) => {
-    console.error(error.message)
-    process.exitCode = 1
-  })
+  main().catch(exitForError)
 }

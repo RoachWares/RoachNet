@@ -6,6 +6,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { verifyImportedUpstreamFiles } from './lib/roachspeech_pack_digests.mjs'
+import { exitForError, fetchUpstreamFile, listUpstreamFiles, readUpstreamInputs, upstreamCacheRoot } from './lib/roachspeech_upstream_fetch.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -13,6 +14,7 @@ const repoRoot = path.resolve(__dirname, '..')
 const defaultRepository = 'aufklarer/Kokoro-82M-CoreML-INT8'
 const defaultRevision = '4bc7df470ea4612a5b6539af16ebf301a027f491'
 const defaultPackID = 'roachvoice-kokoro-82m-int8-coreml'
+const upstreamInputsPath = path.join(repoRoot, 'docs', 'release-gates', 'roachspeech-upstream-inputs.json')
 
 function parseArgs(argv) {
   const args = {}
@@ -33,35 +35,6 @@ function parseArgs(argv) {
 
 function resolveRepoPath(value) {
   return path.isAbsolute(value) ? value : path.resolve(repoRoot, value)
-}
-
-function encodePathSegment(filePath) {
-  return filePath.split('/').map(encodeURIComponent).join('/')
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'RoachNet-RoachVoice-Importer/1.0',
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`Request failed ${response.status}: ${url}`)
-  }
-  return response.json()
-}
-
-async function downloadFile(url, destinationPath) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'RoachNet-RoachVoice-Importer/1.0',
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`Download failed ${response.status}: ${url}`)
-  }
-  fs.mkdirSync(path.dirname(destinationPath), { recursive: true })
-  fs.writeFileSync(destinationPath, Buffer.from(await response.arrayBuffer()))
 }
 
 function targetPathForKokoroFile(sourcePath, outputRoot) {
@@ -93,8 +66,9 @@ async function importKokoro(args) {
   const revision = typeof args.revision === 'string' ? args.revision : defaultRevision
   const packID = typeof args['pack-id'] === 'string' ? args['pack-id'] : defaultPackID
   const outputRoot = resolveRepoPath(args.output || `native/macos/Vendor/RoachSpeech/ModelPacks/${packID}`)
-  const treeURL = `https://huggingface.co/api/models/${repository}/tree/${revision}?recursive=1`
-  const files = (await fetchJson(treeURL)).filter((entry) => entry.type === 'file')
+  const source = { repository, revision }
+  const cacheRoot = upstreamCacheRoot(repoRoot)
+  const files = await listUpstreamFiles(source, { manifest: readUpstreamInputs(upstreamInputsPath) })
   const wanted = files.filter((entry) =>
     entry.path.startsWith('kokoro_5s.mlmodelc/') ||
     entry.path.startsWith('G2PEncoder.mlmodelc/') ||
@@ -107,12 +81,23 @@ async function importKokoro(args) {
     throw new Error(`No Kokoro Core ML files found for ${repository}@${revision}`)
   }
 
+  // Every file is fetched and verified before the pack is touched.
+  const cached = []
+  for (const file of wanted) {
+    cached.push([file, await fetchUpstreamFile(cacheRoot, source, file)])
+  }
+  if (args['fetch-only'] === true) {
+    console.log(`Kokoro: ${wanted.length} upstream files verified in ${path.relative(repoRoot, cacheRoot) || cacheRoot}.`)
+    return
+  }
+
   fs.rmSync(outputRoot, { recursive: true, force: true })
   fs.mkdirSync(outputRoot, { recursive: true })
 
-  for (const file of wanted) {
-    const sourceURL = `https://huggingface.co/${repository}/resolve/${revision}/${encodePathSegment(file.path)}`
-    await downloadFile(sourceURL, targetPathForKokoroFile(file.path, outputRoot))
+  for (const [file, cachedPath] of cached) {
+    const destination = targetPathForKokoroFile(file.path, outputRoot)
+    fs.mkdirSync(path.dirname(destination), { recursive: true })
+    fs.copyFileSync(cachedPath, destination)
   }
 
   writeJson(path.join(outputRoot, 'RoachVoice', 'RoachVoiceEmbedding.json'), {
@@ -156,6 +141,5 @@ try {
   const args = parseArgs(process.argv.slice(2))
   await importKokoro(args)
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error)
-  process.exit(1)
+  exitForError(error)
 }
