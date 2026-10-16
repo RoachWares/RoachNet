@@ -12,9 +12,13 @@ final class SetupRecoveryTests: XCTestCase {
     override func setUpWithError() throws {
         parent = NSTemporaryDirectory() + "roachnet-setup-recovery-" + JS.randomHex(6)
         try Files.mkdirp(parent)
+        // Setup's log lines go to this test's folder, never to a real
+        // ~/RoachNet/storage/logs: a log line there is how ROA-94 began.
+        RuntimeLog.redirect(to: Path.join(parent, "setup-test.log"))
     }
 
     override func tearDownWithError() throws {
+        RuntimeLog.redirect(to: nil)
         _ = Processes.run("/bin/rm", ["-rf", parent])
     }
 
@@ -115,10 +119,11 @@ final class SetupRecoveryTests: XCTestCase {
 
     private struct InjectedFailure: Error {}
 
-    /// A restore interrupted part-way (the cross-device copy fallback can leave a
-    /// partial root) keeps the person's data in the backup, moves the partial
-    /// root aside without deleting it, and leaves a setup-only root, so a later
-    /// run restores the install rather than leaving it half-done.
+    /// A restore whose second move fails because something is at the root
+    /// again (recreated between the two moves) keeps the person's data in the
+    /// backup, moves what is at the root aside without deleting it, and leaves
+    /// a setup-only root, so a later run restores the install rather than
+    /// leaving it half-done.
     func testARestoreInterruptedPartWayKeepsTheDataAndRetries() throws {
         let backup = try installMovedAside()
         try Files.mkdirp(Path.join(root, "setup", "RoachNet Setup.app"))
@@ -126,14 +131,14 @@ final class SetupRecoveryTests: XCTestCase {
         let engine = self.engine
         engine.moveIntoPlace = { source, destination in
             if Path.basename(source).hasPrefix("RoachNet.backup-") {
-                // Some of the backup reached the root, then the move failed.
+                // Something wrote to the root, then the move failed.
                 try Files.mkdirp(Path.join(destination, "storage", "Vault", "notes"))
                 try Files.write("half", to: Path.join(destination, "storage", "Vault", "notes", "keep.md"))
                 throw InjectedFailure()
             }
             try SetupPlatform.moveItem(source, destination)
         }
-        engine.recoverInterruptedInstall(finalRoot: root)
+        guard case .restoreFailed(.backupNotMovable) = engine.recoverInterruptedInstall(finalRoot: root) else { return XCTFail("the restore should stop") }
         XCTAssertEqual(Files.readText(Path.join(backup, "storage", "Vault", "notes", "keep.md")), "the person's note", "the data is preserved in the backup")
         XCTAssertTrue(self.engine.holdsOnlySetupFiles(root), "the root is left setup-only, so it can be retried")
         let partial = Files.entries(parent).map(\.name).filter { $0.hasPrefix("RoachNet.partial-restore-") }
@@ -157,7 +162,7 @@ final class SetupRecoveryTests: XCTestCase {
         }
         var lines: [String] = []
         engine.onLog = { lines.append($0) }
-        engine.recoverInterruptedInstall(finalRoot: root)
+        guard case .restoreFailed(.rootNotMovable) = engine.recoverInterruptedInstall(finalRoot: root) else { return XCTFail("the restore should stop") }
         XCTAssertTrue(Files.isDirectory(Path.join(root, "setup")), "the setup-only root is untouched")
         XCTAssertTrue(Files.exists(backup), "the backup is kept")
         XCTAssertTrue(lines.contains { $0.contains("could not be restored") }, "\(lines)")
@@ -168,19 +173,20 @@ final class SetupRecoveryTests: XCTestCase {
 
     /// An engine whose install would stop at the free-space check if it ever
     /// got past recovery, so these tests never stage or install anything.
-    private func blockedEngine() -> SetupEngine {
+    private func blockedEngine(_ extra: [String: String] = [:]) -> SetupEngine {
         SetupEngine(environment: [
             "HOME": parent,
             "ROACHNET_SETUP_ALLOW_UNSUPPORTED_HOST": "1",
             "ROACHNET_SETUP_TEST_MIN_FREE_BYTES": String(Int64.max),
-        ])
+        ].merging(extra) { $1 })
     }
 
     private var installRequest: JSON { ["installPath": JSON(root), "installRoachClaw": false, "autoLaunch": false] }
 
     /// Another Setup run (a 1.1.0 Setup takes no run lock) can put the backup
     /// back between this run's two moves. The root is then that install: it is
-    /// left alone, and this run's Setup files are kept beside it, not deleted.
+    /// left alone, this run's Setup files are kept beside it, and the person is
+    /// told what happened.
     func testARestoreThatLostItsBackupToAnotherRunLeavesTheRootAlone() throws {
         let backup = try installMovedAside()
         try Files.mkdirp(Path.join(root, "setup", "RoachNet Setup.app"))
@@ -196,51 +202,96 @@ final class SetupRecoveryTests: XCTestCase {
             try SetupPlatform.moveItem(source, destination)
         }
         let outcome = engine.recoverInterruptedInstall(finalRoot: root)
-        guard case .restoreFailed = outcome else { return XCTFail("\(outcome)") }
+        guard case .restoreFailed(let problem) = outcome, case .backupTaken(_, let kept) = problem else { return XCTFail("\(outcome)") }
+        XCTAssertTrue("\(problem)".contains("most likely another RoachNet Setup"), "\(problem)")
         XCTAssertEqual(Files.readText(Path.join(root, "storage", "Vault", "notes", "keep.md")), "the person's note", "the install the other run put back is untouched")
         XCTAssertFalse(Files.exists(backup))
-        let aside = Files.entries(parent).map(\.name).filter { $0.hasPrefix("RoachNet.setup-files-") }
-        XCTAssertEqual(aside.count, 1, "this run's Setup files are kept")
-        if let folder = aside.first {
-            XCTAssertEqual(Files.readText(Path.join(parent, folder, "setup", "RoachNet Setup.app", "marker")), "newer setup")
-        }
+        XCTAssertEqual(kept.count, 1)
+        XCTAssertEqual(kept.first.flatMap { Files.readText(Path.join($0, "setup", "RoachNet Setup.app", "marker")) }, "newer setup", "this run's Setup files are kept where it says")
     }
 
     /// A backup that should have been put back and wasn't stops the install
     /// before anything is staged, so RoachNet doesn't open empty while the
-    /// person's data sits in the backup.
+    /// person's data sits in the backup. The message says where it is.
     func testAFailedRestoreStopsTheInstall() throws {
         let backup = try installMovedAside()
         try Files.mkdirp(Path.join(root, "setup", "RoachNet Setup.app"))
         let engine = blockedEngine()
-        RuntimeLog.redirect(to: engine.setupLogPath)
-        defer { RuntimeLog.redirect(to: nil) }
         engine.moveIntoPlace = { source, destination in
             if Path.basename(source).hasPrefix("RoachNet.backup-") { throw InjectedFailure() }
             try SetupPlatform.moveItem(source, destination)
         }
         let task = try engine.installSynchronously(installRequest)
         XCTAssertEqual(task["status"].stringValue, "failed")
-        XCTAssertTrue(task["error"].jsString.contains("could not put back"), task["error"].jsString)
+        let error = task["error"].jsString
+        XCTAssertTrue(error.contains("couldn't put back"), error)
+        XCTAssertTrue(error.contains("~/\(Path.basename(backup))"), "the message says where the install is: \(error)")
         XCTAssertEqual(Files.readText(Path.join(backup, "storage", "Vault", "notes", "keep.md")), "the person's note")
         XCTAssertTrue(engine.holdsOnlySetupFiles(root), "the root is as it was")
         XCTAssertEqual(Files.entries(parent).map(\.name).filter { $0.hasPrefix("RoachNet.") }, [Path.basename(backup)], "nothing was staged or moved aside")
     }
 
+    /// A backup that can't be read may hold the person's data, so it stops the
+    /// install rather than being passed over.
+    func testAnUnreadableBackupStopsTheInstall() throws {
+        try XCTSkipIf(getuid() == 0, "root can read any folder")
+        let backup = Path.join(parent, "RoachNet.backup-1760000000000")
+        let storage = Path.join(backup, "storage")
+        try Files.mkdirp(Path.join(backup, "setup"))
+        try Files.mkdirp(Path.join(storage, "Vault"))
+        chmod(storage, 0)
+        defer { chmod(storage, 0o755) }
+        let engine = blockedEngine()
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.backupUnreadable(backup: backup)))
+        let task = try engine.installSynchronously(installRequest)
+        XCTAssertEqual(task["status"].stringValue, "failed")
+        XCTAssertTrue(task["error"].jsString.contains("can't read"), task["error"].jsString)
+        XCTAssertFalse(Files.exists(root), "nothing was installed")
+        XCTAssertTrue(Files.isDirectory(backup))
+    }
+
+    /// Whether a folder holds only Setup's files doesn't depend on the order
+    /// its entries are listed in: anything readable that is more decides it,
+    /// even when another part can't be read.
+    func testAFolderPartlyUnreadableIsJudgedByWhatCanBeRead() throws {
+        try XCTSkipIf(getuid() == 0, "root can read any folder")
+        var locked: [String] = []
+        defer { for path in locked { chmod(path, 0o755) } }
+        for index in 0..<16 {
+            let folder = Path.join(parent, "shape-\(index)")
+            try Files.mkdirp(Path.join(folder, "storage", "Vault"))
+            try Files.write("mine", to: Path.join(folder, "extra-\(index).txt"))
+            chmod(Path.join(folder, "storage"), 0)
+            locked.append(Path.join(folder, "storage"))
+            XCTAssertEqual(engine.holdsOnlySetupShape(folder), false, "shape-\(index)")
+            XCTAssertEqual(engine.holdsMoreThanSetupFiles(folder), true, "shape-\(index)")
+        }
+        // A backup with an install whose storage can't be read is put back.
+        let backup = try installMovedAside()
+        chmod(Path.join(backup, "storage"), 0)
+        locked += [Path.join(backup, "storage"), Path.join(root, "storage")]
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restored)
+        XCTAssertTrue(Files.exists(Path.join(root, "app", "RoachNet.app", "Contents", "marker")))
+    }
+
     /// A folder the person named like a backup isn't Setup's, so it is never
     /// moved into the install's place.
     func testOnlySetupsOwnBackupsAreRestored() throws {
-        let own = Path.join(parent, "RoachNet.backup-before-1.1")
-        try Files.mkdirp(Path.join(own, "storage", "Vault"))
-        try Files.write("kept by hand", to: Path.join(own, "storage", "Vault", "mine.md"))
+        for name in ["RoachNet.backup-before-1.1", "RoachNet.backup-20251015", "RoachNet.backup-202510151200"] {
+            let own = Path.join(parent, name)
+            try Files.mkdirp(Path.join(own, "storage", "Vault"))
+            try Files.write("kept by hand", to: Path.join(own, "storage", "Vault", "mine.md"))
+        }
         XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .noBackup)
         XCTAssertFalse(Files.exists(root))
-        XCTAssertEqual(Files.readText(Path.join(own, "storage", "Vault", "mine.md")), "kept by hand")
+        XCTAssertEqual(Files.readText(Path.join(parent, "RoachNet.backup-20251015", "storage", "Vault", "mine.md")), "kept by hand")
     }
 
     /// The backup put back is the newest one holding more than Setup's own
     /// files: a run cut off twice can leave a newer one holding only those.
+    /// The others are kept, and the log says so.
     func testTheNewestBackupThatHoldsAnInstallIsRestored() throws {
+        let oldest = try installMovedAside(stamp: 1_700_000_000_000)
         let older = try installMovedAside(stamp: 1_760_000_000_000)
         let newer = try installMovedAside(stamp: 1_760_000_100_000)
         try Files.write("the newer note", to: Path.join(newer, "storage", "Vault", "notes", "keep.md"))
@@ -248,14 +299,16 @@ final class SetupRecoveryTests: XCTestCase {
         try Files.mkdirp(Path.join(shell, "setup", "RoachNet Setup.app"))
         try Files.mkdirp(Path.join(shell, "storage", "logs"))
         try Files.write("[then] setup line\n", to: Path.join(shell, "storage", "logs", "roachnet-native-api.log"))
-        // An earlier time with fewer digits, which sorts last as text.
-        let oldest = try installMovedAside(stamp: 999)
+        let engine = self.engine
+        var lines: [String] = []
+        engine.onLog = { lines.append($0) }
         XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restored)
         XCTAssertEqual(Files.readText(Path.join(root, "storage", "Vault", "notes", "keep.md")), "the newer note")
         XCTAssertFalse(Files.exists(newer))
         XCTAssertTrue(Files.exists(older), "older backups are kept")
         XCTAssertTrue(Files.exists(oldest))
         XCTAssertTrue(Files.isDirectory(shell), "the backup holding only Setup's files is kept")
+        XCTAssertTrue(lines.contains { $0.contains("3 other backups are kept") }, "\(lines)")
     }
 
     /// A root, or a folder in it, that can't be read may hold anything: it is
@@ -291,8 +344,6 @@ final class SetupRecoveryTests: XCTestCase {
     func testTwoSetupRunsCannotOverlap() throws {
         let backup = try installMovedAside()
         let engine = blockedEngine()
-        RuntimeLog.redirect(to: engine.setupLogPath)
-        defer { RuntimeLog.redirect(to: nil) }
         do {
             let first = try SetupRunLock(path: engine.setupLockPath)
             defer { withExtendedLifetime(first) {} }
@@ -307,6 +358,36 @@ final class SetupRecoveryTests: XCTestCase {
         }
         XCTAssertNoThrow(try SetupRunLock(path: engine.setupLockPath), "the lock is free once the first run is over")
         XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restored, "and the next run goes ahead")
+    }
+
+    /// A lock Setup can't use (its folder can't be written, or the file system
+    /// has no locks) doesn't stop the install: Setup goes ahead as 1.1.0 did,
+    /// says so in its log, and recovery still puts the install back.
+    func testALockSetupCannotUseDoesNotStopTheInstall() throws {
+        let backup = try installMovedAside()
+        let blocker = Path.join(parent, "not-a-folder")
+        try Files.write("a file where the config folder would be", to: blocker)
+        let engine = blockedEngine(["ROACHNET_INSTALLER_CONFIG_PATH": Path.join(blocker, "installer.json")])
+        var lines: [String] = []
+        engine.onLog = { lines.append($0) }
+        let task = try engine.installSynchronously(installRequest)
+        XCTAssertTrue(lines.contains { $0.contains("can't use its lock file") }, "\(lines)")
+        XCTAssertFalse(task["error"].jsString.contains("Another RoachNet Setup"), task["error"].jsString)
+        XCTAssertEqual(Files.readText(Path.join(root, "storage", "Vault", "notes", "keep.md")), "the person's note", "recovery still ran")
+        XCTAssertFalse(Files.exists(backup))
+    }
+
+    /// Putting the cask's newer Setup app in place replaces only that app:
+    /// anything else in the install's `setup` folder stays.
+    func testRestoringKeepsOtherFilesInTheSetupFolder() throws {
+        let backup = try installMovedAside()
+        try Files.write("mine", to: Path.join(backup, "setup", "my-notes.txt"))
+        try Files.mkdirp(Path.join(root, "setup", "RoachNet Setup.app"))
+        try Files.write("newer setup", to: Path.join(root, "setup", "RoachNet Setup.app", "marker"))
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restored)
+        XCTAssertEqual(Files.readText(Path.join(root, "setup", "RoachNet Setup.app", "marker")), "newer setup")
+        XCTAssertEqual(Files.readText(Path.join(root, "setup", "my-notes.txt")), "mine")
+        XCTAssertFalse(Files.entries(parent).contains { $0.name.hasPrefix("RoachNet.setup-files-") }, "nothing is left beside the install")
     }
 
     /// Only Setup's own unfinished staging folders are removed: not a folder
@@ -344,22 +425,35 @@ final class SetupRecoveryTests: XCTestCase {
         XCTAssertFalse(matches("RoachNetX.staging-0123abcd", .staging))
         XCTAssertFalse(matches("RoachNet.backup-01234567", .staging))
         XCTAssertTrue(matches("RoachNet.backup-1760000000000", .backup))
-        XCTAssertTrue(matches("RoachNet.backup-7", .backup))
+        XCTAssertFalse(matches("RoachNet.backup-7", .backup), "Setup writes a 13-digit time")
+        XCTAssertFalse(matches("RoachNet.backup-20251015", .backup))
+        XCTAssertFalse(matches("RoachNet.backup-202510151200", .backup))
+        XCTAssertFalse(matches("RoachNet.backup-20251015120000", .backup))
         XCTAssertFalse(matches("RoachNet.backup-before-1.1", .backup))
         XCTAssertFalse(matches("RoachNet.backup-", .backup))
-        XCTAssertFalse(matches("RoachNet.backup--5", .backup))
-        XCTAssertFalse(matches("RoachNet.backup-12345678901234567890", .backup), "longer than any time Setup writes")
-        XCTAssertFalse(matches("RoachNet.backup-\u{0661}\u{0662}", .backup), "only ASCII digits")
+        XCTAssertFalse(matches("RoachNet.backup--1760000000000", .backup))
+        XCTAssertFalse(matches("RoachNet.backup-\u{0661}\u{0662}\u{0663}\u{0664}\u{0665}\u{0666}\u{0667}\u{0668}\u{0669}\u{0660}\u{0661}\u{0662}\u{0663}", .backup), "only ASCII digits")
         XCTAssertFalse(matches("My RoachNet.backup-1760000000000", .backup))
         XCTAssertFalse(matches("RoachNet.staging-0123abcd", .backup))
         #if canImport(Darwin)
         XCTAssertTrue(matches("roachnet.Staging-0123abcd", .staging, ignoringCase: true), "a volume that ignores case")
         XCTAssertFalse(matches("roachnet.Staging-0123abcd", .staging, ignoringCase: false), "a case-sensitive volume")
-        XCTAssertTrue(SetupEngine.isSetupSibling("Cafe\u{301}.backup-5", base: "Caf\u{E9}", kind: .backup, ignoringCase: false), "macOS takes both Unicode forms as one name")
+        XCTAssertTrue(SetupEngine.isSetupSibling("Cafe\u{301}.backup-1760000000000", base: "Caf\u{E9}", kind: .backup, ignoringCase: false), "macOS takes both Unicode forms as one name")
         #else
         XCTAssertFalse(matches("roachnet.Staging-0123abcd", .staging, ignoringCase: true))
-        XCTAssertFalse(SetupEngine.isSetupSibling("Cafe\u{301}.backup-5", base: "Caf\u{E9}", kind: .backup, ignoringCase: false), "Linux keeps the two forms apart")
+        XCTAssertFalse(SetupEngine.isSetupSibling("Cafe\u{301}.backup-1760000000000", base: "Caf\u{E9}", kind: .backup, ignoringCase: false), "Linux keeps the two forms apart")
         #endif
+    }
+
+    /// A broken link where the install should be (to a drive that isn't
+    /// connected, say) is something there: it is left as it is, and so is the
+    /// backup, rather than the backup being moved over it.
+    func testABrokenLinkAtTheRootIsLeftAlone() throws {
+        let backup = try installMovedAside()
+        try FileManager.default.createSymbolicLink(atPath: root, withDestinationPath: Path.join(parent, "a drive that isn't connected"))
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .keptBackups)
+        XCTAssertTrue(Files.exists(backup), "the backup is kept")
+        XCTAssertNotNil(Files.lstatInfo(root), "the link is left as it is")
     }
 
     /// Whether names ignore case is the volume's own answer.
