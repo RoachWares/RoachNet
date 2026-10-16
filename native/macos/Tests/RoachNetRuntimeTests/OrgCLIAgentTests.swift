@@ -50,7 +50,9 @@ final class OrgCLIAgentTests: XCTestCase {
         let observations = tracer.store.observations(traceId)
         let generations = observations.filter { $0.type == .generation }
         XCTAssertEqual(generations.count, 2)
-        XCTAssertEqual(generations.first?.usage, TraceUsage(inputTokens: 142, outputTokens: 9, cachedInputTokens: 100))
+        // By name: both turns can start in the same millisecond, and then the
+        // list's order isn't the order of the turns.
+        XCTAssertEqual(generations.first { $0.name == "turn 1" }?.usage, TraceUsage(inputTokens: 142, outputTokens: 9, cachedInputTokens: 100))
         XCTAssertTrue(generations.allSatisfy { $0.cost?.billingType == "subscription_included" && $0.cost?.totalUsd == 0 })
         let tool = try XCTUnwrap(observations.first { $0.type == .tool })
         XCTAssertEqual(tool.name, "Bash")
