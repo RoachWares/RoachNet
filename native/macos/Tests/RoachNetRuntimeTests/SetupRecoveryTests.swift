@@ -545,9 +545,23 @@ final class SetupRecoveryTests: XCTestCase {
         XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.rootIsBrokenLink(root: root)))
         let task = try engine.installSynchronously(installRequest)
         XCTAssertEqual(task["errorKind"].stringValue, "stopped")
-        XCTAssertTrue(task["error"].jsString.contains("is a link to something that isn't there"), task["error"].jsString)
+        XCTAssertTrue(task["error"].jsString.contains("is a link to something Setup can't reach"), task["error"].jsString)
         XCTAssertTrue(Files.exists(backup), "the backup is kept")
         XCTAssertNotNil(Files.lstatInfo(root), "the link is left as it is")
+    }
+
+    /// A backup that is a link to something Setup can't reach (a linked
+    /// install whose drive isn't connected) stops Setup rather than being
+    /// passed over, unless a newer backup holds the install.
+    func testABrokenLinkBackupStopsARestore() throws {
+        let link = Path.join(parent, "RoachNet.backup-1760000100000")
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: Path.join(parent, "a drive that isn't connected"))
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.backupIsBrokenLink(backup: link)))
+        XCTAssertFalse(Files.exists(root))
+        XCTAssertNotNil(Files.lstatInfo(link), "the link is left as it is")
+        _ = try installMovedAside(stamp: 1_760_000_200_000)
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restored, "a newer backup holding the install is put back")
+        XCTAssertNotNil(Files.lstatInfo(link), "and the link is kept")
     }
 
     /// Whether names ignore case is the volume's own answer.

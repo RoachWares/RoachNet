@@ -576,6 +576,17 @@ public final class SetupEngine {
         } catch {
             let message = sanitizeError(error, plan)
             let kind = Self.errorKind(error)
+            // Tidied up first, so the task shows "running" until its result is
+            // filed just below: a task that looked finished while this ran
+            // would let the Setup app offer a new install too early.
+            if let stagingRoot {
+                if environment["ROACHNET_SETUP_KEEP_STAGED_FAILURE"] == "1" {
+                    log("Preserving the staged install for debugging.")
+                } else {
+                    Files.remove(stagingRoot)
+                    log("Removed the staged install so this Mac can retry setup cleanly.")
+                }
+            }
             updateTask { task in
                 task["status"] = "failed"
                 task["currentStep"] = JSON(kind == "failed"
@@ -586,14 +597,6 @@ public final class SetupEngine {
                 task["errorKind"] = JSON(kind)
             }
             log("Setup failed: \(message)")
-            if let stagingRoot {
-                if environment["ROACHNET_SETUP_KEEP_STAGED_FAILURE"] == "1" {
-                    log("Preserving the staged install for debugging.")
-                } else {
-                    Files.remove(stagingRoot)
-                    log("Removed the staged install so this Mac can retry setup cleanly.")
-                }
-            }
         }
         // The lock goes before the result is published, so a client that
         // starts the next install as soon as it sees this one finish isn't
@@ -680,6 +683,8 @@ public final class SetupEngine {
         case folderUnreadable(folder: String)
         /// The backup, or the folder in it named, can't be read.
         case backupUnreadable(backup: String, unreadable: String)
+        /// The backup is a link to something Setup can't reach.
+        case backupIsBrokenLink(backup: String)
         /// What is in the install folder now couldn't be moved aside.
         case rootNotMovable(backup: String, reason: String)
         /// The backup couldn't be moved into place.
@@ -694,12 +699,14 @@ public final class SetupEngine {
             let stopped = "Setup stopped without installing anything or deleting your files."
             switch self {
             case .rootIsBrokenLink(let root):
-                return "\(root) is a link to something that isn't there, such as a drive that isn't connected. \(stopped) Connect it, or remove the link, then \(Self.again)."
+                return "\(root) is a link to something Setup can't reach, such as a drive that isn't connected. \(stopped) Connect it, or remove the link, then \(Self.again)."
             case .folderUnreadable(let folder):
                 return "Setup can't read \(folder), the folder that holds the install, so it can't tell whether an earlier upgrade left your previous install there. \(stopped) Make that folder readable, then \(Self.again)."
             case .backupUnreadable(let backup, let unreadable):
                 let what = unreadable == backup ? "which Setup can't read" : "and Setup can't read \(unreadable) inside it"
                 return "An earlier upgrade left your previous install in \(backup), \(what). \(stopped) Make that folder readable, then \(Self.again). To install without it, move the backup somewhere else first."
+            case .backupIsBrokenLink(let backup):
+                return "An earlier upgrade left your previous install in \(backup), a link to something Setup can't reach, such as a drive that isn't connected. \(stopped) Connect it, then \(Self.again). To install without it, move the link somewhere else first."
             case .rootNotMovable(let backup, let reason):
                 return "An earlier upgrade left your previous install in \(backup), but Setup couldn't move what is in the install folder now aside to put it back (\(reason)). \(stopped) Quit RoachNet and anything else using the install folder, make sure you can rename it, then \(Self.again)."
             case .backupNotMovable(let backup, let reason, let kept):
@@ -713,11 +720,13 @@ public final class SetupEngine {
         var logNote: String {
             switch self {
             case .rootIsBrokenLink(let root):
-                return "The install folder \(root) is a link to something that isn't there, so Setup left it, and any backups beside it, as they are."
+                return "The install folder \(root) is a link to something Setup can't reach, so Setup left it, and any backups beside it, as they are."
             case .folderUnreadable(let folder):
                 return "Setup can't list \(folder), the folder that holds the install, so it left any backups there as they are."
             case .backupUnreadable(let backup, let unreadable):
                 return "An earlier upgrade left a backup at \(backup) that Setup can't read (\(unreadable)), so it was left as it is."
+            case .backupIsBrokenLink(let backup):
+                return "An earlier upgrade left a backup at \(backup) that is a link to something Setup can't reach, so it was left as it is."
             case .rootNotMovable(let backup, let reason):
                 return "An earlier upgrade left a backup at \(backup) that could not be restored automatically: what is in the install folder now couldn't be moved aside (\(reason))."
             case .backupNotMovable(let backup, let reason, let kept):
@@ -774,7 +783,10 @@ public final class SetupEngine {
         defer { for note in notes { log(note) } }
         // A folder that can't be listed may hold a backup.
         guard let siblings = Files.entriesIfReadable(parent) else {
-            guard rootMissing || onlySetupFiles else { return .keptBackups }
+            guard rootMissing || onlySetupFiles else {
+                notes.append(RestoreProblem.folderUnreadable(folder: parent).logNote)
+                return .keptBackups
+            }
             let problem = RestoreProblem.folderUnreadable(folder: parent)
             notes.append(problem.logNote)
             return .restoreFailed(problem)
@@ -789,9 +801,15 @@ public final class SetupEngine {
             }
         }
         // Only Setup's own backups, newest first by their time, however their
-        // names are spelled. A backup of a linked root is a link to a folder.
-        let backups = siblings.map(\.name)
-            .filter { Self.isSetupSibling($0, base: base, kind: .backup, ignoringCase: ignoringCase) && Files.isDirectory(Path.join(parent, $0)) }
+        // names are spelled. A backup of a linked root is a link: to a folder,
+        // or, when its drive isn't connected, to something Setup can't reach.
+        let backups = siblings
+            .filter { entry in
+                guard Self.isSetupSibling(entry.name, base: base, kind: .backup, ignoringCase: ignoringCase) else { return false }
+                let path = Path.join(parent, entry.name)
+                return entry.isDirectory || (entry.isSymbolicLink && (Files.isDirectory(path) || !Files.exists(path)))
+            }
+            .map(\.name)
             .sorted { (Self.backupStamp($0), $0) > (Self.backupStamp($1), $1) }
         guard let newest = backups.first else { return .noBackup }
         let several = backups.count > 1
@@ -805,6 +823,11 @@ public final class SetupEngine {
         var chosen: String?
         search: for name in backups {
             let folder = Path.join(parent, name)
+            if !Files.exists(folder) {
+                let problem = RestoreProblem.backupIsBrokenLink(backup: folder)
+                notes.append(problem.logNote)
+                return .restoreFailed(problem)
+            }
             switch backupShape(folder) {
             case .unreadable(let unreadable):
                 let problem = RestoreProblem.backupUnreadable(backup: folder, unreadable: unreadable)
