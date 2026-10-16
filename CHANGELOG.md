@@ -2,7 +2,7 @@
 
 ## v1.1.1 - not yet released
 
-Security maintenance release for 1.1.0: the download fix below and related download safeguards. Nothing else in the app changes, apart from the download behavior those safeguards need.
+Security maintenance release for 1.1.0: the download fix below, related download safeguards, and a Setup fix for upgrades that were cut off. Nothing else in the app changes.
 
 ### Security
 
@@ -21,12 +21,20 @@ Security maintenance release for 1.1.0: the download fix below and related downl
 
 ### Setup and recovery
 
-- An upgrade cut off after the old install was moved aside now comes back with the person's data. Setup logs to `setup.log` beside the installer config (`~/Library/Application Support/roachnet/setup.log`), not the install's `storage/logs`: writing that log recreated `~/RoachNet`, and with it an install root that an interrupted upgrade had moved aside, before Setup looked for it, so Setup kept the backup instead of restoring it and RoachNet came back empty (the data stayed in `~/RoachNet.backup-…`). Recovery now decides what it finds before it logs anything, and puts the install back when the root holds only Setup's own files (the Setup app the Homebrew cask put back, and an older Setup's log, which are both kept). The folders an interrupted run left are matched the way the install's volume matches names: exactly on a case- and form-sensitive volume, and in either Unicode form or either case where the volume ignores them.
+- An upgrade cut off after the old install was moved aside now comes back with the person's data. Setup logs to `setup.log` beside the installer config (`~/Library/Application Support/roachnet/setup.log`), not the install's `storage/logs`: writing that log (or, with Homebrew, the cask putting its Setup app back) recreated `~/RoachNet`, and with it an install root that an interrupted upgrade had moved aside, before Setup looked for it, so Setup kept the backup instead of restoring it and RoachNet came back empty (the data stayed in `~/RoachNet.backup-…`).
+  - Recovery decides what it finds before it writes anything in the install folder, and puts the install back when the root is missing or holds only Setup's own files (the Setup app the Homebrew cask put back, and an older Setup's log, which are both kept).
+  - It puts back the newest backup holding more than Setup's own files, and counts only the folders Setup makes: `<root>.backup-` with Setup's 13-digit time (a backup of a linked install is a link, and counts too), and unfinished `<root>.staging-` folders with Setup's 8-character id. Anything else is left alone. Earlier versions removed everything beside the install whose name began with `<root>.staging-`.
+  - Two 1.1.1 Setups no longer run at once: Setup holds a lock (`setup.lock`, beside the installer config) for the whole install, and a second Setup stops and says why. A lock file Setup can't open (another user's, or a link put in its place) stops it too, and the message names the file. Where the lock can't be used for any other reason (its folder can't be made or written, or the file system has no locks), Setup says so in its log, goes ahead without it, and leaves staging folders alone.
+  - Setup stops before staging anything, with a message that says what it found and what to do, when a backup should have been put back and wasn't, when a backup can't be read or the folder that holds the install can't be listed to look for one, and when the install folder, or a backup Setup would put back, is a link to something Setup can't reach. Before, it went on to install, and RoachNet could open empty.
+  - `roachnet-runtime --install` exits with status 75 when another Setup is running or its lock file can't be opened, and 65 when Setup stopped this way, so the Homebrew cask can keep the new Setup app instead of failing the upgrade, which would put the previous version back and run its installer.
+  - Recovery removes only Setup's own unfinished staging folders and the older copy of the Setup app it replaces with the cask's newer one; anything else in `setup/` stays. Whatever it has to clear from the install folder is moved aside and kept, and a folder it can't read is never taken for one holding only Setup's files, or for an empty one.
+  - Names are matched the way the volume matches them: on macOS in either Unicode form, and ignoring case on a volume that does (or whose case behavior can't be read); on Linux, exactly.
 
 ### Tests and release builds
 
-- The Metal kernel host check compiles again, so release qualification runs it instead of failing (ROA-97). Test-only: no kernel or app code changed.
-- A fresh import of the RoachVoice Chatterbox pack writes the pack its recorded digests describe again, so the release build can verify it (ROA-79). Build tooling only: the published pack doesn't change.
+- The Metal kernel host check compiles again, so release qualification runs it instead of failing. Test-only: no kernel or app code changed.
+- A fresh import of the RoachVoice Chatterbox pack writes the pack its recorded digests describe again, so the release build can verify it. Build tooling only: the published pack doesn't change.
+- A Claude stream trace test finds the first turn by name instead of by list order, so it no longer fails when two turns start in the same millisecond. Test-only.
 
 ## v1.1.0 - 2026-10-12
 
