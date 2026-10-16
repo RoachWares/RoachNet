@@ -210,6 +210,24 @@ final class SetupRecoveryTests: XCTestCase {
         XCTAssertEqual(kept.first.flatMap { Files.readText(Path.join($0, "setup", "RoachNet Setup.app", "marker")) }, "newer setup", "this run's Setup files are kept where it says")
     }
 
+    /// With the install folder missing, a backup something else moved first
+    /// is reported as that, not as a move that failed.
+    func testABackupTakenWhileTheRootIsMissingIsReported() throws {
+        let backup = try installMovedAside()
+        let elsewhere = Path.join(parent, "moved-by-something-else")
+        let engine = self.engine
+        engine.moveIntoPlace = { source, destination in
+            if Path.basename(source).hasPrefix("RoachNet.backup-") {
+                try SetupPlatform.moveItem(source, elsewhere)
+                throw InjectedFailure()
+            }
+            try SetupPlatform.moveItem(source, destination)
+        }
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.backupTaken(backup: backup, kept: [])))
+        XCTAssertFalse(Files.exists(root))
+        XCTAssertEqual(Files.readText(Path.join(elsewhere, "storage", "Vault", "notes", "keep.md")), "the person's note")
+    }
+
     /// A backup that should have been put back and wasn't stops the install
     /// before anything is staged, so RoachNet doesn't open empty while the
     /// person's data sits in the backup. The message says where it is.
@@ -223,16 +241,19 @@ final class SetupRecoveryTests: XCTestCase {
         }
         let task = try engine.installSynchronously(installRequest)
         XCTAssertEqual(task["status"].stringValue, "failed")
+        XCTAssertEqual(task["errorKind"].stringValue, "stopped")
         let error = task["error"].jsString
         XCTAssertTrue(error.contains("couldn't put back"), error)
         XCTAssertTrue(error.contains("~/\(Path.basename(backup))"), "the message says where the install is: \(error)")
+        XCTAssertTrue(error.contains("brew reinstall --cask roachnet"), "the message says how to run Setup again: \(error)")
         XCTAssertEqual(Files.readText(Path.join(backup, "storage", "Vault", "notes", "keep.md")), "the person's note")
         XCTAssertTrue(engine.holdsOnlySetupFiles(root), "the root is as it was")
         XCTAssertEqual(Files.entries(parent).map(\.name).filter { $0.hasPrefix("RoachNet.") }, [Path.basename(backup)], "nothing was staged or moved aside")
     }
 
     /// A backup that can't be read may hold the person's data, so it stops the
-    /// install rather than being passed over.
+    /// install rather than being passed over, and the message names the
+    /// folder that can't be read.
     func testAnUnreadableBackupStopsTheInstall() throws {
         try XCTSkipIf(getuid() == 0, "root can read any folder")
         let backup = Path.join(parent, "RoachNet.backup-1760000000000")
@@ -242,12 +263,19 @@ final class SetupRecoveryTests: XCTestCase {
         chmod(storage, 0)
         defer { chmod(storage, 0o755) }
         let engine = blockedEngine()
-        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.backupUnreadable(backup: backup)))
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.backupUnreadable(backup: backup, unreadable: storage)))
         let task = try engine.installSynchronously(installRequest)
         XCTAssertEqual(task["status"].stringValue, "failed")
-        XCTAssertTrue(task["error"].jsString.contains("can't read"), task["error"].jsString)
+        XCTAssertEqual(task["errorKind"].stringValue, "stopped")
+        let error = task["error"].jsString
+        XCTAssertTrue(error.contains("can't read ~/\(Path.basename(backup))/storage inside it"), error)
         XCTAssertFalse(Files.exists(root), "nothing was installed")
         XCTAssertTrue(Files.isDirectory(backup))
+        // A backup that can't be opened at all is the folder named.
+        chmod(storage, 0o755)
+        chmod(backup, 0)
+        defer { chmod(backup, 0o755) }
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.backupUnreadable(backup: backup, unreadable: backup)))
     }
 
     /// Whether a folder holds only Setup's files doesn't depend on the order
@@ -257,15 +285,25 @@ final class SetupRecoveryTests: XCTestCase {
         try XCTSkipIf(getuid() == 0, "root can read any folder")
         var locked: [String] = []
         defer { for path in locked { chmod(path, 0o755) } }
+        var sawStorageFirst = false
         for index in 0..<16 {
             let folder = Path.join(parent, "shape-\(index)")
-            try Files.mkdirp(Path.join(folder, "storage", "Vault"))
-            try Files.write("mine", to: Path.join(folder, "extra-\(index).txt"))
-            chmod(Path.join(folder, "storage"), 0)
-            locked.append(Path.join(folder, "storage"))
+            let storage = Path.join(folder, "storage")
+            // Names on either side of "storage", made before or after it, so
+            // that some listing puts storage first whatever order the file
+            // system lists in.
+            let extra = Path.join(folder, index % 2 == 0 ? "a-extra-\(index).txt" : "z-extra-\(index).txt")
+            if index % 4 < 2 { try Files.write("mine", to: extra) }
+            try Files.mkdirp(Path.join(storage, "Vault"))
+            if index % 4 >= 2 { try Files.write("mine", to: extra) }
+            chmod(storage, 0)
+            locked.append(storage)
+            if Files.entries(folder).first?.name == "storage" { sawStorageFirst = true }
+            XCTAssertEqual(engine.setupShape(folder), .more, "shape-\(index)")
             XCTAssertEqual(engine.holdsOnlySetupShape(folder), false, "shape-\(index)")
             XCTAssertEqual(engine.holdsMoreThanSetupFiles(folder), true, "shape-\(index)")
         }
+        XCTAssertTrue(sawStorageFirst, "some folder listed storage first, so the listing order was put to the test")
         // A backup with an install whose storage can't be read is put back.
         let backup = try installMovedAside()
         chmod(Path.join(backup, "storage"), 0)
@@ -338,6 +376,23 @@ final class SetupRecoveryTests: XCTestCase {
         XCTAssertEqual(Files.readText(Path.join(logs, "roachnet-native-api.log")), "[now] setup line\n", "the root is untouched")
     }
 
+    /// When the folder that holds the install can't be listed, Setup can't
+    /// tell whether a backup is there: with nothing installed it stops, and
+    /// with an install in place it goes on and leaves that folder alone.
+    func testAnUnlistableFolderAroundTheInstallStopsARestore() throws {
+        try XCTSkipIf(getuid() == 0, "root can read any folder")
+        let box = Path.join(parent, "box")
+        let boxed = Path.join(box, "RoachNet")
+        try Files.mkdirp(Path.join(box, "RoachNet.backup-1760000000000", "storage", "Vault"))
+        chmod(box, 0o300)
+        defer { chmod(box, 0o755) }
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: boxed), .restoreFailed(.folderUnreadable(folder: box)))
+        chmod(box, 0o755)
+        try Files.write("{}", to: Path.join(boxed, SetupEngine.installManifestName))
+        chmod(box, 0o300)
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: boxed), .keptBackups)
+    }
+
     /// Two Setup runs (the Setup app and Homebrew's `--install`, say) never
     /// move the same install at once: the second stops before it looks at the
     /// install, and says why.
@@ -352,6 +407,7 @@ final class SetupRecoveryTests: XCTestCase {
             }
             let task = try engine.installSynchronously(installRequest)
             XCTAssertEqual(task["status"].stringValue, "failed")
+            XCTAssertEqual(task["errorKind"].stringValue, "setup-running")
             XCTAssertTrue(task["error"].jsString.contains("Another RoachNet Setup is running"), task["error"].jsString)
             XCTAssertTrue(Files.exists(backup), "the second run left the backup alone")
             XCTAssertFalse(Files.exists(root))
@@ -360,11 +416,44 @@ final class SetupRecoveryTests: XCTestCase {
         XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restored, "and the next run goes ahead")
     }
 
-    /// A lock Setup can't use (its folder can't be written, or the file system
+    /// A lock file that is there but won't open (another user's, or a link
+    /// put in its place) may be another Setup's: Setup stops before it looks
+    /// at the install, names the file, and says how to clear it.
+    func testALockFileSetupCannotOpenStopsTheInstall() throws {
+        let backup = try installMovedAside()
+        let engine = blockedEngine()
+        let lock = engine.setupLockPath
+        let target = Path.join(parent, "elsewhere.lock")
+        try Files.mkdirp(Path.dirname(lock))
+        try FileManager.default.createSymbolicLink(atPath: lock, withDestinationPath: target)
+        XCTAssertThrowsError(try SetupRunLock(path: lock)) { error in
+            guard let failure = error as? SetupRunLock.Failure, case .blocked = failure else { return XCTFail("\(error)") }
+        }
+        let task = try engine.installSynchronously(installRequest)
+        XCTAssertEqual(task["errorKind"].stringValue, "setup-running")
+        let error = task["error"].jsString
+        XCTAssertTrue(error.contains("remove that file"), error)
+        XCTAssertTrue(error.contains("~/"), "the file is named from ~: \(error)")
+        XCTAssertTrue(Files.exists(backup), "recovery didn't run")
+        XCTAssertFalse(Files.exists(target), "the link wasn't followed")
+        guard getuid() != 0 else { return }
+        Files.removeFile(lock)
+        try Files.write("", to: lock)
+        chmod(lock, 0)
+        defer { chmod(lock, 0o600) }
+        XCTAssertThrowsError(try SetupRunLock(path: lock)) { error in
+            guard let failure = error as? SetupRunLock.Failure, case .blocked = failure else { return XCTFail("\(error)") }
+        }
+    }
+
+    /// A lock Setup can't use (its folder can't be made, or the file system
     /// has no locks) doesn't stop the install: Setup goes ahead as 1.1.0 did,
-    /// says so in its log, and recovery still puts the install back.
+    /// says so in its log, and recovery still puts the install back. Without
+    /// the lock, staging folders are left alone: one may be another Setup's.
     func testALockSetupCannotUseDoesNotStopTheInstall() throws {
         let backup = try installMovedAside()
+        let staging = Path.join(parent, "RoachNet.staging-0123abcd")
+        try Files.mkdirp(Path.join(staging, "app"))
         let blocker = Path.join(parent, "not-a-folder")
         try Files.write("a file where the config folder would be", to: blocker)
         let engine = blockedEngine(["ROACHNET_INSTALLER_CONFIG_PATH": Path.join(blocker, "installer.json")])
@@ -372,9 +461,10 @@ final class SetupRecoveryTests: XCTestCase {
         engine.onLog = { lines.append($0) }
         let task = try engine.installSynchronously(installRequest)
         XCTAssertTrue(lines.contains { $0.contains("can't use its lock file") }, "\(lines)")
-        XCTAssertFalse(task["error"].jsString.contains("Another RoachNet Setup"), task["error"].jsString)
+        XCTAssertNotEqual(task["errorKind"].stringValue, "setup-running", task["error"].jsString)
         XCTAssertEqual(Files.readText(Path.join(root, "storage", "Vault", "notes", "keep.md")), "the person's note", "recovery still ran")
         XCTAssertFalse(Files.exists(backup))
+        XCTAssertTrue(Files.isDirectory(staging), "a staging folder that may be another Setup's is left alone")
     }
 
     /// Putting the cask's newer Setup app in place replaces only that app:
@@ -446,12 +536,16 @@ final class SetupRecoveryTests: XCTestCase {
     }
 
     /// A broken link where the install should be (to a drive that isn't
-    /// connected, say) is something there: it is left as it is, and so is the
-    /// backup, rather than the backup being moved over it.
-    func testABrokenLinkAtTheRootIsLeftAlone() throws {
+    /// connected, say) stops Setup before it installs or closes anything: the
+    /// link and the backup are left as they are.
+    func testABrokenLinkAtTheRootStopsTheInstall() throws {
         let backup = try installMovedAside()
         try FileManager.default.createSymbolicLink(atPath: root, withDestinationPath: Path.join(parent, "a drive that isn't connected"))
-        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .keptBackups)
+        let engine = blockedEngine()
+        XCTAssertEqual(engine.recoverInterruptedInstall(finalRoot: root), .restoreFailed(.rootIsBrokenLink(root: root)))
+        let task = try engine.installSynchronously(installRequest)
+        XCTAssertEqual(task["errorKind"].stringValue, "stopped")
+        XCTAssertTrue(task["error"].jsString.contains("is a link to something that isn't there"), task["error"].jsString)
         XCTAssertTrue(Files.exists(backup), "the backup is kept")
         XCTAssertNotNil(Files.lstatInfo(root), "the link is left as it is")
     }

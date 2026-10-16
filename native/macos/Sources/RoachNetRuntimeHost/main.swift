@@ -98,8 +98,21 @@ if arguments.contains("--install") {
             print("RoachNet installed at \(task["result"]["installPath"].jsString)")
             exit(0)
         }
-        FileHandle.standardError.write(Data("RoachNet install failed: \(task["error"].jsString)\n".utf8))
-        exit(1)
+        // Setup stopping on purpose has its own exit status, so the Homebrew
+        // cask can keep the new Setup app in place instead of failing the
+        // upgrade, which would put the previous version back and run its
+        // older installer (ROA-94).
+        switch task["errorKind"].stringValue ?? "" {
+        case "setup-running":
+            FileHandle.standardError.write(Data("RoachNet Setup stopped: \(task["error"].jsString)\n".utf8))
+            exit(SetupEngine.exitSetupRunning)
+        case "stopped":
+            FileHandle.standardError.write(Data("RoachNet Setup stopped: \(task["error"].jsString)\n".utf8))
+            exit(SetupEngine.exitStopped)
+        default:
+            FileHandle.standardError.write(Data("RoachNet install failed: \(task["error"].jsString)\n".utf8))
+            exit(1)
+        }
     } catch {
         FileHandle.standardError.write(Data("RoachNet install failed: \(error)\n".utf8))
         exit(1)
