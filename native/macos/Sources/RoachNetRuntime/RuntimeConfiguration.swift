@@ -354,9 +354,17 @@ public enum Files {
         public let isSymbolicLink: Bool
     }
 
-    /// `readdirSync(path, { withFileTypes: true })` (lstat semantics).
+    /// `readdirSync(path, { withFileTypes: true })` (lstat semantics). A folder
+    /// that can't be listed gives no entries; `entriesIfReadable` tells the two
+    /// apart.
     public static func entries(_ path: String) -> [DirectoryEntry] {
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else { return [] }
+        entriesIfReadable(path) ?? []
+    }
+
+    /// The entries of `path` (lstat semantics), or nil when it can't be listed:
+    /// a folder that can't be read isn't an empty one (ROA-94).
+    public static func entriesIfReadable(_ path: String) -> [DirectoryEntry]? {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else { return nil }
         return names.map { name in
             let full = Path.join(path, name)
             var info = stat()
