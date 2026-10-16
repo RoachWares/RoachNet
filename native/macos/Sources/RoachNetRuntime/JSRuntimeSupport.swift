@@ -210,6 +210,19 @@ public enum Encoding {
 // MARK: - Paths (POSIX semantics of node:path)
 
 public enum Path {
+    public static func hasNamePrefix(_ name: String, _ prefix: String, ignoringCase: Bool = false) -> Bool {
+        #if canImport(Darwin)
+        func key(_ value: String) -> String.UnicodeScalarView {
+            let decomposed = value.decomposedStringWithCanonicalMapping
+            guard ignoringCase else { return decomposed.unicodeScalars }
+            return decomposed.folding(options: [.caseInsensitive], locale: nil).decomposedStringWithCanonicalMapping.unicodeScalars
+        }
+        return key(name).starts(with: key(prefix))
+        #else
+        return name.unicodeScalars.starts(with: prefix.unicodeScalars)
+        #endif
+    }
+
     public static func normalize(_ path: String) -> String {
         if path.isEmpty { return "." }
         let absolute = path.hasPrefix("/")

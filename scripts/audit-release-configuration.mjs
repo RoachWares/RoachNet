@@ -6,8 +6,8 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const stableVersion = [1, 0, 7]
-const stableBuildNumber = 107
+const stableVersion = [1, 1, 0]
+const stableBuildNumber = 110
 
 function read(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8')
@@ -56,10 +56,10 @@ export function validateCandidateIdentity({
     ? String(version).split('.').map(Number)
     : []
   if (parsedVersion.length !== 3 || compareVersions(parsedVersion, stableVersion) <= 0) {
-    failures.push('Candidate version must be greater than 1.0.7.')
+    failures.push('Candidate version must be greater than 1.1.0.')
   }
   if (!Number.isSafeInteger(Number(buildNumber)) || Number(buildNumber) <= stableBuildNumber) {
-    failures.push('Candidate build number must be greater than 107.')
+    failures.push('Candidate build number must be greater than 110.')
   }
   if (tag !== `v${version}`) failures.push('Candidate tag must exactly match v<package version>.')
   if (!/^[a-f0-9]{40}$/i.test(String(candidateSha || ''))) {

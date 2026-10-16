@@ -15,6 +15,10 @@ public final class NativeRuntime {
     var latestReleaseCache: (cachedAt: Double, release: JSON)?
     var ollamaProcessPID: Int32?
     var downloadJobs: [DownloadJob] = []
+    /// The download writing each file, by `downloadPathKey`, from when it is
+    /// queued until its worker has finished, cancelled jobs included: two
+    /// downloads would share one partial file (ROA-95).
+    var downloadWriters: [String: DownloadJob] = [:]
     var companionLocalURL: String?
     var listenPort: UInt16 = 0
     var companionBoundPort: UInt16 = 0

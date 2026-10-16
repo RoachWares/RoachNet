@@ -204,7 +204,7 @@ public enum RuntimeBuildInfo {
         return Files.realpath(launchedAs) ?? launchedAs
     }
     /// Fallback when neither package metadata nor an app bundle is present.
-    public static let version = "1.1.0"
+    public static let version = "1.1.1"
     public static let executableName = "roachnet-runtime"
 
     /// The source commit this build came from (ROA-40): `ROACHNET_SOURCE_COMMIT`,
@@ -240,19 +240,31 @@ public enum RuntimeBuildInfo {
 
 public enum RuntimeLog {
     private static let lock = NSLock()
+    private static var redirectedPath: String?
+
+    /// Sends this process's log to `path` instead of `<storage>/logs`. Setup's
+    /// modes (`--setup`, `--install`) log beside the installer config: the
+    /// default sits inside the install root, and a log line there recreates a
+    /// root that an interrupted upgrade moved aside before Setup can put it
+    /// back (ROA-94). nil goes back to the default.
+    public static func redirect(to path: String?) {
+        lock.lock()
+        redirectedPath = path
+        lock.unlock()
+    }
 
     public static func write(_ line: String) {
-        let config = RuntimeConfiguration.shared
         let entry = "[\(JS.isoNow())] \(line)\n"
         lock.lock()
         defer { lock.unlock() }
-        try? FileManager.default.createDirectory(atPath: config.logRoot, withIntermediateDirectories: true)
-        if let handle = FileHandle(forWritingAtPath: config.logPath) {
+        let logPath = redirectedPath ?? RuntimeConfiguration.shared.logPath
+        try? FileManager.default.createDirectory(atPath: Path.dirname(logPath), withIntermediateDirectories: true)
+        if let handle = FileHandle(forWritingAtPath: logPath) {
             handle.seekToEndOfFile()
             handle.write(Data(entry.utf8))
             try? handle.close()
         } else {
-            _ = FileManager.default.createFile(atPath: config.logPath, contents: Data(entry.utf8))
+            _ = FileManager.default.createFile(atPath: logPath, contents: Data(entry.utf8))
         }
     }
 }
@@ -322,6 +334,14 @@ public enum Files {
         try? FileManager.default.removeItem(atPath: path)
     }
 
+    /// Removes the file or link at `path`, and never a folder: for paths that
+    /// should only ever hold a file, such as a download.
+    public static func removeFile(_ path: String) {
+        guard let type = (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType,
+              type != .typeDirectory else { return }
+        unlink(path)
+    }
+
     public static func readText(_ path: String) -> String? {
         guard let data = FileManager.default.contents(atPath: path) else { return nil }
         return String(data: data, encoding: .utf8)
@@ -334,9 +354,17 @@ public enum Files {
         public let isSymbolicLink: Bool
     }
 
-    /// `readdirSync(path, { withFileTypes: true })` (lstat semantics).
+    /// `readdirSync(path, { withFileTypes: true })` (lstat semantics). A folder
+    /// that can't be listed gives no entries; `entriesIfReadable` tells the two
+    /// apart.
     public static func entries(_ path: String) -> [DirectoryEntry] {
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else { return [] }
+        entriesIfReadable(path) ?? []
+    }
+
+    /// The entries of `path` (lstat semantics), or nil when it can't be listed:
+    /// a folder that can't be read isn't an empty one (ROA-94).
+    public static func entriesIfReadable(_ path: String) -> [DirectoryEntry]? {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else { return nil }
         return names.map { name in
             let full = Path.join(path, name)
             var info = stat()
@@ -349,6 +377,12 @@ public enum Files {
                 isSymbolicLink: type == S_IFLNK
             )
         }
+    }
+
+    /// A regular file itself, not a link to one (`lstat`).
+    public static func isRegularFile(_ path: String) -> Bool {
+        guard let info = lstatInfo(path) else { return false }
+        return info.st_mode & S_IFMT == S_IFREG
     }
 
     public static func lstatInfo(_ path: String) -> stat? {

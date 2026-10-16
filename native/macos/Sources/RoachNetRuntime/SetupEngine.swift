@@ -23,6 +23,11 @@ public final class SetupEngine {
     let environment: [String: String]
     /// Mirrors task log lines (used by the headless `--install` CLI).
     public var onLog: ((String) -> Void)?
+
+    /// How recovery moves an install folder into place. The default is the
+    /// atomic move; a test overrides it to drive an interrupted restore at the
+    /// move boundaries (ROA-94). Production never sets it.
+    var moveIntoPlace: (String, String) throws -> Void = { try SetupPlatform.moveItem($0, $1) }
     let version: String
     private let lock = NSRecursiveLock()
     private var activeTask: JSON?
@@ -69,6 +74,16 @@ public final class SetupEngine {
     }
 
     var legacyConfigPath: String { Path.join(home, ".roachnet-setup.json") }
+
+    /// Setup logs here, beside the installer config and outside any install
+    /// root, so a log line can't recreate a root an interrupted upgrade moved
+    /// aside (ROA-94).
+    public var setupLogPath: String { Path.join(Path.dirname(configPath), "setup.log") }
+
+    /// Held for a whole install run, beside the installer config, so two Setup
+    /// runs (the Setup app and Homebrew's `--install`, say) never move the same
+    /// install at once (ROA-94).
+    public var setupLockPath: String { Path.join(Path.dirname(configPath), "setup.lock") }
 
     /// `Contents/Resources/InstallerAssets` of the running Setup bundle.
     var installerAssetsPath: String? {
@@ -438,7 +453,9 @@ public final class SetupEngine {
             return ["ok": true, "task": preview]
         }
         try synchronized {
-            if activeTask?["status"].stringValue == "running" {
+            // Until a run has filed its result: its task stops showing
+            // "running" while it still tidies up and holds the run lock.
+            if activeTask != nil {
                 throw requestError("A setup task is already running. Wait for it to finish before starting another one.", 409)
             }
             activeTask = newTask()
@@ -462,10 +479,27 @@ public final class SetupEngine {
 
     func runInstall(_ plan: InstallPlan) {
         var stagingRoot: String?
+        var runLock: SetupRunLock?
+        defer { withExtendedLifetime(runLock) {} }
         do {
-            saveConfig(plan.config)
+            do {
+                runLock = try SetupRunLock(path: setupLockPath)
+            } catch SetupRunLock.Failure.unusable(let reason) {
+                // Without the lock Setup runs as 1.1.0 did: recovery itself
+                // deletes nothing, but nothing keeps another Setup from running
+                // at the same time, so recovery leaves staging folders alone.
+                log("Setup can't use its lock file (\(setupLockPath): \(reason)), so it can't tell whether another Setup is running. Continuing without it.")
+            }
             try Files.mkdirp(Path.dirname(plan.installPath))
-            recoverInterruptedInstall(finalRoot: plan.installPath)
+            // A backup that should have been put back and wasn't stops the
+            // install: installing now would open RoachNet empty while the
+            // person's data sits in the backup (ROA-94).
+            if case .restoreFailed(let problem) = recoverInterruptedInstall(finalRoot: plan.installPath, removeStaging: runLock != nil) {
+                throw problem
+            }
+            // Saved once Setup goes ahead, so a run that stopped leaves the
+            // installer config as it was.
+            saveConfig(plan.config)
 
             setPhase("Inspecting system", 5)
             let checks = preflight(plan.config)
@@ -541,13 +575,10 @@ public final class SetupEngine {
             log("RoachNet setup completed successfully.")
         } catch {
             let message = sanitizeError(error, plan)
-            updateTask { task in
-                task["status"] = "failed"
-                task["currentStep"] = "Setup failed. Fix the issue and run install again."
-                task["finishedAt"] = JSON(JS.isoNow())
-                task["error"] = JSON(message)
-            }
-            log("Setup failed: \(message)")
+            let kind = Self.errorKind(error)
+            // Tidied up first, so the task shows "running" until its result is
+            // filed just below: a task that looked finished while this ran
+            // would let the Setup app offer a new install too early.
             if let stagingRoot {
                 if environment["ROACHNET_SETUP_KEEP_STAGED_FAILURE"] == "1" {
                     log("Preserving the staged install for debugging.")
@@ -556,14 +587,49 @@ public final class SetupEngine {
                     log("Removed the staged install so this Mac can retry setup cleanly.")
                 }
             }
+            updateTask { task in
+                task["status"] = "failed"
+                task["currentStep"] = JSON(kind == "failed"
+                    ? "Setup failed. Fix the issue and run install again."
+                    : "Setup stopped before installing. The message says what to do.")
+                task["finishedAt"] = JSON(JS.isoNow())
+                task["error"] = JSON(message)
+                task["errorKind"] = JSON(kind)
+            }
+            log("Setup failed: \(message)")
         }
+        // The lock goes before the result is published, so a client that
+        // starts the next install as soon as it sees this one finish isn't
+        // turned away.
+        runLock = nil
         synchronized {
             lastCompletedTask = activeTask
             activeTask = nil
         }
     }
 
+    /// `--install`'s exit status when another Setup holds the lock
+    /// (EX_TEMPFAIL), and when Setup stopped on purpose before installing
+    /// (EX_DATAERR). The Homebrew cask keeps the new Setup app on these
+    /// instead of failing the upgrade: a failed cask upgrade puts the previous
+    /// version back and runs its older installer (ROA-94).
+    public static let exitSetupRunning: Int32 = 75
+    public static let exitStopped: Int32 = 65
+
+    /// How a failed run ended: "setup-running" when another Setup holds the
+    /// lock, "stopped" when Setup stopped on purpose before installing, and
+    /// "failed" for anything else.
+    static func errorKind(_ error: Error) -> String {
+        if error is SetupRunLock.Failure { return "setup-running" }
+        if error is RestoreProblem { return "stopped" }
+        return "failed"
+    }
+
     func sanitizeError(_ error: Error, _ plan: InstallPlan) -> String {
+        // A stopped restore keeps its own message, with home-folder paths
+        // shown from ~, even when a move ran out of space: it says where the
+        // person's install is.
+        if error is RestoreProblem { return redact("\(error)") }
         let raw = "\(error)"
         if JS.matches("ENOSPC|no space left on device", raw, caseInsensitive: true) {
             let required = requiredFreeBytes(installRoachClaw: plan.installRoachClaw)
@@ -593,29 +659,407 @@ public final class SetupEngine {
         synchronized { activeTask?["status"].stringValue == "running" }
     }
 
+    /// What recovery found and did. The install stops on `.restoreFailed`.
+    enum RecoveryOutcome: Equatable {
+        /// No backup of Setup's beside the install.
+        case noBackup
+        /// The newest backup holding more than Setup's own files is back in place.
+        case restored
+        /// Backups stay as they are: the root holds an install, or something
+        /// that isn't Setup's, or the backups hold only Setup's own files.
+        case keptBackups
+        /// Setup must not install now: a backup should have been put back and
+        /// wasn't, or Setup can't tell.
+        case restoreFailed(RestoreProblem)
+    }
+
+    /// Why Setup stopped before installing. Its description is what the
+    /// person sees; paths are full, and shown from ~ when logged or reported.
+    enum RestoreProblem: Error, Equatable, CustomStringConvertible {
+        /// The install folder is a link to something that isn't there.
+        case rootIsBrokenLink(root: String)
+        /// The folder that holds the install can't be listed, so Setup can't
+        /// tell whether a backup is beside it.
+        case folderUnreadable(folder: String)
+        /// The backup, or the folder in it named, can't be read.
+        case backupUnreadable(backup: String, unreadable: String)
+        /// The backup is a link to something Setup can't reach.
+        case backupIsBrokenLink(backup: String)
+        /// What is in the install folder now couldn't be moved aside.
+        case rootNotMovable(backup: String, reason: String)
+        /// The backup couldn't be moved into place.
+        case backupNotMovable(backup: String, reason: String, kept: [String])
+        /// Something else, most likely another Setup, moved the backup first.
+        case backupTaken(backup: String, kept: [String])
+
+        /// How to run Setup again, the Setup app's way and Homebrew's.
+        static let again = "run Setup again (with Homebrew: brew reinstall --cask roachnet)"
+
+        var description: String {
+            let stopped = "Setup stopped without installing anything or deleting your files."
+            switch self {
+            case .rootIsBrokenLink(let root):
+                return "\(root) is a link to something Setup can't reach, such as a drive that isn't connected. \(stopped) Connect it, or remove the link, then \(Self.again)."
+            case .folderUnreadable(let folder):
+                return "Setup can't read \(folder), the folder that holds the install, so it can't tell whether an earlier upgrade left your previous install there. \(stopped) Make that folder readable, then \(Self.again)."
+            case .backupUnreadable(let backup, let unreadable):
+                let what = unreadable == backup ? "which Setup can't read" : "and Setup can't read \(unreadable) inside it"
+                return "An earlier upgrade left your previous install in \(backup), \(what). \(stopped) Make that folder readable, then \(Self.again). To install without it, move the backup somewhere else first."
+            case .backupIsBrokenLink(let backup):
+                return "An earlier upgrade left your previous install in \(backup), a link to something Setup can't reach, such as a drive that isn't connected. \(stopped) Connect it, then \(Self.again). To install without it, move the link somewhere else first."
+            case .rootNotMovable(let backup, let reason):
+                return "An earlier upgrade left your previous install in \(backup), but Setup couldn't move what is in the install folder now aside to put it back (\(reason)). \(stopped) Quit RoachNet and anything else using the install folder, make sure you can rename it, then \(Self.again)."
+            case .backupNotMovable(let backup, let reason, let kept):
+                return "An earlier upgrade left your previous install in \(backup), which Setup couldn't put back (\(reason)). \(stopped)\(Self.keptNote(kept)) Make sure you can rename that backup, then \(Self.again). To install without it, move the backup somewhere else first."
+            case .backupTaken(let backup, let kept):
+                return "Something else, most likely another RoachNet Setup, moved \(backup) while Setup was putting it back. \(stopped)\(Self.keptNote(kept)) Let the other Setup finish, then \(Self.again)."
+            }
+        }
+
+        /// The line Setup logs.
+        var logNote: String {
+            switch self {
+            case .rootIsBrokenLink(let root):
+                return "The install folder \(root) is a link to something Setup can't reach, so Setup left it, and any backups beside it, as they are."
+            case .folderUnreadable(let folder):
+                return "Setup can't list \(folder), the folder that holds the install, so it left any backups there as they are."
+            case .backupUnreadable(let backup, let unreadable):
+                return "An earlier upgrade left a backup at \(backup) that Setup can't read (\(unreadable)), so it was left as it is."
+            case .backupIsBrokenLink(let backup):
+                return "An earlier upgrade left a backup at \(backup) that is a link to something Setup can't reach, so it was left as it is."
+            case .rootNotMovable(let backup, let reason):
+                return "An earlier upgrade left a backup at \(backup) that could not be restored automatically: what is in the install folder now couldn't be moved aside (\(reason))."
+            case .backupNotMovable(let backup, let reason, let kept):
+                return "An earlier upgrade left a backup at \(backup) that could not be restored automatically: \(reason).\(Self.keptNote(kept))"
+            case .backupTaken(let backup, let kept):
+                return "An earlier upgrade left a backup at \(backup) that could not be restored automatically: something else moved it first, most likely another Setup.\(Self.keptNote(kept))"
+            }
+        }
+
+        static func keptNote(_ kept: [String]) -> String {
+            kept.isEmpty ? "" : " What Setup moved aside is kept in \(kept.joined(separator: " and "))."
+        }
+    }
+
+    /// The folders Setup makes beside an install root.
+    enum SetupSiblingKind {
+        /// "<root>.staging-" and 8 hex characters.
+        case staging
+        /// "<root>.backup-" and the 13-digit time in milliseconds Setup writes.
+        case backup
+    }
+
     /// Cleans up after a run that was killed (power loss, force quit) before it
-    /// could tidy up: removes stale staging folders and, if the install root is
-    /// missing but a pre-swap backup exists, puts the backup back.
-    func recoverInterruptedInstall(finalRoot: String) {
+    /// could tidy up: removes Setup's stale staging folders (only with
+    /// `removeStaging`, under the Setup run lock) and, if the install root is
+    /// missing or holds only Setup's files, puts back the newest backup that
+    /// holds more than Setup's own files.
+    @discardableResult
+    func recoverInterruptedInstall(finalRoot: String, removeStaging: Bool = true) -> RecoveryOutcome {
         let parent = Path.dirname(finalRoot)
         let base = Path.basename(finalRoot)
-        let siblings = (try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? []
-        for name in siblings where name.hasPrefix("\(base).staging-") {
-            Files.remove(Path.join(parent, name))
-            log("Removed an unfinished staged install left by an earlier run.")
+        // What the root holds is decided first, before this writes or logs
+        // anything (a log line, or the Homebrew cask putting its Setup app
+        // back, can recreate a root an interrupted upgrade moved aside), and
+        // before the folders beside it are listed, so a run that overlaps this
+        // one shows up in that listing rather than being missed by it. A link
+        // at the root is something there; a broken one stops Setup, which
+        // would otherwise install everything only to fail at the swap.
+        let rootEntry = Files.lstatInfo(finalRoot)
+        let rootMissing = rootEntry == nil
+        if let rootEntry, rootEntry.st_mode & S_IFMT == S_IFLNK, !Files.exists(finalRoot) {
+            let problem = RestoreProblem.rootIsBrokenLink(root: finalRoot)
+            log(problem.logNote)
+            return .restoreFailed(problem)
         }
-        let backups = siblings.filter { $0.hasPrefix("\(base).backup-") }.sorted()
-        guard let newest = backups.last else { return }
-        if !Files.exists(finalRoot) {
-            do {
-                try SetupPlatform.moveItem(Path.join(parent, newest), finalRoot)
-                log("Restored the previous install that an interrupted upgrade had moved aside.")
-            } catch {
-                log("An earlier upgrade left a backup at \(newest) that could not be restored automatically: \(error)")
+        let onlySetupFiles = !rootMissing && holdsOnlySetupFiles(finalRoot)
+        // Matched as the file system matches names. Linux keeps "Cafe\u{301}"
+        // and "Caf\u{E9}" apart, so there a folder spelled the other way isn't
+        // Setup's (ROA-94). macOS takes them as one name, and lists the folders
+        // Setup made decomposed whichever way the install path is spelled; on a
+        // volume that ignores case, "roachnet" and "RoachNet" are one name too.
+        let ignoringCase = SetupPlatform.namesIgnoreCase(in: parent)
+        var notes: [String] = []
+        defer { for note in notes { log(note) } }
+        // A folder that can't be listed may hold a backup.
+        guard let siblings = Files.entriesIfReadable(parent) else {
+            guard rootMissing || onlySetupFiles else {
+                notes.append(RestoreProblem.folderUnreadable(folder: parent).logNote)
+                return .keptBackups
             }
-        } else {
-            log("An earlier upgrade left \(backups.count == 1 ? "a backup" : "\(backups.count) backups") beside the install (\(newest)). It is kept in case it holds storage you need.")
+            let problem = RestoreProblem.folderUnreadable(folder: parent)
+            notes.append(problem.logNote)
+            return .restoreFailed(problem)
         }
+        // Only folders named exactly as Setup names them, never a file or a
+        // link, and only under the run lock: without it, one may be another
+        // Setup's, still in use.
+        if removeStaging {
+            for entry in siblings where entry.isDirectory && Self.isSetupSibling(entry.name, base: base, kind: .staging, ignoringCase: ignoringCase) {
+                Files.remove(Path.join(parent, entry.name))
+                notes.append("Removed an unfinished staged install left by an earlier run.")
+            }
+        }
+        // Only Setup's own backups, newest first by their time, however their
+        // names are spelled. A backup of a linked root is a link: to a folder,
+        // or, when its drive isn't connected, to something Setup can't reach.
+        let backups = siblings
+            .filter { entry in
+                guard Self.isSetupSibling(entry.name, base: base, kind: .backup, ignoringCase: ignoringCase) else { return false }
+                let path = Path.join(parent, entry.name)
+                return entry.isDirectory || (entry.isSymbolicLink && (Files.isDirectory(path) || !Files.exists(path)))
+            }
+            .map(\.name)
+            .sorted { (Self.backupStamp($0), $0) > (Self.backupStamp($1), $1) }
+        guard let newest = backups.first else { return .noBackup }
+        let several = backups.count > 1
+        let described = several ? "\(backups.count) backups" : "a backup"
+        guard rootMissing || onlySetupFiles else {
+            notes.append("An earlier upgrade left \(described) beside the install (newest: \(newest)). \(several ? "They are" : "It is") kept in case \(several ? "they hold" : "it holds") storage you need.")
+            return .keptBackups
+        }
+        // A run cut off twice can leave a newer backup holding only Setup's
+        // own files; the install is in an older one.
+        var chosen: String?
+        search: for name in backups {
+            let folder = Path.join(parent, name)
+            if !Files.exists(folder) {
+                let problem = RestoreProblem.backupIsBrokenLink(backup: folder)
+                notes.append(problem.logNote)
+                return .restoreFailed(problem)
+            }
+            switch backupShape(folder) {
+            case .unreadable(let unreadable):
+                let problem = RestoreProblem.backupUnreadable(backup: folder, unreadable: unreadable)
+                notes.append(problem.logNote)
+                return .restoreFailed(problem)
+            case .more:
+                chosen = name
+                break search
+            case .onlySetupFiles:
+                continue
+            }
+        }
+        guard let chosen else {
+            notes.append("An earlier upgrade left \(described) beside the install (newest: \(newest)) holding only Setup's own files, so there was nothing to put back. \(several ? "They are" : "It is") kept.")
+            return .keptBackups
+        }
+        let backup = Path.join(parent, chosen)
+        do {
+            var leftovers: [String] = []
+            if rootMissing {
+                do {
+                    try moveIntoPlace(backup, finalRoot)
+                } catch {
+                    // A failed move never removes the backup, so one that is
+                    // gone was moved by something else.
+                    throw Files.lstatInfo(backup) == nil
+                        ? RestoreProblem.backupTaken(backup: backup, kept: [])
+                        : RestoreProblem.backupNotMovable(backup: backup, reason: "\(error)", kept: [])
+                }
+            } else {
+                leftovers = try restoreBackup(backup, over: finalRoot)
+            }
+            notes.append("Restored the previous install that an interrupted upgrade had moved aside (\(chosen)).")
+            let others = backups.count - 1
+            if others > 0 {
+                notes.append("\(others == 1 ? "1 other backup is" : "\(others) other backups are") kept beside the install in case \(others == 1 ? "it holds" : "they hold") storage you need.")
+            }
+            notes += leftovers
+            return .restored
+        } catch {
+            let problem = error as? RestoreProblem ?? .backupNotMovable(backup: backup, reason: "\(error)", kept: [])
+            notes.append(problem.logNote)
+            return .restoreFailed(problem)
+        }
+    }
+
+    func restoreBackup(_ backup: String, over root: String) throws -> [String] {
+        let stamp = Int(JS.nowMs())
+        let aside = "\(root).setup-files-\(stamp)"
+        do {
+            try moveIntoPlace(root, aside)
+        } catch {
+            throw RestoreProblem.rootNotMovable(backup: backup, reason: "\(error)")
+        }
+        do {
+            try moveIntoPlace(backup, root)
+        } catch {
+            // Nothing here deletes (ROA-94). A failed move never removes the
+            // backup, so a backup that is gone was moved by another run (a
+            // 1.1.0 Setup takes no run lock): the root is then that run's and
+            // is left alone, and Setup's files stay where they were moved.
+            guard Files.lstatInfo(backup) != nil else {
+                throw RestoreProblem.backupTaken(backup: backup, kept: [aside])
+            }
+            // Whatever is at the root now (something recreated it between the
+            // two moves) is moved aside and kept, and the root that was moved
+            // aside goes back, so the next run can retry.
+            var kept: [String] = []
+            if Files.lstatInfo(root) != nil {
+                let partial = "\(root).partial-restore-\(stamp)"
+                if (try? SetupPlatform.moveItem(root, partial)) != nil { kept.append(partial) }
+            }
+            var setupFilesBack = false
+            if Files.lstatInfo(root) == nil { setupFilesBack = (try? SetupPlatform.moveItem(aside, root)) != nil }
+            if !setupFilesBack { kept.append(aside) }
+            throw RestoreProblem.backupNotMovable(backup: backup, reason: "\(error)", kept: kept)
+        }
+        // The install is back; what follows only tidies Setup's own files.
+        var notes: [String] = []
+        // The newer Setup app the Homebrew cask put back replaces the one in
+        // the backup. Only that app is replaced: anything else in the
+        // install's `setup` folder stays.
+        let caskApp = Path.join(aside, "setup", "RoachNet Setup.app")
+        if Files.lstatInfo(caskApp) != nil {
+            let restoredApp = Path.join(root, "setup", "RoachNet Setup.app")
+            let olderApp = Path.join(aside, "RoachNet Setup.app.from-backup")
+            do {
+                if Files.lstatInfo(restoredApp) != nil { try SetupPlatform.moveItem(restoredApp, olderApp) }
+                try SetupPlatform.moveItem(caskApp, restoredApp)
+                Files.remove(olderApp)
+            } catch {
+                // The install keeps its own Setup app rather than none.
+                if Files.lstatInfo(restoredApp) == nil, Files.lstatInfo(olderApp) != nil { try? SetupPlatform.moveItem(olderApp, restoredApp) }
+                notes.append("The newer Setup app the Homebrew cask had put back stays in \(aside): \(error)")
+            }
+        }
+        let strayLogs = Path.join(aside, "storage", "logs")
+        for entry in Files.entries(strayLogs) where !entry.isDirectory {
+            do {
+                try Files.mkdirp(Path.join(root, "storage", "logs"))
+                try SetupPlatform.moveItem(Path.join(strayLogs, entry.name), Path.join(root, "storage", "logs", "\(entry.name).before-recovery-\(stamp)"))
+            } catch {
+                notes.append("An earlier Setup's log \(entry.name) stays in \(aside): \(error)")
+            }
+        }
+        if holdsNothing(aside) {
+            Files.remove(aside)
+        } else if notes.isEmpty {
+            notes.append("Setup's other files from before the restore are kept in \(aside).")
+        }
+        return notes
+    }
+
+    /// A root holding only what Setup (or the Homebrew cask) writes before an
+    /// install: its own `setup` folder and log files in `storage/logs`.
+    func holdsOnlySetupFiles(_ root: String) -> Bool {
+        guard Files.isDirectory(root), manifestText(root) == nil, !Files.exists(canonicalAppPath(root)) else { return false }
+        return holdsOnlySetupShape(root) == true
+    }
+
+    /// What a folder holds, as far as recovery is concerned.
+    enum FolderShape: Equatable {
+        /// No more than a `setup` folder and log files in `storage/logs`.
+        case onlySetupFiles
+        /// More: an install, storage, or anything else.
+        case more
+        /// Nothing readable is more, but this folder can't be listed: a folder
+        /// that can't be read may hold anything (ROA-94).
+        case unreadable(String)
+    }
+
+    /// Every entry is looked at, so the answer doesn't depend on the order
+    /// they are listed in, and anything readable that is more decides it.
+    func setupShape(_ folder: String) -> FolderShape {
+        guard let entries = Files.entriesIfReadable(folder) else { return .unreadable(folder) }
+        var unreadable: String?
+        for entry in entries where entry.name != ".DS_Store" {
+            switch entry.name {
+            case "setup":
+                if !entry.isDirectory { return .more }
+            case "storage":
+                if !entry.isDirectory { return .more }
+                let storage = Path.join(folder, "storage")
+                guard let children = Files.entriesIfReadable(storage) else {
+                    unreadable = unreadable ?? storage
+                    continue
+                }
+                for child in children where child.name != ".DS_Store" {
+                    if child.name != "logs" || !child.isDirectory { return .more }
+                    let logs = Path.join(storage, "logs")
+                    guard let files = Files.entriesIfReadable(logs) else {
+                        unreadable = unreadable ?? logs
+                        continue
+                    }
+                    if files.contains(where: \.isDirectory) { return .more }
+                }
+            default:
+                return .more
+            }
+        }
+        if let unreadable { return .unreadable(unreadable) }
+        return .onlySetupFiles
+    }
+
+    /// A backup's shape: an install manifest or app counts as more, even when
+    /// part of the backup can't be read.
+    func backupShape(_ folder: String) -> FolderShape {
+        if manifestText(folder) != nil || Files.exists(canonicalAppPath(folder)) { return .more }
+        return setupShape(folder)
+    }
+
+    /// Whether `folder` holds more than Setup's own files; nil when that
+    /// can't be told (see `FolderShape.unreadable`).
+    func holdsMoreThanSetupFiles(_ folder: String) -> Bool? {
+        switch backupShape(folder) {
+        case .more: return true
+        case .onlySetupFiles: return false
+        case .unreadable: return nil
+        }
+    }
+
+    /// True when `folder` holds no more than Setup's own files, false when
+    /// it holds more, nil when that can't be told.
+    func holdsOnlySetupShape(_ folder: String) -> Bool? {
+        switch setupShape(folder) {
+        case .onlySetupFiles: return true
+        case .more: return false
+        case .unreadable: return nil
+        }
+    }
+
+    /// True when `folder` holds no files at any depth. A folder that can't be
+    /// read may hold something, so it never counts as empty.
+    func holdsNothing(_ folder: String) -> Bool {
+        guard let entries = Files.entriesIfReadable(folder) else { return false }
+        return entries.allSatisfy { entry in
+            entry.name == ".DS_Store" || (entry.isDirectory && holdsNothing(Path.join(folder, entry.name)))
+        }
+    }
+
+    func manifestText(_ root: String) -> String? {
+        Files.readText(Path.join(root, SetupEngine.installManifestName))
+    }
+
+    /// Whether `name` is exactly a name Setup gives a folder beside the root
+    /// `base`, compared as the file system compares names.
+    static func isSetupSibling(_ name: String, base: String, kind: SetupSiblingKind, ignoringCase: Bool) -> Bool {
+        let scalars = name.unicodeScalars
+        guard let dash = scalars.lastIndex(of: "-") else { return false }
+        let suffix = String(String.UnicodeScalarView(scalars[scalars.index(after: dash)...]))
+        let digits: ClosedRange<Unicode.Scalar> = "0"..."9"
+        let lowerHex: ClosedRange<Unicode.Scalar> = "a"..."f"
+        let marker: String
+        switch kind {
+        case .staging:
+            guard suffix.unicodeScalars.count == 8,
+                  suffix.unicodeScalars.allSatisfy({ digits.contains($0) || lowerHex.contains($0) }) else { return false }
+            marker = ".staging-"
+        case .backup:
+            guard suffix.unicodeScalars.count == 13,
+                  suffix.unicodeScalars.allSatisfy({ digits.contains($0) }) else { return false }
+            marker = ".backup-"
+        }
+        let expected = base + marker + suffix
+        return Path.hasNamePrefix(name, expected, ignoringCase: ignoringCase)
+            && Path.hasNamePrefix(expected, name, ignoringCase: ignoringCase)
+    }
+
+    static func backupStamp(_ name: String) -> Int64 {
+        let scalars = name.unicodeScalars
+        guard let dash = scalars.lastIndex(of: "-") else { return -1 }
+        return Int64(String(String.UnicodeScalarView(scalars[scalars.index(after: dash)...]))) ?? -1
     }
 
     /// Points the RoachTail hostname at loopback. Best effort unless
@@ -922,5 +1366,63 @@ public final class SetupEngine {
         }
         RuntimeLog.write("setup service listening on \(url)")
         return server
+    }
+}
+
+/// An exclusive lock held for as long as this object lives, so two Setup runs
+/// (the Setup app and Homebrew's `--install`, say) never move the same install
+/// at once (ROA-94). The system drops it if the process dies.
+final class SetupRunLock {
+    /// Why the lock wasn't taken.
+    enum Failure: Error, CustomStringConvertible {
+        /// Another Setup holds it.
+        case busy
+        /// The lock file is there but won't open (another user's, or a link
+        /// put in its place), so it may be another Setup's.
+        case blocked(path: String, reason: String)
+        /// It can't be used here: its folder can't be made or written, or the
+        /// file system has no locks.
+        case unusable(String)
+
+        var description: String {
+            switch self {
+            case .busy:
+                return "Another RoachNet Setup is running. Let it finish, then run Setup again."
+            case .blocked(let path, let reason):
+                return "Setup can't open its lock file \(path) (\(reason)), so it can't tell whether another Setup is running. If none is, remove that file, then run Setup again."
+            case .unusable(let reason):
+                return reason
+            }
+        }
+    }
+
+    private let fd: Int32
+
+    init(path: String) throws {
+        do {
+            try Files.mkdirp(Path.dirname(path))
+        } catch {
+            throw Failure.unusable((error as NSError).localizedDescription)
+        }
+        let fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
+        guard fd >= 0 else {
+            let code = errno
+            let reason = String(cString: strerror(code))
+            if Files.lstatInfo(path) != nil, code == EACCES || code == EPERM || code == ELOOP {
+                throw Failure.blocked(path: path, reason: reason)
+            }
+            throw Failure.unusable(reason)
+        }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+            let code = errno
+            close(fd)
+            throw code == EWOULDBLOCK ? Failure.busy : Failure.unusable(String(cString: strerror(code)))
+        }
+        self.fd = fd
+    }
+
+    deinit {
+        flock(fd, LOCK_UN)
+        close(fd)
     }
 }
