@@ -1,0 +1,3155 @@
+{
+  "spec_version": "2026-10-10",
+  "categories": [
+    {
+      "name": "Medicine",
+      "slug": "medicine",
+      "icon": "IconStethoscope",
+      "description": "Medical references, guides, and encyclopedias for healthcare information and emergency preparedness.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "medicine-essential",
+          "description": "Core medical references for first aid, medications, and emergency care. Start here.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "zimgit-medicine_en",
+              "version": "2024-08",
+              "title": "Medical Library",
+              "description": "Field and emergency medicine books and guides",
+              "url": "https://download.kiwix.org/zim/other/zimgit-medicine_en_2024-08.zim",
+              "size_mb": 70
+            },
+            {
+              "id": "nhs.uk_en_medicines",
+              "version": "2026-09",
+              "title": "NHS Medicines A to Z",
+              "description": "How medicines work, dosages, side effects, and interactions",
+              "url": "https://download.kiwix.org/zim/zimit/nhs.uk_en_medicines_2026-09b.zim",
+              "size_mb": 15
+            },
+            {
+              "id": "fas-military-medicine_en",
+              "version": "2026-05",
+              "title": "Military Medicine",
+              "description": "Tactical and field medicine manuals",
+              "url": "https://download.kiwix.org/zim/zimit/irp.fas.org_en_military-medicine_2026-05.zim",
+              "size_mb": 76
+            },
+            {
+              "id": "wwwnc.cdc.gov_en_all",
+              "version": "2024-11",
+              "title": "CDC Health Information",
+              "description": "Disease prevention, travel health, and outbreak information",
+              "url": "https://download.kiwix.org/zim/zimit/wwwnc.cdc.gov_en_all_2024-11.zim",
+              "size_mb": 178
+            },
+            {
+              "id": "wikem_en_all_nopic",
+              "version": "2026-07",
+              "title": "WikEM Emergency Medicine",
+              "description": "Emergency-medicine point-of-care reference used in EDs",
+              "url": "https://download.kiwix.org/zim/other/wikem_en_all_nopic_2026-07.zim",
+              "size_mb": 347
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "medicine-standard",
+          "description": "Comprehensive medical encyclopedia with detailed health information. Includes everything in Essential.",
+          "includesTier": "medicine-essential",
+          "resources": [
+            {
+              "id": "medlineplus.gov_en_all",
+              "version": "2025-01",
+              "title": "MedlinePlus",
+              "description": "NIH's consumer health encyclopedia - diseases, conditions, drugs, supplements",
+              "url": "https://download.kiwix.org/zim/zimit/medlineplus.gov_en_all_2025-01.zim",
+              "size_mb": 1945
+            },
+            {
+              "id": "mdwiki_en_all_maxi",
+              "version": "2025-11",
+              "title": "MDWiki Medical Encyclopedia",
+              "description": "Wikipedia’s medical articles, curated by physicians, with images",
+              "url": "https://download.kiwix.org/zim/other/mdwiki_en_all_maxi_2025-11.zim",
+              "size_mb": 2303
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "medicine-comprehensive",
+          "description": "Professional-level medical references and textbooks. Includes everything in Standard.",
+          "includesTier": "medicine-standard",
+          "resources": [
+            {
+              "id": "wikipedia_en_medicine_maxi",
+              "version": "2026-04",
+              "title": "Wikipedia Medicine",
+              "description": "Curated medical articles from Wikipedia with images",
+              "url": "https://download.kiwix.org/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim",
+              "size_mb": 2216
+            },
+            {
+              "id": "libretexts.org_en_med",
+              "version": "2025-01",
+              "title": "LibreTexts Medicine",
+              "description": "Open-source medical textbooks and educational content",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_med_2025-01.zim",
+              "size_mb": 1193
+            },
+            {
+              "id": "librepathology_en_all_maxi",
+              "version": "2026-09",
+              "title": "LibrePathology",
+              "description": "Pathology reference for disease identification",
+              "url": "https://download.kiwix.org/zim/other/librepathology_en_all_maxi_2026-09.zim",
+              "size_mb": 95
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Survival & Preparedness",
+      "slug": "survival",
+      "icon": "IconShieldCheck",
+      "description": "Emergency preparedness, bug-out planning, and tactical survival skills for crisis situations.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "survival-essential",
+          "description": "Core survival concepts and winter preparedness videos. Start here for emergency basics.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "canadian_prepper_winterprepping_en",
+              "version": "2026-08",
+              "title": "Canadian Prepper: Winter Prepping",
+              "description": "Video guides for winter survival and cold weather emergencies",
+              "url": "https://download.kiwix.org/zim/videos/canadian-prepper_en_winterprepping_2026-08.zim",
+              "size_mb": 1342
+            },
+            {
+              "id": "canadian_prepper_bugoutroll_en",
+              "version": "2026-07",
+              "title": "Canadian Prepper: Bug Out Roll",
+              "description": "Essential gear selection for your bug-out bag",
+              "url": "https://download.kiwix.org/zim/videos/canadian-prepper_en_bugoutroll_2026-07.zim",
+              "size_mb": 879
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "survival-standard",
+          "description": "Bug-out strategies and urban survival techniques. Includes everything in Essential.",
+          "includesTier": "survival-essential",
+          "resources": [
+            {
+              "id": "canadian_prepper_bugoutconcepts_en",
+              "version": "2026-08",
+              "title": "Canadian Prepper: Bug Out Concepts",
+              "description": "Strategies and planning for emergency evacuation",
+              "url": "https://download.kiwix.org/zim/videos/canadian-prepper_en_bugoutconcepts_2026-08.zim",
+              "size_mb": 2886
+            },
+            {
+              "id": "urban-prepper_en_all",
+              "version": "2026-08",
+              "title": "Urban Prepper",
+              "description": "Comprehensive urban emergency preparedness video series",
+              "url": "https://download.kiwix.org/zim/videos/urban-prepper_en_all_2026-08.zim",
+              "size_mb": 2245
+            },
+            {
+              "id": "www.ready.gov_en",
+              "version": "2024-12",
+              "title": "Ready.gov Preparedness",
+              "description": "US preparedness guidance for every hazard: plans, kits, alerts",
+              "url": "https://download.kiwix.org/zim/zimit/www.ready.gov_en_2024-12.zim",
+              "size_mb": 2430
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "survival-comprehensive",
+          "description": "Complete prepper library with food storage strategies and classic military strategy. Includes everything in Standard.",
+          "includesTier": "survival-standard",
+          "resources": [
+            {
+              "id": "canadian_prepper_preppingfood_en",
+              "version": "2026-07",
+              "title": "Canadian Prepper: Prepping Food",
+              "description": "Long-term food storage and survival meal preparation",
+              "url": "https://download.kiwix.org/zim/videos/canadian-prepper_en_preppingfood_2026-07.zim",
+              "size_mb": 2161
+            },
+            {
+              "id": "gutenberg_en_lcc-u",
+              "version": "2026-03",
+              "title": "Project Gutenberg: Military Science",
+              "description": "Classic military strategy, tactics, and field manuals",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_lcc-u_2026-03.zim",
+              "size_mb": 1288
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Education & Reference",
+      "slug": "education",
+      "icon": "IconSchool",
+      "description": "Encyclopedias, textbooks, tutorials, and educational videos for self-directed learning.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "education-essential",
+          "description": "Core reference materials - open textbooks and essential educational content. Lightweight, text-focused.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "wikibooks_en_all_nopic",
+              "version": "2026-04",
+              "title": "Wikibooks",
+              "description": "Open-content textbooks covering math, science, computing, and more",
+              "url": "https://download.kiwix.org/zim/wikibooks/wikibooks_en_all_nopic_2026-04.zim",
+              "size_mb": 3508
+            },
+            {
+              "id": "wikipedia_en-simple_all_nopic",
+              "version": "2026-09",
+              "title": "Simple English Wikipedia",
+              "description": "Plain-language encyclopedia for learners, kids and quick reads",
+              "url": "https://download.kiwix.org/zim/wikipedia/wikipedia_en-simple_all_nopic_2026-09.zim",
+              "size_mb": 1095
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "education-standard",
+          "description": "Adds educational videos, university-level tutorials, and STEM textbooks. Includes Essential.",
+          "includesTier": "education-essential",
+          "resources": [
+            {
+              "id": "ted_mul_ted-ed",
+              "version": "2026-09",
+              "title": "TED-Ed",
+              "description": "Educational video lessons on science, history, literature, and more",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_ted-ed_2026-09.zim",
+              "size_mb": 6381
+            },
+            {
+              "id": "wikiversity_en_all_maxi",
+              "version": "2026-05",
+              "title": "Wikiversity",
+              "description": "Tutorials, courses, and learning materials for all levels",
+              "url": "https://download.kiwix.org/zim/wikiversity/wikiversity_en_all_maxi_2026-05.zim",
+              "size_mb": 2459
+            },
+            {
+              "id": "libretexts.org_en_math",
+              "version": "2026-01",
+              "title": "LibreTexts Mathematics",
+              "description": "Open-source math textbooks from algebra to calculus",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_math_2026-01.zim",
+              "size_mb": 831
+            },
+            {
+              "id": "libretexts.org_en_phys",
+              "version": "2026-01",
+              "title": "LibreTexts Physics",
+              "description": "Physics courses and textbooks",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_phys_2026-01.zim",
+              "size_mb": 560
+            },
+            {
+              "id": "libretexts.org_en_chem",
+              "version": "2025-01",
+              "title": "LibreTexts Chemistry",
+              "description": "Chemistry courses and textbooks",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_chem_2025-01.zim",
+              "size_mb": 2183
+            },
+            {
+              "id": "libretexts.org_en_bio",
+              "version": "2025-01",
+              "title": "LibreTexts Biology",
+              "description": "Biology courses and textbooks",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_bio_2025-01.zim",
+              "size_mb": 2241
+            },
+            {
+              "id": "libretexts.org_en_k12",
+              "version": "2026-01",
+              "title": "LibreTexts K-12",
+              "description": "School-age math, science, and general study textbooks",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_k12_2026-01.zim",
+              "size_mb": 370
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "education-comprehensive",
+          "description": "Complete educational library with enhanced textbooks and TED talks. Includes Standard.",
+          "includesTier": "education-standard",
+          "resources": [
+            {
+              "id": "wikibooks_en_all_maxi",
+              "version": "2026-04",
+              "title": "Wikibooks (With Images)",
+              "description": "Open textbooks with full illustrations and diagrams",
+              "url": "https://download.kiwix.org/zim/wikibooks/wikibooks_en_all_maxi_2026-04.zim",
+              "size_mb": 6178
+            },
+            {
+              "id": "ted_mul_ted-conference",
+              "version": "2026-09",
+              "title": "TED Conference",
+              "description": "Main TED conference talks on ideas worth spreading",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_ted-conference_2026-09.zim",
+              "size_mb": 18136
+            },
+            {
+              "id": "libretexts.org_en_human",
+              "version": "2026-07",
+              "title": "LibreTexts Humanities",
+              "description": "Literature, philosophy, history, and social sciences",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_human_2026-07.zim",
+              "size_mb": 4434
+            },
+            {
+              "id": "libretexts.org_en_geo",
+              "version": "2026-01",
+              "title": "LibreTexts Geosciences",
+              "description": "Earth science, geology, and environmental studies",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_geo_2026-01.zim",
+              "size_mb": 1188
+            },
+            {
+              "id": "libretexts.org_en_eng",
+              "version": "2025-01",
+              "title": "LibreTexts Engineering",
+              "description": "Engineering courses and technical references",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_eng_2025-01.zim",
+              "size_mb": 678
+            },
+            {
+              "id": "libretexts.org_en_biz",
+              "version": "2026-01",
+              "title": "LibreTexts Business",
+              "description": "Business, economics, and management textbooks",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_biz_2026-01.zim",
+              "size_mb": 840
+            },
+            {
+              "id": "academia.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Academia Q&A",
+              "description": "Research, publishing, grad-school, and academic-workflow discussions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/academia.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 292
+            },
+            {
+              "id": "cseducators.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "CS Educators Q&A",
+              "description": "Teaching computer science, curriculum design, and classroom practice",
+              "url": "https://download.kiwix.org/zim/stack_exchange/cseducators.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 17
+            },
+            {
+              "id": "libretexts.org_en_socialsci",
+              "version": "2025-01",
+              "title": "LibreTexts Social Sciences",
+              "description": "Politics, sociology, psychology, and society-focused textbooks",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_socialsci_2025-01.zim",
+              "size_mb": 2046
+            },
+            {
+              "id": "libretexts.org_en_workforce",
+              "version": "2026-01",
+              "title": "LibreTexts Workforce",
+              "description": "Career, technical, and workforce-development course texts",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_workforce_2026-01.zim",
+              "size_mb": 514
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Science & Simulations",
+      "slug": "science-simulations",
+      "icon": "IconFlask",
+      "description": "Interactive simulations and science-heavy reference shelves for astronomy, physics, chemistry, biology, and lab-minded study.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "science-simulations-essential",
+          "description": "Start with interactive lab basics and a compact astronomy reference.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "phet_en_all",
+              "version": "2026-08",
+              "title": "PhET Interactive Simulations",
+              "description": "Physics, chemistry, math, and engineering simulations you can actually play with offline",
+              "url": "https://download.kiwix.org/zim/phet/phet_en_all_2026-08.zim",
+              "size_mb": 109
+            },
+            {
+              "id": "astronomy.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Astronomy Q&A",
+              "description": "Space, observation, orbital mechanics, and telescope questions from the field",
+              "url": "https://download.kiwix.org/zim/stack_exchange/astronomy.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 196
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "science-simulations-standard",
+          "description": "Broaden the lab shelf with practical Q&A across the core sciences. Includes Essential.",
+          "includesTier": "science-simulations-essential",
+          "resources": [
+            {
+              "id": "physics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Physics Q&A",
+              "description": "Mechanics, electromagnetism, thermodynamics, and theory-heavy troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/physics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 1828
+            },
+            {
+              "id": "chemistry.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Chemistry Q&A",
+              "description": "Reactions, lab practice, spectroscopy, and chemical reasoning discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/chemistry.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 417
+            },
+            {
+              "id": "biology.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Biology Q&A",
+              "description": "Cell biology, genetics, ecology, and organism-level questions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/biology.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 423
+            },
+            {
+              "id": "biologycourses_en_all",
+              "version": "2026-09",
+              "title": "Biology Courses",
+              "description": "A video-heavy biology shelf covering core concepts and classroom-style explanations",
+              "url": "https://download.kiwix.org/zim/videos/biologycourses_en_all_2026-09.zim",
+              "size_mb": 199
+            },
+            {
+              "id": "avanti-modern-physics",
+              "version": "2025-09",
+              "title": "Avanti: Modern Physics",
+              "description": "Video lessons on modern physics topics, concepts, and worked explanations",
+              "url": "https://download.kiwix.org/zim/videos/avanti-modern-physics_2025-09.zim",
+              "size_mb": 106,
+              "unavailable": true
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "science-simulations-comprehensive",
+          "description": "Pull in the big sky-and-imagery archive once the base science lane is already healthy. Includes Standard.",
+          "includesTier": "science-simulations-standard",
+          "resources": [
+            {
+              "id": "bioinformatics.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Bioinformatics Q&A",
+              "description": "Sequencing, pipelines, biological data analysis, and computational biology discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/bioinformatics.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 58
+            },
+            {
+              "id": "space.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Space Exploration Q&A",
+              "description": "Spaceflight, missions, launch systems, and practical space-ops discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/space.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 398
+            },
+            {
+              "id": "bioacoustics.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Bioacoustics Q&A",
+              "description": "Animal sound, acoustic analysis, and sound-in-nature research questions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/bioacoustics.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 10
+            },
+            {
+              "id": "medicalsciences.stackexchange.com_en_all",
+              "version": "2026-02",
+              "title": "Medical Sciences Q&A",
+              "description": "Research and study discussion around medicine, physiology, and biomedical science",
+              "url": "https://download.kiwix.org/zim/stack_exchange/medicalsciences.stackexchange.com_en_all_2026-02.zim",
+              "size_mb": 61
+            },
+            {
+              "id": "earthscience.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Earth Science Q&A",
+              "description": "Geology, climate, hazards, earth systems, and practical science discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/earthscience.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 132
+            },
+            {
+              "id": "engineering.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Engineering Q&A",
+              "description": "A broad engineering problem shelf spanning statics, design, and practical build decisions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/engineering.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 256
+            },
+            {
+              "id": "avanti-concepts-of-chemistry",
+              "version": "2025-09",
+              "title": "Avanti: Concepts of Chemistry",
+              "description": "A chemistry video shelf with concept-first explanations and classroom pacing",
+              "url": "https://download.kiwix.org/zim/videos/avanti-concepts-of-chemistry_2025-09.zim",
+              "size_mb": 213,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-electrochemistry",
+              "version": "2025-09",
+              "title": "Avanti: Electrochemistry",
+              "description": "A focused electrochemistry video shelf for reactions, cells, and applied chemistry concepts",
+              "url": "https://download.kiwix.org/zim/videos/avanti-electrochemistry_2025-09.zim",
+              "size_mb": 113,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-surface-chemistry",
+              "version": "2025-09",
+              "title": "Avanti: Surface Chemistry",
+              "description": "Video lessons on adsorption, colloids, and surface-chemistry fundamentals",
+              "url": "https://download.kiwix.org/zim/videos/avanti-surface-chemistry_2025-09.zim",
+              "size_mb": 115,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-wave-optics",
+              "version": "2025-09",
+              "title": "Avanti: Wave Optics",
+              "description": "A compact course app for interference, diffraction, and optics-heavy study",
+              "url": "https://download.kiwix.org/zim/videos/avanti-wave-optics_2025-09.zim",
+              "size_mb": 76,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-work-power-energy",
+              "version": "2025-09",
+              "title": "Avanti: Work, Power, and Energy",
+              "description": "A practical mechanics shelf for core energy concepts and worked motion examples",
+              "url": "https://download.kiwix.org/zim/videos/avanti-work-power-energy_2025-09.zim",
+              "size_mb": 125,
+              "unavailable": true
+            },
+            {
+              "id": "apod.nasa.gov_en_all",
+              "version": "2026-08",
+              "title": "Astronomy Picture of the Day",
+              "description": "NASA’s long-running image-and-explainer archive for missions, sky events, observatories, and space history",
+              "url": "https://download.kiwix.org/zim/zimit/apod.nasa.gov_en_all_2026-08.zim",
+              "size_mb": 16679
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Kids & Family",
+      "slug": "kids-family",
+      "icon": "IconSparkles",
+      "description": "Youth-friendly encyclopedias, story collections, and learning shelves sized like RoachNet apps.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "kids-family-essential",
+          "description": "Start with the compact youth encyclopedia shelf.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "vikidia_en_all_nopic",
+              "version": "2026-09",
+              "title": "Vikidia English",
+              "description": "A kid-friendly general encyclopedia sized for fast installs and easy offline browsing",
+              "url": "https://download.kiwix.org/zim/vikidia/vikidia_en_all_nopic_2026-09a.zim",
+              "size_mb": 11
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "kids-family-standard",
+          "description": "Bring in family-oriented shelves and parenting reference once the lighter study lane is in place. Includes Essential.",
+          "includesTier": "kids-family-essential",
+          "resources": [
+            {
+              "id": "africanstorybook.org_mul_all",
+              "version": "2025-01",
+              "title": "African Storybook",
+              "description": "A large multilingual shelf of illustrated stories and reading material for younger learners",
+              "url": "https://download.kiwix.org/zim/other/africanstorybook.org_mul_all_2025-01.zim",
+              "size_mb": 8694
+            },
+            {
+              "id": "parenting.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Parenting Q&A",
+              "description": "Parenting questions, age-stage advice, and practical family problem-solving",
+              "url": "https://download.kiwix.org/zim/stack_exchange/parenting.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 60
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "kids-family-comprehensive",
+          "description": "The large family shelf for longer-lived installs and shared machines. Includes Standard.",
+          "includesTier": "kids-family-standard",
+          "resources": [
+            {
+              "id": "booksdash_en_all",
+              "version": "2024-06",
+              "title": "Book Dash",
+              "description": "A large open children’s-book shelf for shared devices, reading corners, and family setups",
+              "url": "https://download.kiwix.org/zim/zimit/booksdash_en_all_2024-06.zim",
+              "size_mb": 11704
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Open Courses & Lectures",
+      "slug": "open-courses",
+      "icon": "IconSchool",
+      "description": "Large open-course shelves, lecture archives, and study-heavy installs for serious offline learning.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "open-courses-essential",
+          "description": "Compact study shelves for math, pedagogy, and structured self-teaching.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "artofproblemsolving_en_all_maxi",
+              "version": "2021-03",
+              "title": "Art of Problem Solving",
+              "description": "Problem-solving, contest math, and rigorous worked explanations in one compact shelf",
+              "url": "https://download.kiwix.org/zim/other/artofproblemsolving_en_all_maxi_2021-03.zim",
+              "size_mb": 205
+            },
+            {
+              "id": "edutechwiki_en_all_maxi",
+              "version": "2026-07",
+              "title": "EdutechWiki",
+              "description": "Learning design, pedagogy, and educational-technology reference",
+              "url": "https://download.kiwix.org/zim/other/edutechwiki_en_all_maxi_2026-07.zim",
+              "size_mb": 60
+            },
+            {
+              "id": "milneopentextbooks.org_en_all",
+              "version": "2026-08",
+              "title": "Milne Open Textbooks",
+              "description": "Open college textbooks spanning math, sciences, and general course material",
+              "url": "https://download.kiwix.org/zim/zimit/milneopentextbooks.org_en_all_2026-08.zim",
+              "size_mb": 423
+            },
+            {
+              "id": "planetmath.org_en_all",
+              "version": "2026-08",
+              "title": "PlanetMath",
+              "description": "Math reference and concept explanations for proofs, notation, and definitions",
+              "url": "https://download.kiwix.org/zim/zimit/planetmath.org_en_all_2026-08.zim",
+              "size_mb": 22
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "open-courses-standard",
+          "description": "Add broader study tracks, digital-skills shelves, and serious self-teaching material. Includes Essential.",
+          "includesTier": "open-courses-essential",
+          "resources": [
+            {
+              "id": "crashcourse_en_all",
+              "version": "2026-05",
+              "title": "Crash Course",
+              "description": "Fast-moving video explainers across history, science, literature, philosophy, and more",
+              "url": "https://download.kiwix.org/zim/other/crashcourse_en_all_2026-05.zim",
+              "size_mb": 23035
+            },
+            {
+              "id": "stacks.math.columbia.edu_en_all",
+              "version": "2025-06",
+              "title": "Stacks Project",
+              "description": "A deep algebraic-geometry and proof-heavy math shelf for serious study",
+              "url": "https://download.kiwix.org/zim/zimit/stacks.math.columbia.edu_en_all_2025-06.zim",
+              "size_mb": 154
+            },
+            {
+              "id": "edu.gcfglobal.org_en_all",
+              "version": "2025-03",
+              "title": "GCFGlobal",
+              "description": "Digital skills, office basics, career prep, and approachable technology lessons",
+              "url": "https://download.kiwix.org/zim/zimit/edu.gcfglobal.org_en_all_2025-03.zim",
+              "size_mb": 515,
+              "unavailable": true
+            },
+            {
+              "id": "htdp.org_en_all",
+              "version": "2026-08",
+              "title": "How to Design Programs",
+              "description": "A structured programming-course shelf centered on design recipes and fundamentals",
+              "url": "https://download.kiwix.org/zim/zimit/htdp.org_en_all_2026-08.zim",
+              "size_mb": 2
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "open-courses-comprehensive",
+          "description": "The deeper lecture and study shelf once the main course lane is already in place. Includes Standard.",
+          "includesTier": "open-courses-standard",
+          "resources": [
+            {
+              "id": "khanacademy_en_all",
+              "version": "2023-03",
+              "title": "Khan Academy",
+              "description": "A very large open course shelf across math, science, economics, computing, and test prep",
+              "url": "https://download.kiwix.org/zim/other/khanacademy_en_all_2023-03.zim",
+              "size_mb": 180007
+            },
+            {
+              "id": "ethanweed_en_all",
+              "version": "2025-11",
+              "title": "Ethan Weed",
+              "description": "Compact psychology and research-method lessons for study sessions that want a tighter scope",
+              "url": "https://download.kiwix.org/zim/zimit/ethanweed_en_all_2025-11.zim",
+              "size_mb": 8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Math & Problem Solving",
+      "slug": "math-logic",
+      "icon": "IconSigma",
+      "description": "Problem-solving, proof-heavy reference, and math course shelves that feel at home beside the Dev lane.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "math-logic-essential",
+          "description": "Start with compact problem-solving shelves and practical math reference.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "matheducators.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Math Educators Q&A",
+              "description": "Teaching math, curriculum structure, and explaining hard concepts clearly",
+              "url": "https://download.kiwix.org/zim/stack_exchange/matheducators.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 58
+            },
+            {
+              "id": "avanti-fundamentals-of-mathematics",
+              "version": "2025-09",
+              "title": "Avanti: Fundamentals of Mathematics",
+              "description": "Video lessons covering core math concepts in a classroom-style format",
+              "url": "https://download.kiwix.org/zim/videos/avanti-fundamentals-of-mathematics_2025-09.zim",
+              "size_mb": 176,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-3dimensional-geometry",
+              "version": "2025-05",
+              "title": "Avanti: 3D Geometry",
+              "description": "A compact geometry course app for spatial intuition, diagrams, and shape-heavy reasoning",
+              "url": "https://download.kiwix.org/zim/videos/avanti-3dimensional-geometry_2025-05.zim",
+              "size_mb": 75,
+              "unavailable": true
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "math-logic-standard",
+          "description": "Add more proof drills, probability, and core course work once the first shelf is in place. Includes Essential.",
+          "includesTier": "math-logic-essential",
+          "resources": [
+            {
+              "id": "math.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Mathematics Q&A",
+              "description": "A huge applied-and-pure math shelf for proofs, examples, edge cases, and worked intuition",
+              "url": "https://download.kiwix.org/zim/stack_exchange/math.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 7417
+            },
+            {
+              "id": "avanti-binomial-theorem",
+              "version": "2025-09",
+              "title": "Avanti: Binomial Theorem",
+              "description": "A focused video course app for combinatorics and expansion patterns",
+              "url": "https://download.kiwix.org/zim/videos/avanti-binomial-theorem_2025-09.zim",
+              "size_mb": 162,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-complex-numbers",
+              "version": "2025-09",
+              "title": "Avanti: Complex Numbers",
+              "description": "A tighter course lane on imaginary numbers, forms, and operations",
+              "url": "https://download.kiwix.org/zim/videos/avanti-complex-numbers_2025-09.zim",
+              "size_mb": 232,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-probability",
+              "version": "2025-09",
+              "title": "Avanti: Probability",
+              "description": "A focused probability course app with compact worked explanations and examples",
+              "url": "https://download.kiwix.org/zim/videos/avanti-probability_2025-09.zim",
+              "size_mb": 95,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-trigonometry",
+              "version": "2025-09",
+              "title": "Avanti: Trigonometry",
+              "description": "A direct trigonometry shelf for identities, triangles, and analytic problem-solving",
+              "url": "https://download.kiwix.org/zim/videos/avanti-trigonometry_2025-09.zim",
+              "size_mb": 138,
+              "unavailable": true
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "math-logic-comprehensive",
+          "description": "The deeper problem-solving lane for reasoning, vector work, and long study sessions. Includes Standard.",
+          "includesTier": "math-logic-standard",
+          "resources": [
+            {
+              "id": "mathoverflow.net_en_all",
+              "version": "2026-08",
+              "title": "MathOverflow",
+              "description": "Research-level math discussion, deeper proofs, and specialist reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/mathoverflow.net_en_all_2026-08.zim",
+              "size_mb": 848
+            },
+            {
+              "id": "avanti-differential-equations",
+              "version": "2025-09",
+              "title": "Avanti: Differential Equations",
+              "description": "A focused video lane for differential equations and worked solution patterns",
+              "url": "https://download.kiwix.org/zim/videos/avanti-differential-equations_2025-09.zim",
+              "size_mb": 100,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-statistics",
+              "version": "2025-09",
+              "title": "Avanti: Statistics",
+              "description": "A concise statistics course app for probability, distributions, and reasoning",
+              "url": "https://download.kiwix.org/zim/videos/avanti-statistics_2025-09.zim",
+              "size_mb": 64,
+              "unavailable": true
+            },
+            {
+              "id": "jeffe.cs.illinois.edu_en_all",
+              "version": "2026-09",
+              "title": "Algorithms by Jeff Erickson",
+              "description": "A rigorous algorithms shelf that fits naturally beside the deeper math lane",
+              "url": "https://download.kiwix.org/zim/zimit/jeffe.cs.illinois.edu_en_all_2026-09.zim",
+              "size_mb": 517
+            },
+            {
+              "id": "avanti-mathematical-reasoning",
+              "version": "2025-09",
+              "title": "Avanti: Mathematical Reasoning",
+              "description": "A tighter reasoning shelf for proofs, logic flow, and clean problem structure",
+              "url": "https://download.kiwix.org/zim/videos/avanti-mathematical-reasoning_2025-09.zim",
+              "size_mb": 76,
+              "unavailable": true
+            },
+            {
+              "id": "avanti-vectors-and-calculus",
+              "version": "2025-09",
+              "title": "Avanti: Vectors and Calculus",
+              "description": "A denser vector-and-calculus shelf for motion, analysis, and worked derivations",
+              "url": "https://download.kiwix.org/zim/videos/avanti-vectors-and-calculus_2025-09.zim",
+              "size_mb": 236,
+              "unavailable": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Law, History & Society",
+      "slug": "law-history-society",
+      "icon": "IconScale",
+      "description": "Law, politics, history, philosophy, and civic-reference shelves for people who like context with their work.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "law-history-society-essential",
+          "description": "Start with the civic and historical core.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "law.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Law Q&A",
+              "description": "Legal principles, procedure, and practical law-focused problem-solving",
+              "url": "https://download.kiwix.org/zim/stack_exchange/law.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 185
+            },
+            {
+              "id": "politics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Politics Q&A",
+              "description": "Government systems, policy, elections, and civics discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/politics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 210
+            },
+            {
+              "id": "history.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "History Q&A",
+              "description": "Historical context, source interpretation, and history-heavy research discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/history.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 321
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "law-history-society-standard",
+          "description": "Add the philosophy, economics, and work-life side of the shelf. Includes Essential.",
+          "includesTier": "law-history-society-essential",
+          "resources": [
+            {
+              "id": "philosophy.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Philosophy Q&A",
+              "description": "Arguments, schools of thought, ethics, metaphysics, and careful reasoning",
+              "url": "https://download.kiwix.org/zim/stack_exchange/philosophy.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 212
+            },
+            {
+              "id": "economics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Economics Q&A",
+              "description": "Micro, macro, incentives, and policy discussion for the practical side of economics",
+              "url": "https://download.kiwix.org/zim/stack_exchange/economics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 115
+            },
+            {
+              "id": "workplace.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Workplace Q&A",
+              "description": "Jobs, office dynamics, professional communication, and workplace strategy",
+              "url": "https://download.kiwix.org/zim/stack_exchange/workplace.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 245
+            },
+            {
+              "id": "rationalwiki_en_all_nopic",
+              "version": "2025-05",
+              "title": "RationalWiki",
+              "description": "Skeptical reference on claims, pseudoscience and politics",
+              "url": "https://download.kiwix.org/zim/other/rationalwiki_en_all_nopic_2025-05.zim",
+              "size_mb": 84
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "law-history-society-comprehensive",
+          "description": "The deeper context shelf for institutions, philosophy, and civic life. Includes Standard.",
+          "includesTier": "law-history-society-standard",
+          "resources": [
+            {
+              "id": "wikinews_en_all_nopic",
+              "version": "2026-01",
+              "title": "Wikinews English",
+              "description": "A compact current-events archive for headlines, topics, and event context",
+              "url": "https://download.kiwix.org/zim/wikinews/wikinews_en_all_nopic_2026-01.zim",
+              "size_mb": 65,
+              "unavailable": true
+            },
+            {
+              "id": "internet-encyclopedia-philosophy_en_all",
+              "version": "2026-05",
+              "title": "Internet Encyclopedia of Philosophy",
+              "description": "A serious philosophy shelf with primary concepts, movements, and deep article-style reference",
+              "url": "https://download.kiwix.org/zim/zimit/internet-encyclopedia-philosophy_en_all_2026-05.zim",
+              "size_mb": 126
+            },
+            {
+              "id": "citizensinformation.ie_en_all",
+              "version": "2026-08",
+              "title": "Citizens Information",
+              "description": "Public-service, rights, benefits, and civic-process reference written for everyday use",
+              "url": "https://download.kiwix.org/zim/zimit/citizensinformation.ie_en_all_2026-08.zim",
+              "size_mb": 117
+            },
+            {
+              "id": "citizendium.org_en_all_maxi",
+              "version": "2026-01",
+              "title": "Citizendium",
+              "description": "A compact general-reference shelf with a more old-web encyclopedic feel",
+              "url": "https://download.kiwix.org/zim/other/citizendium.org_en_all_maxi_2026-01.zim",
+              "size_mb": 219
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Language & Writing",
+      "slug": "language-writing",
+      "icon": "IconMessages",
+      "description": "English, linguistics, writing craft, and quote-heavy shelves for language work, reading, and editing.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "language-writing-essential",
+          "description": "Start with English usage and learner-focused language help.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "english.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "English Language Q&A",
+              "description": "Usage, grammar, etymology, and style discussion for heavy reading and editing work",
+              "url": "https://download.kiwix.org/zim/stack_exchange/english.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 771
+            },
+            {
+              "id": "ell.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "English Learners Q&A",
+              "description": "Language-learning explanations and practical support for people learning English",
+              "url": "https://download.kiwix.org/zim/stack_exchange/ell.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 471
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "language-writing-standard",
+          "description": "Add writing craft and language-study shelves. Includes Essential.",
+          "includesTier": "language-writing-essential",
+          "resources": [
+            {
+              "id": "linguistics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Linguistics Q&A",
+              "description": "Phonetics, syntax, semantics, and language-structure discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/linguistics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 86
+            },
+            {
+              "id": "literature.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Literature Q&A",
+              "description": "Interpretation, close reading, genre, and literary reference discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/literature.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 73
+            },
+            {
+              "id": "writing.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Writing Q&A",
+              "description": "Story craft, prose, editing, structure, and publishing-minded writing advice",
+              "url": "https://download.kiwix.org/zim/stack_exchange/writing.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 102
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "language-writing-comprehensive",
+          "description": "Bring in the broader language-study and language-design shelf. Includes Standard.",
+          "includesTier": "language-writing-standard",
+          "resources": [
+            {
+              "id": "wikiquote_en_all_nopic",
+              "version": "2026-07",
+              "title": "English Wikiquote",
+              "description": "A quote archive across authors, works, public figures, and cultural reference points",
+              "url": "https://download.kiwix.org/zim/wikiquote/wikiquote_en_all_nopic_2026-07.zim",
+              "size_mb": 330
+            },
+            {
+              "id": "folgerpedia.folger.edu_en_all",
+              "version": "2026-03",
+              "title": "Folgerpedia",
+              "description": "A deep Shakespeare and early-modern literature shelf from the Folger collection",
+              "url": "https://download.kiwix.org/zim/other/folgerpedia.folger.edu_en_all_2026-03.zim",
+              "size_mb": 4202
+            },
+            {
+              "id": "languagelearning.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Language Learning Q&A",
+              "description": "Language-study methods, drills, retention, and learning workflow discussions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/languagelearning.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 12
+            },
+            {
+              "id": "conlang.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Conlang Q&A",
+              "description": "Constructed language design, grammar invention, and world-language experimentation",
+              "url": "https://download.kiwix.org/zim/stack_exchange/conlang.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 8
+            },
+            {
+              "id": "langdev.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Language Design Q&A",
+              "description": "Programming-language design, compilers, syntax decisions, and language-theory reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/langdev.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 11
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "DIY & Repair",
+      "slug": "diy",
+      "icon": "IconTool",
+      "description": "Fix it yourself - repair guides, home improvement, woodworking, and vehicle maintenance.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "diy-essential",
+          "description": "Core repair knowledge - woodworking basics and vehicle maintenance Q&A.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "woodworking.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Woodworking Q&A",
+              "description": "Stack Exchange Q&A for carpentry, joinery, and woodcraft",
+              "url": "https://download.kiwix.org/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 106
+            },
+            {
+              "id": "mechanics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Motor Vehicle Maintenance Q&A",
+              "description": "Stack Exchange Q&A for car and motorcycle repair",
+              "url": "https://download.kiwix.org/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 340
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "diy-standard",
+          "description": "Home improvement expertise with thousands of Q&A threads. Includes Essential.",
+          "includesTier": "diy-essential",
+          "resources": [
+            {
+              "id": "diy.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "DIY & Home Improvement Q&A",
+              "description": "Stack Exchange Q&A for home repairs, electrical, plumbing, and construction",
+              "url": "https://download.kiwix.org/zim/stack_exchange/diy.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 2063
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "diy-comprehensive",
+          "description": "Adds craft and hands-on making reference once the core repair shelf is already in place. Includes Standard.",
+          "includesTier": "diy-standard",
+          "resources": [
+            {
+              "id": "ifixit_en_all",
+              "version": "2025-12",
+              "title": "iFixit Repair Guides",
+              "description": "Step-by-step repair guides for electronics, appliances, and vehicles",
+              "url": "https://download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim",
+              "size_mb": 3571
+            },
+            {
+              "id": "crafts.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Crafts Q&A",
+              "description": "Sewing, leather, handmaking, materials, and practical craft problem-solving",
+              "url": "https://download.kiwix.org/zim/stack_exchange/crafts.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 58
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Maker & Electronics",
+      "slug": "maker-electronics",
+      "icon": "IconCpu",
+      "description": "Boards, components, fabrication, and electronics learning packs for bench work, repairs, and hardware curiosity.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "maker-electronics-essential",
+          "description": "Start with boards, components, and the electronics basics you actually reach for first.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "arduino.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Arduino Q&A",
+              "description": "Microcontroller questions, hobby hardware builds, and embedded troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/arduino.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 259
+            },
+            {
+              "id": "avanti-semiconductor-electronics",
+              "version": "2025-09",
+              "title": "Semiconductor Electronics",
+              "description": "A focused video shelf on semiconductor devices and electronics fundamentals",
+              "url": "https://download.kiwix.org/zim/videos/avanti-semiconductor-electronics_2025-09.zim",
+              "size_mb": 136,
+              "unavailable": true
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "maker-electronics-standard",
+          "description": "Add fabrication and object-making context once the bench basics are in place. Includes Essential.",
+          "includesTier": "maker-electronics-essential",
+          "resources": [
+            {
+              "id": "ted_mul_3d-printing",
+              "version": "2026-09",
+              "title": "TED: 3D Printing",
+              "description": "Talks and demos on rapid prototyping, fabrication, and printed-object workflows",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_3d-printing_2026-09.zim",
+              "size_mb": 155
+            },
+            {
+              "id": "robotics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Robotics Q&A",
+              "description": "Robotics hardware, motion, sensors, and control-stack discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/robotics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 244
+            },
+            {
+              "id": "iot.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "IoT Q&A",
+              "description": "Embedded connectivity, edge devices, and networked hardware workflows",
+              "url": "https://download.kiwix.org/zim/stack_exchange/iot.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 21
+            },
+            {
+              "id": "3dprinting.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "3D Printing Q&A",
+              "description": "Printers, slicers, materials, tolerances, and fabrication troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/3dprinting.stackexchange.com_en_all_2026-07a.zim",
+              "size_mb": 120
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "maker-electronics-comprehensive",
+          "description": "The heavier bench shelf for circuit work, radio, and practical machine repair. Includes Standard.",
+          "includesTier": "maker-electronics-standard",
+          "resources": [
+            {
+              "id": "electronics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Electronics Q&A",
+              "description": "Circuit analysis, components, power, analog, digital, and bench troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/electronics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 4214
+            },
+            {
+              "id": "ham.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Ham Radio Q&A",
+              "description": "Radio gear, antennas, licensing, and field communication questions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/ham.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 76
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Agriculture & Food",
+      "slug": "agriculture",
+      "icon": "IconPlant",
+      "description": "Grow and prepare your own food - gardening, cooking techniques, and food preservation.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "agriculture-essential",
+          "description": "Quick recipes and cooking basics for everyday meal preparation.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "foss.cooking_en_all",
+              "version": "2026-05",
+              "title": "FOSS Cooking",
+              "description": "Quick and easy cooking guides and recipes",
+              "url": "https://download.kiwix.org/zim/zimit/foss.cooking_en_all_2026-05.zim",
+              "size_mb": 24
+            },
+            {
+              "id": "based.cooking_en_all",
+              "version": "2026-08",
+              "title": "Based.Cooking",
+              "description": "Simple, practical recipes from the community",
+              "url": "https://download.kiwix.org/zim/zimit/based.cooking_en_all_2026-08.zim",
+              "size_mb": 16
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "agriculture-standard",
+          "description": "Broaden the food and pantry lane with practical cooking and ingredient shelves. Includes Essential.",
+          "includesTier": "agriculture-essential",
+          "resources": [
+            {
+              "id": "gardening.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Gardening Q&A",
+              "description": "Stack Exchange Q&A for growing your own food, plant care, and landscaping",
+              "url": "https://download.kiwix.org/zim/stack_exchange/gardening.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 927
+            },
+            {
+              "id": "cooking.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Cooking Q&A",
+              "description": "Technique, substitutions, kitchen science, and practical cooking problem-solving",
+              "url": "https://download.kiwix.org/zim/stack_exchange/cooking.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 237
+            },
+            {
+              "id": "zimgit-food-preparation_en",
+              "version": "2025-04",
+              "title": "Food for Preppers",
+              "description": "Recipes and techniques for food preservation and long-term storage",
+              "url": "https://download.kiwix.org/zim/other/zimgit-food-preparation_en_2025-04.zim",
+              "size_mb": 98
+            },
+            {
+              "id": "grimgrains_en_all",
+              "version": "2026-08",
+              "title": "Grim Grains",
+              "description": "Fermentation, grain work, bread-adjacent technique, and practical food process notes",
+              "url": "https://download.kiwix.org/zim/zimit/grimgrains_en_all_2026-08.zim",
+              "size_mb": 26
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "agriculture-comprehensive",
+          "description": "The deeper food shelf for ingredient-specific and lifestyle-specific reference. Includes Standard.",
+          "includesTier": "agriculture-standard",
+          "resources": [
+            {
+              "id": "lrnselfreliance_en_all",
+              "version": "2026-09",
+              "title": "Learning Self-Reliance: Homesteading",
+              "description": "Beekeeping, animal husbandry, and sustainable living practices",
+              "url": "https://download.kiwix.org/zim/videos/lrnselfreliance_en_all_2026-09.zim",
+              "size_mb": 3974
+            },
+            {
+              "id": "gutenberg_en_lcc-s",
+              "version": "2026-03",
+              "title": "Project Gutenberg: Agriculture",
+              "description": "Classic texts on farming, animal husbandry, plant cultivation, and food preservation",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_lcc-s_2026-03.zim",
+              "size_mb": 4533
+            },
+            {
+              "id": "vegetarianism.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Vegetarianism Q&A",
+              "description": "Plant-based cooking, ingredient swaps, and nutrition-minded food discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/vegetarianism.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 10
+            },
+            {
+              "id": "coffee.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Coffee Q&A",
+              "description": "Brewing, grinders, extraction, and bean workflow troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/coffee.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 17
+            },
+            {
+              "id": "alcohol.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Alcohol Q&A",
+              "description": "Spirits, cocktails, beer, and practical beverage knowledge with low noise",
+              "url": "https://download.kiwix.org/zim/stack_exchange/alcohol.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 14
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Homestead & Sustainability",
+      "slug": "homestead-sustainability",
+      "icon": "IconLeaf2",
+      "description": "Practical self-reliance, energy, gardening, and build-it-yourself reference for longer-lived offline setups.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "homestead-sustainability-essential",
+          "description": "Start with the practical sustainability shelf.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "appropedia_en_all_maxi",
+              "version": "2026-02",
+              "title": "Appropedia",
+              "description": "Practical sustainability, appropriate technology, repair, and self-reliance reference",
+              "url": "https://download.kiwix.org/zim/other/appropedia_en_all_maxi_2026-02.zim",
+              "size_mb": 582
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "homestead-sustainability-standard",
+          "description": "Add energy and growing context once the core self-reliance shelf is in place. Includes Essential.",
+          "includesTier": "homestead-sustainability-essential",
+          "resources": [
+            {
+              "id": "energypedia_en_all_maxi",
+              "version": "2026-06",
+              "title": "Energypedia",
+              "description": "Energy systems, electrification, infrastructure, and field-heavy sustainability reference",
+              "url": "https://download.kiwix.org/zim/other/energypedia_en_all_maxi_2026-06.zim",
+              "size_mb": 800
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "homestead-sustainability-comprehensive",
+          "description": "The broader hand-built shelf once the basics are already sitting in the vault. Includes Standard.",
+          "includesTier": "homestead-sustainability-standard",
+          "resources": [
+            {
+              "id": "cd3wdproject.org_en_all",
+              "version": "2025-11",
+              "title": "CD3WD Project",
+              "description": "Appropriate-technology, farming, engineering, and field-manual reference for build-it-yourself setups",
+              "url": "https://download.kiwix.org/zim/zimit/cd3wdproject.org_en_all_2025-11.zim",
+              "size_mb": 581
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Finance & Crypto",
+      "slug": "finance-crypto",
+      "icon": "IconCoins",
+      "description": "Investing, money, and crypto reference shelves that install like any other RoachNet app.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "finance-crypto-essential",
+          "description": "Start with the compact money and investing shelf.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "finiki_en_all_maxi",
+              "version": "2024-06",
+              "title": "Finiki",
+              "description": "A compact investing and personal-finance wiki for long-range planning",
+              "url": "https://download.kiwix.org/zim/other/finiki_en_all_maxi_2024-06.zim",
+              "size_mb": 4
+            },
+            {
+              "id": "bogleheads_en_all_maxi",
+              "version": "2025-11",
+              "title": "Bogleheads",
+              "description": "Index-fund, retirement, and long-horizon investing reference in one tight shelf",
+              "url": "https://download.kiwix.org/zim/other/bogleheads_en_all_maxi_2025-11.zim",
+              "size_mb": 11
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "finance-crypto-standard",
+          "description": "Add practical money and economic Q&A once the base shelf is in place. Includes Essential.",
+          "includesTier": "finance-crypto-essential",
+          "resources": [
+            {
+              "id": "money.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Money Q&A",
+              "description": "Personal finance, taxes, banking, and real-world money problem-solving",
+              "url": "https://download.kiwix.org/zim/stack_exchange/money.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 254
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "finance-crypto-comprehensive",
+          "description": "The heavier money-and-crypto shelf for people who want a broader finance brain in the vault. Includes Standard.",
+          "includesTier": "finance-crypto-standard",
+          "resources": [
+            {
+              "id": "bitcoin_en_all_maxi",
+              "version": "2021-03",
+              "title": "Bitcoin Wiki",
+              "description": "A compact cryptocurrency and protocol shelf with wallet, mining, and ecosystem reference",
+              "url": "https://download.kiwix.org/zim/other/bitcoin_en_all_maxi_2021-03.zim",
+              "size_mb": 18
+            },
+            {
+              "id": "bitcoin.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Bitcoin Q&A",
+              "description": "Protocol, wallets, security, transactions, and practical crypto troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/bitcoin.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 156
+            },
+            {
+              "id": "crypto.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Cryptography Q&A",
+              "description": "Applied cryptography, protocols, primitives, and implementation questions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/crypto.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 185
+            },
+            {
+              "id": "quant.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Quantitative Finance Q&A",
+              "description": "Pricing models, market math, derivatives, and quantitative-finance reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/quant.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 160
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Software Development",
+      "slug": "computing",
+      "icon": "IconCode",
+      "description": "Open-source coding courses, language docs, and practical developer references that install one course at a time into the RoachNet Education lane.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "computing-essential",
+          "description": "Start with approachable coding courses and the language docs you will actually reach for on day one.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "freecodecamp_en_javascript-algorithms-and-data-structures",
+              "version": "2026-08",
+              "title": "freeCodeCamp: JavaScript Algorithms and Data Structures",
+              "description": "A compact interactive course focused on JavaScript fundamentals, algorithms, and data-structure practice.",
+              "url": "https://download.kiwix.org/zim/freecodecamp/freecodecamp_en_javascript-algorithms-and-data-structures_2026-08.zim",
+              "size_mb": 7
+            },
+            {
+              "id": "coreyms_en_python-tutorials",
+              "version": "2026-09",
+              "title": "Corey Schafer: Python Tutorials",
+              "description": "A practical Python video course covering scripting, automation, and everyday development workflows.",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_python-tutorials_2026-09.zim",
+              "size_mb": 2568
+            },
+            {
+              "id": "docs.python.org_en",
+              "version": "2026-08",
+              "title": "Python Docs",
+              "description": "The official Python documentation mirrored for offline reference inside RoachNet.",
+              "url": "https://download.kiwix.org/zim/zimit/docs.python.org_en_all_2026-08a.zim",
+              "size_mb": 3959
+            },
+            {
+              "id": "devdocs_en_javascript",
+              "version": "2026-10",
+              "title": "JavaScript Docs",
+              "description": "Language reference from DevDocs",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_javascript_2026-10.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "devdocs_en_python",
+              "version": "2026-08",
+              "title": "Python Docs",
+              "description": "The Python standard library and language reference from DevDocs",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_python_2026-08.zim",
+              "size_mb": 4
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "computing-standard",
+          "description": "Broaden the coding shelf with fast-reference web docs and the practical tooling you actually reach for. Includes Essential.",
+          "includesTier": "computing-essential",
+          "resources": [
+            {
+              "id": "devdocs_en_react",
+              "version": "2026-05",
+              "title": "React Docs",
+              "description": "The current React documentation set for component patterns, state, effects, and modern app structure.",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_react_2026-05.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "coreyms_en_git-tutorials",
+              "version": "2026-09",
+              "title": "Corey Schafer: Git Tutorials",
+              "description": "Version control fundamentals, branching, remotes, and practical Git workflow",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_git-tutorials_2026-09.zim",
+              "size_mb": 60
+            },
+            {
+              "id": "freecodecamp_en_coding-interview-prep",
+              "version": "2026-08",
+              "title": "freeCodeCamp: Coding Interview Prep",
+              "description": "Challenge-driven prep for whiteboard-style coding and algorithm questions",
+              "url": "https://download.kiwix.org/zim/freecodecamp/freecodecamp_en_coding-interview-prep_2026-08.zim",
+              "size_mb": 7
+            },
+            {
+              "id": "freecodecamp_en_project-euler",
+              "version": "2026-08",
+              "title": "freeCodeCamp: Project Euler",
+              "description": "Math-heavy programming problems for sharpening problem-solving under constraints",
+              "url": "https://download.kiwix.org/zim/freecodecamp/freecodecamp_en_project-euler_2026-08.zim",
+              "size_mb": 7
+            },
+            {
+              "id": "freecodecamp_en_rosetta-code",
+              "version": "2026-08",
+              "title": "freeCodeCamp: Rosetta Code",
+              "description": "Cross-language programming tasks and pattern comparisons in one compact archive",
+              "url": "https://download.kiwix.org/zim/freecodecamp/freecodecamp_en_rosetta-code_2026-08.zim",
+              "size_mb": 7
+            },
+            {
+              "id": "devdocs_en_typescript",
+              "version": "2026-10",
+              "title": "TypeScript Docs",
+              "description": "Types, tooling, and API reference for modern JavaScript work",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_typescript_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "coreyms_en_javascript-tutorials",
+              "version": "2026-09",
+              "title": "Corey Schafer: JavaScript Tutorials",
+              "description": "A practical JavaScript video lane for fundamentals and browser-side workflows",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_javascript-tutorials_2026-09.zim",
+              "size_mb": 44
+            },
+            {
+              "id": "coreyms_en_sql-tutorials",
+              "version": "2026-09",
+              "title": "Corey Schafer: SQL Tutorials",
+              "description": "Querying, joins, schema basics, and everyday database work in video form",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_sql-tutorials_2026-09.zim",
+              "size_mb": 24
+            },
+            {
+              "id": "gobyexample.com_en_all",
+              "version": "2026-08",
+              "title": "Go by Example",
+              "description": "A compact hands-on Go shelf with runnable examples and short explanations",
+              "url": "https://download.kiwix.org/zim/zimit/gobyexample.com_en_all_2026-08.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_git",
+              "version": "2026-10",
+              "title": "Git Docs",
+              "description": "Reference docs for Git commands, config, and version-control plumbing",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_git_2026-10.zim",
+              "size_mb": 2
+            },
+            {
+              "id": "devhints.io_en_all",
+              "version": "2026-08",
+              "title": "Devhints",
+              "description": "Dense cheatsheets for frameworks, CLIs, languages, and everyday dev muscle-memory work",
+              "url": "https://download.kiwix.org/zim/zimit/devhints.io_en_all_2026-08.zim",
+              "size_mb": 4
+            },
+            {
+              "id": "getbootstrap.com_en_all",
+              "version": "2026-06",
+              "title": "Bootstrap Docs",
+              "description": "Components, layout patterns, and utility-heavy frontend reference from the Bootstrap docs lane",
+              "url": "https://download.kiwix.org/zim/zimit/getbootstrap.com_en_all_2026-06.zim",
+              "size_mb": 49
+            },
+            {
+              "id": "dart.dev_en_all",
+              "version": "2026-05",
+              "title": "Dart Docs",
+              "description": "The main Dart language shelf for syntax, tooling, packages, and language behavior",
+              "url": "https://download.kiwix.org/zim/zimit/dart.dev_en_all_2026-05.zim",
+              "size_mb": 133
+            },
+            {
+              "id": "devdocs_en_sqlite",
+              "version": "2026-10",
+              "title": "SQLite Docs",
+              "description": "SQLite language and C API reference from DevDocs",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_sqlite_2026-10.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "devdocs_en_html",
+              "version": "2026-10",
+              "title": "HTML Docs",
+              "description": "HTML element and attribute reference from DevDocs",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_html_2026-10.zim",
+              "size_mb": 2
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "computing-comprehensive",
+          "description": "A wider dev shelf for frontend styling, alt runtimes, and deeper build tooling. Includes Standard.",
+          "includesTier": "computing-standard",
+          "resources": [
+            {
+              "id": "devdocs_en_go",
+              "version": "2026-10",
+              "title": "Go Docs",
+              "description": "Language and standard-library reference for Go development inside the vault",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_go_2026-10.zim",
+              "size_mb": 2
+            },
+            {
+              "id": "devdocs_en_rust",
+              "version": "2026-10",
+              "title": "Rust Docs",
+              "description": "Rust language and library reference for safer systems work",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_rust_2026-10.zim",
+              "size_mb": 6
+            },
+            {
+              "id": "coreyms_en_django-tutorials",
+              "version": "2026-10",
+              "title": "Corey Schafer: Django Tutorials",
+              "description": "Django apps, models, auth, and practical Python web workflows",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_django-tutorials_2026-10.zim",
+              "size_mb": 285
+            },
+            {
+              "id": "coreyms_en_flask-tutorials",
+              "version": "2026-09",
+              "title": "Corey Schafer: Flask Tutorials",
+              "description": "Flask routes, APIs, templating, and small-service patterns",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_flask-tutorials_2026-09.zim",
+              "size_mb": 269
+            },
+            {
+              "id": "devdocs_en_nextjs",
+              "version": "2026-10",
+              "title": "Next.js Docs",
+              "description": "App Router patterns, routing, rendering, and deployment reference",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_nextjs_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_vite",
+              "version": "2026-10",
+              "title": "Vite Docs",
+              "description": "Build tooling and dev-server reference for fast modern frontends",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_vite_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_tailwindcss",
+              "version": "2026-08",
+              "title": "Tailwind CSS Docs",
+              "description": "Utility-first styling reference for fast UI work inside the vault",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_tailwindcss_2026-08.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_playwright",
+              "version": "2026-10",
+              "title": "Playwright Docs",
+              "description": "Browser automation and end-to-end testing reference",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_playwright_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_electron",
+              "version": "2026-10",
+              "title": "Electron Docs",
+              "description": "Desktop app patterns for Chromium and Node-powered builds",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_electron_2026-10.zim",
+              "size_mb": 2
+            },
+            {
+              "id": "devdocs_en_vue",
+              "version": "2026-08",
+              "title": "Vue Docs",
+              "description": "Reactive UI reference for Vue components, routing, and state work",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_vue_2026-08.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_svelte",
+              "version": "2026-10",
+              "title": "Svelte Docs",
+              "description": "Reactive component patterns and compiler-powered frontend reference",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_svelte_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_astro",
+              "version": "2026-10",
+              "title": "Astro Docs",
+              "description": "Content-site, islands, and hybrid rendering reference for modern web builds",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_astro_2026-10.zim",
+              "size_mb": 2
+            },
+            {
+              "id": "softwareengineering.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Software Engineering Q&A",
+              "description": "Architecture, maintainability, project structure, and team-scale engineering discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/softwareengineering.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 479
+            },
+            {
+              "id": "opensource.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Open Source Q&A",
+              "description": "Licensing, maintainer workflow, open collaboration, and project stewardship questions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/opensource.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 31
+            },
+            {
+              "id": "devdocs_en_node",
+              "version": "2026-08",
+              "title": "Node.js Docs",
+              "description": "Runtime APIs, modules, streams, and server-side JavaScript reference",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_node_2026-08.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "cheatography.com_en_all",
+              "version": "2025-07",
+              "title": "Cheatography",
+              "description": "A giant cheat-sheet shelf for coding, ops, design, and day-to-day terminal work",
+              "url": "https://download.kiwix.org/zim/zimit/cheatography.com_en_all_2025-07.zim",
+              "size_mb": 11440
+            },
+            {
+              "id": "codereview.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Code Review Q&A",
+              "description": "Code critique, refactoring advice, and design tradeoff discussion across languages",
+              "url": "https://download.kiwix.org/zim/stack_exchange/codereview.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 551
+            },
+            {
+              "id": "cs.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Computer Science Q&A",
+              "description": "Algorithms, data structures, complexity, and practical CS-heavy reasoning",
+              "url": "https://download.kiwix.org/zim/stack_exchange/cs.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 276
+            },
+            {
+              "id": "cstheory.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "CS Theory Q&A",
+              "description": "Formal methods, theory, proofs, and deeper computational thinking",
+              "url": "https://download.kiwix.org/zim/stack_exchange/cstheory.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 74
+            },
+            {
+              "id": "devdocs_en_fastapi",
+              "version": "2026-10",
+              "title": "FastAPI Docs",
+              "description": "Python API and service-building reference for async apps and local tools",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_fastapi_2026-10.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "devdocs_en_express",
+              "version": "2026-05",
+              "title": "Express Docs",
+              "description": "Node API and middleware reference for quick services and local backends",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_express_2026-05.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_django-rest-framework",
+              "version": "2026-10",
+              "title": "Django REST Framework Docs",
+              "description": "Serializer, API, and viewset reference for bigger Python service lanes",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_django-rest-framework_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_c",
+              "version": "2026-10",
+              "title": "C Docs",
+              "description": "A compact C language and standard-library reference shelf",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_c_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_cpp",
+              "version": "2026-10",
+              "title": "C++ Docs",
+              "description": "Templates, STL, and systems-language reference for lower-level coding work",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_cpp_2026-10.zim",
+              "size_mb": 8
+            },
+            {
+              "id": "devdocs_en_cmake",
+              "version": "2026-08",
+              "title": "CMake Docs",
+              "description": "Build-system reference for native projects, libraries, and toolchains",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_cmake_2026-08.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "devdocs_en_duckdb",
+              "version": "2026-10",
+              "title": "DuckDB Docs",
+              "description": "Embedded analytics and local data-work reference for desktop-first tooling",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_duckdb_2026-10.zim",
+              "size_mb": 2
+            },
+            {
+              "id": "emacs.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Emacs Q&A",
+              "description": "Editor workflows, Lisp tweaks, and long-session editing reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/emacs.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 152
+            },
+            {
+              "id": "lua.org_en_all",
+              "version": "2026-08",
+              "title": "Lua.org",
+              "description": "The main Lua language site packaged as an install-ready shelf for scripting and embedded work",
+              "url": "https://download.kiwix.org/zim/zimit/lua.org_en_all_2026-08.zim",
+              "size_mb": 380
+            },
+            {
+              "id": "devdocs_en_css",
+              "version": "2026-10",
+              "title": "CSS Docs",
+              "description": "Selectors, layout, browser behavior, and styling reference for frontend work that stays sharp",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_css_2026-10.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "devdocs_en_dart",
+              "version": "2026-10",
+              "title": "Dart API Docs",
+              "description": "API and package reference for deeper Dart and Flutter-adjacent language work",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_dart_2026-10.zim",
+              "size_mb": 10
+            },
+            {
+              "id": "devdocs_en_deno",
+              "version": "2026-05",
+              "title": "Deno Docs",
+              "description": "Runtime, tooling, permissions, and TypeScript-first server reference",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_deno_2026-05.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "devdocs_en_bazel",
+              "version": "2026-07",
+              "title": "Bazel Docs",
+              "description": "Build-system reference for large polyglot repos, caching, and reproducible tooling",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_bazel_2026-07.zim",
+              "size_mb": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Machine Learning & Data Science",
+      "slug": "machine-learning",
+      "icon": "IconBrain",
+      "description": "Statistics, model-building references, and practical ML coursework mirrored into RoachNet as individual installable course apps.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "machine-learning-essential",
+          "description": "Start with statistics and data-handling fundamentals before you pull the heavier model packs.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "learningstatistics_en_all",
+              "version": "2026-08",
+              "title": "Learning Statistics",
+              "description": "A concise statistics course covering probability, inference, and the math you need before model work.",
+              "url": "https://download.kiwix.org/zim/zimit/learningstatistics_en_all_2026-08.zim",
+              "size_mb": 33
+            },
+            {
+              "id": "devdocs_en_numpy",
+              "version": "2026-10",
+              "title": "NumPy Docs",
+              "description": "Array computing, vectorized math, and the core Python numerical toolkit mirrored offline.",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_numpy_2026-10.zim",
+              "size_mb": 5
+            },
+            {
+              "id": "devdocs_en_pandas",
+              "version": "2026-10",
+              "title": "Pandas Docs",
+              "description": "Dataframe workflows, cleaning, reshaping, and analysis reference for everyday ML preparation.",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_pandas_2026-10.zim",
+              "size_mb": 5
+            },
+            {
+              "id": "learningstatisticswithr.com_en_all",
+              "version": "2026-08",
+              "title": "Learning Statistics with R",
+              "description": "Statistics through the lens of R, inference, and practical quantitative thinking",
+              "url": "https://download.kiwix.org/zim/zimit/learningstatisticswithr.com_en_all_2026-08.zim",
+              "size_mb": 19
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "machine-learning-standard",
+          "description": "Layer in the practical model-tool docs most people actually use. Includes Essential.",
+          "includesTier": "machine-learning-essential",
+          "resources": [
+            {
+              "id": "devdocs_en_scikit-learn",
+              "version": "2026-10",
+              "title": "scikit-learn Docs",
+              "description": "A practical offline reference for classical machine-learning models, pipelines, metrics, and preprocessing.",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_scikit-learn_2026-10.zim",
+              "size_mb": 58
+            },
+            {
+              "id": "devdocs_en_pytorch",
+              "version": "2026-10",
+              "title": "PyTorch Docs",
+              "description": "Offline PyTorch reference for tensors, modules, training loops, and model implementation details.",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_pytorch_2026-10.zim",
+              "size_mb": 6
+            },
+            {
+              "id": "devdocs_en_tensorflow",
+              "version": "2026-08",
+              "title": "TensorFlow Docs",
+              "description": "TensorFlow API docs and guides for model building, serving, and deployment reference.",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_tensorflow_2026-08.zim",
+              "size_mb": 6
+            },
+            {
+              "id": "libretexts.org_en_stats",
+              "version": "2026-01",
+              "title": "LibreTexts Statistics",
+              "description": "Probability, inference, regression, and statistical methods textbooks",
+              "url": "https://download.kiwix.org/zim/libretexts/libretexts.org_en_stats_2026-01.zim",
+              "size_mb": 216
+            },
+            {
+              "id": "coreyms_en_pandas-tutorials",
+              "version": "2026-09",
+              "title": "Corey Schafer: Pandas Tutorials",
+              "description": "Dataframes, cleaning, reshaping, and analysis workflows in video form",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_pandas-tutorials_2026-09.zim",
+              "size_mb": 173
+            },
+            {
+              "id": "coreyms_en_matplotlib-tutorials",
+              "version": "2026-09",
+              "title": "Corey Schafer: Matplotlib Tutorials",
+              "description": "Plotting, chart composition, and data visualization in Python",
+              "url": "https://download.kiwix.org/zim/videos/coreyms_en_matplotlib-tutorials_2026-09.zim",
+              "size_mb": 109
+            },
+            {
+              "id": "datascience.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Data Science Q&A",
+              "description": "Applied data-science discussion on tooling, modeling, and analysis workflows",
+              "url": "https://download.kiwix.org/zim/stack_exchange/datascience.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 273
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "machine-learning-comprehensive",
+          "description": "Pull the heavier video shelf once you want a deeper offline ML course library. Includes Standard.",
+          "includesTier": "machine-learning-standard",
+          "resources": [
+            {
+              "id": "ted_mul_machine-learning",
+              "version": "2026-09",
+              "title": "TED: Machine Learning",
+              "description": "A large offline video collection exploring machine learning, AI applications, and the social questions around them.",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_machine-learning_2026-09.zim",
+              "size_mb": 1463
+            },
+            {
+              "id": "ai.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "AI Q&A",
+              "description": "General AI discussion, model workflows, and implementation questions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/ai.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 105
+            },
+            {
+              "id": "genai.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "GenAI Q&A",
+              "description": "Practical large-language-model and generative-AI troubleshooting and patterns",
+              "url": "https://download.kiwix.org/zim/stack_exchange/genai.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 11
+            },
+            {
+              "id": "devdocs_en_scikit-image",
+              "version": "2026-10",
+              "title": "scikit-image Docs",
+              "description": "Image processing reference for computer vision and scientific imaging workflows",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_scikit-image_2026-10.zim",
+              "size_mb": 11
+            },
+            {
+              "id": "lost-stats.github.io_en_all",
+              "version": "2026-09",
+              "title": "Lost Stats",
+              "description": "Applied statistics, causal-inference, and data-work notes that bridge theory and practice",
+              "url": "https://download.kiwix.org/zim/zimit/lost-stats.github.io_en_all_2026-09.zim",
+              "size_mb": 36
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Platforms & Systems",
+      "slug": "platforms-systems",
+      "icon": "IconDeviceLaptop",
+      "description": "OS-specific docs, package-manager know-how, and platform shelves for long-lived machine setups.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "platforms-systems-essential",
+          "description": "Start with lightweight OS and package-manager guidance for the machines you actually live on.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "homebrew.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Homebrew Q&A",
+              "description": "Package-manager troubleshooting, formulas, casks, and macOS setup discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/homebrew.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 37
+            },
+            {
+              "id": "archlinux_en_all_maxi",
+              "version": "2026-07",
+              "title": "Arch Linux Docs",
+              "description": "The Arch wiki as a compact systems shelf for Linux setup, recovery, and long-tail fixes",
+              "url": "https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2026-07.zim",
+              "size_mb": 36
+            },
+            {
+              "id": "alpinelinux_en_all_maxi",
+              "version": "2026-07",
+              "title": "Alpine Linux Docs",
+              "description": "Small-footprint Linux docs for containers, tiny systems, and package work",
+              "url": "https://download.kiwix.org/zim/other/alpinelinux_en_all_maxi_2026-07.zim",
+              "size_mb": 3
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "platforms-systems-standard",
+          "description": "Add SBC and desktop-platform context once the light systems shelf is in place. Includes Essential.",
+          "includesTier": "platforms-systems-essential",
+          "resources": [
+            {
+              "id": "raspberrypi.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Raspberry Pi Q&A",
+              "description": "Pi setup, GPIO, Linux-on-small-hardware, and field troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/raspberrypi.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 298
+            },
+            {
+              "id": "elementaryos.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "elementary OS Q&A",
+              "description": "Desktop Linux setup, app behavior, and OS-specific troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/elementaryos.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 57
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "platforms-systems-comprehensive",
+          "description": "The broader platform shelf for older Linux lore and long-tail systems fixes. Includes Standard.",
+          "includesTier": "platforms-systems-standard",
+          "resources": [
+            {
+              "id": "gentoo_en_all_maxi",
+              "version": "2026-07",
+              "title": "Gentoo Docs",
+              "description": "Source-based Linux reference for systems tinkerers and people who like knowing every layer",
+              "url": "https://download.kiwix.org/zim/other/gentoo_en_all_maxi_2026-07.zim",
+              "size_mb": 96
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Security & Privacy",
+      "slug": "security-privacy",
+      "icon": "IconShieldLock",
+      "description": "Security, privacy, reverse-engineering, and defense-minded shelves for people who want the machine to stay theirs.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "security-privacy-essential",
+          "description": "Start with the practical defense and privacy shelf.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "security.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Security Q&A",
+              "description": "Practical security, privacy, defense, and threat-model discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/security.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 439
+            },
+            {
+              "id": "tor.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Tor Q&A",
+              "description": "Tor, anonymity, routing, and privacy-minded troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/tor.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 32
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "security-privacy-standard",
+          "description": "Add compact anonymity and reverse-engineering depth once the core safety shelf is in place. Includes Essential.",
+          "includesTier": "security-privacy-essential",
+          "resources": [
+            {
+              "id": "reverseengineering.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Reverse Engineering Q&A",
+              "description": "Binary analysis, malware-adjacent learning, and reverse-engineering workflow reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/reverseengineering.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 115
+            },
+            {
+              "id": "hsm.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "History of Science & Math Q&A",
+              "description": "Historical context around scientific ideas, math, and the way technical knowledge moved over time",
+              "url": "https://download.kiwix.org/zim/stack_exchange/hsm.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 49
+            },
+            {
+              "id": "incognitocat.me_en_all",
+              "version": "2025-09",
+              "title": "Incognito Cat",
+              "description": "A compact privacy-and-anonymity shelf for hardened browsing, opsec basics, and safer defaults",
+              "url": "https://download.kiwix.org/zim/zimit/incognitocat.me_en_all_2025-09.zim",
+              "size_mb": 9
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "security-privacy-comprehensive",
+          "description": "The larger security shelf for edge, web, and platform protection context. Includes Standard.",
+          "includesTier": "security-privacy-standard",
+          "resources": [
+            {
+              "id": "cloudflare.com_en_learning-center",
+              "version": "2025-12",
+              "title": "Cloudflare Learning Center",
+              "description": "A broad edge, DNS, WAF, and web-security reference shelf from the Cloudflare docs lane",
+              "url": "https://download.kiwix.org/zim/zimit/cloudflare.com_en_learning-center_2025-12.zim",
+              "size_mb": 191
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Music Production & Audio",
+      "slug": "music-audio",
+      "icon": "IconWaveform",
+      "description": "Music theory, production context, and sound-focused learning packs for users building tracks, scores, and audio-heavy projects.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "music-audio-essential",
+          "description": "Start with the practical music-theory shelf before pulling the large video archives.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "openmusictheory.com_en_all",
+              "version": "2026-09",
+              "title": "Open Music Theory",
+              "description": "A well-structured open music-theory course covering harmony, rhythm, notation, and ear-training fundamentals.",
+              "url": "https://download.kiwix.org/zim/zimit/openmusictheory.com_en_all_2026-09.zim",
+              "size_mb": 77
+            },
+            {
+              "id": "music.dalitio.de_en_all",
+              "version": "2026-08",
+              "title": "Dalitio Music Theory",
+              "description": "Compact lessons on chord construction, scales, intervals, and the theory you keep revisiting while producing.",
+              "url": "https://download.kiwix.org/zim/zimit/music.dalitio.de_en_all_2026-08.zim",
+              "size_mb": 40
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "music-audio-standard",
+          "description": "Bring in sound-focused talks and listening material for production and audio-thinking. Includes Essential.",
+          "includesTier": "music-audio-essential",
+          "resources": [
+            {
+              "id": "ted_mul_sound",
+              "version": "2026-09",
+              "title": "TED: Sound",
+              "description": "Talks and lessons about acoustics, sound design, listening, and how audio changes the way we experience media.",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_sound_2026-09.zim",
+              "size_mb": 465
+            },
+            {
+              "id": "sound.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Sound Q&A",
+              "description": "Questions on acoustics, sound design, live audio, and playback systems",
+              "url": "https://download.kiwix.org/zim/stack_exchange/sound.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 76
+            },
+            {
+              "id": "music.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Music Q&A",
+              "description": "Harmony, arranging, notation, performance, and composition discussions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/music.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 341
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "music-audio-comprehensive",
+          "description": "The deeper score-and-instrument shelf for long studio sessions and arrangement work. Includes Standard.",
+          "includesTier": "music-audio-standard",
+          "resources": [
+            {
+              "id": "ted_mul_music",
+              "version": "2026-09",
+              "title": "TED: Music",
+              "description": "A broad music-focused talk archive covering composition, performance, listening, creativity, and the craft around making records.",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_music_2026-09.zim",
+              "size_mb": 4162
+            },
+            {
+              "id": "dsp.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Signal Processing Q&A",
+              "description": "Filters, transforms, DSP workflows, and practical math for audio and signals",
+              "url": "https://download.kiwix.org/zim/stack_exchange/dsp.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 378
+            },
+            {
+              "id": "fretmap.app_en_all",
+              "version": "2024-10",
+              "title": "FretMap",
+              "description": "Chord and fretboard reference for guitar-minded writing, arranging, and study",
+              "url": "https://download.kiwix.org/zim/zimit/fretmap.app_en_all_2024-10.zim",
+              "size_mb": 53
+            },
+            {
+              "id": "celticscores.com_en_all",
+              "version": "2026-02",
+              "title": "Celtic Scores",
+              "description": "A deep notation shelf full of tune transcriptions and score reference",
+              "url": "https://download.kiwix.org/zim/zimit/celticscores.com_en_all_2026-02.zim",
+              "size_mb": 5670
+            },
+            {
+              "id": "ibanezwiki_en_all_maxi",
+              "version": "2024-06",
+              "title": "Ibanez Wiki",
+              "description": "Guitar model history, hardware details, and instrument-reference depth for gear-minded sessions",
+              "url": "https://download.kiwix.org/zim/other/ibanezwiki_en_all_maxi_2024-06.zim",
+              "size_mb": 161
+            },
+            {
+              "id": "chopin.lib.uchicago.edu_en_all",
+              "version": "2025-01",
+              "title": "Chopin Early Editions",
+              "description": "A deep score and edition shelf for piano study, notation work, and classical reference",
+              "url": "https://download.kiwix.org/zim/other/chopin.lib.uchicago.edu_en_all_2025-01.zim",
+              "size_mb": 8834
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Design & Visual Media",
+      "slug": "design-visual-media",
+      "icon": "IconBrush",
+      "description": "3D, graphics, photography, and visual-production references that install as named RoachNet shelves.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "design-visual-media-essential",
+          "description": "Start with the visual craft shelves you are likely to open first on a real workstation.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "graphicdesign.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Graphic Design Q&A",
+              "description": "Typography, layout, branding, print prep, and design workflow discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/graphicdesign.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 928
+            },
+            {
+              "id": "photo.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Photography Q&A",
+              "description": "Capture, lighting, lenses, editing, and practical camera problem-solving",
+              "url": "https://download.kiwix.org/zim/stack_exchange/photo.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 449
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "design-visual-media-standard",
+          "description": "Bring in 3D production thinking and Blender-specific problem-solving. Includes Essential.",
+          "includesTier": "design-visual-media-essential",
+          "resources": [
+            {
+              "id": "blender.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Blender Q&A",
+              "description": "Modeling, shading, animation, rendering, and Blender workflow fixes",
+              "url": "https://download.kiwix.org/zim/stack_exchange/blender.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 2837
+            },
+            {
+              "id": "computergraphics.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Computer Graphics Q&A",
+              "description": "Rendering, shading, transforms, rasterization, and graphics pipeline discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/computergraphics.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 53
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "design-visual-media-comprehensive",
+          "description": "A broader visual-production shelf for stills, motion, and layout craft. Includes Standard.",
+          "includesTier": "design-visual-media-standard",
+          "resources": [
+            {
+              "id": "studio.blender.org_en_open-movies",
+              "version": "2026-09",
+              "title": "Blender Studio Open Movies",
+              "description": "Open-production films and behind-the-scenes assets from Blender Studio",
+              "url": "https://download.kiwix.org/zim/videos/studio.blender.org_en_open-movies_2026-09.zim",
+              "size_mb": 441
+            },
+            {
+              "id": "ted_mul_design",
+              "version": "2026-09",
+              "title": "TED: Design",
+              "description": "A broad visual-thinking talk archive on design, objects, and creative direction",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_design_2026-09.zim",
+              "size_mb": 7631
+            },
+            {
+              "id": "video.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Video Production Q&A",
+              "description": "Editing, codecs, cameras, color, and video workflow troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/video.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 77
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IT & Infrastructure",
+      "slug": "it-infrastructure",
+      "icon": "IconServer",
+      "description": "Linux operations, networking, web infrastructure, and security learning packs for users treating RoachNet like a portable workstation.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "it-infrastructure-essential",
+          "description": "Start with the operating-system and shell references most people need first.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "devdocs_en_bash",
+              "version": "2026-10",
+              "title": "Bash Docs",
+              "description": "Shell reference for command-line workflows, scripting, and quick ops work inside RoachNet.",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_bash_2026-10.zim",
+              "size_mb": 1
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "it-infrastructure-standard",
+          "description": "Layer in container and platform docs once the core ops shelf is already in place. Includes Essential.",
+          "includesTier": "it-infrastructure-essential",
+          "resources": [
+            {
+              "id": "askubuntu.com_en_all",
+              "version": "2026-06",
+              "title": "Ask Ubuntu",
+              "description": "Ubuntu setup, troubleshooting, packaging, and admin reference from years of Q&A",
+              "url": "https://download.kiwix.org/zim/stack_exchange/askubuntu.com_en_all_2026-06.zim",
+              "size_mb": 2767
+            },
+            {
+              "id": "devdocs_en_nginx",
+              "version": "2026-10",
+              "title": "Nginx Docs",
+              "description": "HTTP server, reverse proxy, and production web-serving reference",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_nginx_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "devdocs_en_postgresql",
+              "version": "2026-08",
+              "title": "PostgreSQL Docs",
+              "description": "Database administration and query reference for serious local services",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_postgresql_2026-08.zim",
+              "size_mb": 3
+            },
+            {
+              "id": "devdocs_en_redis",
+              "version": "2026-10",
+              "title": "Redis Docs",
+              "description": "Caching, data structures, and operational reference for fast local services",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_redis_2026-10.zim",
+              "size_mb": 1
+            },
+            {
+              "id": "android.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Android Q&A",
+              "description": "Android setup, modding, troubleshooting, and device-management reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/android.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 411
+            },
+            {
+              "id": "dba.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "DBA Q&A",
+              "description": "Database administration, tuning, replication, and query-ops reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/dba.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 701
+            },
+            {
+              "id": "devdocs_en_docker",
+              "version": "2026-10",
+              "title": "Docker Docs",
+              "description": "Container workflows, images, Compose, and runtime reference for local stacks",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_docker_2026-10.zim",
+              "size_mb": 2
+            },
+            {
+              "id": "devdocs_en_kubernetes",
+              "version": "2026-10",
+              "title": "Kubernetes Docs",
+              "description": "Cluster, pod, and workload reference for larger orchestrated environments",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_kubernetes_2026-10.zim",
+              "size_mb": 1
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "it-infrastructure-comprehensive",
+          "description": "The broader operator shelf for infra-as-code, edge docs, and production reference. Includes Standard.",
+          "includesTier": "it-infrastructure-standard",
+          "resources": [
+            {
+              "id": "ted_mul_cyber-security",
+              "version": "2026-09",
+              "title": "TED: Cyber Security",
+              "description": "A security-focused talk archive covering privacy, defense, online trust, and the real-world impact of bad infrastructure decisions.",
+              "url": "https://download.kiwix.org/zim/ted/ted_mul_cyber-security_2026-09.zim",
+              "size_mb": 205
+            },
+            {
+              "id": "serverfault.com_en_all",
+              "version": "2026-02",
+              "title": "Server Fault Q&A",
+              "description": "Production server, hosting, and systems administration discussions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/serverfault.com_en_all_2026-02.zim",
+              "size_mb": 1640
+            },
+            {
+              "id": "superuser.com_en_all",
+              "version": "2026-08",
+              "title": "Superuser Q&A",
+              "description": "Desktop ops, utilities, and troubleshooting across long-lived machines",
+              "url": "https://download.kiwix.org/zim/stack_exchange/superuser.com_en_all_2026-08.zim",
+              "size_mb": 4003
+            },
+            {
+              "id": "unix.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Unix & Linux Q&A",
+              "description": "Shell, processes, filesystems, and day-to-day Unix operator knowledge",
+              "url": "https://download.kiwix.org/zim/stack_exchange/unix.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 1313
+            },
+            {
+              "id": "networkengineering.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Network Engineering Q&A",
+              "description": "Routing, switching, access design, and network troubleshooting reference",
+              "url": "https://download.kiwix.org/zim/stack_exchange/networkengineering.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 130
+            },
+            {
+              "id": "devdocs_en_ansible",
+              "version": "2026-10",
+              "title": "Ansible Docs",
+              "description": "Automation and configuration-management reference for repeatable machine setup",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_ansible_2026-10.zim",
+              "size_mb": 28
+            },
+            {
+              "id": "apple.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Apple Q&A",
+              "description": "macOS, iOS, and Apple hardware troubleshooting from years of practical questions",
+              "url": "https://download.kiwix.org/zim/stack_exchange/apple.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 1193
+            },
+            {
+              "id": "devops.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "DevOps Q&A",
+              "description": "Pipelines, observability, release flow, and infra automation discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/devops.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 35
+            },
+            {
+              "id": "devdocs_en_terraform",
+              "version": "2026-10",
+              "title": "Terraform Docs",
+              "description": "Infrastructure-as-code reference for repeatable local and remote stack setup",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_terraform_2026-10.zim",
+              "size_mb": 32
+            },
+            {
+              "id": "devdocs_en_apache-http-server",
+              "version": "2026-10",
+              "title": "Apache HTTP Server Docs",
+              "description": "Web-serving, modules, and classic HTTP stack reference",
+              "url": "https://download.kiwix.org/zim/devdocs/devdocs_en_apache-http-server_2026-10.zim",
+              "size_mb": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Travel & Field Guides",
+      "slug": "travel-field-guides",
+      "icon": "IconRouteSquare",
+      "description": "Offline travel guides and route-oriented reference shelves for planning on bad networks or no network at all.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "travel-field-guides-essential",
+          "description": "Start with the compact region-level travel shelf.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "wikivoyage_en_europe_nopic",
+              "version": "2026-09",
+              "title": "Wikivoyage: Europe",
+              "description": "An offline Europe travel guide with city notes, transit guidance, and route context",
+              "url": "https://download.kiwix.org/zim/wikivoyage/wikivoyage_en_europe_nopic_2026-09.zim",
+              "size_mb": 84
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "travel-field-guides-standard",
+          "description": "Move up to the broad world guide once the compact travel shelf is in place. Includes Essential.",
+          "includesTier": "travel-field-guides-essential",
+          "resources": [
+            {
+              "id": "wikivoyage_en_all_nopic",
+              "version": "2026-09",
+              "title": "Wikivoyage: World Guide",
+              "description": "Country, city, and route articles for a lightweight global travel reference",
+              "url": "https://download.kiwix.org/zim/wikivoyage/wikivoyage_en_all_nopic_2026-09.zim",
+              "size_mb": 272
+            },
+            {
+              "id": "openstreetmap-wiki_en_all_nopic",
+              "version": "2026-07",
+              "title": "OpenStreetMap Wiki",
+              "description": "Mapping conventions, tags and tools behind the open map",
+              "url": "https://download.kiwix.org/zim/other/openstreetmap-wiki_en_all_nopic_2026-07.zim",
+              "size_mb": 478
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "travel-field-guides-comprehensive",
+          "description": "The image-rich travel archive for machines with more storage to burn. Includes Standard.",
+          "includesTier": "travel-field-guides-standard",
+          "resources": [
+            {
+              "id": "wikivoyage_en_all_maxi",
+              "version": "2026-09",
+              "title": "Wikivoyage: World Guide (With Images)",
+              "description": "The broader travel guide with photos and richer article context left intact",
+              "url": "https://download.kiwix.org/zim/wikivoyage/wikivoyage_en_all_maxi_2026-09.zim",
+              "size_mb": 1071
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Travel, Mobility & Outdoors",
+      "slug": "travel-mobility-outdoors",
+      "icon": "IconPlaneTilt",
+      "description": "Travel problem-solving, moving-around shelves, and route-minded practical reference for life away from home.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "travel-mobility-outdoors-essential",
+          "description": "Start with the practical travel and moving-around shelf.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "travel.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Travel Q&A",
+              "description": "Visas, routes, timing, safety, and the practical realities of getting somewhere",
+              "url": "https://download.kiwix.org/zim/stack_exchange/travel.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 460
+            },
+            {
+              "id": "expatriates.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Expatriates Q&A",
+              "description": "Living abroad, documents, work, housing, and day-to-day logistics far from home",
+              "url": "https://download.kiwix.org/zim/stack_exchange/expatriates.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 43
+            },
+            {
+              "id": "hitchwiki_en_all_maxi",
+              "version": "2023-01",
+              "title": "Hitchwiki",
+              "description": "Route notes, local advice, and practical traveler knowledge from the road",
+              "url": "https://download.kiwix.org/zim/other/hitchwiki_en_all_maxi_2023-01.zim",
+              "size_mb": 16,
+              "unavailable": true
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "travel-mobility-outdoors-standard",
+          "description": "Add outdoors and machine-assisted movement once the basic travel shelf is in place. Includes Essential.",
+          "includesTier": "travel-mobility-outdoors-essential",
+          "resources": [
+            {
+              "id": "outdoors.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Outdoors Q&A",
+              "description": "Camping, hiking, navigation, kit choices, and wilderness decision-making",
+              "url": "https://download.kiwix.org/zim/stack_exchange/outdoors.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 141
+            },
+            {
+              "id": "aviation.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Aviation Q&A",
+              "description": "Flying, aircraft systems, navigation, and aviation know-how",
+              "url": "https://download.kiwix.org/zim/stack_exchange/aviation.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 506
+            },
+            {
+              "id": "bicycles.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Bicycles Q&A",
+              "description": "Bike maintenance, fit, route gear, and practical cycling problem-solving",
+              "url": "https://download.kiwix.org/zim/stack_exchange/bicycles.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 491
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "travel-mobility-outdoors-comprehensive",
+          "description": "The broader mobility shelf for more specialized movement and navigation contexts. Includes Standard.",
+          "includesTier": "travel-mobility-outdoors-standard",
+          "resources": [
+            {
+              "id": "anonymousplanet.org_en_all",
+              "version": "2026-05",
+              "title": "Anonymous Planet",
+              "description": "Travel and operational-security guidance for moving carefully through the world",
+              "url": "https://download.kiwix.org/zim/zimit/anonymousplanet.org_en_all_2026-05.zim",
+              "size_mb": 28
+            },
+            {
+              "id": "drones.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Drones Q&A",
+              "description": "Drone flight, equipment, regulations, and aerial workflow troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/drones.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 13
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Games, Film & Pop Culture",
+      "slug": "games-pop-culture",
+      "icon": "IconDeviceGamepad2",
+      "description": "Movies, anime, games, worldbuilding, and other culture-heavy shelves for when the machine is also your media brain.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "games-pop-culture-essential",
+          "description": "Start with film and anime reference before the bigger fandom shelves.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "movies.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Movies Q&A",
+              "description": "Film trivia, production details, plot questions, and movie reference discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/movies.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 286
+            },
+            {
+              "id": "anime.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Anime & Manga Q&A",
+              "description": "Anime, manga, continuity, fandom, and series-specific reference discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/anime.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 239
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "games-pop-culture-standard",
+          "description": "Add more systems-and-mechanics shelves once the first culture lane is already in place. Includes Essential.",
+          "includesTier": "games-pop-culture-essential",
+          "resources": [
+            {
+              "id": "gaming.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Gaming Q&A",
+              "description": "Gameplay systems, platform issues, mechanics, and game-specific troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/gaming.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 811
+            },
+            {
+              "id": "boardgames.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Board Games Q&A",
+              "description": "Rules, strategy, edge cases, and tabletop reference for physical games",
+              "url": "https://download.kiwix.org/zim/stack_exchange/boardgames.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 107
+            },
+            {
+              "id": "gamedev.stackexchange.com_en_all",
+              "version": "2026-02",
+              "title": "Game Development Q&A",
+              "description": "Engines, gameplay systems, pipelines, and game-building troubleshooting",
+              "url": "https://download.kiwix.org/zim/stack_exchange/gamedev.stackexchange.com_en_all_2026-02.zim",
+              "size_mb": 532
+            },
+            {
+              "id": "chess.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Chess Q&A",
+              "description": "Openings, tactics, endgames, and position-heavy reference for board-brain installs",
+              "url": "https://download.kiwix.org/zim/stack_exchange/chess.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 81
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "games-pop-culture-comprehensive",
+          "description": "The deeper genre and worldbuilding shelf for machines that keep culture close. Includes Standard.",
+          "includesTier": "games-pop-culture-standard",
+          "resources": [
+            {
+              "id": "allthetropes_en_all_maxi",
+              "version": "2025-07",
+              "title": "All The Tropes",
+              "description": "Story devices, genre vocabulary, and media-pattern reference for writing and culture-brain tangents",
+              "url": "https://download.kiwix.org/zim/other/allthetropes_en_all_maxi_2025-07.zim",
+              "size_mb": 1481
+            },
+            {
+              "id": "bulbagarden_en_all_maxi",
+              "version": "2026-08",
+              "title": "Bulbagarden",
+              "description": "A big fandom/wiki shelf for Pokemon lore, mechanics, and franchise reference",
+              "url": "https://download.kiwix.org/zim/other/bulbagarden_en_all_maxi_2026-08.zim",
+              "size_mb": 2597
+            },
+            {
+              "id": "scifi.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Sci-Fi & Fantasy Q&A",
+              "description": "Lore, continuity, franchises, speculative fiction, and genre reference discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/scifi.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 1283
+            },
+            {
+              "id": "worldbuilding.stackexchange.com_en_all",
+              "version": "2026-08",
+              "title": "Worldbuilding Q&A",
+              "description": "Designing believable worlds, systems, settings, and speculative structures",
+              "url": "https://download.kiwix.org/zim/stack_exchange/worldbuilding.stackexchange.com_en_all_2026-08.zim",
+              "size_mb": 834
+            },
+            {
+              "id": "explainxkcd_en_all_maxi",
+              "version": "2026-07",
+              "title": "Explain XKCD",
+              "description": "A compact culture-and-science side shelf for decoding XKCD comics and references",
+              "url": "https://download.kiwix.org/zim/other/explainxkcd_en_all_maxi_2026-07.zim",
+              "size_mb": 154
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dictionaries & Primary Sources",
+      "slug": "dictionaries-primary-sources",
+      "icon": "IconBooks",
+      "description": "Dictionaries, source texts, and deep public-domain shelves for machines that keep a real library close.",
+      "language": "en",
+      "tiers": [
+        {
+          "name": "Essential",
+          "slug": "dictionaries-primary-sources-essential",
+          "description": "Start with the compact wordbook before you pull the larger archives.",
+          "recommended": true,
+          "resources": [
+            {
+              "id": "wiktionary_en_simple_all_nopic",
+              "version": "2026-07",
+              "title": "Simple English Wiktionary",
+              "description": "A lighter offline dictionary and word-reference shelf for fast lookup",
+              "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_en-simple_all_nopic_2026-07.zim",
+              "size_mb": 27
+            }
+          ]
+        },
+        {
+          "name": "Standard",
+          "slug": "dictionaries-primary-sources-standard",
+          "description": "Layer in the reader and book-world shelf once the base language lane is already in place. Includes Essential.",
+          "includesTier": "dictionaries-primary-sources-essential",
+          "resources": [
+            {
+              "id": "wiktionary_en_all_nopic",
+              "version": "2026-08",
+              "title": "English Wiktionary",
+              "description": "A deep dictionary shelf with usage, etymology, and cross-language word notes",
+              "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_en_all_nopic_2026-08.zim",
+              "size_mb": 9156
+            },
+            {
+              "id": "wikisource_en_all_nopic",
+              "version": "2026-09",
+              "title": "English Wikisource",
+              "description": "Primary texts, public-domain books, speeches, and historical documents",
+              "url": "https://download.kiwix.org/zim/wikisource/wikisource_en_all_nopic_2026-09.zim",
+              "size_mb": 3906
+            },
+            {
+              "id": "ebooks.stackexchange.com_en_all",
+              "version": "2026-07",
+              "title": "Ebooks Q&A",
+              "description": "Formats, readers, conversion, metadata, and practical ebook workflow discussion",
+              "url": "https://download.kiwix.org/zim/stack_exchange/ebooks.stackexchange.com_en_all_2026-07.zim",
+              "size_mb": 15
+            }
+          ]
+        },
+        {
+          "name": "Comprehensive",
+          "slug": "dictionaries-primary-sources-comprehensive",
+          "description": "Deep public-domain shelves for machines with serious storage headroom. Includes Standard.",
+          "includesTier": "dictionaries-primary-sources-standard",
+          "resources": [
+            {
+              "id": "gutenberg_en_lcc-q",
+              "version": "2026-03",
+              "title": "Project Gutenberg: Science (LCC Q)",
+              "description": "Public-domain science texts, manuals, and old technical writing grouped under LCC Q",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_lcc-q_2026-03.zim",
+              "size_mb": 17725
+            },
+            {
+              "id": "gutenberg_en_lcc-t",
+              "version": "2026-03",
+              "title": "Project Gutenberg: Technology (LCC T)",
+              "description": "Public-domain engineering and technology texts grouped under LCC T",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_lcc-t_2026-03.zim",
+              "size_mb": 13155
+            },
+            {
+              "id": "gutenberg_en_lcc-d",
+              "version": "2025-12",
+              "title": "Project Gutenberg: History (LCC D)",
+              "description": "Large historical archive of public-domain history material under LCC D",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_lcc-d_2025-12.zim",
+              "size_mb": 40254
+            },
+            {
+              "id": "gutenberg_en_lcc-n",
+              "version": "2026-03",
+              "title": "Project Gutenberg: Fine Arts (LCC N)",
+              "description": "Public-domain visual arts, design, and fine-arts writing under LCC N",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_lcc-n_2026-03.zim",
+              "size_mb": 22753
+            },
+            {
+              "id": "gutenberg_en_lcc-p",
+              "version": "2026-03",
+              "title": "Project Gutenberg: Language Studies (LCC P)",
+              "description": "Compact language and philology material grouped under LCC P",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_lcc-p_2026-03.zim",
+              "size_mb": 39
+            },
+            {
+              "id": "gutenberg_en_all",
+              "version": "2025-11",
+              "title": "Project Gutenberg: Full English Mirror",
+              "description": "The giant public-domain English shelf for machines that want the whole thing locally",
+              "url": "https://download.kiwix.org/zim/gutenberg/gutenberg_en_all_2025-11.zim",
+              "size_mb": 221252
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "refreshedAt": "2026-10-10T07:54:35.730Z"
+}

@@ -1,0 +1,76 @@
+{
+  "schema": "org.roachnet.packs-catalog.v1",
+  "description": "Optional packs RoachWares publishes for RoachNet. Capability packs ship inside the app; everything here is a resource pack the Pack Manager (Settings › Packs) can install on demand. Download URLs point at the signed descriptors on apps.roachnet.org, which name the public mirrors and the SHA-256 the runtime verifies before anything is unpacked. The digests below are those of the published archives, not of a local rebuild.",
+  "updatedAt": "2026-10-10T04:45:00Z",
+  "packs": [
+    {
+      "schema": "org.roachnet.pack.v1",
+      "id": "roachwhisper-openai-whisper-base-en-coreml",
+      "version": "1.0.0",
+      "kind": "resource",
+      "name": "RoachWhisper Listener",
+      "summary": "On-device speech to text (Whisper base.en, Core ML). Needed for dictation and transcripts.",
+      "publisher": "RoachWares LLC",
+      "requires": { "roachnet": "1.1.0", "platforms": ["macos"] },
+      "dependencies": [{ "id": "speech", "minimumVersion": "1.1.0" }],
+      "capabilities": ["microphone"],
+      "resources": [
+        {
+          "path": "roachwhisper-openai-whisper-base-en-coreml.zip",
+          "url": "https://apps.roachnet.org/downloads/model-packs/roachwhisper-openai-whisper-base-en-coreml.json",
+          "sha256": "3257147455f31f36d4cb2ee550b71c1e71c86081130f88fc29dbc4f357c58422",
+          "bytes": 134362528,
+          "archive": "zip"
+        }
+      ],
+      "dataRoots": [],
+      "install": { "handler": "roachspeech-pack", "kind": "roachWhisper" }
+    },
+    {
+      "schema": "org.roachnet.pack.v1",
+      "id": "roachvoice-kokoro-82m-int8-coreml",
+      "version": "1.0.0",
+      "kind": "resource",
+      "name": "RoachVoice Small Narrator",
+      "summary": "On-device text to speech (Kokoro 82M, int8, Core ML). Needed for read-aloud and spoken replies.",
+      "publisher": "RoachWares LLC",
+      "requires": { "roachnet": "1.1.0", "platforms": ["macos"] },
+      "dependencies": [{ "id": "speech", "minimumVersion": "1.1.0" }],
+      "capabilities": ["speaker"],
+      "resources": [
+        {
+          "path": "roachvoice-kokoro-82m-int8-coreml.zip",
+          "url": "https://apps.roachnet.org/downloads/model-packs/roachvoice-kokoro-82m-int8-coreml.json",
+          "sha256": "6c6036764fba780a6df20f0dacf5c9dced06b9fd8dd1611edd143f240ad10f6c",
+          "bytes": 80330676,
+          "archive": "zip"
+        }
+      ],
+      "dataRoots": [],
+      "install": { "handler": "roachspeech-pack", "kind": "roachVoice" }
+    },
+    {
+      "schema": "org.roachnet.pack.v1",
+      "id": "roachvoice-chatterbox-coreml",
+      "version": "1.0.0",
+      "kind": "resource",
+      "name": "RoachVoice Cloner Forge",
+      "summary": "Voice cloning text to speech (Chatterbox, Core ML). Large; only for people who want cloned voices.",
+      "publisher": "RoachWares LLC",
+      "requires": { "roachnet": "1.1.0", "platforms": ["macos"] },
+      "dependencies": [{ "id": "speech", "minimumVersion": "1.1.0" }],
+      "capabilities": ["speaker"],
+      "resources": [
+        {
+          "path": "roachvoice-chatterbox-coreml.zip",
+          "url": "https://apps.roachnet.org/downloads/model-packs/roachvoice-chatterbox-coreml.json",
+          "sha256": "9b71eb8597fd7025af9c426232af80ab76fa4e14a11506def54d3c3a744c2280",
+          "bytes": 1694341722,
+          "archive": "zip"
+        }
+      ],
+      "dataRoots": [],
+      "install": { "handler": "roachspeech-pack", "kind": "roachVoice" }
+    }
+  ]
+}
