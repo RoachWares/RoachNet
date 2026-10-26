@@ -23,7 +23,7 @@ public final class RoachFieldEngine: @unchecked Sendable {
             descriptor.colorAttachments[0].pixelFormat = Self.pixelFormat
             pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
-            NSLog("[RoachNet field] The field shader did not compile: \(error)")
+            NSLog("%@", "[RoachNet field] The field shader did not compile: \(error)")
             return nil
         }
         let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(

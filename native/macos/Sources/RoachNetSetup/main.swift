@@ -2354,7 +2354,7 @@ final class SetupSnapshotHook {
             controller?.stage = stage
         }
         if let errorLine = controller?.errorLine {
-            NSLog("[RoachNet Setup snapshot] Setup reports: \(errorLine)")
+            NSLog("%@", "[RoachNet Setup snapshot] Setup reports: \(errorLine)")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             MainActor.assumeIsolated {
@@ -2386,9 +2386,9 @@ final class SetupSnapshotHook {
         let url = directory.appendingPathComponent("roachnet-setup-\(Int(Date().timeIntervalSince1970 * 1000)).png")
         do {
             try data.write(to: url, options: .atomic)
-            NSLog("[RoachNet Setup snapshot] Wrote \(url.path)")
+            NSLog("%@", "[RoachNet Setup snapshot] Wrote \(url.path)")
         } catch {
-            NSLog("[RoachNet Setup snapshot] Couldn't write \(url.path): \(error.localizedDescription)")
+            NSLog("%@", "[RoachNet Setup snapshot] Couldn't write \(url.path): \(error.localizedDescription)")
         }
     }
 }

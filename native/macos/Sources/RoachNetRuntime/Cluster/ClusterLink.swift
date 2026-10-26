@@ -4,11 +4,15 @@ import Foundation
 
 final class ClusterLink {
     static let maxFrame = 96 << 20
+    static let maxHandshakeFrame = 128
+    static let defaultHandshakeSeconds: TimeInterval = 10
     let fd: Int32
     let remote: String
     private(set) var peerID = ""
     private var channel: ClusterChannel?
     private let lock = NSLock()
+    private var timeout: TimeInterval?
+    private var handshakeDeadline: Date?
 
     init(fd: Int32, remote: String) {
         self.fd = fd
@@ -81,9 +85,27 @@ final class ClusterLink {
     }
 
     func setTimeout(_ seconds: TimeInterval) {
-        var value = timeval(tv_sec: Int(seconds), tv_usec: Int32((seconds - Double(Int(seconds))) * 1_000_000))
+        timeout = seconds
+        applyTimeout(seconds)
+    }
+
+    private func applyTimeout(_ seconds: TimeInterval?) {
+        var value = timeval(tv_sec: 0, tv_usec: 0)
+        if let seconds {
+            let bounded = seconds.isFinite ? min(max(seconds, 0.001), 31_536_000) : 31_536_000
+            value = timeval(tv_sec: Int(bounded), tv_usec: Int32((bounded - Double(Int(bounded))) * 1_000_000))
+        }
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &value, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, socklen_t(MemoryLayout<timeval>.size))
+    }
+
+    private func beginHandshake() {
+        handshakeDeadline = Date().addingTimeInterval(timeout ?? ClusterLink.defaultHandshakeSeconds)
+    }
+
+    private func endHandshake() {
+        handshakeDeadline = nil
+        applyTimeout(timeout)
     }
 
     private func writeAll(_ data: Data) throws {
@@ -103,9 +125,19 @@ final class ClusterLink {
         var offset = 0
         try data.withUnsafeMutableBytes { raw in
             while offset < count {
+                if let deadline = handshakeDeadline {
+                    let left = deadline.timeIntervalSinceNow
+                    guard left > 0 else {
+                        throw ClusterError.unreachable("\(remote) took too long over the handshake.")
+                    }
+                    applyTimeout(min(left, timeout ?? left))
+                }
                 let got = Darwin.read(fd, raw.baseAddress! + offset, count - offset)
                 if got < 0 && errno == EINTR { continue }
                 if got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    if let deadline = handshakeDeadline, deadline.timeIntervalSinceNow <= 0 {
+                        throw ClusterError.unreachable("\(remote) took too long over the handshake.")
+                    }
                     throw ClusterError.unreachable("\(remote) stopped answering.")
                 }
                 guard got > 0 else { throw ClusterError.unreachable("The connection to \(remote) closed.") }
@@ -125,7 +157,7 @@ final class ClusterLink {
     private func receiveFrame() throws -> Data {
         let header = try readExactly(4)
         let length = Int(header.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }.bigEndian)
-        guard length <= ClusterLink.maxFrame else {
+        guard length <= (channel == nil ? ClusterLink.maxHandshakeFrame : ClusterLink.maxFrame) else {
             throw ClusterError.protocolError("\(remote) sent a frame that is too large.")
         }
         let body = try readExactly(length)
@@ -136,6 +168,8 @@ final class ClusterLink {
     }
 
     func handshakeAsInitiator(key: ClusterKey, nodeID: Data) throws {
+        beginHandshake()
+        defer { endHandshake() }
         let nonce = ClusterHandshake.nonce()
         try sendFrame(ClusterHandshake.magic + nodeID + nonce)
         let reply = try receiveFrame()
@@ -158,6 +192,8 @@ final class ClusterLink {
     }
 
     func handshakeAsResponder(key: ClusterKey, nodeID: Data) throws {
+        beginHandshake()
+        defer { endHandshake() }
         let hello = try receiveFrame()
         guard hello.count == 4 + 16 + 32, hello.prefix(4) == ClusterHandshake.magic else {
             throw ClusterError.protocolError("\(remote) isn't a RoachNet Cluster node.")
@@ -256,6 +292,31 @@ final class ClusterListener {
         running = false
         shutdown(fd, SHUT_RDWR)
         Darwin.close(fd)
+    }
+}
+
+struct ClusterHandshakeGate {
+    static let perAddress = 4
+    static let total = 32
+    private var counts: [String: Int] = [:]
+    private var inFlight = 0
+
+    mutating func enter(_ address: String) -> Bool {
+        guard inFlight < Self.total, counts[address, default: 0] < Self.perAddress else { return false }
+        counts[address, default: 0] += 1
+        inFlight += 1
+        return true
+    }
+
+    mutating func leave(_ address: String) {
+        guard let count = counts[address] else { return }
+        counts[address] = count > 1 ? count - 1 : nil
+        inFlight -= 1
+    }
+
+    static func address(of remote: String) -> String {
+        guard let colon = remote.lastIndex(of: ":") else { return remote }
+        return String(remote[..<colon])
     }
 }
 #endif

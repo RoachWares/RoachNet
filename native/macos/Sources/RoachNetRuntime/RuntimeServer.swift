@@ -116,7 +116,6 @@ public final class RuntimeServer {
             "runtime": "native-swift",
             "repoRoot": JSON(config.repoRoot),
             "logPath": JSON(config.logPath),
-            "apiToken": JSON(runtime.apiToken),
         ]
         try Files.writePrettyJSON(
             [
@@ -164,7 +163,7 @@ public final class RuntimeServer {
 
     func startCompanion() throws -> (String?, String?) {
         guard runtime.wantsCompanionRuntime() else { return (nil, nil) }
-        guard let token = config.trimmedEnv("ROACHNET_COMPANION_TOKEN") else {
+        guard let token = config.companionToken else {
             RuntimeLog.write("companion requested without token; skipping companion bridge")
             return (nil, nil)
         }
@@ -193,7 +192,7 @@ public final class RuntimeServer {
 
 final class CompanionProxy {
     let runtime: NativeRuntime
-    let token: String
+    let tokenDigest: String
     let maxRequestBodyBytes: Int
     let maxResponseBodyBytes: Int
     let aliasHost: String
@@ -207,7 +206,7 @@ final class CompanionProxy {
 
     init(runtime: NativeRuntime, token: String) {
         self.runtime = runtime
-        self.token = token
+        self.tokenDigest = CompanionProxy.digest(ofConfiguredToken: token)
         func positive(_ key: String, _ fallback: Int) -> Int {
             let number = JSCoercion.number(fromString: runtime.config.env(key) ?? "")
             return JSCoercion.isSafeInteger(number) && number > 0 ? Int(number) : fallback
@@ -215,6 +214,13 @@ final class CompanionProxy {
         maxRequestBodyBytes = positive("ROACHNET_COMPANION_MAX_BODY_BYTES", 2 * 1024 * 1024)
         maxResponseBodyBytes = positive("ROACHNET_COMPANION_MAX_RESPONSE_BYTES", 10 * 1024 * 1024)
         aliasHost = runtime.config.trimmedEnv("ROACHNET_LOCAL_HOSTNAME") ?? "RoachNet"
+    }
+
+    static func digest(ofConfiguredToken configured: String) -> String {
+        let value = configured.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty { return "" }
+        if value.hasPrefix("sha256:") { return String(value.dropFirst("sha256:".count)).lowercased() }
+        return SHA256Digest.hex(value)
     }
 
     static let loopbackHosts: Set<String> = ["localhost", "127.0.0.1", "::1", "::ffff:127.0.0.1"]
@@ -357,6 +363,7 @@ final class CompanionProxy {
                     updated["endpoint"] = endpoint.isEmpty ? (peer["endpoint"] || nil) : JSON(endpoint)
                     return updated
                 })
+            next["joinCode"] = nil
             try? Files.writePrettyJSON(next, to: runtime.config.roachTailStatePath, mode: Files.privateFileMode)
         }
     }
@@ -375,7 +382,7 @@ final class CompanionProxy {
                 [
                     "status": "ok",
                     "targetOrigin": JSON("http://127.0.0.1:\(runtime.listenPort)"),
-                    "tokenConfigured": JSON(!token.isEmpty),
+                    "tokenConfigured": JSON(!tokenDigest.isEmpty),
                     "inProcess": true,
                 ])
         }
@@ -389,7 +396,9 @@ final class CompanionProxy {
         var peerName: String?
         if !pairing {
             let provided = extractToken(request)
-            if !provided.isEmpty && !token.isEmpty && CompanionProxy.tokensMatch(provided, token) {
+            if !provided.isEmpty && !tokenDigest.isEmpty
+                && CompanionProxy.tokensMatch(SHA256Digest.hex(provided), tokenDigest)
+            {
                 authKind = "primary"
             } else if let peer = resolvePeer(provided, allowDisabled: peerCanUseWhenDisabled(pathname, request.method))
             {

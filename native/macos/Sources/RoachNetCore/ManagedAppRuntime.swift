@@ -694,7 +694,6 @@ public struct ManagedAppServerInfo: Decodable, Sendable {
     public let target: String?
     public let repoRoot: String?
     public let logPath: String?
-    public let apiToken: String?
 }
 
 public struct ManagedAppSnapshot: Sendable {
@@ -732,14 +731,69 @@ public actor ManagedAppRuntimeBridge {
 
     private var process: Process?
     private var serverInfoURL: URL?
-    private var cachedServerInfo: ManagedAppServerInfo? {
-        didSet { if let token = cachedServerInfo?.apiToken, !token.isEmpty { apiToken = token } }
-    }
+    private var cachedServerInfo: ManagedAppServerInfo?
     private var apiToken: String?
     private var startupTask: Task<ManagedAppServerInfo, Error>?
     private let nativeStartupTimeoutSeconds: TimeInterval = 300
 
     public init() {}
+
+    static func launchEnvironment(_ environment: [String: String], token: String, onInput: Bool) -> [String: String] {
+        var environment = environment
+        if onInput {
+            environment.removeValue(forKey: "ROACHNET_API_TOKEN")
+            environment["ROACHNET_API_TOKEN_STDIN"] = "1"
+        } else {
+            environment.removeValue(forKey: "ROACHNET_API_TOKEN_STDIN")
+            environment["ROACHNET_API_TOKEN"] = token
+        }
+        return environment
+    }
+
+    static func describesRuntime(
+        _ info: ManagedAppServerInfo,
+        startedAs pid: Int32,
+        listeningPorts: (Int32) -> Set<UInt16> = ProcessSockets.listeningTCPPorts(of:)
+    ) -> Bool {
+        func origin(_ address: String) -> (host: String, port: Int)? {
+            guard let url = URL(string: address), url.scheme == "http", url.user == nil, url.password == nil,
+                let host = url.host, host == "127.0.0.1" || host == "::1",
+                let port = url.port, (1...65_535).contains(port)
+            else { return nil }
+            return (host, port)
+        }
+        guard pid > 0, info.pid == pid, let health = origin(info.healthUrl) else { return false }
+        if let web = info.webUrl {
+            guard let api = origin(web), api == health else { return false }
+        }
+        return listeningPorts(pid).contains(UInt16(health.port))
+    }
+
+    enum LaunchTokenCheck: Equatable {
+        case refused
+        case answered(Int)
+        case noAnswer
+    }
+
+    static let launchTokenCheckPath = "api/system/info"
+
+    static func checkLaunchToken(at baseURL: URL, session: URLSession = .shared) async -> LaunchTokenCheck {
+        var request = URLRequest(url: baseURL.appending(path: launchTokenCheckPath))
+        request.timeoutInterval = 5
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (_, response) = try? await session.data(for: request),
+            let status = (response as? HTTPURLResponse)?.statusCode
+        else { return .noAnswer }
+        return status == 401 ? .refused : .answered(status)
+    }
+
+    static func launchTokenInput(_ token: String) -> Data { Data((token + "\n").utf8) }
+
+    private static func handOver(_ token: String, to handle: FileHandle) throws {
+        _ = fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1)
+        defer { try? handle.close() }
+        try handle.write(contentsOf: launchTokenInput(token))
+    }
 
     public static var isAppleSiliconNativeRuntime: Bool {
         #if os(macOS) && arch(arm64)
@@ -826,8 +880,10 @@ public actor ManagedAppRuntimeBridge {
         return resolved
     }
 
+    private var startedRuntimeIsRunning: Bool { process?.isRunning == true }
+
     public func ensureRunning(using config: RoachNetInstallerConfig) async throws -> ManagedAppServerInfo {
-        if let cachedServerInfo, try await isHealthy(cachedServerInfo.healthUrl) {
+        if let cachedServerInfo, startedRuntimeIsRunning, try await isHealthy(cachedServerInfo.healthUrl) {
             persistHealthyBootstrapStateIfNeeded(using: config)
             return cachedServerInfo
         }
@@ -855,7 +911,7 @@ public actor ManagedAppRuntimeBridge {
         using config: RoachNetInstallerConfig,
         allowBootstrapRepair: Bool
     ) async throws -> ManagedAppServerInfo {
-        if let cachedServerInfo, try await isHealthy(cachedServerInfo.healthUrl) {
+        if let cachedServerInfo, startedRuntimeIsRunning, try await isHealthy(cachedServerInfo.healthUrl) {
             persistHealthyBootstrapStateIfNeeded(using: config)
             return cachedServerInfo
         }
@@ -889,27 +945,49 @@ public actor ManagedAppRuntimeBridge {
 
         let launchToken = Self.newAPIToken()
         apiToken = launchToken
-        var launchEnvironment = runtimeLaunchEnvironment(
-            using: config,
-            repoRoot: launch.repoRoot,
-            nodeBinary: launch.nodeBinary,
-            serverInfoURL: infoURL
-        )
-        launchEnvironment["ROACHNET_API_TOKEN"] = launchToken
-        process.environment = launchEnvironment
+        process.environment = Self.launchEnvironment(
+            runtimeLaunchEnvironment(
+                using: config,
+                repoRoot: launch.repoRoot,
+                nodeBinary: launch.nodeBinary,
+                serverInfoURL: infoURL
+            ), token: launchToken, onInput: launch.takesTokenOnInput)
+        let tokenPipe = launch.takesTokenOnInput ? Pipe() : nil
+        process.standardInput = tokenPipe ?? FileHandle.nullDevice
 
         try process.run()
         self.process = process
+        if let tokenPipe {
+            try? tokenPipe.fileHandleForReading.close()
+            try? Self.handOver(launchToken, to: tokenPipe.fileHandleForWriting)
+        }
 
         let deadline = Date().addingTimeInterval(nativeStartupTimeoutSeconds)
         while Date() < deadline {
             if let data = try? Data(contentsOf: infoURL),
                 let serverInfo = try? JSONDecoder().decode(ManagedAppServerInfo.self, from: data),
+                Self.describesRuntime(serverInfo, startedAs: process.processIdentifier),
                 try await isHealthy(serverInfo.healthUrl)
             {
-                cachedServerInfo = serverInfo
-                persistHealthyBootstrapStateIfNeeded(using: config)
-                return serverInfo
+                let baseURL = try runtimeBaseURL(from: serverInfo)
+                switch await Self.checkLaunchToken(at: baseURL) {
+                case .refused:
+                    cachedServerInfo = serverInfo
+                    persistHealthyBootstrapStateIfNeeded(using: config)
+                    return serverInfo
+                case .answered(let status):
+                    process.terminate()
+                    self.process = nil
+                    apiToken = nil
+                    throw NSError(
+                        domain: "RoachNetRuntime", code: 27,
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "The RoachNet runtime answered a request that didn't carry its launch token (HTTP \(status)), so its local API would have been open to every program on this Mac. RoachNet stopped it. Reinstall RoachNet with RoachNet Setup to restore its runtime helper."
+                        ])
+                case .noAnswer:
+                    break
+                }
             }
 
             if let exitDescription = exitState.describeExit() {
@@ -1790,6 +1868,8 @@ public actor ManagedAppRuntimeBridge {
         let workingDirectory: URL
         let repoRoot: URL
         let nodeBinary: String?
+
+        var takesTokenOnInput: Bool { nodeBinary == nil }
     }
 
     func resolveRuntimeLaunch(using config: RoachNetInstallerConfig, allowAnyNode: Bool = false) throws -> RuntimeLaunch

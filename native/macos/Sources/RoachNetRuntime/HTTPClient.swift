@@ -31,7 +31,12 @@ public enum HTTPClient {
         timeoutMs: Int = 5_000,
         maxResponseBytes: Int? = nil
     ) throws -> HTTPClientResponse {
-        guard let url = URL(string: urlString) else { throw RuntimeError("Invalid URL: \(urlString)") }
+        guard let url = URL(string: urlString) else {
+            throw RuntimeError("Invalid URL: \(WebURL(urlString)?.redacted ?? "unreadable")")
+        }
+        guard url.user == nil, url.password == nil else {
+            throw RuntimeError("RoachNet doesn't send requests to an address that carries a user name or password.")
+        }
         var request = URLRequest(
             url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Double(timeoutMs) / 1000)
         request.httpMethod = method
@@ -66,7 +71,7 @@ public enum HTTPClient {
             throw RuntimeError("The operation was aborted due to timeout")
         }
         if let maxResponseBytes, collector?.exceeded == true {
-            throw RuntimeError("Response from \(urlString) exceeded \(maxResponseBytes) bytes.")
+            throw RuntimeError("Response from \(WebURL.display(urlString)) exceeded \(maxResponseBytes) bytes.")
         }
         let (resultData, resultResponse, resultError) = outcome.value
         if let resultError {
@@ -76,11 +81,11 @@ public enum HTTPClient {
             throw RuntimeError(resultError.localizedDescription)
         }
         guard let http = resultResponse as? HTTPURLResponse else {
-            throw RuntimeError("No HTTP response from \(urlString)")
+            throw RuntimeError("No HTTP response from \(WebURL.display(urlString))")
         }
         let data = resultData ?? Data()
         if let maxResponseBytes, data.count > maxResponseBytes {
-            throw RuntimeError("Response from \(urlString) exceeded \(maxResponseBytes) bytes.")
+            throw RuntimeError("Response from \(WebURL.display(urlString)) exceeded \(maxResponseBytes) bytes.")
         }
         var headerMap: [String: String] = [:]
         for (key, value) in http.allHeaderFields {
@@ -221,6 +226,10 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
     }
 
     public func run(stallTimeoutMs: Int, totalTimeoutMs: Int) throws -> (received: Int64, expected: Int64?) {
+        guard url.user == nil, url.password == nil else {
+            throw RuntimeError(
+                "RoachNet doesn't send requests to an address that carries a user name or password.", statusCode: 400)
+        }
         let stall = max(1, min(stallTimeoutMs, totalTimeoutMs))
         stallSeconds = max(1, stall / 1000)
         let configuration = URLSessionConfiguration.ephemeral
@@ -254,7 +263,7 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
         if let failure { throw failure }
         if !(200..<300).contains(statusCode) {
             throw RuntimeError(
-                "HTTP \(statusCode) while downloading \(url.absoluteString)",
+                "HTTP \(statusCode) while downloading \(WebURL.display(url.absoluteString))",
                 statusCode: statusCode == 0 ? 502 : statusCode)
         }
         if let expected, expected > 0, received != expected {
@@ -294,7 +303,8 @@ public final class StreamingDownload: NSObject, URLSessionDataDelegate, @uncheck
             guard let range = StreamingDownload.parseContentRange(http.value(forHTTPHeaderField: "Content-Range")),
                 range.start == resumeFrom
             else {
-                failure = RuntimeError("The server resumed \(url.absoluteString) at the wrong offset.", statusCode: 502)
+                failure = RuntimeError(
+                    "The server resumed \(WebURL.display(url.absoluteString)) at the wrong offset.", statusCode: 502)
                 completionHandler(.cancel)
                 return
             }

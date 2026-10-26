@@ -41,8 +41,9 @@ final class OrgStore {
         case .missing:
             instance = OrgInstanceState()
             instanceIsNew = true
-        case .loaded(let decoded):
+        case .loaded(let decoded, let carriesSecret):
             instance = decoded
+            instanceIsNew = carriesSecret
         case .failed(let detail):
             instance = OrgInstanceState()
             instanceProblem = OrgInstanceProblem(detail: detail)
@@ -65,7 +66,7 @@ final class OrgStore {
 
     private enum InstanceLoad {
         case missing
-        case loaded(OrgInstanceState)
+        case loaded(OrgInstanceState, carriesSecret: Bool)
         case failed(String)
     }
 
@@ -93,7 +94,9 @@ final class OrgStore {
         }
         if data.isEmpty { return .failed("it is empty") }
         do {
-            return .loaded(try OrgCodec.decoder.decode(OrgInstanceState.self, from: data))
+            let decoded = try OrgCodec.decoder.decode(OrgInstanceState.self, from: data)
+            let carriesSecret = (try? JSON.parse(data))?["runTokenSecret"].isUndefined == false
+            return .loaded(decoded, carriesSecret: carriesSecret)
         } catch {
             let parses = (try? JSON.parse(data)) != nil
             return .failed(parses ? "it doesn't have the shape this build expects" : "it isn't valid JSON")

@@ -560,7 +560,7 @@ enum OrgTerminalHandoff {
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
             NSWorkspace.shared.open(url)
         } catch {
-            NSLog("[RoachNet] Couldn't open Terminal for sign-in: \(error.localizedDescription)")
+            NSLog("%@", "[RoachNet] Couldn't open Terminal for sign-in: \(error.localizedDescription)")
         }
     }
 }

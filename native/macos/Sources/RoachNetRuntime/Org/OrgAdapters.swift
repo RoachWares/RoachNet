@@ -71,15 +71,24 @@ enum OrgAdapters {
     }
 
     static func checkedEndpoint(_ raw: String, loopbackOnly: Bool = false) -> String? {
-        guard let url = WebURL(raw) else { return nil }
+        guard let url = WebURL(raw), !url.hasCredentials else { return nil }
         let host = url.bareHostname.lowercased()
         let loopback = host == "127.0.0.1" || host == "localhost" || host == "::1"
         let allowed =
             loopbackOnly
             ? (url.scheme == "http" || url.scheme == "https") && loopback
             : url.scheme == "https" || (url.scheme == "http" && loopback)
-        return allowed ? url.description : nil
+        return allowed ? url.withoutCredentials : nil
     }
+
+    static func endpointRefusal(_ raw: String?, otherwise: String) -> String {
+        if let raw, WebURL(raw)?.hasCredentials == true {
+            return "An agent's address can't carry a user name or password. Keep credentials in the agent's secret."
+        }
+        return otherwise
+    }
+
+    static func requestLogLine(_ url: String) -> String { "POST \(WebURL(url)?.redacted ?? "the agent service")" }
 
     static func configuredEndpoint(type: String, config: JSON) -> String? {
         let body = OrgBody(config)
@@ -123,7 +132,9 @@ struct OrgAgentLoopAdapter: OrgAdapter {
                 let checked = OrgAdapters.checkedEndpoint(configured ?? runtime.modelServerBaseUrl, loopbackOnly: true)
             else {
                 return .failure(
-                    "roachclaw_local agents only talk to a model server on this Mac.", code: "adapter_config")
+                    OrgAdapters.endpointRefusal(
+                        configured, otherwise: "roachclaw_local agents only talk to a model server on this Mac."),
+                    code: "adapter_config")
             }
             baseURL = checked
         case .openAICompatible:
@@ -131,7 +142,10 @@ struct OrgAgentLoopAdapter: OrgAdapter {
                 let checked = OrgAdapters.checkedEndpoint(configured)
             else {
                 return .failure(
-                    "openai_compatible agents need an https baseUrl (or http on this Mac).", code: "adapter_config")
+                    OrgAdapters.endpointRefusal(
+                        config.string("baseUrl", max: 512),
+                        otherwise: "openai_compatible agents need an https baseUrl (or http on this Mac)."),
+                    code: "adapter_config")
             }
             baseURL = checked
             if let key = io.secret(config.string("apiKeySecret")) { headers["authorization"] = "Bearer \(key)" }
@@ -528,7 +542,10 @@ struct OrgHTTPAdapter: OrgAdapter {
     func run(_ context: OrgRunContext, _ io: OrgRunIO) -> OrgRunResult {
         let config = OrgBody(context.agent.adapterConfig)
         guard let raw = config.string("url", max: 2_000), let url = OrgAdapters.checkedEndpoint(raw) else {
-            return .failure("http agents need an https url (or http on this Mac).", code: "adapter_config")
+            return .failure(
+                OrgAdapters.endpointRefusal(
+                    config.string("url", max: 2_000), otherwise: "http agents need an https url (or http on this Mac)."),
+                code: "adapter_config")
         }
         if let host = OrgAdapters.localEndpointHost(
             type: context.agent.adapterType, config: context.agent.adapterConfig),
@@ -557,9 +574,10 @@ struct OrgHTTPAdapter: OrgAdapter {
             ],
             "sessionState": context.agent.sessionState ?? .null,
         ]
-        io.log("system", "POST \(url)")
+        io.log("system", OrgAdapters.requestLogLine(url))
         let span = io.trace?.child(
-            .span, "POST \(WebURL(url)?.bareHostname ?? "agent service")", metadata: JSONObject([("url", JSON(url))]))
+            .span, "POST \(WebURL(url)?.bareHostname ?? "agent service")",
+            metadata: JSONObject([("url", JSON(WebURL(url)?.redacted ?? ""))]))
         if let span { headers["traceparent"] = span.traceparent }
         defer { span?.end() }
         do {

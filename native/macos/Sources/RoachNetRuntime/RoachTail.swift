@@ -29,7 +29,7 @@ extension NativeRuntime {
         if let mode = config.trimmedEnv("ROACHNET_COMPANION_ENABLED") {
             return !["0", "false", "no", "off"].contains(mode.lowercased())
         }
-        return config.trimmedEnv("ROACHNET_COMPANION_TOKEN") != nil
+        return config.companionToken != nil
     }
 
     func companionHostPort() -> (host: String, port: String) {
@@ -172,6 +172,28 @@ extension NativeRuntime {
         return nil
     }
 
+    func keepRoachTailJoinCodeInMemory(_ state: JSON) -> JSON {
+        withState {
+            if let code = state["joinCode"].stringValue, !code.isEmpty {
+                roachTailJoinCode = (roachTailHash(JSON(code)), code)
+            } else if state["joinCodeHash"].stringValue == nil {
+                roachTailJoinCode = nil
+            }
+        }
+        var onDisk = state
+        onDisk["joinCode"] = nil
+        return onDisk
+    }
+
+    func roachTailJoinCodeInMemory(for state: JSON) -> JSON {
+        withState {
+            guard let kept = roachTailJoinCode, let hash = state["joinCodeHash"].stringValue,
+                CompanionProxy.tokensMatch(kept.hash, hash)
+            else { return nil }
+            return JSON(kept.code)
+        }
+    }
+
     func isRoachTailJoinCodeFresh(_ state: JSON) -> Bool {
         guard state["joinCode"].truthy, let expires = state["joinCodeExpiresAt"].stringValue,
             let ms = JS.parseDate(expires)
@@ -184,6 +206,9 @@ extension NativeRuntime {
             let state = readRoachTailStateFile()
             let fallback = defaultRoachTailState()
             var merged = fallback.merging(state?.isObject == true ? state! : .object(JSONObject()))
+            let codeInFile = state?["joinCode"].stringValue.map { !$0.isEmpty } ?? false
+            if let state, codeInFile { _ = keepRoachTailJoinCodeInMemory(state) }
+            if state != nil { merged["joinCode"] = roachTailJoinCodeInMemory(for: merged) }
             merged["schema"] = "org.roachnet.roachtail.control-plane.v1"
             merged["networkName"] = JSON((merged["networkName"] || JSON(roachTailNetworkName())).jsString)
             merged["namespace"] = JSON((merged["namespace"] || JSON(roachTailNamespace())).jsString)
@@ -205,7 +230,7 @@ extension NativeRuntime {
             merged["status"] = JSON(roachTailStatusFor(merged))
             merged["secureOverlay"] = true
 
-            var persist = persistIfMissing
+            var persist = persistIfMissing || codeInFile
             if mintJoinCode && merged["enabled"].truthy
                 && (!isRoachTailJoinCodeFresh(merged) || !merged["joinCode"].truthy)
             {
@@ -216,7 +241,7 @@ extension NativeRuntime {
                 merged["lastUpdatedAt"] = JSON(roachTailNow())
                 persist = true
             }
-            if persist && (state == nil || merged["enabled"].truthy) {
+            if persist && (state == nil || merged["enabled"].truthy || codeInFile) {
                 return writeRoachTailStateRaw(merged)
             }
             return merged
@@ -229,7 +254,8 @@ extension NativeRuntime {
         next["transportMode"] = JSON(roachTailTransportModeFor(state))
         next["status"] = JSON(roachTailStatusFor(state))
         next["lastUpdatedAt"] = JSON(roachTailNow())
-        try? Files.writePrettyJSON(next, to: config.roachTailStatePath, mode: Files.privateFileMode)
+        try? Files.writePrettyJSON(
+            keepRoachTailJoinCodeInMemory(next), to: config.roachTailStatePath, mode: Files.privateFileMode)
         return next
     }
 

@@ -49,7 +49,10 @@ extension NativeRuntime {
                 else {
                     throw requestError("Pack manifests are fetched over https.", 400)
                 }
-                let url = parsed.description
+                if parsed.hasCredentials {
+                    throw requestError("A pack manifest's address can't carry a user name or password.", 400)
+                }
+                let url = parsed.withoutCredentials
                 let response = try HTTPClient.request(
                     url, headers: ["accept": "application/json"], timeoutMs: 30_000, maxResponseBytes: 1024 * 1024)
                 guard response.ok else {
@@ -87,10 +90,10 @@ extension NativeRuntime {
         let raw =
             (config.environment["ROACHNET_PACK_CATALOG_URL"] ?? "https://apps.roachnet.org/collections/packs.json")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty, let parsed = WebURL(raw),
+        guard !raw.isEmpty, let parsed = WebURL(raw), !parsed.hasCredentials,
             parsed.scheme == "https" || (parsed.scheme == "http" && CompanionProxy.isLoopback(parsed.bareHostname))
         else { return nil }
-        return parsed.description
+        return parsed.withoutCredentials
     }
 
     func parsePackCatalog(_ file: JSON, source: String) -> [PackManifest] {
@@ -137,7 +140,7 @@ extension NativeRuntime {
                     url,
                     headers: ["accept": "application/json", "user-agent": "RoachNet/\(config.version) pack-catalog"],
                     timeoutMs: 15_000, maxResponseBytes: 2 * 1024 * 1024)
-                guard response.ok else { throw RuntimeError("HTTP \(response.status) from \(url)") }
+                guard response.ok else { throw RuntimeError("HTTP \(response.status) from \(WebURL.display(url))") }
                 let file = try JSON.parse(response.body)
                 let live = parsePackCatalog(file, source: "live")
                 guard file["schema"].jsString == "org.roachnet.packs-catalog.v1" else {
@@ -149,7 +152,7 @@ extension NativeRuntime {
                     readJSONFile(["collections/packs.json", "website-apps-dist/collections/packs.json"], .null),
                     source: "bundled")
                 packRegistry.catalogPacks = mergePackCatalogs(bundled: bundled, live: live)
-                log("pack catalog refreshed from \(url): \(live.count) live pack(s)")
+                log("pack catalog refreshed from \(WebURL.display(url)): \(live.count) live pack(s)")
                 refreshed = true
             } catch {
                 log("pack catalog refresh skipped: \(error)")

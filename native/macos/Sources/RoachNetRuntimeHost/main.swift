@@ -1,6 +1,15 @@
 import Foundation
 import RoachNetRuntime
 
+do {
+    let secrets = try LaunchSecrets.adopt()
+    RuntimeConfiguration.shared = RuntimeConfiguration(
+        environment: ProcessInfo.processInfo.environment, secrets: secrets)
+} catch {
+    FileHandle.standardError.write(Data("roachnet-runtime: \(error)\n".utf8))
+    exit(78)
+}
+
 let arguments = CommandLine.arguments
 let server = RuntimeServer()
 

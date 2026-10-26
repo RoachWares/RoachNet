@@ -48,6 +48,23 @@ public struct WebURL: CustomStringConvertible {
 
     public var href: String { description }
 
+    public var hasCredentials: Bool { !username.isEmpty || !password.isEmpty }
+
+    public var withoutCredentials: String { serializedWithoutCredentials(query: query, fragment: fragment) }
+
+    public var redacted: String { serializedWithoutCredentials(query: nil, fragment: nil) }
+
+    public static func display(_ raw: String) -> String { WebURL(raw)?.redacted ?? "an address that can't be read" }
+
+    private func serializedWithoutCredentials(query: String?, fragment: String?) -> String {
+        var output = scheme + ":"
+        if hasAuthority { output += "//" + host }
+        output += pathname
+        if let query { output += "?" + query }
+        if let fragment { output += "#" + fragment }
+        return output
+    }
+
     public var description: String {
         var output = scheme + ":"
         if hasAuthority {

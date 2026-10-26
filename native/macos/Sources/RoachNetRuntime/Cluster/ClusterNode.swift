@@ -28,6 +28,7 @@ final class ClusterNode {
     var hosted: [String: HostedStage] = [:]
     var digests: [String: String] = [:]
     var peerIDs: [String: String] = [:]
+    private var handshakes = ClusterHandshakeGate()
     private var reaper: DispatchSourceTimer?
     #if canImport(dnssd)
     private let bonjour = ClusterBonjour()
@@ -295,8 +296,14 @@ final class ClusterNode {
             link.close()
             return
         }
+        let address = ClusterHandshakeGate.address(of: link.remote)
+        guard lock.withLock({ handshakes.enter(address) }) else {
+            link.close()
+            return
+        }
         link.setTimeout(10)
         do {
+            defer { lock.withLock { handshakes.leave(address) } }
             try link.handshakeAsResponder(key: key, nodeID: nodeIDData)
         } catch {
             RuntimeLog.write("cluster refused \(link.remote): \(error)")

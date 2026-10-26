@@ -240,6 +240,9 @@ final class RoachArchiveStore: ObservableObject {
     @Published var metadataDirectoryPath: String {
         didSet { UserDefaults.standard.set(metadataDirectoryPath, forKey: Self.metadataDirectoryKey) }
     }
+    @Published var torrentListURLString: String {
+        didSet { UserDefaults.standard.set(torrentListURLString, forKey: Self.torrentListKey) }
+    }
     @Published private(set) var results: [RoachArchiveSearchResult] = []
     @Published private(set) var torrentItems: [RoachArchiveTorrentItem] = []
     @Published private(set) var vaultRecords: [RoachArchiveVaultRecord] = []
@@ -251,12 +254,14 @@ final class RoachArchiveStore: ObservableObject {
 
     static let endpointKey = "roachnet.roacharchive.endpoint"
     static let metadataDirectoryKey = "roachnet.roacharchive.metadata-directory"
+    static let torrentListKey = "roachnet.roacharchive.torrent-list"
     private let fileManager = FileManager.default
     private var storageRoot: URL?
 
     init() {
         endpointURLString = Self.sanitizedEndpoint(UserDefaults.standard.string(forKey: Self.endpointKey) ?? "")
         metadataDirectoryPath = UserDefaults.standard.string(forKey: Self.metadataDirectoryKey) ?? ""
+        torrentListURLString = UserDefaults.standard.string(forKey: Self.torrentListKey) ?? ""
         if endpointURLString.isEmpty {
             UserDefaults.standard.removeObject(forKey: Self.endpointKey)
         }
@@ -328,9 +333,22 @@ final class RoachArchiveStore: ObservableObject {
         }
     }
 
+    var hasTorrentListAddress: Bool {
+        !torrentListURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     func refreshTorrentManifest() async {
         guard let storageRoot else {
             errorLine = "Storage is not configured."
+            return
+        }
+        guard hasTorrentListAddress else {
+            errorLine = "Add a torrent list address in Settings, under Roach's Archive, to load torrents."
+            return
+        }
+        guard let url = Self.torrentListURL(torrentListURLString) else {
+            errorLine =
+                "The torrent list address has to start with https://, http:// or file://. Check it in Settings, under Roach's Archive."
             return
         }
 
@@ -339,7 +357,6 @@ final class RoachArchiveStore: ObservableObject {
         defer { isRefreshingTorrents = false }
 
         do {
-            let url = URL(string: "https://annas-archive.gl/dyn/torrents.json")!
             let (data, response) = try await URLSession.shared.data(from: url)
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                 throw NSError(
@@ -359,10 +376,10 @@ final class RoachArchiveStore: ObservableObject {
                 }
             try data.write(to: storageRoot.appendingPathComponent("torrents.json"), options: .atomic)
             statusLine =
-                "Loaded \(torrentItems.count) Anna's Archive torrent records, including \(RoachCopy.count(metadataTorrentCount, "metadata torrent"))."
+                "Loaded \(torrentItems.count) torrent records, including \(RoachCopy.count(metadataTorrentCount, "metadata torrent"))."
         } catch {
             errorLine =
-                "Roach's Archive couldn't refresh the torrent manifest. Check your connection and try again. \(error.localizedDescription)"
+                "Roach's Archive couldn't load the torrent list. Check the address and your connection, then try again. \(error.localizedDescription)"
         }
     }
 
@@ -695,6 +712,15 @@ final class RoachArchiveStore: ObservableObject {
         return components.url
     }
 
+    private static func torrentListURL(_ rawValue: String) -> URL? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
+            ["https", "http", "file"].contains(scheme),
+            scheme == "file" || url.host?.isEmpty == false
+        else { return nil }
+        return url
+    }
+
     private static func sanitizedEndpoint(_ rawValue: String) -> String {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercased = trimmed.lowercased()
@@ -768,9 +794,7 @@ extension RoachArchiveSearchResult {
         let downloadURL = object.archiveString(for: [
             "download_url", "downloadURL", "file_url", "fileURL", "direct_url", "directURL",
         ])
-        let metadataURL = object.archiveString(for: [
-            "metadata_url", "metadataURL", "annas_archive_url", "aa_url", "url",
-        ])
+        let metadataURL = object.archiveString(for: ["metadata_url", "metadataURL", "aa_url", "url"])
         let torrentURL = object.archiveString(for: ["torrent_url", "torrentURL", "magnet_link", "magnet"])
 
         return RoachArchiveSearchResult(

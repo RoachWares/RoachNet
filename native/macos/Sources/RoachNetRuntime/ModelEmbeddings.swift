@@ -19,6 +19,8 @@ extension NativeModelServer {
                 throw requestError("Send input as text or a list of texts; token lists aren't accepted.", 400)
             }
             inputs = input.array.compactMap(\.stringValue)
+        } else if !input.isNullish && input.arrayValue == nil {
+            throw requestError("Send input as text or a list of texts; token lists aren't accepted.", 400)
         }
         let item = try load(
             model, contextLength: body["options"]["num_ctx"].clampedInt(), keepAlive: keepAlive(body["keep_alive"]))

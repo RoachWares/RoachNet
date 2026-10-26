@@ -598,6 +598,7 @@ extension OrgService {
         try requireWrite(state, actor)
         guard hasGrant(state, actor, "tasks:assign") else { throw orgForbidden("Missing permission tasks:assign.") }
         var newSecrets: [(String, String)] = []
+        var removedTriggers: [String] = []
         let routine: OrgRoutine = try store.mutateCompany(companyId) { company in
             var routine: OrgRoutine
             var index: Int?
@@ -677,6 +678,8 @@ extension OrgService {
                     }
                     next.append(trigger)
                 }
+                let kept = Set(next.map(\.id))
+                removedTriggers = routine.triggers.filter { $0.publicId != nil && !kept.contains($0.id) }.map(\.id)
                 routine.triggers = next
             }
             routine.updatedAt = now
@@ -685,6 +688,9 @@ extension OrgService {
         }
         for (triggerId, secret) in newSecrets {
             try store.writeSecret(companyId: companyId, key: "routine-trigger-\(triggerId)", value: secret)
+        }
+        for triggerId in removedTriggers {
+            store.deleteSecret(companyId: companyId, key: "routine-trigger-\(triggerId)")
         }
         record(companyId, actor, routineId == nil ? "routine.created" : "routine.updated", "routine", routine.id)
         let secrets = newSecrets.map { ["triggerId": JSON($0.0), "secret": JSON($0.1)] as JSON }

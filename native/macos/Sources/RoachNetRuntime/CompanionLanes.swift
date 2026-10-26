@@ -109,7 +109,7 @@ extension NativeRuntime {
         }
 
         var outbound: [JSON] = history.map { ["role": $0["role"], "content": $0["content"]] }
-        if !images.isEmpty && !model.lowercased().hasSuffix(":cloud"), var last = outbound.popLast() {
+        if !images.isEmpty && !Self.isOllamaCloud(model) && seesImages(model), var last = outbound.popLast() {
             last["images"] = JSON(Array(images))
             outbound.append(last)
         }
@@ -142,6 +142,23 @@ extension NativeRuntime {
             return companionChatSummary(session)
         }
         return ["session": summary, "userMessage": userMessage, "assistantMessage": assistantMessage]
+    }
+
+    static func isOllamaCloud(_ model: String) -> Bool {
+        guard let colon = model.lastIndex(of: ":") else { return false }
+        let tag = model[model.index(after: colon)...].lowercased()
+        return tag == "cloud" || tag.hasSuffix("-cloud")
+    }
+
+    func seesImages(_ model: String) -> Bool {
+        ensureOllama()
+        let body: JSON = ["model": JSON(model)]
+        guard
+            let shown = try? HTTPClient.fetchJSON(
+                urlJoin("/api/show", modelServerBaseUrl), method: "POST",
+                body: body.serializedData(), timeoutMs: 2_500)
+        else { return false }
+        return shown["capabilities"].array.contains { $0.stringValue == "vision" }
     }
 
     func affectCompanionService(_ body: JSON) throws -> JSON {

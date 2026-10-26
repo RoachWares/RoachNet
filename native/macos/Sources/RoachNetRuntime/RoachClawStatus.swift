@@ -8,7 +8,7 @@ import Glibc
 
 extension NativeRuntime {
     func urlJoin(_ path: String, _ base: String) -> String {
-        WebURL(path, base: WebURL(base))?.description ?? base + path
+        WebURL(path, base: WebURL(base))?.withoutCredentials ?? base + path
     }
 
     func isReachable(_ url: String) -> Bool { (try? runtimeReachabilityCache.get(url)) ?? false }
@@ -472,12 +472,8 @@ extension NativeRuntime {
     func safeServiceUrl(_ rawValue: JSON) -> String {
         let raw = JS.compactString(rawValue, "", 512)
         if raw.isEmpty { return "" }
-        guard var parsed = WebURL(raw) else { return "[redacted-invalid-endpoint]" }
-        parsed.username = ""
-        parsed.password = ""
-        parsed.query = nil
-        parsed.fragment = nil
-        var text = parsed.description
+        guard let parsed = WebURL(raw) else { return "[redacted-invalid-endpoint]" }
+        var text = parsed.redacted
         if text.hasSuffix("/") { text.removeLast() }
         return text
     }

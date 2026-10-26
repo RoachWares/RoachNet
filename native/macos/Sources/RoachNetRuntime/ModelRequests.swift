@@ -27,6 +27,9 @@ struct ModelRequest {
     var effectiveTools: [ToolSpec] { toolChoice == .none ? [] : tools }
 
     static func ollamaChat(_ body: JSON) throws -> ModelRequest {
+        for message in body["messages"].array {
+            try refuse(holdsImages(message["images"]) ? "images" : media(message["content"]))
+        }
         var request = ModelRequest(model: body["model"].stringValue ?? "")
         request.messages = body["messages"].array.map(ollamaMessage)
         request.tools = tools(body["tools"])
@@ -40,6 +43,7 @@ struct ModelRequest {
     }
 
     static func ollamaGenerate(_ body: JSON) throws -> ModelRequest {
+        try refuse(holdsImages(body["images"]) ? "images" : nil)
         var request = ModelRequest(model: body["model"].stringValue ?? "")
         let prompt = body["prompt"].stringValue ?? ""
         if body["raw"].truthy {
@@ -72,6 +76,7 @@ struct ModelRequest {
     }
 
     static func openAIChat(_ body: JSON) throws -> ModelRequest {
+        for message in body["messages"].array { try refuse(media(message["content"])) }
         var request = ModelRequest(model: body["model"].stringValue ?? "")
         request.messages = body["messages"].array.map { message in
             var role = message["role"].stringValue ?? "user"
@@ -114,6 +119,7 @@ struct ModelRequest {
     }
 
     static func responses(_ body: JSON) throws -> ModelRequest {
+        for item in body["input"].array { try refuse(media(item["content"]) ?? media(item["output"])) }
         var request = ModelRequest(model: body["model"].stringValue ?? "")
         if let instructions = body["instructions"].stringValue, !instructions.isEmpty {
             request.messages.append(RichMessage(role: .system, content: instructions))
@@ -205,6 +211,7 @@ struct ModelRequest {
     }
 
     static func anthropicMessages(_ body: JSON) throws -> ModelRequest {
+        for message in body["messages"].array { try refuse(media(message["content"])) }
         var request = ModelRequest(model: body["model"].stringValue ?? "")
         if let system = body["system"].stringValue, !system.isEmpty {
             request.messages.append(RichMessage(role: .system, content: system))
@@ -271,6 +278,31 @@ struct ModelRequest {
         request.options = options
         request.stream = body["stream"].truthy
         return request
+    }
+
+    static func refuse(_ kind: String?) throws {
+        guard let kind else { return }
+        throw requestError(
+            "RoachNet's model server reads text only and can't take \(kind) yet. "
+                + "Send the request without \(kind == "audio" || kind == "video" ? "it" : "them").", 400)
+    }
+
+    static func media(_ content: JSON) -> String? {
+        for part in content.array {
+            switch part["type"].stringValue ?? "" {
+            case "image", "image_url", "input_image": return "images"
+            case "input_audio", "audio_url": return "audio"
+            case "input_video", "video_url": return "video"
+            case "document", "file", "input_file": return "files"
+            case "tool_result": if let kind = media(part["content"]) { return kind }
+            default: continue
+            }
+        }
+        return nil
+    }
+
+    static func holdsImages(_ images: JSON) -> Bool {
+        !images.isNullish && images.arrayValue?.isEmpty != true
     }
 
     static func text(_ value: JSON) -> String {

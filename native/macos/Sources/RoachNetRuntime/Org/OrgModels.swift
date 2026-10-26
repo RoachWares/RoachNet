@@ -636,4 +636,8 @@ struct OrgInstanceState: Codable {
     var users: [OrgUser] = []
     var runTokenSecret: String = JS.randomHex(64)
     var schemaVersion: Int = 1
+
+    private enum CodingKeys: String, CodingKey {
+        case users, schemaVersion
+    }
 }

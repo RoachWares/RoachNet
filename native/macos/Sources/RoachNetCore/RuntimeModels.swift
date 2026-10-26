@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
@@ -176,7 +177,13 @@ public struct RoachNetInstallerConfig: Codable, Sendable, Equatable {
     public static func generateCompanionToken() -> String {
         let first = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let second = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        return "\(first)\(second)"
+        return companionTokenAtRest("\(first)\(second)")
+    }
+
+    public static func companionTokenAtRest(_ token: String) -> String {
+        let value = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !value.hasPrefix("sha256:") else { return value }
+        return "sha256:" + SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -520,7 +527,9 @@ public enum RoachNetRepositoryLocator {
         return defaultInstallPath()
     }
 
-    static func sanitizedPersistedConfig(_ config: RoachNetInstallerConfig) -> RoachNetInstallerConfig {
+    static func sanitizedPersistedConfig(_ persisted: RoachNetInstallerConfig) -> RoachNetInstallerConfig {
+        var config = persisted
+        config.companionToken = RoachNetInstallerConfig.companionTokenAtRest(config.companionToken)
         guard !shouldPreserveTransientInstallPaths() else {
             return config
         }

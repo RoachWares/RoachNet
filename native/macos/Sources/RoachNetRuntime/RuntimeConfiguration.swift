@@ -58,9 +58,14 @@ public final class RuntimeConfiguration {
     public let serviceHealthProbeTimeoutMs: Int
     public let runtimeProbeCacheMs: Int
     public let uploadLimitPolicies: [JSON]
+    public let apiToken: String?
+    public let companionToken: String?
 
-    public init(environment: [String: String]) {
+    public init(environment: [String: String], secrets: LaunchSecrets? = nil) {
         self.environment = environment
+        apiToken = secrets?.apiToken ?? LaunchSecrets.nonEmpty(environment[LaunchSecrets.apiTokenVariable])
+        companionToken =
+            secrets?.companionToken ?? LaunchSecrets.nonEmpty(environment[LaunchSecrets.companionTokenVariable])
         let repoRoot = RuntimeConfiguration.resolveRepoRoot(environment)
         self.repoRoot = repoRoot
         self.version = RuntimeConfiguration.resolveVersion(environment, repoRoot: repoRoot)
@@ -253,7 +258,7 @@ public enum RuntimeBuildInfo {
         let launchedAs = Bundle.main.executablePath ?? Path.resolve(CommandLine.arguments.first ?? "")
         return Files.realpath(launchedAs) ?? launchedAs
     }
-    public static let version = "1.1.2"
+    public static let version = "1.1.3"
     public static let executableName = "roachnet-runtime"
 
     public static var sourceCommit: String? {

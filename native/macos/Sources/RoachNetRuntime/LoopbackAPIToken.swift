@@ -1,10 +1,7 @@
 import Foundation
 
 extension NativeRuntime {
-    var apiToken: String? {
-        guard let token = config.trimmedEnv("ROACHNET_API_TOKEN"), !token.isEmpty else { return nil }
-        return token
-    }
+    var apiToken: String? { config.apiToken }
 
     static func routedURL(_ target: String) -> WebURL? {
         WebURL(target, base: WebURL("http://127.0.0.1"))

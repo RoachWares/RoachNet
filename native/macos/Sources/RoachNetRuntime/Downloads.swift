@@ -74,9 +74,9 @@ extension NativeRuntime {
 
     func parseDownloadUrl(_ raw: JSON) -> String? {
         guard let parsed = WebURL((raw.isNullish ? "" : raw.jsString).trimmingCharacters(in: .whitespacesAndNewlines)),
-            ["http", "https"].contains(parsed.scheme)
+            ["http", "https"].contains(parsed.scheme), !parsed.hasCredentials
         else { return nil }
-        return parsed.description
+        return parsed.withoutCredentials
     }
 
     func isAppsDownloadDescriptorUrl(_ raw: String) -> Bool {
@@ -146,12 +146,14 @@ extension NativeRuntime {
                 "accept": "application/json",
                 "user-agent": "RoachNet/\(version) descriptor-resolver",
             ], timeoutMs: 30_000, maxResponseBytes: 2 * 1024 * 1024)
-        if !response.ok { throw RuntimeError("HTTP \(response.status) while resolving \(descriptorUrl)") }
+        if !response.ok {
+            throw RuntimeError("HTTP \(response.status) while resolving \(WebURL.display(descriptorUrl))")
+        }
         let descriptor = try JSON.parse(response.body)
         let resolved = pickDescriptorSource(descriptor)
         let parts = descriptorParts(descriptor)
         if resolved == nil && parts.isEmpty {
-            throw RuntimeError("Download descriptor has no usable HTTP source: \(descriptorUrl)")
+            throw RuntimeError("Download descriptor has no usable HTTP source: \(WebURL.display(descriptorUrl))")
         }
         let sha = (descriptor["sha256"] || "").jsString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return (
@@ -211,7 +213,9 @@ extension NativeRuntime {
 
     func downloadNow(_ rawUrl: JSON, to filepath: String, filetype: String, expectedSha256: String?) throws {
         let resolved = try resolveDownloadDescriptor(rawUrl)
-        guard let url = resolved.url else { throw RuntimeError("No usable download URL in \(rawUrl.jsString).") }
+        guard let url = resolved.url else {
+            throw RuntimeError("No usable download URL in \(WebURL.display(rawUrl.jsString)).")
+        }
         if let expectedSha256, let descriptorSha = resolved.sha256, expectedSha256.lowercased() != descriptorSha {
             throw RuntimeError("The download descriptor's checksum does not match the pack manifest.")
         }
@@ -325,7 +329,9 @@ extension NativeRuntime {
     }
 
     func streamWithResume(_ job: DownloadJob, _ handle: FileHandle, deadline: Date) throws {
-        guard let url = URL(string: job.url) else { throw RuntimeError("Invalid URL: \(job.url)", statusCode: 400) }
+        guard let url = URL(string: job.url) else {
+            throw RuntimeError("Invalid URL: \(WebURL.display(job.url))", statusCode: 400)
+        }
         let maxBytes = Int64(config.maxDownloadBytes)
         var attempt = 0
         var restartedAfter416 = false
@@ -435,7 +441,8 @@ extension NativeRuntime {
                 let actual = try SHA256Digest.hexOfFile(atPath: job.partialFilepath)
                 if actual != expected {
                     throw RuntimeError(
-                        "Checksum mismatch for \(job.url). Expected \(expected), found \(actual).", statusCode: 422)
+                        "Checksum mismatch for \(WebURL.display(job.url)). Expected \(expected), found \(actual).",
+                        statusCode: 422)
                 }
                 withState { job.sha256 = actual }
             }
@@ -519,7 +526,7 @@ extension NativeRuntime {
             if errno != EEXIST { break }
         }
         throw RuntimeError(
-            "Download from \(job.url) failed: unable to create \(job.partialFilepath): \(String(cString: strerror(errno)))"
+            "Download from \(WebURL.display(job.url)) failed: unable to create \(job.partialFilepath): \(String(cString: strerror(errno)))"
         )
     }
 
@@ -550,7 +557,9 @@ extension NativeRuntime {
             let response = try HTTPClient.request(
                 part["url"].jsString, headers: ["user-agent": "RoachNet/\(version) native-downloader chunked"],
                 timeoutMs: remaining)
-            if !response.ok { throw RuntimeError("HTTP \(response.status) while downloading \(part["url"].jsString)") }
+            if !response.ok {
+                throw RuntimeError("HTTP \(response.status) while downloading \(WebURL.display(part["url"].jsString))")
+            }
             if let length = Int(response.headers["content-length"] ?? ""), length > 0, length != expectedTransfer {
                 throw RuntimeError("Chunk \(index) reported \(length) bytes, expected \(expectedTransfer).")
             }
@@ -566,7 +575,8 @@ extension NativeRuntime {
             let actual = SHA256Digest.hex(payload)
             if let expected = part["sha256"].stringValue, actual != expected {
                 throw RuntimeError(
-                    "Chunk checksum mismatch for \(part["url"].jsString). Expected \(expected), found \(actual).")
+                    "Chunk checksum mismatch for \(WebURL.display(part["url"].jsString)). Expected \(expected), found \(actual)."
+                )
             }
             received += Int64(payload.count)
             if received > Int64(config.maxDownloadBytes) {
@@ -650,12 +660,12 @@ extension NativeRuntime {
     func fetchReleaseChecksum(_ release: JSON) throws -> String {
         let checksumUrl = release["checksumUrl"].jsString
         guard release["checksumUrl"].truthy, Self.isTrustedReleaseUrl(checksumUrl),
-            let checked = WebURL(checksumUrl.trimmingCharacters(in: .whitespacesAndNewlines))?.description
+            let parsed = WebURL(checksumUrl.trimmingCharacters(in: .whitespacesAndNewlines)), !parsed.hasCredentials
         else {
             throw RuntimeError("The release has no checksum sidecar.")
         }
         let response = try HTTPClient.request(
-            checked, headers: ["accept": "text/plain"], timeoutMs: 12_000, maxResponseBytes: 4096)
+            parsed.withoutCredentials, headers: ["accept": "text/plain"], timeoutMs: 12_000, maxResponseBytes: 4096)
         guard response.ok else { throw RuntimeError("Checksum sidecar returned HTTP \(response.status).") }
         let assetName = release["assetName"].jsString.lowercased()
         for line in response.text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
@@ -710,7 +720,7 @@ extension NativeRuntime {
     func modelPacksRootPath() -> String { Path.join(storageRoot, "RoachSpeech", "ModelPacks") }
 
     func readRoachSpeechPackRegistry() -> JSON {
-        readJSONFile([Path.join(modelPacksRootPath(), "pending-packs.json")], [])
+        readJSONFile([Path.join(modelPacksRootPath(), NativeRuntime.speechPackRegistryName)], [])
     }
 
     func upsertRoachSpeechPackRegistry(_ entry: JSON) {
@@ -719,7 +729,8 @@ extension NativeRuntime {
             record["updatedAt"] = JSON(JS.isoNow())
             let registry = readRoachSpeechPackRegistry().array.filter { $0["packID"] != entry["packID"] }
             let next = Array(([record] + registry).prefix(50))
-            try? Files.writePrettyJSON(.array(next), to: Path.join(modelPacksRootPath(), "pending-packs.json"))
+            try? Files.writePrettyJSON(
+                .array(next), to: Path.join(modelPacksRootPath(), NativeRuntime.speechPackRegistryName))
         }
     }
 
@@ -802,11 +813,34 @@ extension NativeRuntime {
         }
     }
 
+    static let speechPackRegistryName = "pending-packs.json"
+
+    static func isValidSpeechPackID(_ value: String) -> Bool {
+        PackManifest.isValidID(value) && value != speechPackRegistryName
+    }
+
+    static func isValidSpeechPackKind(_ value: String) -> Bool {
+        let scalars = value.unicodeScalars
+        guard (2...32).contains(scalars.count), let first = scalars.first, ("a"..."z").contains(first) else {
+            return false
+        }
+        return scalars.allSatisfy { ("a"..."z").contains($0) || ("A"..."Z").contains($0) || ("0"..."9").contains($0) }
+    }
+
     func queueRoachSpeechPackDownload(_ body: JSON, expectedSha256: String? = nil) throws -> (
         job: DownloadJob?, packID: String, kind: String
     ) {
-        let packID = safeFileName(body["packID"] || body["pack"] || "roachspeech-pack", "roachspeech-pack")
-        let kind = safeFileName(body["kind"] || "roachVoice", "roachVoice")
+        let packID = (body["packID"] || body["pack"] || "roachspeech-pack").jsString.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+        let kind = (body["kind"] || "roachVoice").jsString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard NativeRuntime.isValidSpeechPackID(packID) else {
+            throw requestError(
+                "A RoachSpeech pack id is 2 to 64 lowercase letters, digits, dots and dashes, starting with a letter or digit.",
+                400)
+        }
+        guard NativeRuntime.isValidSpeechPackKind(kind) else {
+            throw requestError("A RoachSpeech pack kind is one word of letters and digits, such as roachVoice.", 400)
+        }
         let destination = Path.join(storageRoot, "RoachSpeech", "ModelPacks", ".downloads", kind, packID)
         let rawURL = (body["url"].isNullish ? "" : body["url"].jsString).trimmingCharacters(in: .whitespacesAndNewlines)
         if !rawURL.isEmpty, !isAppsDownloadDescriptorUrl(rawURL) {
@@ -891,7 +925,9 @@ extension NativeRuntime {
                 }
             } catch {
                 firstError = firstError ?? error
-                log("could not queue \((resource["descriptorUrl"] || resource["url"]).jsString): \(error)")
+                log(
+                    "could not queue \(WebURL.display((resource["descriptorUrl"] || resource["url"]).jsString)): \(error)"
+                )
             }
         }
         if jobs.isEmpty, let firstError { throw firstError }

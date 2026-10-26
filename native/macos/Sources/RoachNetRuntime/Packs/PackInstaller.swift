@@ -74,7 +74,11 @@ public final class PackInstaller {
                 for resource in manifest.resources {
                     let target = Path.join(staging, resource.path)
                     try Files.mkdirp(Path.dirname(target))
-                    guard let checked = resource.url.flatMap({ WebURL($0)?.description }) else {
+                    guard
+                        let checked = resource.url.flatMap({ WebURL($0) }).flatMap({
+                            $0.hasCredentials ? nil : $0.withoutCredentials
+                        })
+                    else {
                         throw PackError.installFailed(
                             "\(manifest.name) resource \(resource.path) has no valid download URL.")
                     }

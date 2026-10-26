@@ -667,10 +667,17 @@ struct RoachNetSettingsView: View {
                         value: $model.roachArchiveStore.metadataDirectoryPath,
                         placeholder: "~/RoachNet/storage/RoachArchive/Metadata"
                     )
-                    Text("Use a local mirror/API or decompressed bulk metadata.")
-                        .font(.roach(size: 12, weight: .medium))
-                        .foregroundStyle(RoachPalette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+                    RoachInlineField(
+                        title: "Torrent list",
+                        value: $model.roachArchiveStore.torrentListURLString,
+                        placeholder: "Address of a torrents.json you trust"
+                    )
+                    Text(
+                        "Use a local mirror/API or decompressed bulk metadata. RoachNet has no torrent list of its own: it loads the one you set."
+                    )
+                    .font(.roach(size: 12, weight: .medium))
+                    .foregroundStyle(RoachPalette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -686,7 +693,8 @@ struct RoachNetSettingsView: View {
                         .labelStyle(.titleAndIcon)
                     }
                     .buttonStyle(RoachSecondaryButtonStyle())
-                    .disabled(model.roachArchiveStore.isRefreshingTorrents)
+                    .disabled(
+                        model.roachArchiveStore.isRefreshingTorrents || !model.roachArchiveStore.hasTorrentListAddress)
 
                     Button {
                         if let booksRootURL = model.roachArchiveStore.booksRootURL {

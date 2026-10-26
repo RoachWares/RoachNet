@@ -228,6 +228,11 @@ final class NativeModelStore {
             guard url.hasPrefix("https://") || loopbackTestURL else {
                 throw requestError("Model URLs must use https.", 400)
             }
+            guard let parsed = WebURL(url) else { throw requestError("Invalid model URL.", 400) }
+            if parsed.hasCredentials {
+                throw requestError(
+                    "RoachNet doesn't pull a model from an address that carries a user name or password.", 400)
+            }
             return Source(
                 url: url, sha256: request["sha256"].stringValue?.lowercased(), size: nil, family: nil,
                 parameterSize: nil, quantization: nil)
@@ -352,8 +357,7 @@ final class NativeModelStore {
                                 throw RuntimeError("Pull cancelled.", statusCode: 499)
                             }
                         }
-                    }
-                )
+                    })
                 do {
                     _ = try download.run(stallTimeoutMs: stallTimeoutMs, totalTimeoutMs: 6 * 3600 * 1000)
                     break
@@ -401,7 +405,7 @@ final class NativeModelStore {
         try FileManager.default.moveItem(atPath: partial, toPath: final)
         let manifest: JSON = [
             "name": JSON(name),
-            "source": JSON(source.url),
+            "source": JSON(WebURL.display(source.url)),
             "sha256": JSON(actual),
             "size": JSON(Double(size)),
             "format": "gguf",

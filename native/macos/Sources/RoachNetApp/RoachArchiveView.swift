@@ -229,7 +229,8 @@ struct RoachArchiveVaultPanel: View {
                 .labelStyle(.titleAndIcon)
         }
         .buttonStyle(RoachSecondaryButtonStyle())
-        .disabled(store.isRefreshingTorrents)
+        .disabled(store.isRefreshingTorrents || !store.hasTorrentListAddress)
+        .help(store.hasTorrentListAddress ? "Load the torrent list" : "Add a torrent list address in Settings first")
     }
 
     private var archiveEmptyState: some View {
@@ -405,9 +406,11 @@ struct RoachArchiveVaultPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             RoachSectionHeader(
                 "Torrent index",
-                title: "Metadata torrents from Anna's Archive.",
+                title: "Metadata torrents from your torrent list.",
                 detail: store.torrentItems.isEmpty
-                    ? "Refresh the manifest to load the torrent list."
+                    ? (store.hasTorrentListAddress
+                        ? "Refresh to load the torrent list."
+                        : "Add a torrent list address in Settings, under Roach's Archive, then refresh.")
                     : "These torrents hold the metadata that local search reads. File downloads go through a Roach's Archive API."
             )
 

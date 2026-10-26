@@ -19,6 +19,7 @@ public final class NativeRuntime {
     var companionBoundPort: UInt16 = 0
     var nativeModelServer: NativeModelServer?
     let planKey = JS.randomHex(64)
+    var roachTailJoinCode: (hash: String, code: String)?
     let modelPulls = ModelPullTracker()
     let modelPullQueue = DispatchQueue(label: "org.roachnet.runtime.model-pulls", qos: .utility)
 
@@ -103,7 +104,7 @@ public final class NativeRuntime {
     }
 
     lazy var installedModelsCache = TTLCache<[JSON]>(ttlMs: config.runtimeProbeCacheMs) { baseUrl in
-        let tagsURL = WebURL("/api/tags", base: WebURL(baseUrl))?.description ?? baseUrl + "/api/tags"
+        let tagsURL = WebURL("/api/tags", base: WebURL(baseUrl))?.withoutCredentials ?? baseUrl + "/api/tags"
         let tags = try HTTPClient.fetchJSON(tagsURL, timeoutMs: 2_500)
         return tags["models"].array.map { model in
             ["name": model["name"], "size": model["size"] || nil]

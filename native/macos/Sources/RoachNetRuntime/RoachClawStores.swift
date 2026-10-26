@@ -724,9 +724,13 @@ extension NativeRuntime {
             throw requestError(
                 "Cloud provider base URL must be public; local/private targets belong in RoachNet local providers", 400)
         }
+        if parsed.hasCredentials {
+            throw requestError(
+                "A cloud provider's base URL can't carry a user name or password; its key goes in the key field.", 400)
+        }
         parsed.fragment = nil
         parsed.query = nil
-        var text = parsed.description
+        var text = parsed.withoutCredentials
         if text.hasSuffix("/") { text.removeLast() }
         return text
     }
@@ -1301,13 +1305,9 @@ extension NativeRuntime {
     func sanitizeEmbeddingEndpoint(_ rawValue: JSON) -> String {
         let raw = JS.compactString(rawValue, "", 512)
         if raw.isEmpty { return "" }
-        guard var parsed = WebURL(raw) else { return raw.hasPrefix("local://") ? raw : "" }
+        guard let parsed = WebURL(raw) else { return raw.hasPrefix("local://") ? raw : "" }
         guard ["http", "https", "file", "local"].contains(parsed.scheme) else { return "" }
-        parsed.username = ""
-        parsed.password = ""
-        parsed.query = nil
-        parsed.fragment = nil
-        var text = parsed.description
+        var text = parsed.redacted
         if text.hasSuffix("/") { text.removeLast() }
         return text
     }

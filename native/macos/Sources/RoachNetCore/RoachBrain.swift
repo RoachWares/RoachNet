@@ -205,7 +205,7 @@ public enum RoachBrainWikiStore {
             return """
                 RoachBrain compiled wiki:
                 - Pages: \(status.pageCount)
-                - Index: \(status.indexPath)
+                - Index: \(PromptPath.named(status.indexPath, storagePath: storagePath))
                 - Pattern: read the index first, then use the linked pages as the durable local memory layer.
                 """
         }
@@ -222,8 +222,8 @@ public enum RoachBrainWikiStore {
         return """
             RoachBrain compiled wiki:
             - Pages: \(status.pageCount)
-            - Index: \(status.indexPath)
-            - Log: \(status.logPath)
+            - Index: \(PromptPath.named(status.indexPath, storagePath: storagePath))
+            - Log: \(PromptPath.named(status.logPath, storagePath: storagePath))
             - AutoResearch discipline: propose one bounded experiment, name one measurable signal, keep or discard the result in the log.
 
             Relevant wiki pages:
@@ -538,9 +538,10 @@ public enum RoachBrainStore {
             score += Double(matchedTags.count) * 18
 
             if memory.pinned { score += 24 }
+            guard score > 0 else { return nil }
             score += recencyBonus(for: memory)
 
-            return score > 0 ? RoachBrainMatch(memory: memory, score: score, matchedTags: matchedTags) : nil
+            return RoachBrainMatch(memory: memory, score: score, matchedTags: matchedTags)
         }
 
         return Array(
@@ -657,10 +658,19 @@ public enum RoachBrainStore {
     }
 
     private static func timestampString(from date: Date) -> String {
-        date.formatted(.iso8601.year().month().day().dateSeparator(.dash).time(includingFractionalSeconds: true))
+        date.formatted(.iso8601)
     }
 
     private static func parsedDate(from value: String) -> Date? {
-        try? Date(value, strategy: .iso8601)
+        let forms: [Date.ISO8601FormatStyle] = [
+            .iso8601,
+            Date.ISO8601FormatStyle(includingFractionalSeconds: true),
+            Date.ISO8601FormatStyle.iso8601.year().month().day().dateSeparator(.dash).time(
+                includingFractionalSeconds: true),
+        ]
+        for form in forms {
+            if let date = try? Date(value, strategy: form) { return date }
+        }
+        return nil
     }
 }

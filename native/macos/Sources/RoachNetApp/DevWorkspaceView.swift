@@ -1832,7 +1832,7 @@ final class DevWorkspaceModel: ObservableObject {
     ) -> DeveloperAssistFailurePresentation {
         let hasCloudFallback =
             workspaceModel.snapshot?.internetConnected == true
-            && workspaceModel.chatModelOptions.contains { $0.localizedCaseInsensitiveContains(":cloud") }
+            && workspaceModel.chatModelOptions.contains(where: OllamaCloudModel.matches)
 
         return DeveloperInlineAssistSupport.failurePresentation(
             description: error.localizedDescription,

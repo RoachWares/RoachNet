@@ -21,6 +21,7 @@ enum MetalKernelSource {
             }
         }
 
+
         template <typename X, typename A = float> inline A dot_f32_32(device const uchar* b, X x) {
             device const float* w = (device const float*)b;
             A acc = A(0);
@@ -535,6 +536,7 @@ enum MetalKernelSource {
         MATVEC_KRV(matvec_q6_K_r4, 210, pdotv_q6_K, 4, 32)
         MATVEC_KRV(matvec_q6_K_h4, 210, pdotv_q6_K, 4, 16)
         MATVEC_KR(matvec_q8_K_r4, 292, pdot_q8_K, 4)
+
 
         struct NormArgs { uint n; float eps; };
 

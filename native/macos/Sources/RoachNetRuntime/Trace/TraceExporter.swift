@@ -37,11 +37,11 @@ public final class TraceExporter {
 
     public static func endpointURL(_ raw: String) -> String? {
         let typed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !typed.isEmpty, let parsed = WebURL(typed) else { return nil }
+        guard !typed.isEmpty, let parsed = WebURL(typed), !parsed.hasCredentials else { return nil }
         let host = parsed.bareHostname.lowercased()
         let loopback = host == "127.0.0.1" || host == "localhost" || host == "::1"
         guard parsed.scheme == "https" || (parsed.scheme == "http" && loopback) else { return nil }
-        var base = parsed.description
+        var base = parsed.withoutCredentials
         while base.hasSuffix("/") { base.removeLast() }
         return base.hasSuffix("/v1/traces") ? base : base + "/v1/traces"
     }

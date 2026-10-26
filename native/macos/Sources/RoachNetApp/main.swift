@@ -3918,7 +3918,7 @@ final class WorkspaceModel: ObservableObject {
             let wikiStatus = RoachBrainWikiStore.status(storagePath: storagePath)
             if wikiStatus.pageCount > 0 {
                 lines.append("- Compiled RoachBrain wiki: \(RoachCopy.count(wikiStatus.pageCount, "page"))")
-                lines.append("- Wiki index: \(wikiStatus.indexPath)")
+                lines.append("- Wiki index: \(PromptPath.named(wikiStatus.indexPath, storagePath: storagePath))")
             }
             if !installedMapCollections.isEmpty {
                 lines.append("- Installed map packs: \(installedMapCollections.joined(separator: ", "))")
@@ -4005,7 +4005,9 @@ final class WorkspaceModel: ObservableObject {
             let projectNames = currentProjectLaneNames(limit: 6)
             var lines: [String] = []
             lines.append("Projects lane:")
-            lines.append("- Projects root: \(RoachNetDeveloperPaths.projectsRoot(storagePath: storagePath))")
+            lines.append(
+                "- Projects root: \(PromptPath.named(RoachNetDeveloperPaths.projectsRoot(storagePath: storagePath), storagePath: storagePath))"
+            )
             if !projectNames.isEmpty {
                 lines.append("- Known projects: \(projectNames.joined(separator: ", "))")
             }
@@ -4705,7 +4707,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func isCloudModel(_ modelName: String) -> Bool {
-        modelName.localizedCaseInsensitiveContains(":cloud")
+        OllamaCloudModel.matches(modelName)
     }
 
     func openStorageInFinder() {
@@ -8965,7 +8967,7 @@ private struct RootWorkspaceView: View {
     private var roachClaw: some View {
         let chatModels = model.chatModelOptions
         let recommendedQuickstartModel = model.recommendedLocalModels.first ?? model.config.roachClawDefaultModel
-        let cloudModels = chatModels.filter { $0.localizedCaseInsensitiveContains(":cloud") }
+        let cloudModels = chatModels.filter(OllamaCloudModel.matches)
         let activeModelDownloads =
             model.activeModelPullCount
             + (model.snapshot?.downloads.filter { $0.filetype == "model" && $0.status != "failed" }.count ?? 0)
@@ -12548,7 +12550,7 @@ private struct RootWorkspaceView: View {
 
     private var commandPaletteEntries: [CommandPaletteEntry] {
         let recommendedLocalModel = model.recommendedLocalModels.first ?? model.config.roachClawDefaultModel
-        let cloudModel = model.chatModelOptions.first(where: { $0.localizedCaseInsensitiveContains(":cloud") })
+        let cloudModel = model.chatModelOptions.first(where: OllamaCloudModel.matches)
         let storagePath = model.storagePath
         let installPath = model.installPath
         let runtimeLogPath = model.snapshot?.serverInfo.logPath?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -14349,7 +14351,7 @@ final class RoachNetMacAppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             } else {
-                NSLog("[RoachNet snapshot] Unknown theme in theme.txt: \(themeRequest)")
+                NSLog("%@", "[RoachNet snapshot] Unknown theme in theme.txt: \(themeRequest)")
             }
         }
         if requested.hasPrefix("settings:"),

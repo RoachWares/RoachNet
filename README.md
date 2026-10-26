@@ -6,7 +6,7 @@
 
 Local AI, code, maps, media, games and your vault in one native Mac app. Models, archives, notes and code stay on your Mac, in one folder: `~/RoachNet`. The internet is a bonus round, not a requirement.
 
-**RoachNet 1.1.2** · Apple Silicon, macOS 14 or later · [Download](https://github.com/RoachWares/RoachNet/releases/latest) · [Docs](https://roachnet.org/docs/) · [roachnet.org](https://roachnet.org/)
+**RoachNet 1.1.3** · Apple Silicon, macOS 14 or later · [Download](https://github.com/RoachWares/RoachNet/releases/latest) · [Docs](https://roachnet.org/docs/) · [roachnet.org](https://roachnet.org/)
 
 ## A quick tour
 
@@ -60,7 +60,7 @@ brew install --cask roachnet
 
 ## What's in this repository
 
-The source of the files in the RoachNet 1.1.2 release:
+The source of the files in the RoachNet 1.1.3 release:
 
 | Path | What it is |
 | --- | --- |

@@ -117,10 +117,10 @@ extension NativeRuntime {
     var collectionsBaseURL: String? {
         let raw = (config.environment["ROACHNET_COLLECTIONS_BASE_URL"] ?? "https://apps.roachnet.org/collections")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty, let parsed = WebURL(raw),
+        guard !raw.isEmpty, let parsed = WebURL(raw), !parsed.hasCredentials,
             parsed.scheme == "https" || (parsed.scheme == "http" && CompanionProxy.isLoopback(parsed.bareHostname))
         else { return nil }
-        return JS.replace("/+$", in: parsed.description, with: "")
+        return JS.replace("/+$", in: parsed.withoutCredentials, with: "")
     }
 
     func collectionCachePath(_ collection: ContentCollection) -> String {
@@ -204,10 +204,10 @@ extension NativeRuntime {
             try Files.mkdirp(Path.dirname(cachePath))
             chmod(Path.dirname(cachePath), 0o700)
             try Files.writePrettyJSON(file, to: cachePath, mode: Files.privateFileMode)
-            log("collection \(collection.rawValue) refreshed from \(url)")
+            log("collection \(collection.rawValue) refreshed from \(WebURL.display(url))")
             return true
         } catch {
-            log("collection \(collection.rawValue) refresh skipped (\(url)): \(error)")
+            log("collection \(collection.rawValue) refresh skipped (\(WebURL.display(url))): \(error)")
             return false
         }
     }

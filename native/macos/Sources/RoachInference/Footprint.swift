@@ -20,6 +20,11 @@ public struct ModelFootprint: Equatable {
         context = max(16, min(contextLength, hp.contextLength))
         let keyValueWidth = hp.headCountKV * (hp.headDimension + hp.valueDimension)
         let stage = stage ?? .whole(hp.blockCount)
+        guard stage.layers.lowerBound >= 0, stage.layers.upperBound <= hp.blockCount else {
+            throw InferenceError.invalid(
+                "Layers \(stage.layers.lowerBound)–\(stage.layers.upperBound) aren't in this model, which has \(hp.blockCount)."
+            )
+        }
         cachePerToken = stage.layers.count * keyValueWidth * cacheType.bytes
         cache = cachePerToken * context
         let width = max(hp.embeddingLength, hp.headCount * hp.valueDimension)

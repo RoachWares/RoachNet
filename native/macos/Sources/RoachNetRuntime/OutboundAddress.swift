@@ -75,24 +75,38 @@ enum OutboundAddress {
         }
     }
 
-    static func kinds(ofHost host: String) -> [Kind]? {
+    private static func plainHost(_ host: String) -> String {
         var bare = host.lowercased()
         if bare.hasPrefix("[") && bare.hasSuffix("]") { bare = String(bare.dropFirst().dropLast()) }
         if bare.hasSuffix(".") && !bare.hasSuffix("..") { bare.removeLast() }
+        return bare
+    }
+
+    static func kinds(ofHost host: String, resolve: (String) -> [String]? = DNS.addresses) -> [Kind]? {
+        let bare = plainHost(host)
         if bare.isEmpty { return nil }
         if bare == "localhost" || bare.hasSuffix(".localhost") { return [.local] }
         if let bytes = IPAddress.bytes(unscoped(bare)) { return [kind(of: bytes)] }
-        guard let addresses = DNS.addresses(bare), !addresses.isEmpty else { return nil }
+        guard let addresses = resolve(bare), !addresses.isEmpty else { return nil }
         return addresses.map { IPAddress.bytes(unscoped($0)).map(kind(of:)) ?? .disallowed }
     }
 
-    static func redirectRefusal(from origin: URL?, to target: URL?) -> String? {
+    static func namesLocalNetwork(_ host: String) -> Bool {
+        let bare = plainHost(host)
+        if bare == "localhost" || bare.hasSuffix(".localhost") || bare.hasSuffix(".local") { return true }
+        guard let bytes = IPAddress.bytes(unscoped(bare)) else { return false }
+        return kind(of: bytes) == .local
+    }
+
+    static func redirectRefusal(from origin: URL?, to target: URL?, resolve: (String) -> [String]? = DNS.addresses)
+        -> String?
+    {
         guard let target, let scheme = target.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
             return "an address that isn't http or https"
         }
-        if let host = origin?.host, let kinds = kinds(ofHost: host), kinds.allSatisfy({ $0 == .local }) { return nil }
+        if let host = origin?.host, namesLocalNetwork(host) { return nil }
         guard let host = target.host, !host.isEmpty else { return "an address with no host" }
-        guard let kinds = kinds(ofHost: host) else { return "\(host), which doesn't resolve" }
+        guard let kinds = kinds(ofHost: host, resolve: resolve) else { return "\(host), which doesn't resolve" }
         if kinds.contains(where: { $0 != .public }) { return "\(host), on this Mac or a private network" }
         return nil
     }

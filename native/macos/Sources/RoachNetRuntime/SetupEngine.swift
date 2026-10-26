@@ -175,6 +175,11 @@ public final class SetupEngine {
 
     static func generateToken() -> String { JS.randomHex(32) + JS.randomHex(32) }
 
+    static func companionTokenAtRest(_ token: String) -> String {
+        let value = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.hasPrefix("sha256:") ? value : "sha256:" + SHA256Digest.hex(value)
+    }
+
     func defaultConfig(_ overrides: JSON, writeBack: Bool = true) -> JSON {
         let persisted = loadPersistedConfig(writeBack: writeBack)
         let persistedRoot = normalizeInputPath(persisted["installPath"] || JSON(defaultInstallPath()))
@@ -236,7 +241,8 @@ public final class SetupEngine {
             "companionEnabled": bool("companionEnabled", true),
             "companionHost": string("companionHost", "127.0.0.1"),
             "companionPort": JSON(companionPort),
-            "companionToken": string("companionToken", SetupEngine.generateToken()),
+            "companionToken": JSON(
+                SetupEngine.companionTokenAtRest(string("companionToken", SetupEngine.generateToken()).jsString)),
             "companionAdvertisedURL": overrides["companionAdvertisedURL"] || persisted["companionAdvertisedURL"] || "",
             "autoInstallDependencies": false,
             "autoLaunch": bool("autoLaunch", true),

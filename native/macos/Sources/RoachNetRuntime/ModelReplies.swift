@@ -94,6 +94,12 @@ final class AfterThinkingConstraint: GenerationConstraint {
         return rest.isEmpty || inner.allows(rest)
     }
 
+    func allows(_ piece: String, thenPartial partial: [UInt8]) -> Bool {
+        guard !done else { return inner.allows(piece, thenPartial: partial) }
+        guard let rest = split(piece) else { return true }
+        return inner.allows(rest, thenPartial: partial)
+    }
+
     func accept(_ piece: String) {
         guard !done else {
             inner.accept(piece)
@@ -109,7 +115,6 @@ final class AfterThinkingConstraint: GenerationConstraint {
 
     var isComplete: Bool { done && inner.isComplete }
     var canEnd: Bool { done && inner.canEnd }
-    var insideFreeText: Bool { !done || inner.insideFreeText }
 }
 
 private final class ReplyCollector {

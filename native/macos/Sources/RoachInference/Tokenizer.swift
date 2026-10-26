@@ -457,6 +457,10 @@ public struct StreamingDecoder {
 
     public init() {}
 
+    public var partialCharacter: [UInt8] { pending }
+
+    public var holdsPartialCharacter: Bool { !pending.isEmpty }
+
     public mutating func append(_ bytes: [UInt8]) -> String {
         pending += bytes
         var end = pending.count
